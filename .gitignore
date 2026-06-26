@@ -10,6 +10,10 @@
 
 # Production build
 /build
+/dist
+
+# Test coverage
+/coverage
 
 # Environment variables – NEVER commit these.
 # Ignore every .env* variant, but keep the placeholder template.
