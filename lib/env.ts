@@ -25,13 +25,16 @@
 export function requireEnv(key: string): string {
   const value = process.env[key];
   if (typeof value !== "string" || value.trim() === "") {
-    throw new Error(
-      `\n\n⛔  Hallnect — Missing required environment variable\n` +
-      `   "${key}" is not set or is empty.\n` +
-      `   1. Copy .env.example to .env.local\n` +
-      `   2. Fill in the value for "${key}"\n` +
-      `   3. Restart the dev server (npm run dev)\n`
-    );
+    // SECURITY: only the KEY NAME is ever included — never a value — so this
+    // message is safe to appear in server logs. Guidance is environment-aware:
+    // in production the fix is to set the var in the host (e.g. Vercel) and
+    // redeploy, not to edit .env.local.
+    const guidance =
+      process.env.NODE_ENV === "production"
+        ? `Set "${key}" in your hosting provider's Environment Variables, then redeploy. ` +
+          `(NEXT_PUBLIC_* vars are baked in at build time, so a rebuild/redeploy is required.)`
+        : `1. Copy .env.example to .env.local  2. Fill in "${key}"  3. Restart the dev server (npm run dev).`;
+    throw new Error(`Missing required environment variable "${key}". ${guidance}`);
   }
   return value.trim();
 }

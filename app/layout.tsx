@@ -22,10 +22,20 @@ const playfair = Playfair_Display({
 });
 
 function resolveAppUrl(raw: string | undefined): URL {
+  const fallback = new URL("http://localhost:3000");
+  if (!raw || raw.trim() === "") return fallback;
+  // Tolerate a scheme-less value (a common deploy mistake: "myapp.vercel.app"
+  // instead of "https://myapp.vercel.app").
+  const candidate = /^https?:\/\//i.test(raw.trim()) ? raw.trim() : `https://${raw.trim()}`;
   try {
-    return new URL(raw ?? "http://localhost:3000");
+    return new URL(candidate);
   } catch {
-    throw new Error(`NEXT_PUBLIC_APP_URL is not a valid URL: "${raw}"`);
+    // PRODUCTION SAFETY: metadataBase is cosmetic (OG/canonical URLs). A bad
+    // NEXT_PUBLIC_APP_URL must NEVER crash the root layout, which renders on
+    // every page — that would 500 the entire site. Log and fall back instead.
+    // The value is a public URL (not a secret), so it's safe to log.
+    console.error(`[layout] NEXT_PUBLIC_APP_URL is not a valid URL ("${raw}") — using fallback.`);
+    return fallback;
   }
 }
 
