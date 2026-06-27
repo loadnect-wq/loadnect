@@ -2,24 +2,27 @@ export const APP_NAME = "Hallnect";
 export const APP_DESCRIPTION =
   "Discover and book the perfect wedding hall or event venue — trusted by thousands of couples and event planners.";
 
+// NOTE: every href here MUST point to a real, existing route. Marketing stubs
+// (/about, /how-it-works, /careers, /blog, /press, /help, /safety) were removed
+// because no page files exist for them — they were a source of footer/navbar
+// 404s on every page. Re-add a link only when its page actually exists.
 export const NAV_LINKS = [
-  { label: "Browse Halls", href: "/halls" },
-  { label: "How It Works", href: "/how-it-works" },
+  { label: "Browse Halls",   href: "/halls" },
+  { label: "Pricing",        href: "/premium" },
   { label: "List Your Hall", href: "/owner/register" },
-  { label: "About", href: "/about" },
+  { label: "Contact",        href: "/contact" },
 ] as const;
 
 export const FOOTER_LINKS = {
-  company: [
-    { label: "About Us", href: "/about" },
-    { label: "Careers", href: "/careers" },
-    { label: "Blog", href: "/blog" },
-    { label: "Press", href: "/press" },
+  explore: [
+    { label: "Browse Halls",   href: "/halls" },
+    { label: "Pricing",        href: "/premium" },
+    { label: "List Your Hall", href: "/owner/register" },
+    { label: "Contact Us",     href: "/contact" },
   ],
   support: [
-    { label: "Help Center", href: "/help" },
-    { label: "Contact Us", href: "/contact" },
-    { label: "Safety", href: "/safety" },
+    { label: "Contact Us",          href: "/contact" },
+    { label: "Refund Policy",       href: "/refund-policy" },
     { label: "Cancellation Policy", href: "/cancellation-policy" },
   ],
   legal: [

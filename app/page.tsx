@@ -7,14 +7,12 @@ import { AppHeader } from "@/components/app/AppHeader";
 import { HomeLocation } from "./_components/HomeLocation";
 import { HomeSearchEntry } from "./_components/HomeSearchEntry";
 import { CategoryRow } from "./_components/CategoryRow";
-import { FeaturedCarousel } from "./_components/FeaturedCarousel";
 import { CitiesRow } from "./_components/CitiesRow";
-import { RecentlyViewed } from "./_components/RecentlyViewed";
-import { MOCK_HALLS } from "@/lib/mock-data";
 import { POPULAR_CITIES } from "@/lib/content";
 import { AdSlot } from "@/components/ads/AdSlot";
 import { HeroSearch } from "@/components/sections/HeroSearch";
 import { HallCard } from "@/app/halls/_components/HallCard";
+import { fetchHalls, type HallListing } from "@/lib/halls";
 
 const CATEGORIES = [
   { key: "wedding",   label: "Wedding Halls",   icon: "heart",      href: "/halls?category=wedding"   },
@@ -57,8 +55,11 @@ const FAQ_ITEMS = [
     a: "Register as an owner, complete your business profile, and submit your venue for approval. Listings are reviewed within 48 hours." },
 ];
 
-export default function HomePage() {
-  const featured = MOCK_HALLS.filter((h) => h.isPremium).slice(0, 6);
+export default async function HomePage() {
+  // Featured = real APPROVED halls from Supabase (RLS-filtered), top-rated first.
+  // No fake/demo halls — empty list renders a proper empty state, so cards can
+  // never link to a slug that 404s.
+  const featured: HallListing[] = (await fetchHalls({ sort: "rating" })).slice(0, 6);
   const cities = POPULAR_CITIES.slice(0, 8);
 
   return (
@@ -103,17 +104,25 @@ export default function HomePage() {
         </section>
 
         <section className="mt-7">
-          <MobileSectionTitle title="Featured Venues" linkLabel="See all" linkHref="/halls?category=premium" />
-          <FeaturedCarousel halls={featured} />
-        </section>
-
-        <section className="mt-7">
-          <MobileSectionTitle title="Popular Cities" linkLabel="See all" linkHref="/halls" />
-          <CitiesRow cities={cities} />
+          <MobileSectionTitle title="Featured Venues" linkLabel="See all" linkHref="/halls" />
+          {featured.length === 0 ? (
+            <div className="container-app"><EmptyVenues /></div>
+          ) : (
+            <div className="no-scrollbar overflow-x-auto">
+              <div className="flex w-max gap-3 px-4 pb-1 sm:px-6">
+                {featured.map((h) => (
+                  <div key={h.id} className="w-64 shrink-0">
+                    <HallCard hall={h} />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </section>
 
         <section className="mt-7 pb-6">
-          <RecentlyViewed allHalls={MOCK_HALLS} />
+          <MobileSectionTitle title="Popular Cities" linkLabel="See all" linkHref="/halls" />
+          <CitiesRow cities={cities} />
         </section>
       </div>
 
@@ -196,11 +205,15 @@ export default function HomePage() {
             linkLabel="Browse all venues →"
             linkHref="/halls?category=premium"
           />
-          <div className="mt-8 grid grid-cols-2 gap-6 xl:grid-cols-3">
-            {featured.slice(0, 6).map((h) => (
-              <HallCard key={h.id} hall={mockHallToListing(h)} />
-            ))}
-          </div>
+          {featured.length === 0 ? (
+            <div className="mt-8"><EmptyVenues /></div>
+          ) : (
+            <div className="mt-8 grid grid-cols-2 gap-6 xl:grid-cols-3">
+              {featured.map((h) => (
+                <HallCard key={h.id} hall={h} />
+              ))}
+            </div>
+          )}
         </section>
 
         {/* ── Popular cities ───────────────────────────────────── */}
@@ -411,23 +424,25 @@ function OwnerPerk({ Icon, text }: { Icon: React.ComponentType<{ className?: str
   );
 }
 
-// Coerces a mock hall (different shape) into the HallListing shape that
-// HallCard expects. The desktop featured grid uses the same card as the
-// listing page so styling stays consistent.
-function mockHallToListing(h: typeof MOCK_HALLS[number]): import("@/lib/halls").HallListing {
-  return {
-    id:              h.id,
-    slug:            h.slug,
-    name:            h.name,
-    city:            h.city,
-    address:         null,
-    capacity_max:    h.capacity,
-    price_per_day:   h.pricePerDay,
-    is_premium:      h.isPremium,
-    premium_tier:    h.isPremium ? "premium" : null,
-    rating_average:  h.rating,
-    rating_count:    h.reviewCount,
-    cover_url:       null,
-    amenities:       h.amenities,
-  };
+// Shown when there are no approved halls yet (e.g. a fresh deployment with only
+// the example hall, or before any listings are approved). Replaces the old
+// fake-hall fallback so the homepage never renders demo venues.
+function EmptyVenues() {
+  return (
+    <div className="rounded-2xl border border-dashed border-border bg-white p-8 text-center">
+      <Building2 className="mx-auto h-8 w-8 text-charcoal-300" aria-hidden />
+      <p className="mt-3 text-sm font-semibold text-charcoal-800">No venues listed yet</p>
+      <p className="mt-1 text-xs text-charcoal-500">
+        Approved venues appear here. Check back soon — or list yours.
+      </p>
+      <div className="mt-4 flex flex-wrap justify-center gap-2">
+        <Link href="/halls" className="rounded-xl bg-maroon-700 px-4 py-2 text-xs font-semibold text-white hover:bg-maroon-800">
+          Browse all
+        </Link>
+        <Link href="/owner/register" className="rounded-xl border border-border px-4 py-2 text-xs font-semibold text-charcoal-700 hover:border-maroon-300">
+          List your venue
+        </Link>
+      </div>
+    </div>
+  );
 }

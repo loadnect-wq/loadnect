@@ -49,13 +49,13 @@ export function Footer() {
             </div>
           </div>
 
-          {/* Company */}
+          {/* Explore */}
           <div>
             <h3 className="mb-4 font-serif text-xs font-semibold uppercase tracking-widest text-gold-400">
-              Company
+              Explore
             </h3>
             <ul className="space-y-2.5">
-              {FOOTER_LINKS.company.map((link) => (
+              {FOOTER_LINKS.explore.map((link) => (
                 <li key={link.href}>
                   <Link
                     href={link.href}
