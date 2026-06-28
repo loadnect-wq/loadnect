@@ -10,7 +10,7 @@ import { cn } from "@/lib/utils";
 export const metadata: Metadata = {
   title: "Premium Listings — Boost Your Hall's Visibility",
   description:
-    "Get your wedding hall seen by thousands of couples. Premium listing plans for hall owners on Hallnect.",
+    "Premium listing plans for hall owners on Hallnect — get top placement in Tamil Nadu search results and on the homepage.",
 };
 
 function formatPrice(n: number) {
@@ -29,8 +29,8 @@ export default function PremiumPage() {
             Boost your hall&apos;s visibility
           </h1>
           <p className="mx-auto mt-5 max-w-xl text-base leading-relaxed text-ivory-400">
-            Premium-listed halls appear at the top of search results and on the Hallnect homepage —
-            seen by thousands of couples searching every day.
+            Premium-listed halls appear at the top of search results and on the Hallnect homepage,
+            so couples searching in Tamil Nadu find your venue first.
           </p>
         </div>
       </section>
@@ -84,7 +84,7 @@ export default function PremiumPage() {
               </ul>
 
               <Link
-                href="/owner/register"
+                href={tier.ctaHref}
                 className={cn(
                   buttonVariants({
                     variant: tier.isPopular ? "gold" : "outline",

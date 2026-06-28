@@ -11,7 +11,7 @@ export default function TermsPage() {
       <LegalHeader title="Terms and Conditions" updated="June 2025" />
 
       <Section title="1. About Hallnect">
-        Hallnect is an online marketplace operated by <strong>[Hallnect Technologies Private Limited]</strong> (placeholder — to be updated with registered company details) that connects customers looking to book wedding halls and event venues with venue owners listing their properties. Hallnect is a technology platform and{" "}
+        Hallnect is an online marketplace operated by <strong>Hallnect Pvt Ltd</strong> that connects customers looking to book wedding halls and event venues with venue owners listing their properties. Hallnect is a technology platform and{" "}
         <strong>not a venue owner</strong>. We do not own, operate, or control any venues listed on the platform. The booking contract is between the customer and the venue owner.
       </Section>
 

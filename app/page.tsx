@@ -164,11 +164,12 @@ export default async function HomePage() {
               <HeroSearch />
             </div>
 
-            {/* Trust strip */}
-            <div className="mt-10 grid grid-cols-3 gap-6 border-t border-white/10 pt-8 text-center text-ivory-300">
-              <TrustStat value="2,400+" label="Verified venues" />
-              <TrustStat value="50,000+" label="Couples served" />
-              <TrustStat value="4.8★"   label="Average rating" />
+            {/* Trust strip — honest launch-stage messaging (no fabricated numbers) */}
+            <div className="mt-10 grid grid-cols-2 gap-4 border-t border-white/10 pt-8 sm:grid-cols-4">
+              <TrustItem text="Launching in Tamil Nadu" />
+              <TrustItem text="Verified listings only" />
+              <TrustItem text="Secure booking flow" />
+              <TrustItem text="Owner-approved venues" />
             </div>
           </div>
         </section>
@@ -276,7 +277,7 @@ export default async function HomePage() {
                   <Crown className="h-3 w-3" /> For Venue Owners
                 </span>
                 <h2 className="mt-4 font-serif text-3xl font-bold text-ivory-100 xl:text-4xl">
-                  Reach 50,000+ couples planning their wedding
+                  List your wedding hall on Hallnect
                 </h2>
                 <p className="mt-3 max-w-lg text-sm text-ivory-300/90">
                   List your hall in minutes. Get verified bookings with secure payments and a dedicated owner dashboard.
@@ -406,11 +407,11 @@ function DesktopSectionHeader({
   );
 }
 
-function TrustStat({ value, label }: { value: string; label: string }) {
+function TrustItem({ text }: { text: string }) {
   return (
-    <div>
-      <p className="font-serif text-3xl font-bold text-gold-300">{value}</p>
-      <p className="mt-1 text-xs uppercase tracking-wide text-ivory-400">{label}</p>
+    <div className="flex items-center justify-center gap-2 text-center text-sm font-medium text-ivory-200">
+      <CheckCircle2 className="h-4 w-4 shrink-0 text-gold-300" aria-hidden />
+      {text}
     </div>
   );
 }

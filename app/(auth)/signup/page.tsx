@@ -92,7 +92,7 @@ export default function SignupPage() {
             <span className="font-serif text-2xl font-bold text-maroon-800">Hallnect</span>
           </Link>
           <h1 className="mt-6 font-serif text-3xl font-bold text-charcoal-900">Create an account</h1>
-          <p className="mt-1.5 text-sm text-muted-foreground">Join thousands of couples finding their perfect venue</p>
+          <p className="mt-1.5 text-sm text-muted-foreground">Find and book your perfect venue in Tamil Nadu</p>
         </div>
 
         <div className="rounded-2xl bg-white p-8 shadow-card space-y-5">

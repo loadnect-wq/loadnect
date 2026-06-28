@@ -30,7 +30,7 @@ export function Footer() {
                 <span className="ml-1.5 text-gold-400" aria-hidden>✦</span>
               </p>
               <p className="mt-2 text-sm leading-relaxed text-ivory-400 max-w-xs">
-                Discover and book the perfect wedding hall or event venue across Tamil Nadu — trusted by couples and event planners.
+                Discover and book verified wedding halls and event venues across Tamil Nadu — secure booking, owner-approved listings.
               </p>
             </div>
 
@@ -127,10 +127,10 @@ export function Footer() {
         <div className="mt-12 flex flex-col items-center gap-2 border-t border-maroon-900 pt-6 sm:flex-row sm:justify-between">
           <p className="text-xs text-ivory-600">
             &copy; <span suppressHydrationWarning>{new Date().getFullYear()}</span>{" "}
-            {APP_NAME}. All rights reserved.
+            {APP_NAME} Pvt Ltd. All rights reserved.
           </p>
           <p className="text-xs text-ivory-600">
-            Made with <span className="text-rose-400" aria-label="love">♥</span> for couples everywhere
+            Made in Tamil Nadu <span className="text-rose-400" aria-label="love">♥</span>
           </p>
         </div>
       </div>

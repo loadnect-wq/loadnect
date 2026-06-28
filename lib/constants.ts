@@ -1,6 +1,6 @@
 export const APP_NAME = "Hallnect";
 export const APP_DESCRIPTION =
-  "Discover and book the perfect wedding hall or event venue across Tamil Nadu — trusted by couples and event planners.";
+  "Discover and book verified wedding halls and event venues across Tamil Nadu — secure booking, owner-approved listings.";
 
 // Single source of truth for public business contact details. Update here and
 // every surface (contact page, footer, support copy) stays in sync.
