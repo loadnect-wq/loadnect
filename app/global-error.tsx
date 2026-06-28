@@ -25,7 +25,7 @@ export default function GlobalError({ error, reset }: Props) {
         <h1 style={{ fontSize: 28, marginBottom: 12 }}>Hallnect is having trouble loading</h1>
         <p style={{ color: "#605954", maxWidth: 480, margin: "0 auto" }}>
           The page failed to load. Please try again in a moment. If this keeps
-          happening, contact <strong>support@hallnect.com</strong>.
+          happening, contact <strong>hallnect@gmail.com</strong>.
         </p>
         {error.digest && (
           <p style={{ fontSize: 11, color: "#918A86", marginTop: 8 }}>

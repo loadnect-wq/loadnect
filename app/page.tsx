@@ -234,7 +234,7 @@ export default async function HomePage() {
                 <div className="absolute inset-0 bg-gradient-to-t from-black/55 via-black/20 to-transparent" />
                 <div className="absolute inset-x-4 bottom-4 text-white">
                   <p className="font-serif text-lg font-bold">{c.name}</p>
-                  <p className="text-xs text-white/80">{c.count} venues · {c.state}</p>
+                  <p className="text-xs text-white/80">{c.state}</p>
                 </div>
                 <div className="absolute right-3 top-3 rounded-full bg-white/15 px-2 py-0.5 text-[10px] font-semibold text-white backdrop-blur">
                   Explore →

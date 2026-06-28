@@ -1,6 +1,6 @@
 import Link from "next/link";
-import { Camera, Globe, MessageCircle, PlayCircle } from "lucide-react";
-import { APP_NAME, FOOTER_LINKS } from "@/lib/constants";
+import { Camera, Globe, MessageCircle, PlayCircle, Mail, Phone, MapPin } from "lucide-react";
+import { APP_NAME, FOOTER_LINKS, CONTACT } from "@/lib/constants";
 
 const SOCIAL_LINKS = [
   { Icon: Camera,      href: "#", label: "Instagram"  },
@@ -30,9 +30,25 @@ export function Footer() {
                 <span className="ml-1.5 text-gold-400" aria-hidden>✦</span>
               </p>
               <p className="mt-2 text-sm leading-relaxed text-ivory-400 max-w-xs">
-                Discover and book the perfect wedding hall or event venue — trusted by thousands of couples and event planners.
+                Discover and book the perfect wedding hall or event venue across Tamil Nadu — trusted by couples and event planners.
               </p>
             </div>
+
+            {/* Contact */}
+            <ul className="space-y-2 text-sm text-ivory-400">
+              <li className="flex items-center gap-2">
+                <Mail className="h-4 w-4 shrink-0 text-gold-400" aria-hidden />
+                <a href={`mailto:${CONTACT.email}`} className="hover:text-ivory-100">{CONTACT.email}</a>
+              </li>
+              <li className="flex items-center gap-2">
+                <Phone className="h-4 w-4 shrink-0 text-gold-400" aria-hidden />
+                <span>{CONTACT.phones.join(", ")}</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <MapPin className="h-4 w-4 shrink-0 text-gold-400" aria-hidden />
+                <span>{CONTACT.address}</span>
+              </li>
+            </ul>
 
             {/* Social */}
             <div className="flex items-center gap-2">

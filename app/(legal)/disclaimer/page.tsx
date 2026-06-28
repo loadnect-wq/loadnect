@@ -52,7 +52,7 @@ export default function DisclaimerPage() {
 
       <Section title="11. Contact">
         If you have concerns about a venue listing or believe information is inaccurate or misleading, report it to us at{" "}
-        <a href="mailto:support@hallnect.com" className="text-maroon-600 hover:underline">support@hallnect.com</a>.
+        <a href="mailto:hallnect@gmail.com" className="text-maroon-600 hover:underline">hallnect@gmail.com</a>.
         We will investigate and take appropriate action.
       </Section>
     </article>

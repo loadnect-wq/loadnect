@@ -3,7 +3,6 @@ import Link from "next/link";
 interface City {
   name: string;
   state: string;
-  count: number;
   gradient: string;
 }
 
@@ -21,7 +20,7 @@ export function CitiesRow({ cities }: { cities: readonly City[] }) {
               <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
               <div className="absolute bottom-0 left-0 p-3 text-white">
                 <p className="font-serif text-base font-bold">{c.name}</p>
-                <p className="text-[10px] text-white/80">{c.count} halls</p>
+                <p className="text-[10px] text-white/80">{c.state}</p>
               </div>
             </Link>
           </li>

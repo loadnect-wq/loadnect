@@ -16,8 +16,8 @@ export function HomeLocation() {
     try {
       const stored = localStorage.getItem(KEY);
       if (stored) setCity(stored);
-      else setCity("Mumbai");
-    } catch { setCity("Mumbai"); }
+      else setCity("Madurai");
+    } catch { setCity("Madurai"); }
   }, []);
 
   function selectCity(name: string) {

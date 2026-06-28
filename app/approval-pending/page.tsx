@@ -49,7 +49,7 @@ export default async function ApprovalPendingPage() {
         <div className="flex flex-col items-center gap-3">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Mail className="h-4 w-4" />
-            <span>Questions? Contact <strong className="text-charcoal-700">support@hallnect.com</strong></span>
+            <span>Questions? Contact <strong className="text-charcoal-700">hallnect@gmail.com</strong></span>
           </div>
           <Link href="/" className="inline-flex items-center gap-2 text-sm font-semibold text-maroon-600 hover:underline">
             <Gem className="h-4 w-4" />

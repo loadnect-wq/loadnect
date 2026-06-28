@@ -6,12 +6,12 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "@/hooks/use-toast";
-import { APP_NAME } from "@/lib/constants";
+import { APP_NAME, CONTACT } from "@/lib/constants";
 
 const CONTACT_ITEMS = [
-  { Icon: Mail,    label: "Email",   value: "support@hallnect.com" },
-  { Icon: Phone,   label: "Phone",   value: "+91 98765 43210"      },
-  { Icon: MapPin,  label: "Address", value: "Mumbai, Maharashtra, India" },
+  { Icon: Mail,    label: "Email",   value: CONTACT.email },
+  { Icon: Phone,   label: "Phone",   value: CONTACT.phones.join(", ") },
+  { Icon: MapPin,  label: "Address", value: CONTACT.address },
 ] as const;
 
 export default function ContactPage() {

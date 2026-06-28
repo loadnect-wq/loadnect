@@ -65,7 +65,7 @@ export default function RefundPolicyPage() {
 
       <Section title="6. How to Request a Refund">
         Log in to your Hallnect account and go to My Bookings. Select the booking and use the Cancel Booking option (if within the cancellation window). Alternatively, email{" "}
-        <a href="mailto:support@hallnect.com" className="text-maroon-600 hover:underline">support@hallnect.com</a> with your booking reference number. We will confirm the eligible refund amount based on the venue&apos;s policy and the timing of your request.
+        <a href="mailto:hallnect@gmail.com" className="text-maroon-600 hover:underline">hallnect@gmail.com</a> with your booking reference number. We will confirm the eligible refund amount based on the venue&apos;s policy and the timing of your request.
       </Section>
 
       <Section title="7. Refund Processing Time">
@@ -74,7 +74,7 @@ export default function RefundPolicyPage() {
 
       <Section title="8. Disputes">
         If you believe a refund was incorrectly denied, raise a support ticket through your account or email{" "}
-        <a href="mailto:support@hallnect.com" className="text-maroon-600 hover:underline">support@hallnect.com</a> within 7 days of the cancellation decision. We will review and respond within 5 business days. Hallnect&apos;s decision on refund disputes, after review, is final.
+        <a href="mailto:hallnect@gmail.com" className="text-maroon-600 hover:underline">hallnect@gmail.com</a> within 7 days of the cancellation decision. We will review and respond within 5 business days. Hallnect&apos;s decision on refund disputes, after review, is final.
       </Section>
 
       <Section title="9. Changes to This Policy">

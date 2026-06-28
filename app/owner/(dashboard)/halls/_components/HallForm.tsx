@@ -14,9 +14,12 @@ interface Props {
   hall?:      OwnerHallDetail; // present in edit mode
 }
 
+// Tamil Nadu cities/areas only — Hallnect's current service area.
 const CITIES = [
-  "Chennai", "Coimbatore", "Madurai", "Bangalore", "Hyderabad",
-  "Kochi", "Mumbai", "Delhi", "Jaipur", "Pune", "Kolkata",
+  "Madurai", "Chennai", "Coimbatore", "Tiruchirappalli", "Salem",
+  "Tirunelveli", "Thanjavur", "Dindigul", "Erode", "Tiruppur",
+  "Vellore", "Kanchipuram", "Sivakasi", "Virudhunagar", "Karaikudi",
+  "Rajapalayam", "Pollachi", "Chengalpattu",
 ];
 
 export function HallForm({ ownerId, amenities, hall }: Props) {

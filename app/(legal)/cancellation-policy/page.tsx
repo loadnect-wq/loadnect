@@ -37,7 +37,7 @@ export default function CancellationPolicyPage() {
 
       <Section title="7. Non-Cancellable Bookings">
         Bookings within 24 hours of the event start time cannot be cancelled through the platform. If you have an emergency, contact our support team immediately at{" "}
-        <a href="mailto:support@hallnect.com" className="text-maroon-600 hover:underline">support@hallnect.com</a>.
+        <a href="mailto:hallnect@gmail.com" className="text-maroon-600 hover:underline">hallnect@gmail.com</a>.
       </Section>
 
       <Section title="8. How to Cancel">
@@ -48,12 +48,12 @@ export default function CancellationPolicyPage() {
 
       <Section title="9. Force Majeure">
         In circumstances beyond the reasonable control of either party — including natural disasters, government-declared emergencies, or pandemic-related restrictions — Hallnect may offer a booking credit, date change, or partial refund at its discretion. These situations are assessed case by case. Contact{" "}
-        <a href="mailto:support@hallnect.com" className="text-maroon-600 hover:underline">support@hallnect.com</a> immediately if you believe your booking is affected.
+        <a href="mailto:hallnect@gmail.com" className="text-maroon-600 hover:underline">hallnect@gmail.com</a> immediately if you believe your booking is affected.
       </Section>
 
       <Section title="10. Dispute Resolution">
         If a cancellation or refund dispute arises, Hallnect will review the case and respond within 7 business days. Our decision in such disputes is final. To raise a dispute, use the Support Tickets feature in your account or email{" "}
-        <a href="mailto:support@hallnect.com" className="text-maroon-600 hover:underline">support@hallnect.com</a>.
+        <a href="mailto:hallnect@gmail.com" className="text-maroon-600 hover:underline">hallnect@gmail.com</a>.
       </Section>
 
       <Section title="11. Policy Updates">

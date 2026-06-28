@@ -1,6 +1,14 @@
 export const APP_NAME = "Hallnect";
 export const APP_DESCRIPTION =
-  "Discover and book the perfect wedding hall or event venue — trusted by thousands of couples and event planners.";
+  "Discover and book the perfect wedding hall or event venue across Tamil Nadu — trusted by couples and event planners.";
+
+// Single source of truth for public business contact details. Update here and
+// every surface (contact page, footer, support copy) stays in sync.
+export const CONTACT = {
+  email:   "hallnect@gmail.com",
+  phones:  ["+91 6383956613", "+91 6380714364"],
+  address: "Thirunagar, Madurai, Tamil Nadu, India",
+} as const;
 
 // NOTE: every href here MUST point to a real, existing route. Marketing stubs
 // (/about, /how-it-works, /careers, /blog, /press, /help, /safety) were removed

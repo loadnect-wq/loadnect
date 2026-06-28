@@ -12,7 +12,7 @@ export default function PrivacyPage() {
 
       <Section title="1. Who We Are">
         Hallnect is operated by <strong>[Hallnect Technologies Private Limited]</strong> (placeholder — to be updated with registered company details), an Indian company. We act as the data controller for personal information collected through this platform. For privacy concerns, contact us at{" "}
-        <a href="mailto:privacy@hallnect.com" className="text-maroon-600 hover:underline">privacy@hallnect.com</a>.
+        <a href="mailto:hallnect@gmail.com" className="text-maroon-600 hover:underline">hallnect@gmail.com</a>.
       </Section>
 
       <Section title="2. Information We Collect">
@@ -41,12 +41,12 @@ export default function PrivacyPage() {
 
       <Section title="8. Your Rights">
         You have the right to access, correct, or delete your personal data; to withdraw consent for optional communications; and to lodge a complaint with the relevant data protection authority. To exercise these rights, email{" "}
-        <a href="mailto:privacy@hallnect.com" className="text-maroon-600 hover:underline">privacy@hallnect.com</a>. We will respond within 30 days.
+        <a href="mailto:hallnect@gmail.com" className="text-maroon-600 hover:underline">hallnect@gmail.com</a>. We will respond within 30 days.
       </Section>
 
       <Section title="9. Security">
         We use industry-standard security measures including encrypted connections (HTTPS/TLS), Row Level Security on all database tables, and access controls. No internet transmission method is 100% secure. Report suspected unauthorised access to{" "}
-        <a href="mailto:security@hallnect.com" className="text-maroon-600 hover:underline">security@hallnect.com</a>.
+        <a href="mailto:hallnect@gmail.com" className="text-maroon-600 hover:underline">hallnect@gmail.com</a>.
       </Section>
 
       <Section title="10. Children">

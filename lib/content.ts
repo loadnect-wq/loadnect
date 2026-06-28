@@ -1,41 +1,42 @@
 // Static content used across public pages.
 // Keep data here so components stay logic-only.
 
+// Tamil Nadu only. No fabricated venue counts — tiles link to the real search.
 export const POPULAR_CITIES = [
-  { name: "Mumbai",    state: "Maharashtra", count: 48, gradient: "linear-gradient(135deg,#6B1525 0%,#9B2038 100%)" },
-  { name: "Delhi",     state: "Delhi",       count: 62, gradient: "linear-gradient(135deg,#78350F 0%,#B45309 100%)" },
-  { name: "Bangalore", state: "Karnataka",   count: 37, gradient: "linear-gradient(135deg,#064E3B 0%,#065F46 100%)" },
-  { name: "Jaipur",    state: "Rajasthan",   count: 41, gradient: "linear-gradient(135deg,#4C1D95 0%,#6D28D9 100%)" },
-  { name: "Hyderabad", state: "Telangana",   count: 29, gradient: "linear-gradient(135deg,#1E3A8A 0%,#1D4ED8 100%)" },
-  { name: "Goa",       state: "Goa",         count: 22, gradient: "linear-gradient(135deg,#134E4A 0%,#0F766E 100%)" },
-  { name: "Chennai",   state: "Tamil Nadu",  count: 31, gradient: "linear-gradient(135deg,#831843 0%,#BE185D 100%)" },
-  { name: "Kolkata",   state: "West Bengal", count: 26, gradient: "linear-gradient(135deg,#1C1917 0%,#44403C 100%)" },
+  { name: "Madurai",          state: "Tamil Nadu", gradient: "linear-gradient(135deg,#6B1525 0%,#9B2038 100%)" },
+  { name: "Chennai",          state: "Tamil Nadu", gradient: "linear-gradient(135deg,#831843 0%,#BE185D 100%)" },
+  { name: "Coimbatore",       state: "Tamil Nadu", gradient: "linear-gradient(135deg,#064E3B 0%,#065F46 100%)" },
+  { name: "Tiruchirappalli",  state: "Tamil Nadu", gradient: "linear-gradient(135deg,#78350F 0%,#B45309 100%)" },
+  { name: "Salem",            state: "Tamil Nadu", gradient: "linear-gradient(135deg,#4C1D95 0%,#6D28D9 100%)" },
+  { name: "Tirunelveli",      state: "Tamil Nadu", gradient: "linear-gradient(135deg,#1E3A8A 0%,#1D4ED8 100%)" },
+  { name: "Thanjavur",        state: "Tamil Nadu", gradient: "linear-gradient(135deg,#134E4A 0%,#0F766E 100%)" },
+  { name: "Erode",            state: "Tamil Nadu", gradient: "linear-gradient(135deg,#1C1917 0%,#44403C 100%)" },
 ] as const;
 
 export const TESTIMONIALS = [
   {
     id: "1",
-    name: "Priya & Arjun Sharma",
-    city: "Mumbai",
-    hallName: "Royal Grand Banquet",
+    name: "Priya & Arjun",
+    city: "Madurai",
+    hallName: "Grand Lotus Mahal",
     rating: 5,
     text: "Hallnect made finding our dream venue effortless. We compared 12 halls in a single afternoon and booked within days. The verified listings gave us complete confidence.",
     weddingDate: "February 2024",
   },
   {
     id: "2",
-    name: "Meera & Vikram Nair",
-    city: "Bangalore",
-    hallName: "Golden Horizon Hall",
+    name: "Meera & Vikram",
+    city: "Coimbatore",
+    hallName: "Kovai Grand Mahal",
     rating: 5,
     text: "As a couple planning from a different city, Hallnect was a lifesaver. Detailed photos, transparent pricing, and instant confirmation — exactly what we needed.",
     weddingDate: "November 2023",
   },
   {
     id: "3",
-    name: "Sunita & Rahul Gupta",
-    city: "Delhi",
-    hallName: "The Leela Convention",
+    name: "Sunita & Rahul",
+    city: "Chennai",
+    hallName: "Marina Grand Convention",
     rating: 5,
     text: "We were amazed by the range of venues available. The customer support team answered every question promptly. Our wedding was absolutely perfect.",
     weddingDate: "January 2024",
@@ -45,7 +46,7 @@ export const TESTIMONIALS = [
 export const FAQ_ITEMS = [
   {
     q: "How does Hallnect work?",
-    a: "Browse verified wedding halls across India, compare pricing and amenities, then request a booking directly through our platform. Once the owner confirms, you pay securely and receive instant confirmation.",
+    a: "Browse verified wedding halls across Tamil Nadu, compare pricing and amenities, then request a booking directly through our platform. Once the owner confirms, you pay securely and receive instant confirmation.",
   },
   {
     q: "Are the listed venues verified?",
@@ -152,8 +153,8 @@ export const WHY_CHOOSE = [
   },
   {
     icon: "map-pin",
-    title: "Pan-India Coverage",
-    description: "From metro cities to heritage towns, discover halls in 50+ cities across every state in India.",
+    title: "Tamil Nadu Coverage",
+    description: "From Madurai and Chennai to Coimbatore and beyond — discover halls across Tamil Nadu's cities and towns.",
   },
   {
     icon: "star",

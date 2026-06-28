@@ -8,11 +8,8 @@ import { Button } from "@/components/ui/Button";
 import { type OwnerRow } from "@/lib/owner";
 import { upsertOwnerRow, updateOwnerProfileName } from "@/app/owner/(dashboard)/actions";
 
-const STATES = [
-  "Tamil Nadu", "Maharashtra", "Karnataka", "Telangana", "Kerala",
-  "Andhra Pradesh", "Gujarat", "Rajasthan", "Delhi", "West Bengal",
-  "Uttar Pradesh", "Madhya Pradesh", "Punjab", "Haryana", "Goa",
-];
+// Hallnect serves Tamil Nadu only.
+const STATES = ["Tamil Nadu"];
 
 interface Props {
   ownerRow:  OwnerRow | null;
@@ -143,7 +140,7 @@ export function OwnerProfileForm({ ownerRow, fullName, email, phone }: Props) {
         </Field>
         <div className="grid grid-cols-2 gap-3">
           <Field label="City">
-            <Input value={city} onChange={(e) => setCity(e.target.value)} placeholder="Chennai" />
+            <Input value={city} onChange={(e) => setCity(e.target.value)} placeholder="Madurai" />
           </Field>
           <Field label="State">
             <select
