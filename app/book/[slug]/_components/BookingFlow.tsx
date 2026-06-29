@@ -14,7 +14,7 @@ import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import { formatPrice } from "@/lib/mock-data";
 import type { DaySlotAvailability } from "@/lib/availability";
-import { createBookingRequest, createPaymentSession, type CreateBookingResult } from "../actions";
+import { createBookingRequest, createPaymentSession, submitManualBookingRequest, type CreateBookingResult } from "../actions";
 
 const STEPS = ["Date", "Slot", "Details", "Summary", "Pay", "Done"] as const;
 type StepIndex = number;
@@ -92,13 +92,14 @@ export type BookingHall = {
 };
 
 interface Props {
-  hall:               BookingHall;
-  availability:       DaySlotAvailability[];
-  windowDays:         number;
-  platformFeePercent: number;
+  hall:                 BookingHall;
+  availability:         DaySlotAvailability[];
+  windowDays:           number;
+  platformFeePercent:   number;
+  onlinePaymentEnabled: boolean;
 }
 
-export function BookingFlow({ hall, availability, windowDays, platformFeePercent }: Props) {
+export function BookingFlow({ hall, availability, windowDays, platformFeePercent, onlinePaymentEnabled }: Props) {
   // Multiplier form of the platform fee % (e.g. 5 → 0.05).
   const PLATFORM_FEE_RATE = platformFeePercent / 100;
   const router = useRouter();
@@ -228,6 +229,42 @@ export function BookingFlow({ hall, availability, windowDays, platformFeePercent
             : "Could not open the payment window. Please try again.",
         );
       }
+    });
+  }
+
+  // Manual mode (Cashfree not configured): create the booking and submit it as a
+  // request — no online payment. Hallnect confirms + collects payment offline.
+  function handleSubmitRequest() {
+    if (!slot) return;
+    setServerError(null);
+    startTransition(async () => {
+      let id = bookingId;
+      if (!id) {
+        const result: CreateBookingResult = await createBookingRequest({
+          hallId:        hall.id,
+          eventDate:     date,
+          slot,
+          guestCount:    parseInt(guests, 10),
+          customerNotes: `${eventType} event. Contact: ${name}, ${phone}.`,
+        });
+        if ("error" in result) {
+          setServerError(result.error);
+          if (
+            result.error.toLowerCase().includes("booked")  ||
+            result.error.toLowerCase().includes("unavail") ||
+            result.error.toLowerCase().includes("taken")
+          ) {
+            setStep(0); setDate(""); setSlot("");
+          }
+          return;
+        }
+        id = result.bookingId;
+        setBookingId(result.bookingId);
+      }
+
+      const res = await submitManualBookingRequest(id);
+      if ("error" in res) { setServerError(res.error); return; }
+      setStep(5); // Done
     });
   }
 
@@ -481,8 +518,8 @@ export function BookingFlow({ hall, availability, windowDays, platformFeePercent
               </StepWrap>
             )}
 
-            {/* STEP 4 — pay */}
-            {step === 4 && (
+            {/* STEP 4 — pay (online) OR confirm request (manual) */}
+            {step === 4 && onlinePaymentEnabled && (
               <StepWrap title="Pay the advance" subtitle="Secured by Cashfree Payments">
                 <div className="rounded-2xl bg-white p-5 shadow-card text-center">
                   <CreditCard className="mx-auto h-10 w-10 text-maroon-500" />
@@ -492,6 +529,19 @@ export function BookingFlow({ hall, availability, windowDays, platformFeePercent
                 </div>
                 <div className="mt-4 rounded-2xl bg-amber-50 border border-amber-200 p-3 text-center text-[11px] text-amber-800">
                   <strong>Final availability check happens server-side.</strong> If the slot is no longer free, you&apos;ll be sent back to pick again. You&apos;ll be redirected to Cashfree&apos;s secure checkout to pay the advance; your booking is confirmed only after the payment is verified.
+                </div>
+              </StepWrap>
+            )}
+            {step === 4 && !onlinePaymentEnabled && (
+              <StepWrap title="Submit booking request" subtitle="No online payment needed right now.">
+                <div className="rounded-2xl bg-white p-5 shadow-card text-center">
+                  <Receipt className="mx-auto h-10 w-10 text-maroon-500" />
+                  <p className="mt-3 text-xs text-charcoal-500">Estimated advance</p>
+                  <p className="font-serif text-3xl font-bold text-maroon-700">{formatPrice(advance)}</p>
+                  <p className="mt-1 text-[11px] text-charcoal-500">Total {formatPrice(totalAmount)} · payable to the venue on confirmation</p>
+                </div>
+                <div className="mt-4 rounded-2xl bg-emerald-50 border border-emerald-200 p-3 text-center text-[11px] text-emerald-800">
+                  <strong>Online payment is coming soon.</strong> Submit your request now and the Hallnect team will contact you to confirm availability and arrange payment. Your slot is held as a request.
                 </div>
               </StepWrap>
             )}
@@ -515,7 +565,12 @@ export function BookingFlow({ hall, availability, windowDays, platformFeePercent
                   <p className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-3 py-1 text-[11px] font-semibold text-amber-700">
                     <Receipt className="h-3 w-3" /> Awaiting owner confirmation
                   </p>
-                  {expiresAt && <PendingExpiryCountdown expiresAt={expiresAt} />}
+                  {!onlinePaymentEnabled && (
+                    <p className="mt-3 text-xs text-charcoal-600">
+                      Your booking request has been submitted. Hallnect will contact you for confirmation and payment.
+                    </p>
+                  )}
+                  {onlinePaymentEnabled && expiresAt && <PendingExpiryCountdown expiresAt={expiresAt} />}
                 </div>
                 <div className="mt-4 grid grid-cols-2 gap-2">
                   <Link href="/customer/bookings"><Button variant="outline" className="w-full">My Bookings</Button></Link>
@@ -538,14 +593,14 @@ export function BookingFlow({ hall, availability, windowDays, platformFeePercent
               variant="gold"
               size="lg"
               className="flex-1"
-              onClick={step === 4 ? handlePayNow : next}
+              onClick={step === 4 ? (onlinePaymentEnabled ? handlePayNow : handleSubmitRequest) : next}
               disabled={!canContinue || pending}
               isLoading={pending}
             >
               {step === 3
-                ? "Proceed to payment"
+                ? (onlinePaymentEnabled ? "Proceed to payment" : "Review request")
                 : step === 4
-                  ? `Pay ${formatPrice(advance)} with Cashfree`
+                  ? (onlinePaymentEnabled ? `Pay ${formatPrice(advance)} with Cashfree` : "Submit Booking Request")
                   : "Continue"}
             </Button>
           </div>

@@ -4,6 +4,7 @@ import { getSession } from "@/lib/auth";
 import { fetchHallBySlug } from "@/lib/halls";
 import { fetchHallAvailabilityWindow } from "@/lib/availability";
 import { getCommissionPercent } from "@/lib/platform-settings";
+import { isCashfreeConfigured } from "@/lib/cashfree";
 import { BookingFlow } from "./_components/BookingFlow";
 
 type Props = { params: Promise<{ slug: string }> };
@@ -34,6 +35,10 @@ export default async function BookPage({ params }: Props) {
   const availability = await fetchHallAvailabilityWindow(hall.id, today, end);
   const platformFeePercent = await getCommissionPercent();
 
+  // Cashfree is optional. When it's not configured the booking flow runs in
+  // manual "submit booking request" mode instead of online payment.
+  const onlinePaymentEnabled = isCashfreeConfigured();
+
   return (
     <BookingFlow
       hall={{
@@ -49,6 +54,7 @@ export default async function BookPage({ params }: Props) {
       availability={availability}
       windowDays={BOOKING_WINDOW_DAYS}
       platformFeePercent={platformFeePercent}
+      onlinePaymentEnabled={onlinePaymentEnabled}
     />
   );
 }

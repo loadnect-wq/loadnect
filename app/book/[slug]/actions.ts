@@ -2,11 +2,13 @@
 
 import { revalidatePath } from "next/cache";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
+import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import { checkSlotAvailability, type BookingSlot } from "@/lib/availability";
 import { startPaymentForBooking } from "@/lib/payments";
 import { isCashfreeConfigured } from "@/lib/cashfree";
 import { getCommissionRate } from "@/lib/platform-settings";
-import { bookingSchema, paymentSessionSchema, parseSafe } from "@/lib/validation/schemas";
+import { bookingSchema, paymentSessionSchema, uuidSchema, parseSafe } from "@/lib/validation/schemas";
+import { sanitizeError } from "@/lib/errors";
 
 // ── Action ────────────────────────────────────────────────────────────────────
 //
@@ -153,6 +155,74 @@ export async function createBookingRequest(
     advanceAmount: advance,
     expiresAt:     inserted.expires_at ?? expiresAt,
   };
+}
+
+// ── Manual booking mode (no Cashfree) ───────────────────────────────────────────
+//
+// When online payment (Cashfree) is not configured, the booking flow runs in
+// MANUAL mode: the customer submits a booking REQUEST and Hallnect confirms +
+// collects payment offline. createBookingRequest() has already created the
+// booking as `pending_payment`; this promotes it to `booking_requested` WITHOUT
+// any payment, so the owner and admin see the request.
+//
+// SECURITY:
+//   • Auth user comes from the session, never the client.
+//   • Ownership is verified against the SESSION client (RLS scopes to own rows)
+//     BEFORE any privileged write.
+//   • The status flip uses the service-role client because the
+//     validate_booking_transition trigger reserves pending_payment →
+//     booking_requested for the trusted backend — exactly the same transition
+//     the verified-payment webhook performs. We only ever move the caller's OWN
+//     pending booking forward; amounts and identity fields are never touched.
+
+export type ManualBookingResult = { success: true } | { error: string };
+
+export async function submitManualBookingRequest(bookingId: string): Promise<ManualBookingResult> {
+  const supabase = await getSupabaseServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Please sign in to submit a booking request." };
+  if (!parseSafe(uuidSchema, bookingId).ok) return { error: "Invalid booking." };
+
+  // Verify it's the caller's own pending booking (RLS-scoped read).
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const db = supabase as any;
+  const { data: booking } = await db
+    .from("bookings")
+    .select("id, status")
+    .eq("id", bookingId)
+    .eq("customer_id", user.id)
+    .maybeSingle();
+
+  if (!booking) return { error: "Booking not found." };
+  // Idempotent: if it's already a request, treat as success.
+  if (booking.status === "booking_requested") return { success: true };
+  if (booking.status !== "pending_payment") {
+    return { error: "This booking can no longer be submitted as a request." };
+  }
+
+  // Trusted-backend promotion to booking_requested (no payment). Clear the
+  // pending-payment expiry so the auto-cancel cleanup leaves it alone.
+  const admin = getSupabaseAdminClient();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const adminDb = admin as any;
+  const { error } = await adminDb
+    .from("bookings")
+    .update({ status: "booking_requested", expires_at: null })
+    .eq("id", bookingId)
+    .eq("customer_id", user.id);
+
+  if (error) {
+    // Double-booking backstop: the slot became active between create + submit.
+    if (error.code === "23505" || error.message?.toLowerCase().includes("already booked")) {
+      return { error: "This slot was just requested by someone else. Please pick another date or slot." };
+    }
+    return { error: sanitizeError(error, "submitManualBookingRequest") };
+  }
+
+  revalidatePath("/customer/bookings");
+  revalidatePath("/owner/bookings");
+  revalidatePath("/admin/bookings");
+  return { success: true };
 }
 
 // ── Payment session ─────────────────────────────────────────────────────────────
