@@ -33,8 +33,10 @@ export function BottomNav() {
             <li key={href} className="flex-1">
               <Link
                 href={href}
+                aria-current={active ? "page" : undefined}
                 className={cn(
-                  "flex flex-col items-center gap-0.5 rounded-xl px-2 py-1.5 transition-colors",
+                  "flex flex-col items-center gap-0.5 rounded-xl px-2 py-1.5 transition",
+                  "active:scale-95 motion-reduce:active:scale-100",
                   active ? "text-maroon-700" : "text-charcoal-500 hover:text-maroon-700",
                 )}
               >
