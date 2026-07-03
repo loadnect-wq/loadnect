@@ -2,6 +2,29 @@
 
 **Date:** 2026-06-28 · Target: working MVP, Cashfree attached later.
 
+## ✅ Final verification pass (2026-06-30)
+Automated + runtime evidence from the final launch-verification pass:
+
+| # | Check | Result |
+|---|---|---|
+| 1 | `next build` | ✅ exit 0 |
+| 2 | `eslint .` | ✅ 0 errors (40 cosmetic warnings) |
+| 3 | `tsc --noEmit` | ✅ clean |
+| 4 | No secrets committed | ✅ only `.env.example` tracked; no JWT/`sk_`/`cfpat_` in source |
+| 5 | Vercel env vars documented | ✅ all 8 keys in `.env.example` + `VERCEL_DEPLOYMENT_GUIDE.md` |
+| 6 | Supabase env handling safe | ✅ proxy + layout fail-open; browser client uses anon key only |
+| 7 | Cashfree missing env → no crash | ✅ `isCashfreeConfigured()` is a pure boolean, never throws |
+| 8 | Public pages work | ✅ 12/12 → 200 |
+| 9 | Private routes redirect unauth | ✅ 21/21 → 307/redirect (no 500) |
+| 21–25 | Routes / no "not available" / no 404 / no 500 | ✅ 33/33 routes OK; core pages have no "not available"; no server errors in logs |
+| 28 | Legal pages exist | ✅ terms/privacy/refund/cancellation/disclaimer/contact render |
+| 29 | Company/contact correct | ✅ Hallnect Pvt Ltd · hallnect@gmail.com · +91 6383956613, +91 6380714364 · Thirunagar, Madurai |
+| 30 | Pricing | ✅ Free ₹0 · Pro ₹4,999 · Elite ₹9,999 (no Starter, no trial wording) |
+| 6/7 (Cashfree) | Manual booking mode | ✅ code path present; runtime E2E is a manual test (needs login) |
+
+**Not runtime-verified here (need a logged-in session — see "Remaining manual tests"):** signup/login/logout, customer/owner/admin dashboards, owner_pending flow, manual booking end-to-end, owner+admin seeing the request, and mobile/desktop polish of the auth-gated dashboards. Public-page mobile/desktop UI was verified in prior passes.
+
+
 ## Build / quality gates (verified this build)
 - [x] `next build` → **exit 0**
 - [x] `tsc --noEmit` → **clean**
