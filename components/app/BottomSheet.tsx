@@ -59,9 +59,9 @@ export function BottomSheet({ open, onClose, title, children, footer }: BottomSh
                 type="button"
                 onClick={onClose}
                 aria-label="Close"
-                className="flex h-8 w-8 items-center justify-center rounded-full text-charcoal-600 hover:bg-ivory-200"
+                className="-mr-2 flex h-11 w-11 items-center justify-center rounded-full text-charcoal-600 transition hover:bg-ivory-200 active:scale-95 motion-reduce:active:scale-100"
               >
-                <X className="h-4 w-4" />
+                <X className="h-5 w-5" />
               </button>
             </div>
             <div className="flex-1 overflow-y-auto px-5 pb-4">{children}</div>

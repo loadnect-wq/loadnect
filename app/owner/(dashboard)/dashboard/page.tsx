@@ -2,10 +2,10 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import {
   AlertCircle, Building2, CalendarDays, CheckCircle2,
-  IndianRupee, Plus, Sparkles, Clock,
+  IndianRupee, Plus, Sparkles, Clock, Wallet,
 } from "lucide-react";
 import { requireRole } from "@/lib/auth";
-import { fetchOwnerRow, fetchOwnerHalls, fetchOwnerStats } from "@/lib/owner";
+import { fetchOwnerRow, fetchOwnerHalls, fetchOwnerStats, fetchOwnerCommissions } from "@/lib/owner";
 import { formatPrice } from "@/lib/mock-data";
 import { Badge } from "@/components/ui/Badge";
 import { buttonVariants } from "@/components/ui/Button";
@@ -51,7 +51,23 @@ export default async function OwnerDashboardPage() {
 
   const halls   = await fetchOwnerHalls(ownerRow.id);
   const hallIds = halls.map((h) => h.id);
-  const stats   = await fetchOwnerStats(ownerRow.id, hallIds);
+  const [stats, commissions] = await Promise.all([
+    fetchOwnerStats(ownerRow.id, hallIds),
+    fetchOwnerCommissions(hallIds),
+  ]);
+
+  // Settlement snapshot — all figures derived from server-fetched commission
+  // rows (never client-supplied). Mirrors /owner/commissions bucketing.
+  const PAID     = ["paid", "paid_out"];
+  const ADJUSTED = ["adjusted_from_owner_settlement"];
+  const outstanding = commissions.filter(
+    (c) => !PAID.includes(c.status) && !ADJUSTED.includes(c.status) && c.status !== "waived",
+  );
+  const grossAdvance   = commissions.reduce((s, c) => s + c.booking_amount, 0);
+  const totalCommission = commissions.reduce((s, c) => s + c.commission_amount, 0);
+  const netPayout      = commissions.reduce((s, c) => s + c.owner_payout_amount, 0);
+  const outstandingAmt = outstanding.reduce((s, c) => s + c.commission_amount, 0);
+  const hasOverdue     = outstanding.some((c) => c.status === "overdue");
 
   return (
     <div className="min-h-screen bg-ivory-100">
@@ -110,7 +126,62 @@ export default async function OwnerDashboardPage() {
           <Link href="/owner/revenue" className={buttonVariants({ variant: "outline", size: "sm" })}>
             <IndianRupee className="h-4 w-4" /> Revenue
           </Link>
+          <Link href="/owner/commissions" className={buttonVariants({ variant: "outline", size: "sm" })}>
+            <Wallet className="h-4 w-4" /> Payouts
+          </Link>
         </div>
+
+        {/* ── Settlement & commission snapshot ──────────────────────────────
+            Mobile-first: single column, stacks cleanly; side-by-side from sm.  */}
+        <section className="rounded-2xl border border-border bg-white p-4 shadow-card">
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="font-serif text-base font-semibold text-charcoal-900">
+              Settlement &amp; commission
+            </h2>
+            <Badge variant={hasOverdue ? "destructive" : outstandingAmt > 0 ? "warning" : "success"} size="sm">
+              {hasOverdue ? "Overdue" : outstandingAmt > 0 ? "Pending" : "Settled"}
+            </Badge>
+          </div>
+
+          <dl className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
+            <SettlementRow label="Gross advance paid" value={formatPrice(grossAdvance)} />
+            <SettlementRow label="Hallnect commission" value={formatPrice(totalCommission)} tone="commission" />
+            <SettlementRow label="Net owner payout" value={formatPrice(netPayout)} tone="payout" />
+          </dl>
+
+          {outstandingAmt > 0 && (
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl bg-ivory-100 px-3 py-2.5">
+              <p className="text-xs text-charcoal-700">
+                Outstanding commission{" "}
+                <strong className="text-maroon-700">{formatPrice(outstandingAmt)}</strong>
+              </p>
+              <Link
+                href="/owner/commissions"
+                className="inline-flex min-h-[44px] items-center rounded-lg bg-maroon-700 px-3 text-xs font-semibold text-white transition active:scale-[0.97] motion-reduce:active:scale-100"
+              >
+                Pay now
+              </Link>
+            </div>
+          )}
+        </section>
+
+        {/* ── Subscription upgrade ──────────────────────────────────────── */}
+        <section className="overflow-hidden rounded-2xl bg-gradient-to-br from-maroon-900 to-maroon-950 p-4 text-ivory-100 shadow-elevated">
+          <p className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-gold-300">
+            <Sparkles className="h-3.5 w-3.5" /> Grow your bookings
+          </p>
+          <h2 className="mt-1.5 font-serif text-lg font-bold">Upgrade your listing</h2>
+          <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <PlanTile name="Pro" price="₹4,999/yr" perks={["Featured in search", "Priority lead alerts"]} />
+            <PlanTile name="Elite" price="₹9,999/yr" perks={["Top placement", "Dedicated support"]} />
+          </div>
+          <Link
+            href="/owner/premium"
+            className="mt-3 flex min-h-[44px] w-full items-center justify-center rounded-xl bg-gold-gradient px-4 text-sm font-bold text-charcoal-950 transition active:scale-[0.97] motion-reduce:active:scale-100"
+          >
+            Compare plans
+          </Link>
+        </section>
 
         {/* Halls summary */}
         <section>
@@ -168,6 +239,43 @@ export default async function OwnerDashboardPage() {
           )}
         </section>
       </div>
+    </div>
+  );
+}
+
+function SettlementRow({
+  label, value, tone,
+}: { label: string; value: string; tone?: "commission" | "payout" }) {
+  return (
+    <div className="rounded-xl bg-ivory-50 px-3 py-2.5">
+      <dt className="text-[10px] font-semibold uppercase tracking-wide text-charcoal-500">{label}</dt>
+      <dd className={[
+        "mt-0.5 text-sm font-bold",
+        tone === "commission" ? "text-maroon-700"
+          : tone === "payout" ? "text-green-700"
+          : "text-charcoal-900",
+      ].join(" ")}>
+        {value}
+      </dd>
+    </div>
+  );
+}
+
+function PlanTile({ name, price, perks }: { name: string; price: string; perks: string[] }) {
+  return (
+    <div className="rounded-xl border border-maroon-800 bg-maroon-900/60 p-3">
+      <div className="flex items-baseline justify-between gap-2">
+        <p className="font-serif text-sm font-bold text-gold-300">{name}</p>
+        <p className="text-xs font-semibold text-ivory-200">{price}</p>
+      </div>
+      <ul className="mt-1.5 space-y-1">
+        {perks.map((p) => (
+          <li key={p} className="flex items-start gap-1.5 text-[11px] text-ivory-300">
+            <CheckCircle2 className="mt-px h-3 w-3 shrink-0 text-gold-400" aria-hidden />
+            {p}
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

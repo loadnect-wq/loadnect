@@ -4,7 +4,17 @@ import { MapPin, Star, Users } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
 import { type HallListing } from "@/lib/halls";
 import { CARD_GRADIENTS, formatPrice } from "@/lib/mock-data";
+import { PLATFORM_FEE_PERCENT } from "@/lib/constants";
 import { SaveHeart } from "@/app/_components/SaveHeart";
+
+// Booking advance = 25% of (base + platform fee) — mirrors the checkout math in
+// app/book/[slug]/actions.ts. Shown with "≈" because the platform fee % is
+// admin-configurable; the authoritative amount is always recomputed server-side.
+const ADVANCE_RATE = 0.25;
+function estimateAdvance(pricePerDay: number): number {
+  const total = pricePerDay * (1 + PLATFORM_FEE_PERCENT / 100);
+  return Math.round(total * ADVANCE_RATE);
+}
 
 interface HallCardProps {
   hall: HallListing;
@@ -98,10 +108,17 @@ export function HallCard({ hall }: HallCardProps) {
             </strong>
           </span>
           <span className="text-right">
-            <span className="text-base font-bold text-maroon-700">
-              {formatPrice(hall.price_per_day)}
+            <span className="block">
+              <span className="text-base font-bold text-maroon-700">
+                {formatPrice(hall.price_per_day)}
+              </span>
+              <span className="text-[10px] text-charcoal-500">/day</span>
             </span>
-            <span className="text-[10px] text-charcoal-500">/day</span>
+            {/* Advance shown as an estimate — the exact, authoritative amount is
+                recomputed server-side at booking (platform fee % is admin-set). */}
+            <span className="mt-0.5 block text-[10px] font-semibold text-gold-600">
+              ≈ {formatPrice(estimateAdvance(hall.price_per_day))} advance
+            </span>
           </span>
         </div>
       </div>
