@@ -9,9 +9,9 @@ import { toast } from "@/hooks/use-toast";
 import { APP_NAME, CONTACT } from "@/lib/constants";
 
 const CONTACT_ITEMS = [
-  { Icon: Mail,    label: "Email",   value: CONTACT.email },
-  { Icon: Phone,   label: "Phone",   value: CONTACT.phones.join(", ") },
-  { Icon: MapPin,  label: "Address", value: CONTACT.address },
+  { Icon: Mail,    label: "Email",   value: CONTACT.email,   href: `mailto:${CONTACT.email}` },
+  { Icon: Phone,   label: "Phone",   value: CONTACT.phone,   href: CONTACT.phoneHref },
+  { Icon: MapPin,  label: "Address", value: CONTACT.address, href: undefined },
 ] as const;
 
 export default function ContactPage() {
@@ -63,14 +63,18 @@ export default function ContactPage() {
               </p>
             </div>
             <ul className="space-y-5">
-              {CONTACT_ITEMS.map(({ Icon, label, value }) => (
+              {CONTACT_ITEMS.map(({ Icon, label, value, href }) => (
                 <li key={label} className="flex items-start gap-4">
                   <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-maroon-50 text-maroon-600">
                     <Icon className="h-5 w-5" aria-hidden />
                   </div>
                   <div>
                     <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</p>
-                    <p className="mt-0.5 text-sm text-charcoal-800">{value}</p>
+                    {href ? (
+                      <a href={href} className="mt-0.5 block text-sm text-charcoal-800 hover:text-maroon-600 hover:underline">{value}</a>
+                    ) : (
+                      <p className="mt-0.5 text-sm text-charcoal-800">{value}</p>
+                    )}
                   </div>
                 </li>
               ))}

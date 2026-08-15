@@ -11,7 +11,7 @@ export default function PrivacyPage() {
       <LegalHeader title="Privacy Policy" updated="June 2025" />
 
       <Section title="1. Who We Are">
-        Hallnect is operated by <strong>Hallnect Pvt Ltd</strong>, an Indian company. We act as the data controller for personal information collected through this platform. For privacy concerns, contact us at{" "}
+        Hallnect is operated by <strong>HALLNECT LLP</strong>, an Indian company. We act as the data controller for personal information collected through this platform. For privacy concerns, contact us at{" "}
         <a href="mailto:hallnect@gmail.com" className="text-maroon-600 hover:underline">hallnect@gmail.com</a>.
       </Section>
 

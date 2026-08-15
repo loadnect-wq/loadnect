@@ -4,10 +4,17 @@ export const APP_DESCRIPTION =
 
 // Single source of truth for public business contact details. Update here and
 // every surface (contact page, footer, support copy) stays in sync.
+//   • brandName  → customer-facing product/brand ("Hallnect")
+//   • legalName  → registered legal entity ("HALLNECT LLP")
+//   • phoneHref  → tel: link (digits only) for tap-to-call on mobile
 export const CONTACT = {
-  email:   "hallnect@gmail.com",
-  phones:  ["+91 6383956613", "+91 6380714364"],
-  address: "Thirunagar, Madurai, Tamil Nadu, India",
+  brandName: "Hallnect",
+  legalName: "HALLNECT LLP",
+  email:     "hallnect@gmail.com",
+  phone:     "+91 9344040013",          // primary, for display
+  phoneHref: "tel:+919344040013",       // clickable (mobile tap-to-call)
+  phones:    ["+91 9344040013"],        // all official numbers (currently one)
+  address:   "No. 68, Venkateshwara Nagar, Sundar Nagar Extension, Tirunagar, Madurai – 625006, Tamil Nadu, India",
 } as const;
 
 // NOTE: every href here MUST point to a real, existing route. Marketing stubs

@@ -42,7 +42,7 @@ export function Footer() {
               </li>
               <li className="flex items-center gap-2">
                 <Phone className="h-4 w-4 shrink-0 text-gold-400" aria-hidden />
-                <span>{CONTACT.phones.join(", ")}</span>
+                <a href={CONTACT.phoneHref} className="hover:text-ivory-100">{CONTACT.phone}</a>
               </li>
               <li className="flex items-start gap-2">
                 <MapPin className="h-4 w-4 shrink-0 text-gold-400" aria-hidden />
@@ -127,7 +127,7 @@ export function Footer() {
         <div className="mt-12 flex flex-col items-center gap-2 border-t border-maroon-900 pt-6 sm:flex-row sm:justify-between">
           <p className="text-xs text-ivory-600">
             &copy; <span suppressHydrationWarning>{new Date().getFullYear()}</span>{" "}
-            {APP_NAME} Pvt Ltd. All rights reserved.
+            {CONTACT.legalName}. All rights reserved.
           </p>
           <p className="text-xs text-ivory-600">
             Made in Tamil Nadu <span className="text-rose-400" aria-label="love">♥</span>
