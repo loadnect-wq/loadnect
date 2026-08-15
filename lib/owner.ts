@@ -415,6 +415,11 @@ export type OwnerCommissionRow = {
   owner_payout_amount: number;
   status:              string;
   created_at:          string;
+  due_date:            string | null;
+  paid_at:             string | null;
+  settlement_adjustment_status: string | null;
+  // Present when the owner has a submission awaiting/decided for this commission.
+  submission_status:   string | null;
 };
 
 export async function fetchOwnerCommissions(hallIds: string[]): Promise<OwnerCommissionRow[]> {
@@ -424,14 +429,45 @@ export async function fetchOwnerCommissions(hallIds: string[]): Promise<OwnerCom
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = supabase as any;
 
-  const { data, error } = await db
+  // Newer columns (due_date/paid_at/settlement_adjustment_status) exist after
+  // migration 0017. Fall back gracefully if the migration hasn't run yet.
+  const fullCols =
+    "id, booking_id, hall_id, booking_amount, commission_rate, commission_amount, owner_payout_amount, status, created_at, due_date, paid_at, settlement_adjustment_status, bookings(halls(name))";
+  const baseCols =
+    "id, booking_id, hall_id, booking_amount, commission_rate, commission_amount, owner_payout_amount, status, created_at, bookings(halls(name))";
+
+  let { data, error } = await db
     .from("commissions")
-    .select("id, booking_id, hall_id, booking_amount, commission_rate, commission_amount, owner_payout_amount, status, created_at, bookings(halls(name))")
+    .select(fullCols)
     .in("hall_id", hallIds)
     .order("created_at", { ascending: false })
     .limit(200);
 
+  if (error?.code === "42703") {
+    ({ data, error } = await db
+      .from("commissions")
+      .select(baseCols)
+      .in("hall_id", hallIds)
+      .order("created_at", { ascending: false })
+      .limit(200));
+  }
+
   if (error) { handleError("fetchOwnerCommissions", error); return []; }
+
+  // Latest submission status per commission (so the UI can show "under review").
+  const commissionIds = (data ?? []).map((r: { id: string }) => r.id);
+  const latestSubmission = new Map<string, string>();
+  if (commissionIds.length > 0) {
+    const { data: subs } = await db
+      .from("owner_commission_payments")
+      .select("commission_id, status, submitted_at")
+      .in("commission_id", commissionIds)
+      .order("submitted_at", { ascending: false });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    for (const s of (subs ?? []) as any[]) {
+      if (!latestSubmission.has(s.commission_id)) latestSubmission.set(s.commission_id, s.status);
+    }
+  }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return (data ?? []).map((row: any): OwnerCommissionRow => ({
@@ -445,6 +481,49 @@ export async function fetchOwnerCommissions(hallIds: string[]): Promise<OwnerCom
     owner_payout_amount: Number(row.owner_payout_amount),
     status:              row.status,
     created_at:          row.created_at,
+    due_date:            row.due_date ?? null,
+    paid_at:             row.paid_at ?? null,
+    settlement_adjustment_status: row.settlement_adjustment_status ?? null,
+    submission_status:   latestSubmission.get(row.id) ?? null,
+  }));
+}
+
+export type OwnerSettlementAdjustmentRow = {
+  id:            string;
+  booking_id:    string | null;
+  commission_id: string;
+  amount:        number;
+  reason:        string | null;
+  status:        string;
+  applied_at:    string;
+};
+
+/** Settlement adjustments (owner payout deductions) for this owner. */
+export async function fetchOwnerSettlementAdjustments(
+  ownerId: string,
+): Promise<OwnerSettlementAdjustmentRow[]> {
+  if (!ownerId) return [];
+  const supabase = await getSupabaseServerClient();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const db = supabase as any;
+
+  const { data, error } = await db
+    .from("owner_settlement_adjustments")
+    .select("id, booking_id, commission_id, amount, reason, status, applied_at")
+    .eq("owner_id", ownerId)
+    .order("applied_at", { ascending: false })
+    .limit(100);
+
+  if (error) { handleError("fetchOwnerSettlementAdjustments", error); return []; }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (data ?? []).map((r: any): OwnerSettlementAdjustmentRow => ({
+    id:            r.id,
+    booking_id:    r.booking_id ?? null,
+    commission_id: r.commission_id,
+    amount:        Number(r.amount),
+    reason:        r.reason ?? null,
+    status:        r.status,
+    applied_at:    r.applied_at,
   }));
 }
 

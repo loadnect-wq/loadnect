@@ -1,11 +1,16 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { TrendingUp, Wallet } from "lucide-react";
-import { fetchAllCommissions, fetchOwnerOptions } from "@/lib/admin";
+import {
+  fetchAllCommissions, fetchOwnerOptions,
+  fetchCommissionPaymentSubmissions, fetchSettlementAdjustments,
+} from "@/lib/admin";
 import { formatPrice } from "@/lib/mock-data";
 import { Badge } from "@/components/ui/Badge";
 import { AdminPageHeader } from "../_components/AdminPageHeader";
 import { CommissionFilterBar } from "./_components/CommissionFilterBar";
+import { RunOverdueCheck } from "./_components/RunOverdueCheck";
+import { VerifyPaymentActions } from "./_components/VerifyPaymentActions";
 
 export const metadata: Metadata = { title: "Commissions — Admin" };
 
@@ -15,6 +20,9 @@ const FILTERS = [
   { key: "all",        label: "All",        value: undefined  },
   { key: "pending",    label: "Pending",    value: "pending"  },
   { key: "collected",  label: "Collected",  value: "collected" },
+  { key: "overdue",    label: "Overdue",    value: "overdue"  },
+  { key: "paid",       label: "Paid",       value: "paid"  },
+  { key: "adjusted_from_owner_settlement", label: "Adjusted", value: "adjusted_from_owner_settlement" },
   { key: "paid_out",   label: "Paid Out",   value: "paid_out"  },
   { key: "refunded",   label: "Refunded",   value: "refunded"  },
 ];
@@ -22,6 +30,14 @@ const FILTERS = [
 const STATUS_CFG: Record<string, { label: string; variant: BadgeVar }> = {
   pending:   { label: "Pending",   variant: "warning"   },
   collected: { label: "Collected", variant: "success"   },
+  overdue:   { label: "Overdue",   variant: "destructive" },
+  paid:      { label: "Paid",      variant: "success"   },
+  payment_submitted:     { label: "Under review", variant: "warning" },
+  payment_under_review:  { label: "Under review", variant: "warning" },
+  rejected:  { label: "Rejected",  variant: "destructive" },
+  adjusted_from_owner_settlement: { label: "Adjusted from settlement", variant: "secondary" },
+  waived:    { label: "Waived",    variant: "secondary" },
+  disputed:  { label: "Disputed",  variant: "destructive" },
   paid_out:  { label: "Paid Out",  variant: "secondary" },
   refunded:  { label: "Refunded",  variant: "destructive" },
 };
@@ -41,7 +57,7 @@ export default async function AdminCommissionsPage({ searchParams }: Props) {
   const sp = await searchParams;
   const activeFilter = FILTERS.find((f) => f.key === sp.status) ?? FILTERS[0];
 
-  const [commissions, ownerOptions] = await Promise.all([
+  const [commissions, ownerOptions, submissions, adjustments] = await Promise.all([
     fetchAllCommissions({
       status:  activeFilter.value,
       ownerId: sp.owner || undefined,
@@ -49,6 +65,8 @@ export default async function AdminCommissionsPage({ searchParams }: Props) {
       to:      sp.to    || undefined,
     }),
     fetchOwnerOptions(),
+    fetchCommissionPaymentSubmissions("open"),
+    fetchSettlementAdjustments(),
   ]);
 
   const totalCommission = commissions.reduce((s, c) => s + c.commission_amount,   0);
@@ -96,6 +114,71 @@ export default async function AdminCommissionsPage({ searchParams }: Props) {
             value={formatPrice(totalPayouts)}
           />
         </div>
+
+        {/* Overdue sweep (admin-triggered; also runnable via Vercel Cron) */}
+        <RunOverdueCheck />
+
+        {/* UPI payment submissions awaiting verification */}
+        {submissions.length > 0 && (
+          <div className="rounded-2xl bg-white shadow-card overflow-hidden">
+            <div className="border-b border-border bg-amber-50 px-4 py-2.5 text-[11px] font-bold uppercase tracking-wide text-amber-800">
+              UPI payments awaiting verification ({submissions.length})
+            </div>
+            <div className="divide-y divide-border">
+              {submissions.map((s) => (
+                <div key={s.id} className="p-4">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="text-sm">
+                      <p className="font-semibold text-charcoal-900">{s.owner_business ?? "Owner"} · {s.hall_name}</p>
+                      <p className="text-[11px] font-mono text-charcoal-500">
+                        Booking #{(s.booking_id ?? "").slice(0, 8).toUpperCase() || "—"}
+                      </p>
+                      <p className="mt-1 text-xs text-charcoal-600">
+                        Amount <span className="font-semibold text-maroon-700">{formatPrice(s.amount)}</span>
+                        {" · "}UTR <span className="font-mono">{s.upi_reference ?? "—"}</span>
+                        {" · "}{fmtDate(s.submitted_at)}
+                      </p>
+                      {s.screenshot_url && (
+                        <a href={s.screenshot_url} target="_blank" rel="noopener noreferrer"
+                           className="mt-0.5 inline-block text-xs text-maroon-700 hover:underline">
+                          View screenshot
+                        </a>
+                      )}
+                    </div>
+                    <div className="w-full max-w-xs">
+                      <VerifyPaymentActions paymentId={s.id} />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Settlement adjustment history */}
+        {adjustments.length > 0 && (
+          <div className="rounded-2xl bg-white shadow-card overflow-hidden">
+            <div className="border-b border-border bg-ivory-50 px-4 py-2.5 text-[11px] font-bold uppercase tracking-wide text-charcoal-500">
+              Owner settlement adjustments
+            </div>
+            <table className="min-w-full text-sm">
+              <thead className="border-b border-border bg-ivory-50/50">
+                <tr><Th>Owner</Th><Th>Booking</Th><Th>Amount</Th><Th>Status</Th><Th>Applied</Th></tr>
+              </thead>
+              <tbody>
+                {adjustments.map((a) => (
+                  <tr key={a.id} className="border-b border-border last:border-b-0">
+                    <Td>{a.owner_business ?? "—"}</Td>
+                    <Td className="font-mono text-[11px]">#{(a.booking_id ?? "").slice(0, 8).toUpperCase() || "—"}</Td>
+                    <Td className="font-semibold text-red-700">− {formatPrice(a.amount)}</Td>
+                    <Td><Badge variant={a.status === "applied" ? "secondary" : "default"} size="sm">{a.status}</Badge></Td>
+                    <Td className="text-xs text-charcoal-500">{fmtDate(a.applied_at)}</Td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
 
         {/* Filter bar — date range + owner dropdown (client) */}
         <CommissionFilterBar

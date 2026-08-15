@@ -301,6 +301,7 @@ export async function verifyAndApplyPayment(orderId: string): Promise<ApplyPayme
 type ApplyBooking = {
   id:            string;
   hall_id:       string;
+  customer_id:   string;
   event_date:    string;
   slot:          "morning" | "evening" | "full_day";
   base_amount:   number;
@@ -316,7 +317,7 @@ async function loadBookingForApply(
 ): Promise<ApplyBooking | null> {
   const { data, error } = await db
     .from("bookings")
-    .select("id, hall_id, event_date, slot, base_amount, platform_fee, total_amount, halls(owner_id)")
+    .select("id, hall_id, customer_id, event_date, slot, base_amount, platform_fee, total_amount, halls(owner_id)")
     .eq("id", bookingId)
     .maybeSingle();
 
@@ -325,6 +326,7 @@ async function loadBookingForApply(
   return {
     id:            data.id,
     hall_id:       data.hall_id,
+    customer_id:   data.customer_id,
     event_date:    data.event_date,
     slot:          data.slot,
     base_amount:   Number(data.base_amount),
@@ -378,6 +380,13 @@ async function createCommission(db: any, booking: ApplyBooking): Promise<void> {
     ? Math.round((booking.platform_fee / booking.base_amount) * 10000) / 100
     : PLATFORM_FEE_PERCENT;
 
+  // Advance the customer actually paid (mirrors ADVANCE_RATE used at checkout).
+  const advance = Math.max(1, Math.round(booking.total_amount * ADVANCE_RATE));
+  // Commission is owed by the owner and due 7 days from now. The overdue-check
+  // route (app/api/admin/commissions/run-overdue-check) uses the admin-configured
+  // commission_due_days for the sweep; this is the per-record default.
+  const dueDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+
   const { error } = await db
     .from("commissions")
     .upsert(
@@ -385,11 +394,15 @@ async function createCommission(db: any, booking: ApplyBooking): Promise<void> {
         booking_id:          booking.id,
         hall_id:             booking.hall_id,
         hall_owner_id:       booking.hall_owner_id,
+        customer_id:         booking.customer_id,
         booking_amount:      booking.total_amount,
+        advance_amount:      advance,
         commission_rate:     derivedRate,
         commission_amount:   booking.platform_fee,
         owner_payout_amount: booking.base_amount,
         status:              "collected",
+        due_date:            dueDate,
+        settlement_adjustment_status: "none",
       },
       { onConflict: "booking_id", ignoreDuplicates: true },
     );

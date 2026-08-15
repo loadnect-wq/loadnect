@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   Building2, CalendarDays, LayoutDashboard,
-  IndianRupee, MessageSquare, Sparkles, User,
+  IndianRupee, MessageSquare, Sparkles, User, Wallet,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -13,6 +13,7 @@ const NAV = [
   { label: "My Halls",   href: "/owner/halls",     icon: Building2 },
   { label: "Bookings",   href: "/owner/bookings",  icon: CalendarDays },
   { label: "Revenue",    href: "/owner/revenue",   icon: IndianRupee },
+  { label: "Commissions", href: "/owner/commissions", icon: Wallet },
   { label: "Premium",    href: "/owner/premium",   icon: Sparkles },
   { label: "Support",    href: "/owner/support",   icon: MessageSquare },
   { label: "Profile",    href: "/owner/profile",   icon: User },

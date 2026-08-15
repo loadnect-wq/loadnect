@@ -485,6 +485,91 @@ export async function fetchAllCommissions(
   }));
 }
 
+export type AdminCommissionPaymentRow = {
+  id:             string;
+  commission_id:  string;
+  owner_business: string | null;
+  hall_name:      string;
+  booking_id:     string | null;
+  amount:         number;
+  upi_reference:  string | null;
+  screenshot_url: string | null;
+  status:         string;
+  submitted_at:   string;
+  admin_note:     string | null;
+};
+
+/** Owner UPI payment submissions for admin verification. Defaults to the ones
+ *  awaiting a decision; pass `all` to include verified/rejected history. */
+export async function fetchCommissionPaymentSubmissions(
+  scope: "open" | "all" = "open",
+): Promise<AdminCommissionPaymentRow[]> {
+  const supabase = await getSupabaseServerClient();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const db = supabase as any;
+
+  let query = db
+    .from("owner_commission_payments")
+    .select("id, commission_id, owner_id, amount, upi_reference, screenshot_url, status, submitted_at, admin_note, hall_owners(business_name), commissions(booking_id, bookings(halls(name)))")
+    .order("submitted_at", { ascending: false })
+    .limit(300);
+
+  if (scope === "open") query = query.in("status", ["payment_submitted", "payment_under_review"]);
+
+  const { data, error } = await query;
+  if (error) { handleError("fetchCommissionPaymentSubmissions", error); return []; }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (data ?? []).map((row: any): AdminCommissionPaymentRow => ({
+    id:             row.id,
+    commission_id:  row.commission_id,
+    owner_business: row.hall_owners?.business_name ?? null,
+    hall_name:      row.commissions?.bookings?.halls?.name ?? "Hall",
+    booking_id:     row.commissions?.booking_id ?? null,
+    amount:         Number(row.amount),
+    upi_reference:  row.upi_reference ?? null,
+    screenshot_url: row.screenshot_url ?? null,
+    status:         row.status,
+    submitted_at:   row.submitted_at,
+    admin_note:     row.admin_note ?? null,
+  }));
+}
+
+export type AdminSettlementAdjustmentRow = {
+  id:             string;
+  owner_business: string | null;
+  booking_id:     string | null;
+  commission_id:  string;
+  amount:         number;
+  reason:         string | null;
+  status:         string;
+  applied_at:     string;
+};
+
+/** Owner settlement adjustment history for the admin dashboard. */
+export async function fetchSettlementAdjustments(): Promise<AdminSettlementAdjustmentRow[]> {
+  const supabase = await getSupabaseServerClient();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const db = supabase as any;
+  const { data, error } = await db
+    .from("owner_settlement_adjustments")
+    .select("id, booking_id, commission_id, amount, reason, status, applied_at, hall_owners(business_name)")
+    .order("applied_at", { ascending: false })
+    .limit(300);
+  if (error) { handleError("fetchSettlementAdjustments", error); return []; }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (data ?? []).map((row: any): AdminSettlementAdjustmentRow => ({
+    id:             row.id,
+    owner_business: row.hall_owners?.business_name ?? null,
+    booking_id:     row.booking_id ?? null,
+    commission_id:  row.commission_id,
+    amount:         Number(row.amount),
+    reason:         row.reason ?? null,
+    status:         row.status,
+    applied_at:     row.applied_at,
+  }));
+}
+
 // Minimal owner list for the commission filter dropdown.
 export async function fetchOwnerOptions(): Promise<{ id: string; business_name: string }[]> {
   const supabase = await getSupabaseServerClient();

@@ -4,21 +4,23 @@ import { redirect } from "next/navigation";
 import { LogOut, Shield, AlertTriangle, Settings as SettingsIcon, Database, Timer, Percent, Sparkles } from "lucide-react";
 import { requireRole } from "@/lib/auth";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
-import { getCommissionPercent } from "@/lib/platform-settings";
+import { getCommissionPercent, getPublicPaymentSettings } from "@/lib/platform-settings";
 import { fetchPremiumPlans } from "@/lib/premium-plans";
 import { Badge } from "@/components/ui/Badge";
 import { AdminPageHeader } from "../_components/AdminPageHeader";
 import { CleanupButton } from "./_components/CleanupButton";
 import { CommissionRateForm } from "./_components/CommissionRateForm";
 import { PremiumPlansForm } from "./_components/PremiumPlansForm";
+import { PaymentSettingsForm } from "./_components/PaymentSettingsForm";
 
 export const metadata: Metadata = { title: "Admin Settings" };
 
 export default async function AdminSettingsPage() {
   const profile = await requireRole(["admin"]);
-  const [commissionPercent, premiumPlans] = await Promise.all([
+  const [commissionPercent, premiumPlans, paymentSettings] = await Promise.all([
     getCommissionPercent(),
     fetchPremiumPlans(),
+    getPublicPaymentSettings(),
   ]);
 
   return (
@@ -49,6 +51,11 @@ export default async function AdminSettingsPage() {
           <div className="mt-3 border-t border-border pt-3">
             <CommissionRateForm initialPercent={commissionPercent} />
           </div>
+        </Section>
+
+        {/* Payment & commission settings (editable) */}
+        <Section title="Payments & commission" icon={<SettingsIcon className="h-4 w-4" />}>
+          <PaymentSettingsForm initial={paymentSettings} />
         </Section>
 
         {/* Premium plans (editable price + duration) */}

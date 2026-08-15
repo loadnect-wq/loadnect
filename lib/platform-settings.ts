@@ -42,3 +42,50 @@ export async function getCommissionPercent(): Promise<number> {
 export async function getCommissionRate(): Promise<number> {
   return (await getCommissionPercent()) / 100;
 }
+
+export type PublicPaymentSettings = {
+  hallnectUpiId:                 string | null;
+  hallnectUpiQrUrl:              string | null;
+  commissionDueDays:             number;
+  defaultAdvancePercentage:      number;
+  enableOnlineCustomerPayment:   boolean;
+  enableOwnerUpiPayment:         boolean;
+  enableAutoCommissionAdjustment: boolean;
+};
+
+const PAYMENT_SETTINGS_FALLBACK: PublicPaymentSettings = {
+  hallnectUpiId:                 null,
+  hallnectUpiQrUrl:              null,
+  commissionDueDays:             7,
+  defaultAdvancePercentage:      20,
+  enableOnlineCustomerPayment:   false,
+  enableOwnerUpiPayment:         true,
+  enableAutoCommissionAdjustment: false,
+};
+
+/** Non-sensitive payment settings (UPI id/QR, advance %, feature flags) for the
+ *  owner Pay-Now UI and the customer booking flow. Read through the SECURITY
+ *  DEFINER RPC `get_public_payment_settings()` so non-admins never touch the
+ *  admin-only platform_settings row. Falls back to safe defaults pre-migration. */
+export async function getPublicPaymentSettings(): Promise<PublicPaymentSettings> {
+  try {
+    const supabase = await getSupabaseServerClient();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const db = supabase as any;
+    const { data, error } = await db.rpc("get_public_payment_settings");
+    if (error || !data) return PAYMENT_SETTINGS_FALLBACK;
+    const row = Array.isArray(data) ? data[0] : data;
+    if (!row) return PAYMENT_SETTINGS_FALLBACK;
+    return {
+      hallnectUpiId:                 row.hallnect_upi_id ?? null,
+      hallnectUpiQrUrl:              row.hallnect_upi_qr_url ?? null,
+      commissionDueDays:             Number(row.commission_due_days ?? 7),
+      defaultAdvancePercentage:      Number(row.default_advance_percentage ?? 20),
+      enableOnlineCustomerPayment:   Boolean(row.enable_online_customer_payment),
+      enableOwnerUpiPayment:         Boolean(row.enable_owner_upi_payment ?? true),
+      enableAutoCommissionAdjustment: Boolean(row.enable_auto_commission_adjustment),
+    };
+  } catch {
+    return PAYMENT_SETTINGS_FALLBACK;
+  }
+}

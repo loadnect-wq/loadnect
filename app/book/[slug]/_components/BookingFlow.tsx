@@ -111,6 +111,7 @@ export function BookingFlow({ hall, availability, windowDays, platformFeePercent
   const [guests,    setGuests]    = useState<string>("");
   const [name,      setName]      = useState<string>("");
   const [phone,     setPhone]     = useState<string>("");
+  const [termsAccepted, setTermsAccepted] = useState<boolean>(false);
 
   const [bookingId,     setBookingId]     = useState<string | null>(null);
   const [expiresAt,     setExpiresAt]     = useState<string | null>(null);
@@ -164,7 +165,7 @@ export function BookingFlow({ hall, availability, windowDays, platformFeePercent
     (step === 1 && !!slot && isSlotAvailable(date, slot)) ||
     (step === 2 && !!eventType && !!guests && !!name && !!phone &&
       parseInt(guests, 10) > 0 && parseInt(guests, 10) <= hall.capacity_max) ||
-    (step === 3) ||
+    (step === 3 && termsAccepted) ||
     (step === 4) ||
     step === 5;
 
@@ -185,6 +186,7 @@ export function BookingFlow({ hall, availability, windowDays, platformFeePercent
           slot,
           guestCount:    parseInt(guests, 10),
           customerNotes: `${eventType} event. Contact: ${name}, ${phone}.`,
+          termsAccepted,
         });
 
         if ("error" in result) {
@@ -246,6 +248,7 @@ export function BookingFlow({ hall, availability, windowDays, platformFeePercent
           slot,
           guestCount:    parseInt(guests, 10),
           customerNotes: `${eventType} event. Contact: ${name}, ${phone}.`,
+          termsAccepted,
         });
         if ("error" in result) {
           setServerError(result.error);
@@ -504,17 +507,48 @@ export function BookingFlow({ hall, availability, windowDays, platformFeePercent
                 </div>
 
                 <div className="mt-4 rounded-2xl bg-white p-4 shadow-card">
-                  <PriceLine label="Hall fee"        value={formatPrice(baseAmount)} />
+                  <PriceLine label="Hall base price"  value={formatPrice(baseAmount)} />
                   <PriceLine label={`Platform fee (${platformFeePercent}%)`} value={formatPrice(platformFee)} />
                   <div className="my-2 h-px bg-border" />
-                  <PriceLine label="Total"           value={formatPrice(totalAmount)} bold />
-                  <PriceLine label="Advance (25%)"   value={formatPrice(advance)} highlight />
+                  <PriceLine label="Total"            value={formatPrice(totalAmount)} bold />
+                  <PriceLine label="Advance payable now" value={formatPrice(advance)} highlight />
+                  <PriceLine label="Remaining balance" value={formatPrice(totalAmount - advance)} />
                 </div>
 
-                <p className="mt-3 text-center text-[11px] text-charcoal-500">
-                  By proceeding, you agree to our <Link href="/terms" className="text-maroon-600 underline">Terms</Link> and{" "}
-                  <Link href="/cancellation-policy" className="text-maroon-600 underline">Cancellation Policy</Link>.
-                </p>
+                {/* Advance + cancellation + refund terms */}
+                <div className="mt-4 space-y-2 rounded-2xl border border-border bg-ivory-50 p-4 text-[11px] leading-relaxed text-charcoal-600">
+                  <p>
+                    <strong className="text-charcoal-800">Advance:</strong> Your advance amount secures your
+                    booking request for the selected hall and date. The remaining balance must be paid as per
+                    the hall owner&apos;s final confirmation and Hallnect booking policy.
+                  </p>
+                  <p>
+                    <strong className="text-charcoal-800">Cancellation &amp; refund:</strong> Cancellation and
+                    refund eligibility depend on the cancellation date, hall owner policy, and Hallnect policy.
+                    Any applicable refund will be processed after verification. See our{" "}
+                    <Link href="/cancellation-policy" className="text-maroon-600 underline">Cancellation Policy</Link>{" "}
+                    and <Link href="/refund-policy" className="text-maroon-600 underline">Refund Policy</Link>.
+                  </p>
+                </div>
+
+                {/* Mandatory acknowledgement */}
+                <label className="mt-3 flex cursor-pointer items-start gap-2.5 rounded-2xl border border-border bg-white p-3.5 text-xs text-charcoal-700 shadow-card">
+                  <input
+                    type="checkbox"
+                    checked={termsAccepted}
+                    onChange={(e) => setTermsAccepted(e.target.checked)}
+                    className="mt-0.5 h-4 w-4 shrink-0 rounded border-charcoal-300 text-maroon-600 focus:ring-maroon-500"
+                  />
+                  <span>
+                    I agree to the booking, cancellation, and remaining balance terms, and to Hallnect&apos;s{" "}
+                    <Link href="/terms" className="text-maroon-600 underline">Terms</Link>.
+                  </span>
+                </label>
+                {!termsAccepted && (
+                  <p className="mt-2 text-center text-[11px] text-charcoal-400">
+                    Please accept the terms to continue.
+                  </p>
+                )}
               </StepWrap>
             )}
 

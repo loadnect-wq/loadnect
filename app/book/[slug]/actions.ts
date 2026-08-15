@@ -38,6 +38,7 @@ export type CreateBookingInput = {
   slot:         BookingSlot;
   guestCount:   number;
   customerNotes?: string;
+  termsAccepted?: boolean;    // advance/cancellation/remaining-balance consent
 };
 
 export type CreateBookingResult =
@@ -71,6 +72,13 @@ export async function createBookingRequest(
   const parsed = parseSafe(bookingSchema, input);
   if (!parsed.ok) return { error: parsed.error };
   const v = parsed.data;
+
+  // Terms acceptance is mandatory and verified server-side — never trust the
+  // client to have shown the checkbox. (bookingSchema strips unknown keys, so we
+  // read the flag from the raw input.)
+  if (input.termsAccepted !== true) {
+    return { error: "Please accept the booking, cancellation, and remaining balance terms to continue." };
+  }
 
   // ── Layer 1 — Authoritative availability re-check ───────────────────────────
   const availability = await checkSlotAvailability(v.hallId, v.eventDate, v.slot);
@@ -115,23 +123,35 @@ export async function createBookingRequest(
   // nullable until 0011, so this insert is forward-compatible.
   const expiresAt = new Date(Date.now() + PENDING_PAYMENT_TIMEOUT_MIN * 60_000).toISOString();
 
-  const { data: inserted, error: insertErr } = await db
+  const basePayload: Record<string, unknown> = {
+    hall_id:        v.hallId,
+    customer_id:    user.id,
+    event_date:     v.eventDate,
+    slot:           v.slot,
+    guest_count:    v.guestCount,
+    base_amount:    baseAmount,
+    platform_fee:   platformFee,
+    total_amount:   totalAmount,
+    status:         "pending_payment",
+    customer_notes: v.customerNotes || null,
+    expires_at:     expiresAt,
+  };
+
+  let { data: inserted, error: insertErr } = await db
     .from("bookings")
-    .insert({
-      hall_id:        v.hallId,
-      customer_id:    user.id,
-      event_date:     v.eventDate,
-      slot:           v.slot,
-      guest_count:    v.guestCount,
-      base_amount:    baseAmount,
-      platform_fee:   platformFee,
-      total_amount:   totalAmount,
-      status:         "pending_payment",
-      customer_notes: v.customerNotes || null,
-      expires_at:     expiresAt,
-    })
+    .insert({ ...basePayload, terms_accepted: true, terms_accepted_at: new Date().toISOString() })
     .select("id, expires_at")
     .single();
+
+  // 42703 = terms_accepted columns not provisioned yet (pre-migration 0017) —
+  // retry without them so booking still works on un-migrated databases.
+  if (insertErr?.code === "42703") {
+    ({ data: inserted, error: insertErr } = await db
+      .from("bookings")
+      .insert(basePayload)
+      .select("id, expires_at")
+      .single());
+  }
 
   if (insertErr) {
     // 23505 = unique violation → race lost to a parallel booking
