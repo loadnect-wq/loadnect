@@ -1,0 +1,189 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ─── CSS Custom Properties ─────────────────────────────────────────────── */
+@layer base {
+  :root {
+    /* Backgrounds */
+    --background:  38 55% 96%;   /* warm ivory */
+    --foreground:  22 10% 10%;   /* warm charcoal */
+
+    --card:             0  0% 100%;
+    --card-foreground: 22 10% 10%;
+
+    --popover:             0  0% 100%;
+    --popover-foreground: 22 10% 10%;
+
+    /* Deep Maroon – primary brand */
+    --primary:            349 60% 36%;
+    --primary-foreground:  38 55% 96%;
+
+    /* Champagne – secondary */
+    --secondary:           38 40% 93%;
+    --secondary-foreground: 22 10% 20%;
+
+    /* Muted */
+    --muted:            38 25% 94%;
+    --muted-foreground: 22  5% 46%;
+
+    /* Royal Gold – accent */
+    --accent:            42 75% 47%;
+    --accent-foreground: 22 10% 10%;
+
+    --destructive:            0 72% 51%;
+    --destructive-foreground: 0  0% 98%;
+
+    --border: 38 20% 87%;
+    --input:  38 20% 87%;
+    --ring:   349 60% 36%;
+
+    --radius: 0.625rem;
+  }
+
+  .dark {
+    --background:  22 15%  8%;
+    --foreground:  38 55% 96%;
+
+    --card:             22 12% 12%;
+    --card-foreground:  38 55% 96%;
+
+    --popover:             22 12% 12%;
+    --popover-foreground:  38 55% 96%;
+
+    --primary:            349 65% 50%;
+    --primary-foreground:  22 15%  8%;
+
+    --secondary:            22 10% 18%;
+    --secondary-foreground: 38 40% 90%;
+
+    --muted:            22 10% 18%;
+    --muted-foreground: 22  5% 60%;
+
+    --accent:            42 70% 50%;
+    --accent-foreground: 22 15%  8%;
+
+    --destructive:            0 62% 45%;
+    --destructive-foreground: 0  0% 98%;
+
+    --border: 22 12% 22%;
+    --input:  22 12% 22%;
+    --ring:   349 65% 50%;
+  }
+}
+
+/* ─── Base Resets & Typography ──────────────────────────────────────────── */
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+
+  /* Elegant serif headings throughout the site */
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-serif tracking-tight;
+  }
+
+  /* Selection highlight in brand maroon */
+  ::selection {
+    @apply bg-maroon-100 text-maroon-900;
+  }
+
+  /* Thin scrollbar */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    @apply bg-ivory-100;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply rounded-full bg-maroon-200;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-maroon-400;
+  }
+}
+
+/* ─── Utility Classes ───────────────────────────────────────────────────── */
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  /* Consistent page padding / max-width */
+  .container-page {
+    @apply mx-auto max-w-7xl px-4 sm:px-6 lg:px-8;
+  }
+
+  /* App-style mobile container */
+  .container-app {
+    @apply mx-auto w-full max-w-lg px-4 sm:px-6;
+  }
+
+  /* Hide scrollbar utility (for horizontal carousels) */
+  .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+
+  /* Sticky bottom action bar (above bottom nav) */
+  .app-sticky-bottom {
+    @apply fixed inset-x-0 bottom-0 z-30 border-t border-border bg-white pb-[max(env(safe-area-inset-bottom),0.75rem)] pt-3 px-4 lg:hidden;
+  }
+
+  /* Gold shimmer effect (used in premium badges / highlights) */
+  .gold-shimmer {
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      rgba(201, 144, 26, 0.35) 50%,
+      transparent 100%
+    );
+    background-size: 200% 100%;
+    @apply animate-shimmer;
+  }
+
+  /* Skeleton shimmer base */
+  .skeleton-shimmer {
+    background: linear-gradient(
+      90deg,
+      hsl(38 25% 92%) 0%,
+      hsl(38 30% 97%) 50%,
+      hsl(38 25% 92%) 100%
+    );
+    background-size: 200% 100%;
+    @apply animate-shimmer;
+  }
+
+  /* Decorative gold divider */
+  .divider-gold {
+    @apply h-px w-full bg-gradient-to-r from-transparent via-gold-400 to-transparent;
+  }
+
+  /* Vertical maroon gradient rule */
+  .divider-maroon {
+    @apply h-px w-full bg-gradient-to-r from-transparent via-maroon-300 to-transparent;
+  }
+
+  /* Ornamental "✦ Title ✦" centred row */
+  .ornament-row {
+    @apply flex items-center gap-3 text-gold-500;
+  }
+  .ornament-row::before,
+  .ornament-row::after {
+    content: "";
+    @apply h-px flex-1 bg-gradient-to-r from-transparent via-gold-300 to-transparent;
+  }
+
+  /* Focus ring that matches brand */
+  .focus-brand {
+    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2;
+  }
+}

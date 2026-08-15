@@ -1,0 +1,83 @@
+import type { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "Cancellation Policy",
+  description: "Hallnect Cancellation Policy — rules and timelines for cancelling hall bookings.",
+};
+
+export default function CancellationPolicyPage() {
+  return (
+    <article>
+      <LegalHeader title="Cancellation Policy" updated="June 2025" />
+
+      <Section title="1. General">
+        This Cancellation Policy applies to all bookings made through Hallnect. By confirming a booking and paying the advance, you agree to these cancellation terms. Specific cancellation conditions may vary by venue and are displayed on the booking checkout page before payment. This policy sets the minimum standard that applies to all bookings.
+      </Section>
+
+      <Section title="2. Cancellation by Customers">
+        You may cancel a confirmed booking through your Hallnect account (My Bookings → Cancel Booking). Cancellations are effective immediately upon submission. The refund you receive depends on when you cancel relative to the event date — see our{" "}
+        <a href="/refund-policy" className="text-maroon-600 hover:underline">Refund Policy</a> for the full schedule. You will be shown the expected refund amount before you confirm the cancellation.
+      </Section>
+
+      <Section title="3. Advance Payment and Cancellation">
+        All bookings require an advance payment to secure the venue. This advance is held by Hallnect on behalf of the venue owner. Upon a customer-initiated cancellation, the refundable portion of the advance is returned based on the timeline in the Refund Policy. The platform service fee component is non-refundable on customer cancellations.
+      </Section>
+
+      <Section title="4. Cancellation by Hall Owners">
+        Hall owners may cancel a confirmed booking only in exceptional circumstances such as force majeure, venue damage, or regulatory closure. Owner-cancelled bookings trigger a full refund (including the platform fee) to the customer within 7–10 business days. Owners who repeatedly cancel confirmed bookings may have their listings suspended or permanently removed.
+      </Section>
+
+      <Section title="5. Booking Statuses Eligible for Cancellation">
+        Cancellations are available for bookings in the following statuses: Pending Payment, Payment Received, Booking Requested, and Owner Confirmed. Once a booking is marked Completed, it cannot be cancelled.
+      </Section>
+
+      <Section title="6. Venue Verification Before Cancellation">
+        Before cancelling, we recommend first contacting the venue owner directly to resolve any concerns about the venue, as cancellations may incur a financial penalty. Customers are advised to visit and verify venue details well before the event date.
+      </Section>
+
+      <Section title="7. Non-Cancellable Bookings">
+        Bookings within 24 hours of the event start time cannot be cancelled through the platform. If you have an emergency, contact our support team immediately at{" "}
+        <a href="mailto:hallnect@gmail.com" className="text-maroon-600 hover:underline">hallnect@gmail.com</a>.
+      </Section>
+
+      <Section title="8. How to Cancel">
+        <strong className="font-semibold text-charcoal-800">Customers:</strong> Log in → My Bookings → select booking → Cancel Booking. You will see the refund amount before confirming.
+        <br /><br />
+        <strong className="font-semibold text-charcoal-800">Owners:</strong> Log in → My Dashboard → Bookings → select booking → Cancel. A reason must be provided.
+      </Section>
+
+      <Section title="9. Force Majeure">
+        In circumstances beyond the reasonable control of either party — including natural disasters, government-declared emergencies, or pandemic-related restrictions — Hallnect may offer a booking credit, date change, or partial refund at its discretion. These situations are assessed case by case. Contact{" "}
+        <a href="mailto:hallnect@gmail.com" className="text-maroon-600 hover:underline">hallnect@gmail.com</a> immediately if you believe your booking is affected.
+      </Section>
+
+      <Section title="10. Dispute Resolution">
+        If a cancellation or refund dispute arises, Hallnect will review the case and respond within 7 business days. Our decision in such disputes is final. To raise a dispute, use the Support Tickets feature in your account or email{" "}
+        <a href="mailto:hallnect@gmail.com" className="text-maroon-600 hover:underline">hallnect@gmail.com</a>.
+      </Section>
+
+      <Section title="11. Policy Updates">
+        This Cancellation Policy may be updated from time to time. The version applicable to your booking is the one in force at the time the booking was confirmed.
+      </Section>
+    </article>
+  );
+}
+
+function LegalHeader({ title, updated }: { title: string; updated: string }) {
+  return (
+    <div className="mb-10 border-b border-border pb-8">
+      <p className="text-xs font-semibold uppercase tracking-widest text-gold-600">Hallnect Legal</p>
+      <h1 className="mt-2 font-serif text-3xl font-bold text-charcoal-900 sm:text-4xl">{title}</h1>
+      <p className="mt-3 text-sm text-muted-foreground">Last updated: {updated}</p>
+    </div>
+  );
+}
+
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section className="mb-8">
+      <h2 className="font-serif text-lg font-semibold text-charcoal-900">{title}</h2>
+      <p className="mt-2 text-sm leading-relaxed text-charcoal-600">{children}</p>
+    </section>
+  );
+}

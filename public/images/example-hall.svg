@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="800" viewBox="0 0 1200 800" role="img" aria-label="Grand Lotus Mahal wedding hall in Thirunagar, Madurai">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#5A1024"/>
+      <stop offset="55%" stop-color="#7A1830"/>
+      <stop offset="100%" stop-color="#9B2038"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#E0A820"/>
+      <stop offset="100%" stop-color="#C9901A"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="50%" cy="38%" r="60%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.12"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <rect width="1200" height="800" fill="url(#bg)"/>
+  <rect width="1200" height="800" fill="url(#glow)"/>
+
+  <!-- decorative arch -->
+  <g fill="none" stroke="url(#gold)" stroke-width="3" opacity="0.55">
+    <path d="M380 470 Q600 250 820 470 L820 560 L380 560 Z"/>
+    <path d="M430 470 Q600 300 770 470"/>
+    <line x1="600" y1="300" x2="600" y2="250"/>
+  </g>
+
+  <!-- lotus mark -->
+  <g transform="translate(600 250)" fill="url(#gold)" opacity="0.9">
+    <path d="M0 -34 C 10 -14 10 6 0 22 C -10 6 -10 -14 0 -34 Z"/>
+    <path d="M0 22 C 16 8 30 -6 34 -22 C 14 -18 0 -2 0 22 Z"/>
+    <path d="M0 22 C -16 8 -30 -6 -34 -22 C -14 -18 0 -2 0 22 Z"/>
+  </g>
+
+  <text x="600" y="620" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="64" font-weight="700" fill="#FAF6EF">Grand Lotus Mahal</text>
+  <text x="600" y="676" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="30" fill="#E0A820" letter-spacing="3">THIRUNAGAR &#183; MADURAI &#183; TAMIL NADU</text>
+  <text x="600" y="724" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="22" fill="#FAF6EF" opacity="0.7">Example wedding hall &#183; Hallnect</text>
+</svg>
