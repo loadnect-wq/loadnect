@@ -64,7 +64,7 @@ export default async function AdminOwnersPage({ searchParams }: Props) {
                   </div>
                   <div className="flex shrink-0 gap-2">
                     <ConfirmButton
-                      action={async () => approveOwner(p.id)}
+                      action={approveOwner.bind(null, p.id)}
                       label="Approve"
                       confirmText="Confirm approve"
                       variant="success"
@@ -72,7 +72,7 @@ export default async function AdminOwnersPage({ searchParams }: Props) {
                       doneLabel="✓ Approved"
                     />
                     <ConfirmButton
-                      action={async () => rejectOwner(p.id)}
+                      action={rejectOwner.bind(null, p.id)}
                       label="Reject"
                       confirmText="Confirm reject"
                       variant="destructive"
@@ -142,7 +142,7 @@ export default async function AdminOwnersPage({ searchParams }: Props) {
                   <div className="shrink-0 flex flex-col items-end gap-1">
                     {!o.is_verified && (
                       <ConfirmButton
-                        action={async () => verifyOwnerRow(o.id)}
+                        action={verifyOwnerRow.bind(null, o.id)}
                         label="Verify business"
                         confirmText="Confirm verify"
                         variant="success"
@@ -154,7 +154,7 @@ export default async function AdminOwnersPage({ searchParams }: Props) {
                       <span className="text-[10px] font-semibold text-green-700">Active owner</span>
                     ) : (
                       <ConfirmButton
-                        action={async () => approveOwner(o.profile_id)}
+                        action={approveOwner.bind(null, o.profile_id)}
                         label="Approve as owner"
                         confirmText="Confirm approve"
                         variant="success"

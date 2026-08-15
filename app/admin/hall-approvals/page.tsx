@@ -87,14 +87,14 @@ export default async function HallApprovalsPage() {
                       </Link>
                       <div className="flex gap-2">
                         <ConfirmButton
-                          action={async () => rejectHall(h.id)}
+                          action={rejectHall.bind(null, h.id)}
                           label="Reject"
                           confirmText="Confirm reject"
                           variant="destructive"
                           hideOnSuccess doneLabel="✓ Rejected"
                         />
                         <ConfirmButton
-                          action={async () => approveHall(h.id)}
+                          action={approveHall.bind(null, h.id)}
                           label="Approve"
                           confirmText="Confirm approve"
                           variant="success"

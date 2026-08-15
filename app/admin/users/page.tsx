@@ -90,7 +90,7 @@ export default async function AdminUsersPage({ searchParams }: Props) {
                     </div>
                     <div className="mt-2.5">
                       <ConfirmButton
-                        action={async () => toggleUserActive(u.id, !u.is_active)}
+                        action={toggleUserActive.bind(null, u.id, !u.is_active)}
                         label={u.is_active ? "Deactivate" : "Reactivate"}
                         confirmText="Click again"
                         variant={u.is_active ? "destructive" : "success"}
@@ -133,7 +133,7 @@ export default async function AdminUsersPage({ searchParams }: Props) {
                         <Td className="text-charcoal-500">{fmtDate(u.created_at)}</Td>
                         <Td align="right">
                           <ConfirmButton
-                            action={async () => toggleUserActive(u.id, !u.is_active)}
+                            action={toggleUserActive.bind(null, u.id, !u.is_active)}
                             label={u.is_active ? "Deactivate" : "Reactivate"}
                             confirmText="Click again"
                             variant={u.is_active ? "destructive" : "success"}

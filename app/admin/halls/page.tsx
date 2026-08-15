@@ -134,14 +134,14 @@ export default async function AdminHallsPage({ searchParams }: Props) {
                       {h.status === "pending_approval" && (
                         <>
                           <ConfirmButton
-                            action={async () => approveHall(h.id)}
+                            action={approveHall.bind(null, h.id)}
                             label="Approve"
                             confirmText="Confirm approve"
                             variant="success"
                             hideOnSuccess doneLabel="✓ Approved"
                           />
                           <ConfirmButton
-                            action={async () => rejectHall(h.id)}
+                            action={rejectHall.bind(null, h.id)}
                             label="Reject"
                             confirmText="Confirm reject"
                             variant="destructive"
@@ -151,7 +151,7 @@ export default async function AdminHallsPage({ searchParams }: Props) {
                       )}
                       {h.status === "approved" && (
                         <ConfirmButton
-                          action={async () => suspendHall(h.id)}
+                          action={suspendHall.bind(null, h.id)}
                           label="Suspend"
                           confirmText="Confirm suspend"
                           variant="destructive"
@@ -159,7 +159,7 @@ export default async function AdminHallsPage({ searchParams }: Props) {
                       )}
                       {h.status === "suspended" && (
                         <ConfirmButton
-                          action={async () => unsuspendHall(h.id)}
+                          action={unsuspendHall.bind(null, h.id)}
                           label="Unsuspend"
                           confirmText="Confirm unsuspend"
                           variant="success"
@@ -167,7 +167,7 @@ export default async function AdminHallsPage({ searchParams }: Props) {
                       )}
                       {h.status === "rejected" && (
                         <ConfirmButton
-                          action={async () => approveHall(h.id)}
+                          action={approveHall.bind(null, h.id)}
                           label="Approve"
                           confirmText="Confirm approve"
                           variant="success"

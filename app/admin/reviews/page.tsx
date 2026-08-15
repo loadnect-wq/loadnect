@@ -113,13 +113,13 @@ export default async function AdminReviewsPage({ searchParams }: Props) {
                   {/* Actions */}
                   <div className="shrink-0 flex flex-col gap-1">
                     <ConfirmButton
-                      action={async () => toggleReviewVisible(r.id, !r.is_visible)}
+                      action={toggleReviewVisible.bind(null, r.id, !r.is_visible)}
                       label={r.is_visible ? "Hide" : "Show"}
                       confirmText="Click again"
                       variant={r.is_visible ? "destructive" : "success"}
                     />
                     <ConfirmButton
-                      action={async () => deleteReview(r.id)}
+                      action={deleteReview.bind(null, r.id)}
                       label="Delete"
                       confirmText="Confirm delete"
                       variant="destructive"

@@ -116,14 +116,14 @@ export default async function AdminAdsPage({ searchParams }: Props) {
                       {ad.status === "pending" && (
                         <>
                           <ConfirmButton
-                            action={async () => updateAdStatus(ad.id, "active")}
+                            action={updateAdStatus.bind(null, ad.id, "active")}
                             label="Approve"
                             confirmText="Confirm"
                             variant="success"
                             hideOnSuccess doneLabel="✓ Active"
                           />
                           <ConfirmButton
-                            action={async () => updateAdStatus(ad.id, "rejected")}
+                            action={updateAdStatus.bind(null, ad.id, "rejected")}
                             label="Reject"
                             confirmText="Confirm"
                             variant="destructive"
@@ -133,7 +133,7 @@ export default async function AdminAdsPage({ searchParams }: Props) {
                       )}
                       {ad.status === "active" && (
                         <ConfirmButton
-                          action={async () => updateAdStatus(ad.id, "paused")}
+                          action={updateAdStatus.bind(null, ad.id, "paused")}
                           label="Pause"
                           confirmText="Confirm pause"
                           variant="destructive"
@@ -141,14 +141,14 @@ export default async function AdminAdsPage({ searchParams }: Props) {
                       )}
                       {ad.status === "paused" && (
                         <ConfirmButton
-                          action={async () => updateAdStatus(ad.id, "active")}
+                          action={updateAdStatus.bind(null, ad.id, "active")}
                           label="Resume"
                           confirmText="Confirm resume"
                           variant="success"
                         />
                       )}
                       <ConfirmButton
-                        action={async () => deleteAdvertisement(ad.id)}
+                        action={deleteAdvertisement.bind(null, ad.id)}
                         label="Delete"
                         confirmText="Confirm delete"
                         variant="destructive"

@@ -84,7 +84,7 @@ export default async function AdminPremiumPage() {
                       <Td align="right">
                         {!expired && (
                           <ConfirmButton
-                            action={async () => togglePremiumActive(l.id, !l.is_active)}
+                            action={togglePremiumActive.bind(null, l.id, !l.is_active)}
                             label={l.is_active ? "Deactivate" : "Activate"}
                             confirmText="Click again"
                             variant={l.is_active ? "destructive" : "success"}

@@ -291,7 +291,10 @@ export async function fetchAllOwners(verifiedFilter?: "verified" | "unverified")
 
   let query = db
     .from("hall_owners")
-    .select("id, profile_id, business_name, business_email, business_phone, gst_number, pan_number, payout_upi, city, state, is_verified, created_at, profiles(full_name, email, role)")
+    // profiles!profile_id — hall_owners has TWO FKs to profiles (profile_id and
+    // verified_by), so the embed must name which one, or PostgREST errors with
+    // "more than one relationship was found" and the page shows no owners.
+    .select("id, profile_id, business_name, business_email, business_phone, gst_number, pan_number, payout_upi, city, state, is_verified, created_at, profiles!profile_id(full_name, email, role)")
     .order("created_at", { ascending: false });
 
   if (verifiedFilter === "verified")   query = query.eq("is_verified", true);
@@ -334,7 +337,9 @@ export async function fetchAllHalls(statusFilter?: string): Promise<AdminHallRow
 
   let query = db
     .from("halls")
-    .select("id, slug, name, city, state, status, is_premium, capacity_max, price_per_day, rating_average, rating_count, created_at, hall_images(url, is_cover), hall_owners(business_name, profiles(full_name))")
+    // profiles!profile_id — see fetchAllOwners: the hall_owners→profiles embed
+    // is ambiguous (profile_id vs verified_by) and must be disambiguated.
+    .select("id, slug, name, city, state, status, is_premium, capacity_max, price_per_day, rating_average, rating_count, created_at, hall_images(url, is_cover), hall_owners(business_name, profiles!profile_id(full_name))")
     .order("created_at", { ascending: false });
 
   if (statusFilter) query = query.eq("status", statusFilter);
