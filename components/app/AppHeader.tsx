@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
-import { ArrowLeft, Bell, Gem } from "lucide-react";
+import { ArrowLeft, Bell } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { APP_NAME } from "@/lib/constants";
 
@@ -41,8 +42,8 @@ export function AppHeader({ title, showBack, rightSlot, transparent }: AppHeader
             </button>
           ) : (
             <Link href="/" className="flex items-center gap-1.5" aria-label={`${APP_NAME} home`}>
-              <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-maroon-600 text-ivory-100">
-                <Gem className="h-3.5 w-3.5" />
+              <span className="relative block h-7 w-7 shrink-0">
+                <Image src="/logo.png" alt="" fill sizes="28px" className="object-contain" priority />
               </span>
               <span className="font-serif text-base font-bold text-maroon-800">{APP_NAME}</span>
             </Link>

@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Menu, X, Gem, LogOut, LayoutDashboard } from "lucide-react";
+import { Menu, X, LogOut, LayoutDashboard } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { buttonVariants } from "@/components/ui/Button";
 import { APP_NAME, NAV_LINKS, getDashboardPath } from "@/lib/constants";
@@ -96,9 +97,9 @@ export function Navbar() {
       <div className="container-page">
         <nav className="flex h-16 items-center justify-between" aria-label="Main navigation">
           {/* Logo */}
-          <Link href="/" className="group flex items-center gap-2" aria-label={`${APP_NAME} home`}>
-            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-maroon-600 text-ivory-100 shadow-maroon transition-colors group-hover:bg-maroon-700">
-              <Gem className="h-4 w-4" />
+          <Link href="/" className="group flex items-center gap-2.5" aria-label={`${APP_NAME} home`}>
+            <span className="relative block h-9 w-9 shrink-0 transition-transform group-hover:scale-105 motion-reduce:transition-none motion-reduce:group-hover:scale-100">
+              <Image src="/logo.png" alt="" fill sizes="36px" className="object-contain" priority />
             </span>
             <span className="font-serif text-xl font-bold tracking-tight text-maroon-800 transition-colors group-hover:text-maroon-600">
               {APP_NAME}

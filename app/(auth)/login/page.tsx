@@ -2,8 +2,9 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { Gem, Lock, Mail } from "lucide-react";
+import { Lock, Mail } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/input";
@@ -55,9 +56,9 @@ export default function LoginPage() {
     <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center bg-ivory-100 px-4 py-12">
       <div className="w-full max-w-md">
         <div className="mb-8 text-center">
-          <Link href="/" className="inline-flex items-center gap-2">
-            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-maroon-600 text-ivory-100">
-              <Gem className="h-5 w-5" />
+          <Link href="/" className="inline-flex flex-col items-center gap-2.5" aria-label="Hallnect home">
+            <span className="relative block h-16 w-16">
+              <Image src="/logo.png" alt="Hallnect" fill sizes="64px" className="object-contain" priority />
             </span>
             <span className="font-serif text-2xl font-bold text-maroon-800">Hallnect</span>
           </Link>
