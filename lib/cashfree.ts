@@ -247,7 +247,13 @@ export function verifyCashfreeWebhookSignature(
 ): boolean {
   if (!signature || !timestamp) return false;
   try {
-    const { secretKey } = getCashfreeConfig();
+    // Prefer a dedicated webhook secret if configured; otherwise fall back to
+    // the API secret key (Cashfree signs webhooks with the client secret by
+    // default). This lets deployments rotate the webhook secret independently.
+    const webhookSecret = process.env.CASHFREE_WEBHOOK_SECRET?.trim();
+    const secretKey = webhookSecret && webhookSecret !== ""
+      ? webhookSecret
+      : getCashfreeConfig().secretKey;
     const expected = crypto
       .createHmac("sha256", secretKey)
       .update(`${timestamp}${rawBody}`)
