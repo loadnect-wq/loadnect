@@ -27,7 +27,7 @@ import {
   getCashfreeOrder,
   getCashfreeOrderPayments,
 } from "@/lib/cashfree";
-import { optionalEnv } from "@/lib/env";
+import { getAppUrl } from "@/lib/env";
 import { PLATFORM_FEE_PERCENT } from "@/lib/constants";
 
 const ADVANCE_RATE = 0.25; // 25% advance — mirrors app/book/[slug]/actions.ts
@@ -69,8 +69,11 @@ function normalisePhone(raw: string): string {
   return digits;
 }
 
+/** App origin for Cashfree return_url / notify_url. Uses the hardened resolver so
+ *  a scheme-less NEXT_PUBLIC_APP_URL can never produce a relative return_url
+ *  (which the gateway would resolve against ITS own origin). */
 function appUrl(): string {
-  return optionalEnv("NEXT_PUBLIC_APP_URL", "http://localhost:3000").replace(/\/$/, "");
+  return getAppUrl();
 }
 
 /** A unique, idempotent-per-attempt Cashfree order id derived from the booking. */

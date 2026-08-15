@@ -6,6 +6,7 @@ import { Footer }     from "@/components/layout/Footer";
 import { BottomNav }  from "@/components/app/BottomNav";
 import { Toaster }    from "@/components/ui/toaster";
 import { APP_NAME, APP_DESCRIPTION } from "@/lib/constants";
+import { getAppUrl } from "@/lib/env";
 
 const inter = Inter({
   subsets:  ["latin"],
@@ -21,28 +22,12 @@ const playfair = Playfair_Display({
   style:    ["normal", "italic"],
 });
 
-function resolveAppUrl(raw: string | undefined): URL {
-  const fallback = new URL("http://localhost:3000");
-  if (!raw || raw.trim() === "") return fallback;
-  // Tolerate a scheme-less value (a common deploy mistake: "myapp.vercel.app"
-  // instead of "https://myapp.vercel.app").
-  const candidate = /^https?:\/\//i.test(raw.trim()) ? raw.trim() : `https://${raw.trim()}`;
-  try {
-    return new URL(candidate);
-  } catch {
-    // PRODUCTION SAFETY: metadataBase is cosmetic (OG/canonical URLs). A bad
-    // NEXT_PUBLIC_APP_URL must NEVER crash the root layout, which renders on
-    // every page — that would 500 the entire site. Log and fall back instead.
-    // The value is a public URL (not a secret), so it's safe to log.
-    console.error(`[layout] NEXT_PUBLIC_APP_URL is not a valid URL ("${raw}") — using fallback.`);
-    return fallback;
-  }
-}
-
 export const metadata: Metadata = {
   title: { default: APP_NAME, template: `%s | ${APP_NAME}` },
   description: APP_DESCRIPTION,
-  metadataBase: resolveAppUrl(process.env.NEXT_PUBLIC_APP_URL),
+  // Hardened resolver (lib/env) — tolerates a scheme-less NEXT_PUBLIC_APP_URL
+  // and never throws, so a bad env value can't 500 every page.
+  metadataBase: new URL(getAppUrl()),
   applicationName: APP_NAME,
   appleWebApp: { capable: true, title: APP_NAME, statusBarStyle: "default" },
   openGraph: { type: "website", siteName: APP_NAME, title: APP_NAME, description: APP_DESCRIPTION },
