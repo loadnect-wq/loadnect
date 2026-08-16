@@ -21,6 +21,11 @@ import { sanitizeError } from "@/lib/errors";
 
 type ActionResult = { success: true; id?: string } | { error: string };
 
+/** Short random slug suffix used to break (possibly RLS-invisible) collisions. */
+function randomSuffix(): string {
+  return Math.random().toString(36).slice(2, 7);
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 async function getAuthUser() {
@@ -178,21 +183,26 @@ export async function createHall(data: {
 
   const ownerId: string = ownerRow.id;
 
-  // Generate a unique slug
-  let slug = generateSlug(v.name, v.city);
+  // Slug uniqueness.
+  //
+  // halls.slug carries a GLOBAL unique index, but this probe reads `halls`
+  // through the session client, so halls_select hides other owners' halls
+  // unless they are approved. A collision with another owner's draft/pending
+  // hall is therefore INVISIBLE here: the probe finds nothing, the insert trips
+  // halls_slug_key with 23505, and because generateSlug is deterministic every
+  // retry fails identically — permanently blocking that owner from listing.
+  //
+  // So the probe is only an optimisation; the unique index is the authority.
+  // We retry with a fresh suffix when the DB reports a genuine collision.
+  const baseSlug = generateSlug(v.name, v.city);
   const { data: existing } = await db
-    .from("halls")
-    .select("id")
-    .eq("slug", slug)
-    .maybeSingle();
-  if (existing) {
-    slug = `${slug}-${Math.random().toString(36).slice(2, 6)}`;
-  }
+    .from("halls").select("id").eq("slug", baseSlug).maybeSingle();
+  let slug = existing ? `${baseSlug}-${randomSuffix()}` : baseSlug;
 
-  const { data: hall, error } = await db.from("halls").insert({
+  const buildPayload = (useSlug: string) => ({
     owner_id:     ownerId, // server-derived, not v.ownerId
     name:         v.name,
-    slug,
+    slug:         useSlug,
     description:  v.description || null,
     city:         v.city,
     state:        v.state   || null,
@@ -204,9 +214,24 @@ export async function createHall(data: {
     price_morning:  v.priceMorning ?? null,
     price_evening:  v.priceEvening ?? null,
     status: "pending_approval",
-  }).select("id").single();
+  });
 
-  if (error) return { error: sanitizeError(error, "owner") };
+  let hall: { id: string } | null = null;
+  let error: { code?: string; message?: string } | null = null;
+
+  // At most 4 attempts: the first, plus 3 fresh suffixes. Bounded so a
+  // persistent failure surfaces instead of looping.
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const res = await db.from("halls").insert(buildPayload(slug)).select("id").single();
+    if (!res.error) { hall = res.data; error = null; break; }
+    error = res.error;
+    if (res.error.code !== "23505") break;      // not a uniqueness problem
+    slug = `${baseSlug}-${randomSuffix()}`;     // collided (possibly invisibly)
+  }
+
+  if (error || !hall) {
+    return { error: error ? sanitizeError(error, "owner") : "Could not create your hall. Please try again." };
+  }
 
   // Insert amenities junction rows
   if (v.amenityIds.length > 0) {
