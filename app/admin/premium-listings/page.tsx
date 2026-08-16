@@ -48,7 +48,7 @@ export default async function AdminPremiumPage() {
             <p className="text-sm text-charcoal-500">No premium listings purchased yet.</p>
           </div>
         ) : (
-          <div className="overflow-hidden rounded-2xl bg-white shadow-card">
+          <div className="overflow-x-auto lg:overflow-hidden rounded-2xl bg-white shadow-card">
             <table className="min-w-full text-sm">
               <thead className="bg-ivory-50 border-b border-border">
                 <tr>

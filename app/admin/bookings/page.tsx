@@ -71,7 +71,7 @@ export default async function AdminBookingsPage({ searchParams }: Props) {
             No bookings match this filter.
           </p>
         ) : (
-          <div className="overflow-hidden rounded-2xl bg-white shadow-card">
+          <div className="overflow-x-auto lg:overflow-hidden rounded-2xl bg-white shadow-card">
             <table className="min-w-full text-sm">
               <thead className="bg-ivory-50 border-b border-border">
                 <tr>

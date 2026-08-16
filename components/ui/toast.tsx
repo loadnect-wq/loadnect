@@ -17,7 +17,10 @@ const ToastViewport = forwardRef<
   <ToastPrimitives.Viewport
     ref={ref}
     className={cn(
-      "fixed bottom-0 right-0 z-[100]",
+      // Sit ABOVE the fixed mobile bottom nav (var(--bottom-nav-h)) plus the
+      // home-indicator inset, otherwise toasts land underneath it and their
+      // dismiss control is unreachable. lg: has no bottom nav, so reset to 0.
+      "fixed bottom-[calc(var(--bottom-nav-h,4.5rem)+env(safe-area-inset-bottom))] right-0 z-[100] lg:bottom-0",
       "flex flex-col gap-2 p-4 sm:p-6",
       "w-full sm:max-w-sm md:max-w-[420px]",
       className

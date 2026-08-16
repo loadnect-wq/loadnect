@@ -36,12 +36,12 @@ export const buttonVariants = cva(
           "h-auto p-0 text-maroon-700 underline-offset-4 hover:underline",
       },
       size: {
-        sm:      "h-8 rounded-md px-3.5 py-1.5 text-xs",
-        default: "h-10 rounded-lg px-5 py-2.5 text-sm",
+        sm:      "min-h-[44px] lg:min-h-0 lg:h-8 rounded-md px-3.5 py-1.5 text-xs",
+        default: "min-h-[44px] lg:min-h-0 lg:h-10 rounded-lg px-5 py-2.5 text-sm",
         lg:      "h-12 rounded-xl px-8 py-3.5 text-base",
         xl:      "h-14 rounded-xl px-10 py-4 text-base",
-        icon:    "h-10 w-10 rounded-lg",
-        "icon-sm": "h-8 w-8 rounded-md",
+        icon:    "h-11 w-11 lg:h-10 lg:w-10 rounded-lg",
+        "icon-sm": "h-11 w-11 lg:h-8 lg:w-8 rounded-md",
       },
     },
     defaultVariants: {

@@ -44,7 +44,12 @@ export function ConfirmButton({
     return <span className="text-[11px] font-semibold text-green-700">{doneLabel ?? "✓ Done"}</span>;
   }
 
-  const baseStyles = "rounded-lg px-3 py-1.5 text-[11px] font-semibold transition-colors disabled:opacity-60";
+  // 44px minimum tap height on touch/mobile; lg: restores the original compact
+  // admin density so desktop tables look exactly as before.
+  const baseStyles =
+    "inline-flex items-center justify-center rounded-lg px-3 text-[11px] font-semibold " +
+    "min-h-[44px] lg:min-h-0 lg:py-1.5 transition-colors disabled:opacity-60 " +
+    "active:scale-[0.97] motion-reduce:active:scale-100";
   const styleByVariant = {
     default:     "border border-charcoal-300 bg-white text-charcoal-700 hover:bg-charcoal-50",
     destructive: armed ? "bg-red-600 text-white hover:bg-red-700"

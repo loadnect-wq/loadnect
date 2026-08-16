@@ -157,7 +157,7 @@ export default async function AdminCommissionsPage({ searchParams }: Props) {
 
         {/* Settlement adjustment history */}
         {adjustments.length > 0 && (
-          <div className="rounded-2xl bg-white shadow-card overflow-hidden">
+          <div className="rounded-2xl bg-white shadow-card overflow-x-auto lg:overflow-hidden">
             <div className="border-b border-border bg-ivory-50 px-4 py-2.5 text-[11px] font-bold uppercase tracking-wide text-charcoal-500">
               Owner settlement adjustments
             </div>
@@ -219,7 +219,7 @@ export default async function AdminCommissionsPage({ searchParams }: Props) {
 
         {/* By-owner rollup (top 10 by commission in the current filter) */}
         {ownerRollup.length > 0 && (
-          <div className="rounded-2xl bg-white shadow-card overflow-hidden">
+          <div className="rounded-2xl bg-white shadow-card overflow-x-auto lg:overflow-hidden">
             <div className="border-b border-border bg-ivory-50 px-4 py-2.5 text-[11px] font-bold uppercase tracking-wide text-charcoal-500">
               Commission by owner
             </div>
@@ -251,7 +251,7 @@ export default async function AdminCommissionsPage({ searchParams }: Props) {
             No commissions match this filter.
           </p>
         ) : (
-          <div className="overflow-hidden rounded-2xl bg-white shadow-card">
+          <div className="overflow-x-auto lg:overflow-hidden rounded-2xl bg-white shadow-card">
             <table className="min-w-full text-sm">
               <thead className="bg-ivory-50 border-b border-border">
                 <tr>

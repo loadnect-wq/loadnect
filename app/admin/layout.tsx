@@ -3,6 +3,7 @@ import { Shield } from "lucide-react";
 import { requireRole } from "@/lib/auth";
 import { fetchAdminStats } from "@/lib/admin";
 import { AdminSidebarNav } from "./_components/AdminSidebarNav";
+import { AdminMobileNav } from "./_components/AdminMobileNav";
 
 export default async function AdminLayout({
   children,
@@ -61,7 +62,18 @@ export default async function AdminLayout({
         </aside>
 
         {/* Page content */}
-        <div className="min-w-0 flex-1">{children}</div>
+        <div className="min-w-0 flex-1">
+          {/* Mobile-only section nav — the sidebar above is hidden below lg and
+              the customer BottomNav excludes /admin, so without this the admin
+              area is unnavigable on a phone. lg:hidden keeps desktop identical. */}
+          <AdminMobileNav counts={{
+            pendingHalls:  stats.open.pendingHalls,
+            pendingOwners: stats.open.pendingOwners,
+            openTickets:   stats.open.openTickets,
+            pendingAds:    stats.open.pendingAds,
+          }} />
+          {children}
+        </div>
       </div>
     </div>
   );
