@@ -7,6 +7,7 @@ import {
 import { requireRole } from "@/lib/auth";
 import { fetchOwnerRow, fetchOwnerHalls, fetchOwnerStats, fetchOwnerCommissions } from "@/lib/owner";
 import { formatPrice } from "@/lib/mock-data";
+import { PREMIUM_TIERS } from "@/lib/content";
 import { Badge } from "@/components/ui/Badge";
 import { buttonVariants } from "@/components/ui/Button";
 import { AppHeader } from "@/components/app/AppHeader";
@@ -171,9 +172,19 @@ export default async function OwnerDashboardPage() {
             <Sparkles className="h-3.5 w-3.5" /> Grow your bookings
           </p>
           <h2 className="mt-1.5 font-serif text-lg font-bold">Upgrade your listing</h2>
+          {/* Sourced from PREMIUM_TIERS (lib/content) — the same definition the
+              public pricing page renders — so the dashboard can never drift from
+              it. Billing is monthly: the field is priceMonthly and the DB plans
+              carry duration_days = 30. */}
           <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
-            <PlanTile name="Pro" price="₹4,999/yr" perks={["Featured in search", "Priority lead alerts"]} />
-            <PlanTile name="Elite" price="₹9,999/yr" perks={["Top placement", "Dedicated support"]} />
+            {PREMIUM_TIERS.filter((t) => t.priceMonthly > 0).map((tier) => (
+              <PlanTile
+                key={tier.id}
+                name={tier.name}
+                price={`${formatPrice(tier.priceMonthly)}/month`}
+                perks={tier.features.slice(1, 3)}
+              />
+            ))}
           </div>
           <Link
             href="/owner/premium"
