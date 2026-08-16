@@ -1,11 +1,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { BadgeCheck } from "lucide-react";
-import { fetchAllOwners, fetchPendingOwnerProfiles } from "@/lib/admin";
+import { fetchAllOwners } from "@/lib/admin";
 import { Badge } from "@/components/ui/Badge";
 import { AdminPageHeader } from "../_components/AdminPageHeader";
 import { ConfirmButton } from "../_components/ConfirmButton";
-import { approveOwner, rejectOwner, verifyOwnerRow } from "../actions";
+import { verifyOwnerRow } from "../actions";
 
 export const metadata: Metadata = { title: "Owners — Admin" };
 
@@ -25,66 +25,16 @@ export default async function AdminOwnersPage({ searchParams }: Props) {
   const { filter } = await searchParams;
   const activeFilter = FILTERS.find((f) => f.key === filter) ?? FILTERS[0];
 
-  const [owners, pendingProfiles] = await Promise.all([
-    fetchAllOwners(activeFilter.value),
-    fetchPendingOwnerProfiles(),
-  ]);
+  const owners = await fetchAllOwners(activeFilter.value);
 
   return (
     <div>
       <AdminPageHeader
         title="Owners"
-        description="Approve owner accounts, verify business details, and manage verified owners."
+        description="Manage owner accounts and verify business details. Owners are active on registration — halls are approved separately."
       />
 
       <div className="px-4 py-4 sm:px-6 lg:px-8 space-y-5">
-
-        {/* Pending profiles (no hall_owners row yet) */}
-        {pendingProfiles.length > 0 && (
-          <section>
-            <h2 className="mb-3 font-serif text-sm font-semibold text-charcoal-900">
-              Pending owner approvals
-              <span className="ml-2 inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-amber-500 px-1.5 text-[10px] font-bold text-white">
-                {pendingProfiles.length}
-              </span>
-            </h2>
-            <p className="mb-3 text-xs text-charcoal-500">
-              These users signed up as owners and are waiting for admin approval before they can list halls.
-            </p>
-            <div className="space-y-2">
-              {pendingProfiles.map((p) => (
-                <div key={p.id} className="flex flex-wrap items-center gap-3 rounded-2xl bg-white p-3 shadow-card">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-700 font-bold text-sm">
-                    {(p.full_name ?? p.email ?? "?")[0].toUpperCase()}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-semibold text-charcoal-900">{p.full_name ?? "—"}</p>
-                    <p className="truncate text-[11px] text-charcoal-500">{p.email}</p>
-                    <p className="text-[10px] text-charcoal-400">Signed up {fmtDate(p.created_at)}</p>
-                  </div>
-                  <div className="flex shrink-0 gap-2">
-                    <ConfirmButton
-                      action={approveOwner.bind(null, p.id)}
-                      label="Approve"
-                      confirmText="Confirm approve"
-                      variant="success"
-                      hideOnSuccess
-                      doneLabel="✓ Approved"
-                    />
-                    <ConfirmButton
-                      action={rejectOwner.bind(null, p.id)}
-                      label="Reject"
-                      confirmText="Confirm reject"
-                      variant="destructive"
-                      hideOnSuccess
-                      doneLabel="✓ Rejected"
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
-          </section>
-        )}
 
         {/* Filter */}
         <div>
@@ -150,18 +100,7 @@ export default async function AdminOwnersPage({ searchParams }: Props) {
                         doneLabel="✓ Verified"
                       />
                     )}
-                    {o.profile_role === "owner_approved" ? (
-                      <span className="text-[10px] font-semibold text-green-700">Active owner</span>
-                    ) : (
-                      <ConfirmButton
-                        action={approveOwner.bind(null, o.profile_id)}
-                        label="Approve as owner"
-                        confirmText="Confirm approve"
-                        variant="success"
-                        hideOnSuccess
-                        doneLabel="✓ Approved"
-                      />
-                    )}
+                    <span className="text-[10px] font-semibold text-green-700">Active owner</span>
                   </div>
                 </div>
               </div>

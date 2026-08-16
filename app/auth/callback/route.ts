@@ -8,7 +8,7 @@ const ALLOWED_REDIRECTS = new Set(["/auth/redirect"]);
 
 // Intent marker used by the owner-registration Google flow. This is NOT a
 // redirect target — it's a signal that the just-authenticated user should be
-// upgraded customer → owner_pending (see handleOwnerIntent). The owner-register
+// upgraded customer → owner_approved (see handleOwnerIntent). The owner-register
 // page sends ?next=/auth/set-owner-role.
 const OWNER_INTENT = "/auth/set-owner-role";
 
@@ -47,16 +47,20 @@ function safeNext(raw: string | null): string {
 }
 
 /**
- * Upgrade a freshly-authenticated user customer → owner_pending.
+ * Upgrade a freshly-authenticated user customer → owner_approved (ACTIVE owner).
+ *
+ * Owner JOINING approval was removed (migration 0019): the hall is the only
+ * approval gate. This still cannot reach admin/any elevated role.
  *
  * SECURITY — why this is now CSRF-safe:
  *   • This only runs INSIDE the callback, AFTER exchangeCodeForSession()
  *     succeeds. The OAuth `code` is single-use and unforgeable, so an attacker
  *     cannot trigger this with just a victim's session cookie (which is exactly
  *     what made the old standalone GET /auth/set-owner-role endpoint forgeable).
- *   • Privilege-safe: only ever customer → owner_pending. owner_pending grants
- *     nothing until an admin approves; it can never reach owner_approved/admin
- *     here.
+ *   • Privilege-safe: only ever customer → owner_approved. An owner can manage
+ *     their own halls but publishes nothing on their own — every hall still
+ *     requires admin approval before customers see it. This can never reach
+ *     'admin' here.
  *   • Idempotent: a repeat run is a no-op once role != 'customer'.
  *
  * The service-role client is required because RLS + the prevent_role_change
@@ -79,12 +83,12 @@ async function handleOwnerIntent(userId: string): Promise<void> {
     .eq("id", userId)
     .maybeSingle();
 
-  // Only ever customer → owner_pending. Never touch an already-elevated role
-  // (owner_pending/owner_approved/admin) — idempotent and privilege-safe.
+  // Only ever customer → owner_approved. Never touch an already-elevated role
+  // (owner_approved/admin) — idempotent and privilege-safe.
   if ((profile as { role: string } | null)?.role === "customer") {
     await adminAny
       .from("profiles")
-      .update({ role: "owner_pending" })
+      .update({ role: "owner_approved" })
       .eq("id", userId);
   }
 }
@@ -110,10 +114,10 @@ export async function GET(request: Request) {
   // fresh OAuth completion, so this is the one place it's safe to mutate role.
   if (next === OWNER_INTENT) {
     await handleOwnerIntent(data.user.id);
-    // Route through the role router rather than hardcoding /approval-pending:
-    // it reads the user's ACTUAL role and sends them to the right place. If the
-    // upgrade landed → owner_pending → /approval-pending; if it somehow didn't
-    // → /customer, instead of bouncing off the owner_pending-only gate.
+    // Route through the role router rather than hardcoding a destination: it
+    // reads the user's ACTUAL role and sends them to the right place. If the
+    // upgrade landed → owner_approved → /owner/dashboard; if it somehow didn't
+    // → /customer.
     return NextResponse.redirect(`${origin}/auth/redirect`);
   }
 

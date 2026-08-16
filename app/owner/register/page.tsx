@@ -44,7 +44,7 @@ export default function OwnerRegisterPage() {
       toast({ title: "Registration failed", description: error.message, variant: "destructive" });
     } else if (data.session) {
       toast({ title: "Registration submitted!", variant: "success" });
-      router.push("/approval-pending");
+      router.push("/owner/dashboard");
       router.refresh();
     } else {
       setDone(true);
@@ -71,7 +71,7 @@ export default function OwnerRegisterPage() {
           <p className="text-sm text-muted-foreground">
             We sent a confirmation link to{" "}
             <strong className="text-charcoal-800">{email}</strong>.
-            Click it to activate your account, then wait for admin approval.
+            Click it to activate your account. Your owner account is ready — add your hall to begin verification.
           </p>
           <Link href="/login" className="inline-block text-sm font-semibold text-maroon-600 hover:underline">
             Back to Sign In
@@ -102,7 +102,7 @@ export default function OwnerRegisterPage() {
               <div className="text-sm text-charcoal-700">
                 <p className="font-medium text-maroon-800">Owner Account</p>
                 <p className="mt-1 text-muted-foreground">
-                  After registration, your account will be reviewed by our team.
+                  Your owner account is ready as soon as you register. Each hall you add is reviewed by our team before it goes live.
                   Once approved, you can list halls and manage bookings.
                 </p>
               </div>

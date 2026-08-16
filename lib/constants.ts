@@ -63,7 +63,9 @@ export function getDashboardPath(role: string): string {
   switch (role) {
     case "customer":       return "/customer";
     case "owner_approved": return "/owner/dashboard";
-    case "owner_pending":  return "/approval-pending";
+    // Legacy value — owner joining approval was removed (migration 0019).
+    // Any stale session carrying it lands on the owner dashboard.
+    case "owner_pending":  return "/owner/dashboard";
     case "admin":          return "/admin/dashboard";
     default:               return "/";
   }

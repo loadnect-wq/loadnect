@@ -21,12 +21,6 @@ export default async function AdminDashboardPage() {
       color: "border-amber-200 bg-amber-50 text-amber-900",
     },
     {
-      count: stats.open.pendingOwners,
-      label: "Owners pending verification",
-      href:  "/admin/owners",
-      color: "border-blue-200 bg-blue-50 text-blue-900",
-    },
-    {
       count: stats.open.openTickets,
       label: "Open support tickets",
       href:  "/admin/support-tickets",
@@ -78,8 +72,7 @@ export default async function AdminDashboardPage() {
           {/* Users */}
           <StatGroup title="Users" icon={<Users className="h-4 w-4 text-maroon-600" />} href="/admin/users">
             <StatRow label="Customers"      value={stats.users.customers} />
-            <StatRow label="Approved owners" value={stats.users.ownersApproved} />
-            <StatRow label="Pending owners" value={stats.users.ownersPending} highlight={stats.users.ownersPending > 0} />
+            <StatRow label="Owners"         value={stats.users.ownersApproved} />
             <StatRow label="Admins"         value={stats.users.admins} />
             <StatRow label="Total"          value={stats.users.total} divider />
           </StatGroup>

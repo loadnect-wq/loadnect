@@ -254,7 +254,9 @@ export async function fetchAdminStats(): Promise<AdminStats> {
   empty.revenue.ownerPayouts = commissions.reduce((s, c) => s + Number(c.owner_payout_amount), 0);
 
   empty.open.pendingHalls  = empty.halls.pending;
-  empty.open.pendingOwners = empty.users.ownersPending;
+  // Owner joining approval was removed (migration 0019) — the hall is the only
+  // approval gate, so there is never an owner waiting to be let in.
+  empty.open.pendingOwners = 0;
   empty.open.openTickets   = ((ticketsRes.data ?? []) as { status: string }[])
     .filter((t) => t.status === "open" || t.status === "in_progress").length;
   empty.open.pendingAds    = ((adsRes.data ?? []) as { status: string }[])

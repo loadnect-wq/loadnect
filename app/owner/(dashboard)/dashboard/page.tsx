@@ -85,7 +85,7 @@ export default async function OwnerDashboardPage() {
           {!ownerRow.is_verified && (
             <div className="mt-3 flex items-center gap-2 rounded-xl bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-800">
               <Clock className="h-3.5 w-3.5 shrink-0" />
-              Your business profile is pending admin verification.
+              Your business details are awaiting verification. You can add and manage halls in the meantime — each hall is approved separately.
             </div>
           )}
         </div>
