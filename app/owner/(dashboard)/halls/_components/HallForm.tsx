@@ -1,14 +1,23 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Sparkles, X } from "lucide-react";
+import { ImagePlus, Plus, Sparkles, Star, X } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/Button";
 import { type OwnerAmenity, type OwnerHallDetail } from "@/lib/owner";
 import { createHall, updateHall } from "@/app/owner/(dashboard)/actions";
-import { normalizeAmenityName, CUSTOM_AMENITY_LIMITS } from "@/lib/validation/schemas";
+import { normalizeAmenityName, CUSTOM_AMENITY_LIMITS, validateImageFile } from "@/lib/validation/schemas";
+import { getSupabaseClient } from "@/lib/supabase/client";
+import { addHallImage } from "@/app/owner/(dashboard)/actions";
+
+// Extension comes from the validated MIME type, never the untrusted filename.
+const EXT_BY_MIME: Record<string, string> = {
+  "image/jpeg": "jpg",
+  "image/png":  "png",
+  "image/webp": "webp",
+};
 
 interface Props {
   ownerId:    string;
@@ -47,6 +56,14 @@ export function HallForm({ ownerId, amenities, hall }: Props) {
   const [customDraft,  setCustomDraft]  = useState("");
   const [customError,  setCustomError]  = useState<string | null>(null);
 
+  // Photos chosen in THIS form. They are local previews until the hall exists —
+  // a hall id is required before an image can be permanently associated, so the
+  // upload happens immediately after createHall returns (see handleSubmit).
+  const [photos, setPhotos] = useState<{ key: string; file: File; preview: string }[]>([]);
+  const [photoError, setPhotoError] = useState<string | null>(null);
+  const [uploadNote, setUploadNote] = useState<string | null>(null);
+  const photoRef = useRef<HTMLInputElement>(null);
+
   function toggleAmenity(id: string) {
     setSelectedAms((prev) => {
       const next = new Set(prev);
@@ -79,6 +96,62 @@ export function HallForm({ ownerId, amenities, hall }: Props) {
     setCustomDraft("");
   }
 
+  function handlePhotoPick(e: React.ChangeEvent<HTMLInputElement>) {
+    const picked = Array.from(e.target.files ?? []);
+    setPhotoError(null);
+    const accepted: typeof photos = [];
+    for (const file of picked) {
+      const check = validateImageFile(file);
+      if (!check.ok) { setPhotoError(`${file.name}: ${check.error}`); continue; }
+      accepted.push({ key: `${Date.now()}-${file.name}-${accepted.length}`, file, preview: URL.createObjectURL(file) });
+    }
+    setPhotos((prev) => [...prev, ...accepted]);
+    if (photoRef.current) photoRef.current.value = "";
+  }
+
+  function removePhoto(key: string) {
+    setPhotos((prev) => {
+      const target = prev.find((p) => p.key === key);
+      if (target) URL.revokeObjectURL(target.preview);
+      return prev.filter((p) => p.key !== key);
+    });
+  }
+
+  /** Uploads the chosen photos against a real hall id. Returns how many landed. */
+  async function uploadPhotos(hallId: string): Promise<{ uploaded: number; failed: number }> {
+    const supabase = getSupabaseClient();
+    let uploaded = 0;
+    let failed = 0;
+
+    for (let i = 0; i < photos.length; i++) {
+      const { file } = photos[i];
+      setUploadNote(`Uploading photo ${i + 1} of ${photos.length}…`);
+      const ext  = EXT_BY_MIME[file.type] ?? "jpg";
+      const path = `${hallId}/${crypto.randomUUID()}.${ext}`;
+      try {
+        const { error: sErr } = await supabase.storage
+          .from("hall-images").upload(path, file, { upsert: false, contentType: file.type });
+        if (sErr) throw new Error(sErr.message);
+
+        const { data: urlData } = supabase.storage.from("hall-images").getPublicUrl(path);
+        const res = await addHallImage({
+          hallId, url: urlData.publicUrl, storagePath: path,
+          isCover: i === 0, altText: "",
+        });
+        if ("error" in res) {
+          // Never leave an object with no row behind it.
+          await supabase.storage.from("hall-images").remove([path]).catch(() => {});
+          throw new Error(res.error);
+        }
+        uploaded += 1;
+      } catch {
+        failed += 1;
+      }
+    }
+    setUploadNote(null);
+    return { uploaded, failed };
+  }
+
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
@@ -98,12 +171,32 @@ export function HallForm({ ownerId, amenities, hall }: Props) {
       const result = hall
         ? await updateHall(hall.id, data)
         : await createHall(data);
-      if ("error" in result) {
-        setError(result.error);
-      } else if (hall) {
+
+      if ("error" in result) { setError(result.error); return; }
+
+      if (hall) {
         router.push("/owner/halls");
+        return;
       }
-      // createHall does a server-side redirect on success
+
+      // New hall: the record now exists, so photos can be attached to it.
+      const newId = result.id;
+      if (!newId) { setError("Hall was created but its reference is missing. Open My Halls to continue."); return; }
+
+      if (photos.length > 0) {
+        const { failed } = await uploadPhotos(newId);
+        if (failed > 0) {
+          // Do NOT claim a clean submission when photos were lost.
+          setError(
+            `Your hall was submitted, but ${failed} of ${photos.length} photo(s) failed to upload. ` +
+            `Open Manage Photos to add them.`,
+          );
+          router.push(`/owner/halls/${newId}/images`);
+          return;
+        }
+      }
+
+      router.push(`/owner/halls/${newId}/images?submitted=1`);
     });
   }
 
@@ -284,12 +377,89 @@ export function HallForm({ ownerId, amenities, hall }: Props) {
         {customError && <p className="mt-2 text-xs text-red-600">{customError}</p>}
       </FormSection>
 
+      {/* Hall photos — part of THIS form; uploaded the moment the hall exists */}
+      {!isEdit && (
+        <FormSection title="Hall Photos">
+          <p className="text-xs text-charcoal-500">
+            Add photos of your venue. The first photo becomes the cover customers see.
+            JPEG, PNG or WebP, up to 5 MB each.
+          </p>
+
+          <button
+            type="button"
+            onClick={() => photoRef.current?.click()}
+            className="mt-3 flex w-full flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-border bg-white px-6 py-8 transition-colors hover:border-maroon-400 hover:bg-maroon-50/30"
+          >
+            <ImagePlus className="h-7 w-7 text-charcoal-400" aria-hidden />
+            <span className="text-sm font-medium text-charcoal-700">Upload photos</span>
+            <span className="text-xs text-charcoal-500">You can select several at once</span>
+          </button>
+          <input
+            ref={photoRef}
+            type="file"
+            multiple
+            accept="image/jpeg,image/png,image/webp"
+            className="sr-only"
+            onChange={handlePhotoPick}
+          />
+
+          {photoError && <p className="mt-2 text-xs text-red-600">{photoError}</p>}
+
+          {photos.length > 0 && (
+            <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
+              {photos.map((p, i) => (
+                <div key={p.key} className="relative overflow-hidden rounded-2xl bg-charcoal-100">
+                  <div className="aspect-[4/3] w-full">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={p.preview} alt="" className="h-full w-full object-cover" />
+                  </div>
+                  {i === 0 && (
+                    <span className="absolute left-2 top-2 inline-flex items-center gap-1 rounded-full bg-gold-500 px-2 py-0.5 text-[10px] font-bold text-white">
+                      <Star className="h-2.5 w-2.5 fill-white" aria-hidden /> Cover
+                    </span>
+                  )}
+                  <div className="absolute inset-x-0 bottom-0 flex justify-end bg-gradient-to-t from-black/60 to-transparent p-1.5">
+                    <button
+                      type="button"
+                      onClick={() => removePhoto(p.key)}
+                      aria-label={`Remove photo ${i + 1}`}
+                      className="flex h-11 w-11 items-center justify-center rounded-full bg-white/95 text-red-600 transition active:scale-95 motion-reduce:active:scale-100"
+                    >
+                      <X className="h-4 w-4" aria-hidden />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </FormSection>
+      )}
+
+      {/* Review — what will be submitted */}
+      {!isEdit && (
+        <FormSection title="Review">
+          <dl className="grid grid-cols-2 gap-3 text-xs sm:grid-cols-3">
+            <ReviewItem label="Hall name" value={name || "—"} />
+            <ReviewItem label="Location" value={[city, state].filter(Boolean).join(", ") || "—"} />
+            <ReviewItem label="Capacity" value={capMax ? `Up to ${capMax}` : "—"} />
+            <ReviewItem label="Price / day" value={priceDay ? `₹${priceDay}` : "—"} />
+            <ReviewItem label="Amenities" value={`${selectedAms.size} standard · ${customAms.length} custom`} />
+            <ReviewItem label="Photos" value={photos.length === 1 ? "1 selected" : `${photos.length} selected`} />
+          </dl>
+          <p className="mt-3 rounded-xl bg-ivory-100 p-3 text-xs text-charcoal-600">
+            Submitting sends your hall and photos to the Hallnect team for verification.
+            It stays private until it is approved.
+          </p>
+        </FormSection>
+      )}
+
       {/* Submit */}
       <div className="flex items-center gap-3">
+        {/* disabled while pending — blocks double-submit creating duplicate halls */}
         <Button type="submit" variant="gold" isLoading={pending} disabled={pending}>
           {pending
-            ? isEdit ? "Saving…" : "Creating…"
-            : isEdit ? "Save Changes" : "Create Hall"}
+            ? (uploadNote ?? (isEdit ? "Saving…" : "Submitting…"))
+            : isEdit ? "Save Changes" : "Submit Hall for Verification"}
         </Button>
         <button
           type="button"
@@ -300,6 +470,15 @@ export function HallForm({ ownerId, amenities, hall }: Props) {
         </button>
       </div>
     </form>
+  );
+}
+
+function ReviewItem({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-xl bg-ivory-50 px-3 py-2">
+      <dt className="text-[10px] font-semibold uppercase tracking-wide text-charcoal-500">{label}</dt>
+      <dd className="mt-0.5 truncate font-medium text-charcoal-800">{value}</dd>
+    </div>
   );
 }
 

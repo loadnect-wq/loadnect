@@ -222,7 +222,11 @@ export async function createHall(data: {
 
   revalidatePath("/owner/halls");
   revalidatePath("/owner/dashboard");
-  redirect(`/owner/halls/${hall.id}/images`);
+  // Return the id rather than redirecting: the Add Hall form uploads the
+  // owner's selected photos against this real hall id before navigating, so the
+  // whole submission (details + amenities + photos) lands in one action for the
+  // owner. Redirecting here would abort that with a NEXT_REDIRECT throw.
+  return { success: true, id: hall.id };
 }
 
 // ── Update hall ───────────────────────────────────────────────────────────────
