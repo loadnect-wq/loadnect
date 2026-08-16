@@ -145,9 +145,20 @@ export async function fetchOwnerRow(): Promise<OwnerRow | null> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = supabase as any;
 
+  // Identity from the session — never inferred from the row set.
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return null;
+
+  // EXPLICIT profile_id filter (defense in depth). Previously this relied
+  // solely on RLS to scope the row, which is wrong for any caller that can see
+  // more than their own row: hall_owners_select also permits is_admin(), so an
+  // admin got EVERY owner row and .maybeSingle() then errored (or, worse, a
+  // single-row DB would hand back somebody else's owner id — which then fails
+  // the halls_insert WITH CHECK owns_owner_row() test as a 42501).
   const { data, error } = await db
     .from("hall_owners")
     .select("id, profile_id, business_name, business_email, business_phone, gst_number, pan_number, address, city, state, payout_upi, is_verified")
+    .eq("profile_id", user.id)
     .maybeSingle();
 
   if (error) { handleError("fetchOwnerRow", error); return null; }

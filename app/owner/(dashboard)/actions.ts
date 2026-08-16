@@ -146,6 +146,34 @@ export async function createHall(data: {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = supabase as any;
 
+  // ── Derive the owner SERVER-SIDE; never trust the client's ownerId ──────────
+  // The form carries an ownerId, but a stale/cached page (or a tampered
+  // payload) can supply one that isn't this user's. halls_insert WITH CHECK
+  // then fails owns_owner_row() and Postgres returns a bare 42501 that tells
+  // the owner nothing. Resolve the real row here and use it as the source of
+  // truth, so the insert can only ever target the caller's own owner record.
+  const { data: ownerRow, error: ownerErr } = await db
+    .from("hall_owners")
+    .select("id")
+    .eq("profile_id", user.id)
+    .maybeSingle();
+
+  if (ownerErr) return { error: sanitizeError(ownerErr, "owner") };
+  if (!ownerRow?.id) {
+    return { error: "Complete your business profile before adding a hall." };
+  }
+
+  // Role gate mirrored in the app layer so the failure is explainable. RLS
+  // (is_owner_approved) remains the authority — this only produces a better
+  // message than a raw constraint violation.
+  const { data: profileRow } = await db
+    .from("profiles").select("role").eq("id", user.id).maybeSingle();
+  if (profileRow?.role !== "owner_approved") {
+    return { error: "Your owner account is awaiting admin approval before you can list a hall." };
+  }
+
+  const ownerId: string = ownerRow.id;
+
   // Generate a unique slug
   let slug = generateSlug(v.name, v.city);
   const { data: existing } = await db
@@ -158,7 +186,7 @@ export async function createHall(data: {
   }
 
   const { data: hall, error } = await db.from("halls").insert({
-    owner_id:     v.ownerId,
+    owner_id:     ownerId, // server-derived, not v.ownerId
     name:         v.name,
     slug,
     description:  v.description || null,
@@ -340,10 +368,37 @@ export async function deleteHallImage(hallId: string, imageId: string): Promise<
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = supabase as any;
 
+  // Read the row FIRST so we know which storage object to remove, and so the
+  // image is confirmed to belong to the hall named in the request (RLS already
+  // restricts this to halls the caller owns; this pins the pair as well).
+  const { data: image, error: readErr } = await db
+    .from("hall_images")
+    .select("id, hall_id, storage_path")
+    .eq("id", imageId)
+    .eq("hall_id", hallId)
+    .maybeSingle();
+
+  if (readErr) return { error: sanitizeError(readErr, "owner") };
+  if (!image) return { error: "Image not found." };
+
   const { error } = await db.from("hall_images").delete().eq("id", imageId);
   if (error) return { error: sanitizeError(error, "owner") };
 
+  // Remove the underlying storage object so deleting an image doesn't leave an
+  // orphaned file in the bucket. Partial failure is deliberately non-fatal: the
+  // DB row (the thing users see) is already gone, so we log for cleanup rather
+  // than surfacing an error for a delete the owner perceives as successful.
+  if (image.storage_path) {
+    const { error: storageErr } = await supabase.storage
+      .from("hall-images")
+      .remove([image.storage_path]);
+    if (storageErr) {
+      console.error("[deleteHallImage] orphaned storage object", image.storage_path, storageErr.message);
+    }
+  }
+
   revalidatePath(`/owner/halls/${hallId}/images`);
+  revalidatePath(`/owner/halls/${hallId}/edit`);
   return { success: true };
 }
 
