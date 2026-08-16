@@ -35,6 +35,7 @@ export type OwnerHall = {
   rating_average: number;
   rating_count:   number;
   cover_url:      string | null;
+  image_count:    number;
   created_at:     string;
 };
 
@@ -188,6 +189,7 @@ export async function fetchOwnerHalls(ownerId: string): Promise<OwnerHall[]> {
     const imgs: { url: string; is_cover: boolean }[] = row.hall_images ?? [];
     const coverUrl = imgs.find((i) => i.is_cover)?.url ?? imgs[0]?.url ?? null;
     return {
+      image_count:    imgs.length,
       id:             row.id,
       slug:           row.slug,
       name:           row.name,
@@ -227,6 +229,7 @@ export async function fetchOwnerHall(hallId: string): Promise<OwnerHallDetail | 
   const amenityIds: string[] = (data.hall_amenities ?? []).map((ha: any) => ha.amenity_id as string);
 
   return {
+    image_count:    imgs.length,
     id:             data.id,
     slug:           data.slug,
     name:           data.name,

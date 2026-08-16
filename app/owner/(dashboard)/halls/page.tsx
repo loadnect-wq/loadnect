@@ -89,7 +89,7 @@ export default async function OwnerHallsPage() {
                   <div className="grid grid-cols-4 border-t border-border text-[11px] font-semibold divide-x divide-border">
                     {[
                       { label: "Edit",         href: `/owner/halls/${hall.id}/edit`         },
-                      { label: "Images",        href: `/owner/halls/${hall.id}/images`       },
+                      { label: hall.image_count === 1 ? "1 Photo" : `${hall.image_count} Photos`, href: `/owner/halls/${hall.id}/images` },
                       { label: "Availability",  href: `/owner/halls/${hall.id}/availability` },
                       { label: "View",          href: `/halls/${hall.slug}`                  },
                     ].map((action) => (
