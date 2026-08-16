@@ -13,6 +13,9 @@ import {
   availabilityBatchSchema,
   uuidSchema,
   parseSafe,
+  normalizeAmenityName,
+  CUSTOM_AMENITY_LIMITS,
+  customAmenityListSchema,
 } from "@/lib/validation/schemas";
 import { sanitizeError } from "@/lib/errors";
 
@@ -135,6 +138,7 @@ export async function createHall(data: {
   priceEvening: string;
   description:  string;
   amenityIds:   string[];
+  customAmenities?: string[];
 }): Promise<ActionResult> {
   const { supabase, user } = await getAuthUser();
   if (!user) return { error: "Not authenticated" };
@@ -211,6 +215,11 @@ export async function createHall(data: {
     );
   }
 
+  const customParsed = parseSafe(customAmenityListSchema, data.customAmenities ?? []);
+  if (!customParsed.ok) return { error: customParsed.error };
+  const customErr = await syncCustomAmenities(db, hall.id, customParsed.data);
+  if (customErr) return { error: customErr };
+
   revalidatePath("/owner/halls");
   revalidatePath("/owner/dashboard");
   redirect(`/owner/halls/${hall.id}/images`);
@@ -233,6 +242,7 @@ export async function updateHall(hallId: string, data: {
   priceEvening: string;
   description:  string;
   amenityIds:   string[];
+  customAmenities?: string[];
 }): Promise<ActionResult> {
   const { supabase, user } = await getAuthUser();
   if (!user) return { error: "Not authenticated" };
@@ -274,9 +284,80 @@ export async function updateHall(hallId: string, data: {
     );
   }
 
+  const customParsed = parseSafe(customAmenityListSchema, data.customAmenities ?? []);
+  if (!customParsed.ok) return { error: customParsed.error };
+  const customErr = await syncCustomAmenities(db, hallId, customParsed.data);
+  if (customErr) return { error: customErr };
+
   revalidatePath(`/owner/halls/${hallId}/edit`);
   revalidatePath("/owner/halls");
   return { success: true };
+}
+
+
+// ── Custom amenities sync (owner-defined, per hall) ───────────────────────────
+//
+// SECURITY: callers MUST have already verified that `hallId` belongs to the
+// authenticated owner. RLS (hall_custom_amenities_write → owns_hall) is the
+// authority; this helper only shapes the data.
+//
+// Behaviour: full reconcile against the submitted list — rows the owner removed
+// are deleted, new ones inserted, untouched ones left alone (so an unrelated
+// hall edit never drops existing custom amenities).
+async function syncCustomAmenities(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  db: any,
+  hallId: string,
+  names: string[],
+): Promise<string | null> {
+  // De-duplicate within the submission itself (case/whitespace-insensitive),
+  // mirroring the uq_hca_hall_name index.
+  const seen = new Map<string, string>();
+  for (const raw of names) {
+    const clean = normalizeAmenityName(raw);
+    if (clean) seen.set(clean.toLowerCase(), clean);
+  }
+
+  // Reject anything that duplicates a STANDARD amenity — the owner should tick
+  // the catalogue entry instead of inventing a second "Parking".
+  const { data: standard } = await db.from("amenities").select("name");
+  const standardKeys = new Set(
+    ((standard ?? []) as { name: string }[]).map((a) => a.name.trim().toLowerCase()),
+  );
+  for (const [key, label] of seen) {
+    if (standardKeys.has(key)) {
+      return `"${label}" is already a standard amenity — select it above instead.`;
+    }
+  }
+
+  const wanted = [...seen.values()];
+  if (wanted.length > CUSTOM_AMENITY_LIMITS.maxPerHall) {
+    return `You can add up to ${CUSTOM_AMENITY_LIMITS.maxPerHall} custom amenities.`;
+  }
+
+  const { data: existing } = await db
+    .from("hall_custom_amenities").select("id, name").eq("hall_id", hallId);
+  const existingRows = (existing ?? []) as { id: string; name: string }[];
+  const existingKeys = new Map(existingRows.map((r) => [r.name.trim().toLowerCase(), r]));
+  const wantedKeys   = new Set(wanted.map((n) => n.toLowerCase()));
+
+  const toDelete = existingRows.filter((r) => !wantedKeys.has(r.name.trim().toLowerCase()));
+  if (toDelete.length > 0) {
+    const { error } = await db
+      .from("hall_custom_amenities").delete().in("id", toDelete.map((r) => r.id));
+    if (error) return sanitizeError(error, "owner");
+  }
+
+  const toInsert = wanted
+    .map((name, i) => ({ name, i }))
+    .filter(({ name }) => !existingKeys.has(name.toLowerCase()))
+    .map(({ name, i }) => ({ hall_id: hallId, name, sort_order: i }));
+  if (toInsert.length > 0) {
+    const { error } = await db.from("hall_custom_amenities").insert(toInsert);
+    if (error) return sanitizeError(error, "owner");
+  }
+
+  return null;
 }
 
 // ── Submit hall for approval ──────────────────────────────────────────────────

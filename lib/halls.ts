@@ -93,6 +93,7 @@ export type HallDetail = {
   rating_count:   number;
   images:         HallImage[];
   amenities:      HallAmenity[];
+  custom_amenities: string[];
   availability:   AvailabilityRow[];
   reviews:        HallReview[];
 };
@@ -283,7 +284,8 @@ export async function fetchHallBySlug(slug: string): Promise<HallDetail | null> 
       description, status, is_premium, premium_tier,
       rating_average, rating_count,
       hall_images(url, is_cover, alt_text, sort_order),
-      hall_amenities(amenities(name, slug, icon))
+      hall_amenities(amenities(name, slug, icon)),
+      hall_custom_amenities(name, sort_order)
     `;
   const SELECT_LEGACY = SELECT_WITH_TIER.replace(", premium_tier", "");
 
@@ -371,6 +373,15 @@ export async function fetchHallBySlug(slug: string): Promise<HallDetail | null> 
     }))
     .filter((a) => !!a.name);
 
+  // Owner-defined amenities. RLS (hall_custom_amenities_select) only returns
+  // these when the hall is approved or the caller owns it / is admin, so a
+  // pending hall never leaks its wording.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const customAmenities: string[] = ((hall.hall_custom_amenities ?? []) as any[])
+    .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+    .map((c) => (c.name as string) ?? "")
+    .filter(Boolean);
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const availability: AvailabilityRow[] = ((availRows ?? []) as any[]).map((r) => ({
     date:   r.date   as string,
@@ -413,6 +424,7 @@ export async function fetchHallBySlug(slug: string): Promise<HallDetail | null> 
     rating_count:   hall.rating_count,
     images,
     amenities,
+    custom_amenities: customAmenities,
     availability,
     reviews,
   };

@@ -75,6 +75,25 @@ export default async function HallApprovalsPage() {
                       <Field label="Submitted" value={fmtDate(h.created_at)} />
                     </div>
 
+                    {/* Owner-defined amenities submitted for review */}
+                    {h.custom_amenities.length > 0 && (
+                      <div className="rounded-xl border border-gold-200 bg-gold-50/60 p-3">
+                        <p className="text-[10px] font-bold uppercase tracking-wide text-charcoal-500">
+                          Custom amenities submitted ({h.custom_amenities.length})
+                        </p>
+                        <ul className="mt-2 flex flex-wrap gap-1.5">
+                          {h.custom_amenities.map((name) => (
+                            <li
+                              key={name.toLowerCase()}
+                              className="rounded-full border border-gold-300 bg-white px-2.5 py-1 text-[11px] font-medium text-charcoal-800"
+                            >
+                              {name}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
                     {/* Actions */}
                     <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3">
                       <Link

@@ -49,6 +49,7 @@ export type OwnerHallDetail = OwnerHall & {
   price_morning: number | null;
   price_evening: number | null;
   amenity_ids:   string[];
+  custom_amenities: string[];
 };
 
 export type OwnerAmenity = {
@@ -216,7 +217,7 @@ export async function fetchOwnerHall(hallId: string): Promise<OwnerHallDetail | 
 
   const { data, error } = await db
     .from("halls")
-    .select("id, slug, name, city, state, address, pincode, latitude, longitude, capacity_min, capacity_max, price_per_day, price_morning, price_evening, description, status, is_premium, rating_average, rating_count, created_at, hall_images(url, is_cover), hall_amenities(amenity_id)")
+    .select("id, slug, name, city, state, address, pincode, latitude, longitude, capacity_min, capacity_max, price_per_day, price_morning, price_evening, description, status, is_premium, rating_average, rating_count, created_at, hall_images(url, is_cover), hall_amenities(amenity_id), hall_custom_amenities(name, sort_order)")
     .eq("id", hallId)
     .maybeSingle();
 
@@ -228,7 +229,12 @@ export async function fetchOwnerHall(hallId: string): Promise<OwnerHallDetail | 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const amenityIds: string[] = (data.hall_amenities ?? []).map((ha: any) => ha.amenity_id as string);
 
+  const customAmenities: string[] = ((data.hall_custom_amenities ?? []) as { name: string; sort_order: number }[])
+    .sort((a, b) => a.sort_order - b.sort_order)
+    .map((c) => c.name);
+
   return {
+    custom_amenities: customAmenities,
     image_count:    imgs.length,
     id:             data.id,
     slug:           data.slug,

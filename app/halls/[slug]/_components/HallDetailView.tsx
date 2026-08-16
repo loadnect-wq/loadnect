@@ -248,6 +248,26 @@ export function HallDetailView({ hall, similar, isPreview, sidebarAd }: Props) {
                     </div>
                   ))}
                 </div>
+
+                {/* Owner-defined amenities — plain text, never raw HTML */}
+                {hall.custom_amenities.length > 0 && (
+                  <>
+                    <h3 className="mt-5 text-xs font-semibold uppercase tracking-wide text-charcoal-500">
+                      Special Amenities
+                    </h3>
+                    <ul className="mt-2 flex flex-wrap gap-2">
+                      {hall.custom_amenities.map((name) => (
+                        <li
+                          key={name.toLowerCase()}
+                          className="inline-flex items-center gap-1.5 rounded-full border border-gold-300 bg-gold-50 px-3 py-1.5 text-xs font-medium text-charcoal-800"
+                        >
+                          <Sparkles className="h-3 w-3 shrink-0 text-gold-600" aria-hidden />
+                          {name}
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                )}
               </section>
             )}
 

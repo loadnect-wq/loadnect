@@ -51,6 +51,7 @@ export type AdminHallRow = {
   cover_url:      string | null;
   owner_name:     string | null;
   owner_business: string | null;
+  custom_amenities: string[];
   created_at:     string;
 };
 
@@ -341,7 +342,7 @@ export async function fetchAllHalls(statusFilter?: string): Promise<AdminHallRow
     .from("halls")
     // profiles!profile_id — see fetchAllOwners: the hall_owners→profiles embed
     // is ambiguous (profile_id vs verified_by) and must be disambiguated.
-    .select("id, slug, name, city, state, status, is_premium, capacity_max, price_per_day, rating_average, rating_count, created_at, hall_images(url, is_cover), hall_owners(business_name, profiles!profile_id(full_name))")
+    .select("id, slug, name, city, state, status, is_premium, capacity_max, price_per_day, rating_average, rating_count, created_at, hall_images(url, is_cover), hall_owners(business_name, profiles!profile_id(full_name)), hall_custom_amenities(name, sort_order)")
     .order("created_at", { ascending: false });
 
   if (statusFilter) query = query.eq("status", statusFilter);
@@ -368,6 +369,12 @@ export async function fetchAllHalls(statusFilter?: string): Promise<AdminHallRow
       cover_url:      coverUrl,
       owner_name:     row.hall_owners?.profiles?.full_name ?? null,
       owner_business: row.hall_owners?.business_name      ?? null,
+      // Owner-defined amenities so the reviewer sees exactly what was submitted.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      custom_amenities: ((row.hall_custom_amenities ?? []) as any[])
+        .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+        .map((c) => (c.name as string) ?? "")
+        .filter(Boolean),
       created_at:     row.created_at,
     };
   });

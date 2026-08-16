@@ -2,11 +2,13 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { Plus, Sparkles, X } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/Button";
 import { type OwnerAmenity, type OwnerHallDetail } from "@/lib/owner";
 import { createHall, updateHall } from "@/app/owner/(dashboard)/actions";
+import { normalizeAmenityName, CUSTOM_AMENITY_LIMITS } from "@/lib/validation/schemas";
 
 interface Props {
   ownerId:    string;
@@ -39,6 +41,11 @@ export function HallForm({ ownerId, amenities, hall }: Props) {
   const [priceEven,    setPriceEven]    = useState(String(hall?.price_evening ?? ""));
   const [description,  setDescription]  = useState(hall?.description   ?? "");
   const [selectedAms,  setSelectedAms]  = useState<Set<string>>(new Set(hall?.amenity_ids ?? []));
+  // Custom amenities live in form state and are saved with the hall, so they
+  // follow the normal approval flow rather than publishing on their own.
+  const [customAms,    setCustomAms]    = useState<string[]>(hall?.custom_amenities ?? []);
+  const [customDraft,  setCustomDraft]  = useState("");
+  const [customError,  setCustomError]  = useState<string | null>(null);
 
   function toggleAmenity(id: string) {
     setSelectedAms((prev) => {
@@ -46,6 +53,30 @@ export function HallForm({ ownerId, amenities, hall }: Props) {
       next.has(id) ? next.delete(id) : next.add(id);
       return next;
     });
+  }
+
+  function addCustomAmenity() {
+    const clean = normalizeAmenityName(customDraft);
+    setCustomError(null);
+
+    if (clean.length < CUSTOM_AMENITY_LIMITS.minLength) {
+      setCustomError(`Enter at least ${CUSTOM_AMENITY_LIMITS.minLength} characters.`); return;
+    }
+    if (clean.length > CUSTOM_AMENITY_LIMITS.maxLength) {
+      setCustomError(`Keep it under ${CUSTOM_AMENITY_LIMITS.maxLength} characters.`); return;
+    }
+    if (customAms.length >= CUSTOM_AMENITY_LIMITS.maxPerHall) {
+      setCustomError(`You can add up to ${CUSTOM_AMENITY_LIMITS.maxPerHall} custom amenities.`); return;
+    }
+    const key = clean.toLowerCase();
+    if (customAms.some((c) => c.toLowerCase() === key)) {
+      setCustomError("This amenity already exists."); return;
+    }
+    if (amenities.some((a) => a.name.trim().toLowerCase() === key)) {
+      setCustomError("That's already a standard amenity — tick it above instead."); return;
+    }
+    setCustomAms((prev) => [...prev, clean]);
+    setCustomDraft("");
   }
 
   function handleSubmit(e: React.FormEvent) {
@@ -61,6 +92,7 @@ export function HallForm({ ownerId, amenities, hall }: Props) {
       priceEvening: priceEven,
       description,
       amenityIds: [...selectedAms],
+      customAmenities: customAms,
     };
     startTransition(async () => {
       const result = hall
@@ -197,6 +229,60 @@ export function HallForm({ ownerId, amenities, hall }: Props) {
           ))}
         </FormSection>
       )}
+
+      {/* Custom amenities — owner-defined, unique to this hall */}
+      <FormSection title="Custom Amenities">
+        <p className="text-xs text-charcoal-500">
+          Add facilities unique to your venue. These are reviewed with your hall
+          before they go live. ({customAms.length}/{CUSTOM_AMENITY_LIMITS.maxPerHall})
+        </p>
+
+        {customAms.length > 0 && (
+          <ul className="mt-3 flex flex-wrap gap-2">
+            {customAms.map((name) => (
+              <li key={name.toLowerCase()}>
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-gold-300 bg-gold-50 py-1 pl-3 pr-1 text-xs font-medium text-charcoal-800">
+                  <Sparkles className="h-3 w-3 shrink-0 text-gold-600" aria-hidden />
+                  {name}
+                  <button
+                    type="button"
+                    onClick={() => setCustomAms((prev) => prev.filter((c) => c !== name))}
+                    aria-label={`Remove ${name}`}
+                    className="flex h-8 w-8 items-center justify-center rounded-full text-charcoal-500 transition hover:bg-gold-100 hover:text-red-600 active:scale-95 motion-reduce:active:scale-100"
+                  >
+                    <X className="h-3.5 w-3.5" aria-hidden />
+                  </button>
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+          <input
+            type="text"
+            value={customDraft}
+            onChange={(e) => setCustomDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") { e.preventDefault(); addCustomAmenity(); }
+            }}
+            maxLength={CUSTOM_AMENITY_LIMITS.maxLength}
+            placeholder="e.g. Bridal Makeup Room"
+            aria-label="Custom amenity name"
+            className="min-h-[44px] flex-1 rounded-xl border border-border px-3 text-sm focus:outline-none focus:ring-2 focus:ring-maroon-400"
+          />
+          <button
+            type="button"
+            onClick={addCustomAmenity}
+            disabled={customAms.length >= CUSTOM_AMENITY_LIMITS.maxPerHall}
+            className="inline-flex min-h-[44px] items-center justify-center gap-1.5 rounded-xl bg-maroon-700 px-4 text-sm font-semibold text-white transition active:scale-[0.97] disabled:opacity-60 motion-reduce:active:scale-100"
+          >
+            <Plus className="h-4 w-4" aria-hidden /> Add
+          </button>
+        </div>
+
+        {customError && <p className="mt-2 text-xs text-red-600">{customError}</p>}
+      </FormSection>
 
       {/* Submit */}
       <div className="flex items-center gap-3">
