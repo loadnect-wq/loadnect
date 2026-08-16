@@ -373,12 +373,32 @@ export async function submitHallForApproval(hallId: string): Promise<ActionResul
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = supabase as any;
 
-  const { error } = await db
+  // Only a hall the owner is genuinely allowed to (re)submit may enter the queue.
+  // Without a source-status guard an owner could resurrect a hall an admin had
+  // SUSPENDED (or one already approved) straight back into pending_approval —
+  // prevent_hall_self_approve only blocks approved/rejected/suspended as the NEW
+  // value, so suspended -> pending_approval would otherwise be permitted.
+  const SUBMITTABLE = ["draft", "rejected", "pending_approval"];
+  const { data: current } = await db
+    .from("halls").select("status").eq("id", hallId).maybeSingle();
+
+  if (!current) return { error: "Hall not found." };
+  if (current.status === "suspended") {
+    return { error: "This hall has been suspended by Hallnect. Contact support to restore it." };
+  }
+  if (!SUBMITTABLE.includes(current.status)) {
+    return { error: "This hall cannot be submitted for review from its current status." };
+  }
+
+  const { error, count } = await db
     .from("halls")
-    .update({ status: "pending_approval" })
+    .update({ status: "pending_approval" }, { count: "exact" })
     .eq("id", hallId);
 
   if (error) return { error: sanitizeError(error, "owner") };
+  // An RLS-filtered UPDATE affects 0 rows WITHOUT raising, so `if (error)` alone
+  // would report a success that never happened.
+  if (count === 0) return { error: "You do not have permission to submit this hall." };
   revalidatePath(`/owner/halls/${hallId}/edit`);
   revalidatePath("/owner/halls");
   return { success: true };

@@ -186,12 +186,11 @@ export function HallForm({ ownerId, amenities, hall }: Props) {
       if (photos.length > 0) {
         const { failed } = await uploadPhotos(newId);
         if (failed > 0) {
-          // Do NOT claim a clean submission when photos were lost.
-          setError(
-            `Your hall was submitted, but ${failed} of ${photos.length} photo(s) failed to upload. ` +
-            `Open Manage Photos to add them.`,
-          );
-          router.push(`/owner/halls/${newId}/images`);
+          // Carry the failure in the URL. setError() here would be pointless:
+          // the navigation below unmounts this component immediately, so the
+          // banner would never render and the owner would never learn that
+          // photos were lost.
+          router.push(`/owner/halls/${newId}/images?failed=${failed}&of=${photos.length}`);
           return;
         }
       }

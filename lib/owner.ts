@@ -210,15 +210,29 @@ export async function fetchOwnerHalls(ownerId: string): Promise<OwnerHall[]> {
 
 // ── Fetch single hall (for edit) ──────────────────────────────────────────────
 
+// SECURITY: scoped to the caller's OWN hall. RLS alone is NOT sufficient here:
+// halls_select also permits `status = 'approved'`, so every approved hall in the
+// marketplace is readable by any signed-in user. Without this filter an owner
+// could open another owner's approved hall in the edit/images/availability
+// screens (and any save would then silently affect 0 rows while reporting
+// success, because halls_update USING owns_hall() filters the row out).
 export async function fetchOwnerHall(hallId: string): Promise<OwnerHallDetail | null> {
   const supabase = await getSupabaseServerClient();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = supabase as any;
 
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return null;
+
+  const { data: ownerRow } = await db
+    .from("hall_owners").select("id").eq("profile_id", user.id).maybeSingle();
+  if (!ownerRow?.id) return null;
+
   const { data, error } = await db
     .from("halls")
     .select("id, slug, name, city, state, address, pincode, latitude, longitude, capacity_min, capacity_max, price_per_day, price_morning, price_evening, description, status, is_premium, rating_average, rating_count, created_at, hall_images(url, is_cover), hall_amenities(amenity_id), hall_custom_amenities(name, sort_order)")
     .eq("id", hallId)
+    .eq("owner_id", ownerRow.id)   // ← ownership, not just visibility
     .maybeSingle();
 
   if (error) { handleError("fetchOwnerHall", error); return null; }
