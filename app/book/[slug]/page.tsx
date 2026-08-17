@@ -5,6 +5,7 @@ import { fetchHallBySlug } from "@/lib/halls";
 import { fetchHallAvailabilityWindow } from "@/lib/availability";
 import { getCommissionPercent } from "@/lib/platform-settings";
 import { isCashfreeConfigured } from "@/lib/cashfree";
+import { todayInBusinessTz, addDaysToIsoDate } from "@/lib/dates";
 import { BookingFlow } from "./_components/BookingFlow";
 
 type Props = { params: Promise<{ slug: string }> };
@@ -29,9 +30,9 @@ export default async function BookPage({ params }: Props) {
   if (!hall || hall.status !== "approved") notFound();
 
   // Pull authoritative availability for the next 60 days
-  const today = new Date().toISOString().split("T")[0];
-  const end   = new Date(Date.now() + (BOOKING_WINDOW_DAYS - 1) * 86_400_000)
-                  .toISOString().split("T")[0];
+  // Business-timezone window: UTC-derived bounds were one day behind IST.
+  const today = todayInBusinessTz();
+  const end   = addDaysToIsoDate(today, BOOKING_WINDOW_DAYS - 1);
   const availability = await fetchHallAvailabilityWindow(hall.id, today, end);
   const platformFeePercent = await getCommissionPercent();
 

@@ -1,5 +1,6 @@
 "use client";
 
+import { todayInBusinessTz, addDaysToIsoDate } from "@/lib/dates";
 import { useState, useTransition } from "react";
 import { Sparkles } from "lucide-react";
 import { createPremiumListing } from "../../actions";
@@ -7,12 +8,10 @@ import { createPremiumListing } from "../../actions";
 type HallOption = { id: string; name: string; slug: string };
 
 function todayIso() {
-  return new Date().toISOString().slice(0, 10);
+  return todayInBusinessTz();
 }
 function plusDays(iso: string, days: number) {
-  const d = new Date(iso + "T00:00:00Z");
-  d.setUTCDate(d.getUTCDate() + days);
-  return d.toISOString().slice(0, 10);
+  return addDaysToIsoDate(iso, days);
 }
 
 export function CreateListingForm({ halls }: { halls: HallOption[] }) {

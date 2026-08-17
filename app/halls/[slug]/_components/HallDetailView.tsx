@@ -13,6 +13,7 @@ import {
 import { motion } from "framer-motion";
 import { type HallDetail, type HallListing, type AvailabilityRow } from "@/lib/halls";
 import { CARD_GRADIENTS, formatPrice } from "@/lib/mock-data";
+import { todayInBusinessTz, addDaysToIsoDate, isoDateToLabelDate } from "@/lib/dates";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { SaveHeart } from "@/app/_components/SaveHeart";
@@ -94,14 +95,17 @@ export function HallDetailView({ hall, similar, isPreview, sidebarAd }: Props) {
     ? `https://maps.google.com/?q=${hall.latitude},${hall.longitude}`
     : `https://maps.google.com/?q=${encodeURIComponent(`${hall.address ?? hall.name}, ${hall.city}`)}`;
 
-  // Build 30-day calendar
+  // Build 30-day calendar in the BUSINESS timezone (UTC math shifted every
+  // date back a day for IST visitors, desyncing it from the booking flow).
+  const stripStart = todayInBusinessTz();
   const calDays = Array.from({ length: 30 }, (_, i) => {
-    const d = new Date(Date.now() + i * 86_400_000);
+    const iso = addDaysToIsoDate(stripStart, i);
+    const d = isoDateToLabelDate(iso);
     return {
-      iso:  d.toISOString().split("T")[0],
-      day:  d.getDate(),
-      wkd:  d.toLocaleDateString("en-IN", { weekday: "short" }).slice(0, 1),
-      status: getDayStatus(d.toISOString().split("T")[0], hall.availability),
+      iso,
+      day:  d.getUTCDate(),
+      wkd:  d.toLocaleDateString("en-IN", { weekday: "short", timeZone: "UTC" }).slice(0, 1),
+      status: getDayStatus(iso, hall.availability),
     };
   });
 

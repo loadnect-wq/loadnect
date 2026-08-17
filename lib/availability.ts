@@ -4,6 +4,7 @@
 // creating a booking or payment.
 
 import { getSupabaseServerClient } from "@/lib/supabase/server";
+import { todayInBusinessTz, isoDateRange } from "@/lib/dates";
 
 export type BookingSlot = "morning" | "evening" | "full_day";
 
@@ -54,9 +55,11 @@ export async function checkSlotAvailability(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = supabase as any;
 
-  // Date must be in the future (or today). The DB also has a constraint
-  // (event_date >= '2024-01-01') and the trigger blocks past bookings.
-  const today = new Date().toISOString().split("T")[0];
+  // Date must be in the future (or today) IN THE BUSINESS TIMEZONE (IST).
+  // Computing "today" in UTC allowed booking *yesterday IST* until 05:30, and
+  // rejected "today IST" from a UTC-behind perspective. The DB also has a
+  // constraint (event_date >= '2024-01-01') and the trigger blocks past bookings.
+  const today = todayInBusinessTz();
   if (date < today) {
     return { available: false, reason: "Event date cannot be in the past." };
   }
@@ -172,10 +175,9 @@ export async function fetchHallAvailabilityWindow(
 
   // Build availability map starting from "everything available"
   const result = new Map<string, DaySlotAvailability>();
-  const start = new Date(fromDate);
-  const end   = new Date(toDate);
-  for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-    const iso = d.toISOString().split("T")[0];
+  // Parts-based iteration — toISOString() here shifted every date one day back
+  // for any timezone ahead of UTC.
+  for (const iso of isoDateRange(fromDate, toDate)) {
     result.set(iso, { date: iso, morning: true, evening: true, full_day: true });
   }
 

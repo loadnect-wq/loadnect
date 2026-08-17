@@ -7,6 +7,7 @@ import { BottomSheet } from "@/components/app/BottomSheet";
 import { Button } from "@/components/ui/Button";
 import { CITIES, CAPACITY_OPTIONS } from "@/lib/mock-data";
 import { cn } from "@/lib/utils";
+import { todayInBusinessTz } from "@/lib/dates";
 
 // ── Static configuration ──────────────────────────────────────────────────────
 
@@ -300,7 +301,7 @@ export function SearchControls({
             <input
               type="date"
               value={date}
-              min={new Date().toISOString().split("T")[0]}
+              min={todayInBusinessTz()}
               onChange={(e) => setDate(e.target.value)}
               className="h-10 w-full rounded-xl border border-border bg-white px-3 text-sm text-charcoal-900 focus:border-maroon-400 focus:outline-none"
             />

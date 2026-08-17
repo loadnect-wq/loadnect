@@ -1,17 +1,16 @@
 "use client";
 
+import { todayInBusinessTz, addDaysToIsoDate } from "@/lib/dates";
 import { useMemo, useState, useTransition } from "react";
 import { Megaphone, ExternalLink } from "lucide-react";
 import { createAdvertisement } from "../../actions";
 import { AD_PLACEMENTS } from "@/lib/ads";
 
 function todayIso() {
-  return new Date().toISOString().slice(0, 10);
+  return todayInBusinessTz();
 }
 function plusDays(iso: string, days: number) {
-  const d = new Date(iso + "T00:00:00Z");
-  d.setUTCDate(d.getUTCDate() + days);
-  return d.toISOString().slice(0, 10);
+  return addDaysToIsoDate(iso, days);
 }
 
 // Client-side mirror of the server URL validator. Server still re-validates;

@@ -15,6 +15,7 @@ import { cn } from "@/lib/utils";
 import { formatPrice } from "@/lib/mock-data";
 import type { DaySlotAvailability } from "@/lib/availability";
 import { createBookingRequest, createPaymentSession, submitManualBookingRequest, type CreateBookingResult } from "../actions";
+import { todayInBusinessTz, addDaysToIsoDate, isoDateToLabelDate } from "@/lib/dates";
 
 const STEPS = ["Date", "Slot", "Details", "Summary", "Pay", "Done"] as const;
 type StepIndex = number;
@@ -136,13 +137,14 @@ export function BookingFlow({ hall, availability, windowDays, platformFeePercent
   function next() { setStep((s) => Math.min(s + 1, STEPS.length - 1)); }
   function back() { if (step === 0) router.back(); else setStep((s) => Math.max(s - 1, 0)); }
 
-  // Build the days window
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  // Build the days window as ISO dates in the BUSINESS timezone. The previous
+  // Date-object grid derived its value via toISOString(), which is UTC — so for
+  // IST users every tile was labelled one day and valued the day BEFORE it
+  // (tap "17 Aug" -> book "16 Aug"). Labels now come from the same ISO parts.
+  const todayIso = todayInBusinessTz();
   const days = Array.from({ length: windowDays }, (_, i) => {
-    const d = new Date(today);
-    d.setDate(d.getDate() + i);
-    return d;
+    const iso = addDaysToIsoDate(todayIso, i);
+    return { iso, label: isoDateToLabelDate(iso) };
   });
 
   // For the date step: a day is "selectable" if AT LEAST one slot is available
@@ -328,8 +330,7 @@ export function BookingFlow({ hall, availability, windowDays, platformFeePercent
             {step === 0 && (
               <StepWrap title="Choose a date" subtitle={`Bookings open for the next ${windowDays} days.`}>
                 <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
-                  {days.map((d) => {
-                    const iso       = d.toISOString().slice(0, 10);
+                  {days.map(({ iso, label: d }) => {
                     const active    = date === iso;
                     const a         = availabilityByDate.get(iso);
                     const anyOpen   = !a || a.morning || a.evening || a.full_day;
@@ -348,11 +349,11 @@ export function BookingFlow({ hall, availability, windowDays, platformFeePercent
                         )}
                       >
                         <span className="text-[10px] font-semibold uppercase">
-                          {d.toLocaleDateString("en-IN", { weekday: "short" })}
+                          {d.toLocaleDateString("en-IN", { weekday: "short", timeZone: "UTC" })}
                         </span>
-                        <span className="text-lg font-bold">{d.getDate()}</span>
+                        <span className="text-lg font-bold">{d.getUTCDate()}</span>
                         <span className="text-[10px]">
-                          {d.toLocaleDateString("en-IN", { month: "short" })}
+                          {d.toLocaleDateString("en-IN", { month: "short", timeZone: "UTC" })}
                         </span>
                         {/* Tiny availability stripes */}
                         {!allClosed && a && (
