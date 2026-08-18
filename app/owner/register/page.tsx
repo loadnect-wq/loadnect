@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Building2, CheckCircle2, Gem, Lock, Mail, User } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
+import { buildAuthCallbackUrl } from "@/lib/app-url";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -36,7 +37,7 @@ export default function OwnerRegisterPage() {
       password: parsed.data.password,
       options: {
         data: { name: parsed.data.name, role: "owner" },
-        emailRedirectTo: `${window.location.origin}/auth/callback?next=/auth/redirect`,
+        emailRedirectTo: buildAuthCallbackUrl("/auth/redirect"),
       },
     });
 
@@ -56,7 +57,7 @@ export default function OwnerRegisterPage() {
   function handleGoogleSignUp() {
     getSupabaseClient().auth.signInWithOAuth({
       provider: "google",
-      options: { redirectTo: `${window.location.origin}/auth/callback?next=/auth/set-owner-role` },
+      options: { redirectTo: buildAuthCallbackUrl("/auth/set-owner-role") },
     });
   }
 

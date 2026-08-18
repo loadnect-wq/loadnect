@@ -6,6 +6,7 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { CheckCircle2, Lock, Mail, User } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
+import { buildAuthCallbackUrl } from "@/lib/app-url";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -37,7 +38,7 @@ export default function SignupPage() {
       password: parsed.data.password,
       options: {
         data: { name: parsed.data.name, role: "customer" },
-        emailRedirectTo: `${window.location.origin}/auth/callback?next=/auth/redirect`,
+        emailRedirectTo: buildAuthCallbackUrl("/auth/redirect"),
       },
     });
 
@@ -57,7 +58,7 @@ export default function SignupPage() {
   function handleGoogleSignUp() {
     getSupabaseClient().auth.signInWithOAuth({
       provider: "google",
-      options: { redirectTo: `${window.location.origin}/auth/callback?next=/auth/redirect` },
+      options: { redirectTo: buildAuthCallbackUrl("/auth/redirect") },
     });
   }
 

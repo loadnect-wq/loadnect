@@ -6,6 +6,7 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { Lock, Mail } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
+import { buildAuthCallbackUrl } from "@/lib/app-url";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -48,7 +49,7 @@ export default function LoginPage() {
   function handleGoogleLogin() {
     getSupabaseClient().auth.signInWithOAuth({
       provider: "google",
-      options: { redirectTo: `${window.location.origin}/auth/callback?next=/auth/redirect` },
+      options: { redirectTo: buildAuthCallbackUrl("/auth/redirect") },
     });
   }
 
