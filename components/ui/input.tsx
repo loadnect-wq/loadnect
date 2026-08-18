@@ -10,7 +10,9 @@ const Input = forwardRef<HTMLInputElement, InputProps>(
       ref={ref}
       className={cn(
         // Layout
-        "flex h-10 w-full rounded-lg",
+        // 44px minimum tap height on touch; lg: restores the compact desktop
+        // density so existing desktop forms are visually unchanged.
+        "flex min-h-[44px] lg:min-h-0 lg:h-10 w-full rounded-lg",
         // Colours
         "border border-input bg-background",
         "text-sm text-foreground",

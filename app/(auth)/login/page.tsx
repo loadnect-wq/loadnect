@@ -1,12 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Lock, Mail } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { buildAuthCallbackUrl } from "@/lib/app-url";
+import { IntentSelector, type AuthIntent } from "../_components/IntentSelector";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -44,6 +45,25 @@ export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+
+  // UX-only intent. Never sent to the owner-upgrade path and never read for
+  // authorization — post-login routing is decided by the DB role alone.
+  // sessionStorage (not a cookie/URL) so it survives the Google round-trip
+  // without ever becoming something the server could mistake for a claim.
+  const [intent, setIntent] = useState<AuthIntent>("book");
+
+  // Read after mount so server and client render identically (no hydration gap).
+  useEffect(() => {
+    try {
+      const saved = window.sessionStorage.getItem("hallnect:auth-intent");
+      if (saved === "book" || saved === "list") setIntent(saved);
+    } catch { /* storage blocked — default stands */ }
+  }, []);
+
+  function chooseIntent(next: AuthIntent) {
+    setIntent(next);
+    try { window.sessionStorage.setItem("hallnect:auth-intent", next); } catch { /* ignore */ }
+  }
 
   async function handleEmailLogin(e: React.FormEvent) {
     e.preventDefault();
@@ -89,10 +109,18 @@ export default function LoginPage() {
             <span className="font-serif text-2xl font-bold text-maroon-800">Hallnect</span>
           </Link>
           <h1 className="mt-6 font-serif text-3xl font-bold text-charcoal-900">Welcome back</h1>
-          <p className="mt-1.5 text-sm text-muted-foreground">Sign in to your account to continue</p>
+          <p className="mt-1.5 text-sm text-muted-foreground">
+            {intent === "list"
+              ? "Sign in to manage your venue and bookings"
+              : "Sign in to find and book your perfect venue"}
+          </p>
         </div>
 
         <div className="rounded-2xl bg-white p-8 shadow-card space-y-5">
+          <IntentSelector value={intent} onChange={chooseIntent} />
+
+          <div className="h-px bg-border" />
+
           {authError && (
             <div
               role="alert"
@@ -159,17 +187,30 @@ export default function LoginPage() {
         </div>
 
         <div className="mt-6 space-y-2 text-center text-sm text-muted-foreground">
-          <p>
-            Don&apos;t have an account?{" "}
-            <Link href="/signup" className="font-semibold text-maroon-600 hover:underline">
-              Create account
-            </Link>
-          </p>
-          <p>
-            Want to list your hall?{" "}
-            <Link href="/owner/register" className="font-semibold text-maroon-600 hover:underline">
-              Register as owner
-            </Link>
+          {intent === "list" ? (
+            <p>
+              New to Hallnect?{" "}
+              <Link href="/owner/register" className="font-semibold text-maroon-600 hover:underline">
+                Register your venue
+              </Link>
+            </p>
+          ) : (
+            <p>
+              Don&apos;t have an account?{" "}
+              <Link href="/signup" className="font-semibold text-maroon-600 hover:underline">
+                Create account
+              </Link>
+            </p>
+          )}
+          <p className="text-xs">
+            {intent === "list"
+              ? "Already booking with us? Sign in above — we'll take you to your account."
+              : "Own a venue? "}
+            {intent === "book" && (
+              <Link href="/owner/register" className="font-semibold text-maroon-600 hover:underline">
+                List your hall
+              </Link>
+            )}
           </p>
         </div>
       </div>
