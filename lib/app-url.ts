@@ -50,16 +50,49 @@ export function getCanonicalAppUrl(): string {
   return "http://localhost:3000";
 }
 
+/** Short-lived cookie carrying the post-login destination across OAuth. */
+export const AUTH_NEXT_COOKIE = "hn_auth_next";
+
 /**
  * Absolute OAuth/email return URL on the canonical public origin.
  *
- * `next` must be a root-relative internal path; anything else is ignored. The
- * callback re-validates it against an allow-list (safeNext), so this is the
- * outer layer of that defence, not a replacement for it.
+ * ⚠️  RETURNS A BARE URL WITH NO QUERY STRING — deliberately.
+ *
+ * Supabase only honours `redirect_to` when it MATCHES an entry in the project's
+ * Redirect URL allow-list; otherwise it silently falls back to the Site URL.
+ * The allow-list holds the exact path `…/auth/callback` (no wildcard), so
+ * appending `?next=…` broke the match. Proven against the live project:
+ *
+ *   redirect_to=…/auth/callback                  -> honoured
+ *   redirect_to=…/auth/callback?next=/auth/redirect
+ *                                                -> fell back to the Site URL
+ *
+ * and that Site URL is the team-scoped deployment host, which Vercel SSO
+ * protects — so every Google sign-in landed on "Log in to Vercel".
+ *
+ * The destination now travels in a cookie instead (see rememberAuthNext), which
+ * the callback route reads server-side and re-validates against its allow-list.
  */
-export function buildAuthCallbackUrl(next?: string): string {
-  const base = `${getCanonicalAppUrl()}/auth/callback`;
-  if (!next) return base;
-  const safe = next.startsWith("/") && !next.startsWith("//") && !next.startsWith("/\\");
-  return safe ? `${base}?next=${encodeURIComponent(next)}` : base;
+export function buildAuthCallbackUrl(): string {
+  return `${getCanonicalAppUrl()}/auth/callback`;
+}
+
+/**
+ * Records where to land after authentication, in a short-lived cookie.
+ *
+ * SECURITY: this is exactly as trusted as the old `?next=` query param — i.e.
+ * NOT trusted. The callback re-validates it with safeNext() (same-origin,
+ * root-relative, allow-listed prefixes) before ever redirecting to it. Scoped
+ * to this site, SameSite=Lax so it survives the top-level OAuth return, and
+ * expires in 10 minutes.
+ */
+export function rememberAuthNext(next: string | null | undefined): void {
+  if (typeof document === "undefined") return;
+  const secure = typeof window !== "undefined" && window.location.protocol === "https:" ? "; Secure" : "";
+  if (!next) {
+    document.cookie = `${AUTH_NEXT_COOKIE}=; Max-Age=0; Path=/; SameSite=Lax${secure}`;
+    return;
+  }
+  document.cookie =
+    `${AUTH_NEXT_COOKIE}=${encodeURIComponent(next)}; Max-Age=600; Path=/; SameSite=Lax${secure}`;
 }

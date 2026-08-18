@@ -6,7 +6,7 @@ import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Lock, Mail } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
-import { buildAuthCallbackUrl } from "@/lib/app-url";
+import { buildAuthCallbackUrl, rememberAuthNext } from "@/lib/app-url";
 import { IntentSelector, type AuthIntent } from "../_components/IntentSelector";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/input";
@@ -92,9 +92,12 @@ export default function LoginPage() {
   }
 
   function handleGoogleLogin() {
+    // Destination travels in a cookie: appending ?next= to redirect_to breaks
+    // Supabase's allow-list match and drops us on the SSO-walled Site URL.
+    rememberAuthNext(nextPath);
     getSupabaseClient().auth.signInWithOAuth({
       provider: "google",
-      options: { redirectTo: buildAuthCallbackUrl(nextPath) },
+      options: { redirectTo: buildAuthCallbackUrl() },
     });
   }
 

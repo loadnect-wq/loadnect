@@ -1,6 +1,8 @@
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
+import { AUTH_NEXT_COOKIE } from "@/lib/app-url";
 
 // Path prefixes the OAuth flow may return a browser to after a successful
 // sign-in. Deep links matter here: a signed-out customer sent to
@@ -114,18 +116,36 @@ async function handleOwnerIntent(userId: string): Promise<void> {
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get("code");
-  const next = safeNext(searchParams.get("next"));
+
+  // Destination comes from a short-lived cookie. It USED to ride on
+  // ?next=, but Supabase only honours redirect_to when it matches the
+  // project's Redirect URL allow-list, and the allow-listed entry is the bare
+  // path — so any query string broke the match and Supabase fell back to the
+  // Site URL (a Vercel-SSO-protected host). Proven against the live project.
+  // The query param is still read as a fallback for links already in flight.
+  const jar = await cookies();
+  const fromCookie = jar.get(AUTH_NEXT_COOKIE)?.value;
+  const rawNext = fromCookie ? decodeURIComponent(fromCookie) : searchParams.get("next");
+  // Same validation as before: attacker-controlled either way, so safeNext()
+  // remains the authority (same-origin, root-relative, allow-listed prefixes).
+  const next = safeNext(rawNext);
+
+  // Single-use: drop the cookie however this request ends.
+  const clearNextCookie = (res: NextResponse) => {
+    res.cookies.set(AUTH_NEXT_COOKIE, "", { path: "/", maxAge: 0 });
+    return res;
+  };
 
   // No code → nothing to verify. Never act on intent or trust `next` here.
   if (!code) {
-    return NextResponse.redirect(`${origin}/login?error=oauth_failed`);
+    return clearNextCookie(NextResponse.redirect(`${origin}/login?error=oauth_failed`));
   }
 
   const supabase = await getSupabaseServerClient();
   const { data, error } = await supabase.auth.exchangeCodeForSession(code);
 
   if (error || !data?.user) {
-    return NextResponse.redirect(`${origin}/login?error=oauth_failed`);
+    return clearNextCookie(NextResponse.redirect(`${origin}/login?error=oauth_failed`));
   }
 
   // Owner-registration intent: the code exchange just proved this is a genuine,
@@ -136,8 +156,8 @@ export async function GET(request: Request) {
     // reads the user's ACTUAL role and sends them to the right place. If the
     // upgrade landed → owner_approved → /owner/dashboard; if it somehow didn't
     // → /customer.
-    return NextResponse.redirect(`${origin}/auth/redirect`);
+    return clearNextCookie(NextResponse.redirect(`${origin}/auth/redirect`));
   }
 
-  return NextResponse.redirect(`${origin}${next}`);
+  return clearNextCookie(NextResponse.redirect(`${origin}${next}`));
 }

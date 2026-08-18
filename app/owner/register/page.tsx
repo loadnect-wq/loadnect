@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Building2, CheckCircle2, Gem, Lock, Mail, User } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
-import { buildAuthCallbackUrl } from "@/lib/app-url";
+import { buildAuthCallbackUrl, rememberAuthNext } from "@/lib/app-url";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -37,7 +37,7 @@ export default function OwnerRegisterPage() {
       password: parsed.data.password,
       options: {
         data: { name: parsed.data.name, role: "owner" },
-        emailRedirectTo: buildAuthCallbackUrl("/auth/redirect"),
+        emailRedirectTo: buildAuthCallbackUrl(),
       },
     });
 
@@ -55,9 +55,13 @@ export default function OwnerRegisterPage() {
   }
 
   function handleGoogleSignUp() {
+    // Owner-registration intent. Carried in the cookie for the same reason as
+    // `next`: a query string on redirect_to breaks Supabase's allow-list match.
+    // Still only actionable AFTER a verified code exchange in the callback.
+    rememberAuthNext("/auth/set-owner-role");
     getSupabaseClient().auth.signInWithOAuth({
       provider: "google",
-      options: { redirectTo: buildAuthCallbackUrl("/auth/set-owner-role") },
+      options: { redirectTo: buildAuthCallbackUrl() },
     });
   }
 
