@@ -62,6 +62,7 @@ export type AdminBookingRow = {
   customer_name:  string | null;
   customer_email: string | null;
   event_date:     string;
+  end_date:       string;
   slot:           string;
   total_amount:   number;
   status:         string;
@@ -389,7 +390,7 @@ export async function fetchAllBookings(statusFilter?: string): Promise<AdminBook
 
   let query = db
     .from("bookings")
-    .select("id, hall_id, event_date, slot, total_amount, status, created_at, halls(name), profiles!bookings_customer_id_fkey(full_name, email)")
+    .select("id, hall_id, event_date, end_date, slot, total_amount, status, created_at, halls(name), profiles!bookings_customer_id_fkey(full_name, email)")
     .order("created_at", { ascending: false })
     .limit(200);
 
@@ -406,6 +407,7 @@ export async function fetchAllBookings(statusFilter?: string): Promise<AdminBook
     customer_name:  row.profiles?.full_name ?? null,
     customer_email: row.profiles?.email     ?? null,
     event_date:     row.event_date,
+    end_date:       row.end_date ?? row.event_date,
     slot:           row.slot,
     total_amount:   Number(row.total_amount),
     status:         row.status,

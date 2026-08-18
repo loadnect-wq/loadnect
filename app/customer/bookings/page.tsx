@@ -1,3 +1,4 @@
+import { formatBookingDates } from "@/lib/dates";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { CalendarCheck, ChevronRight, Clock, MapPin } from "lucide-react";
@@ -109,7 +110,7 @@ export default async function CustomerBookingsPage({ searchParams }: Props) {
                       </p>
                       <p className="mt-0.5 flex items-center gap-1 text-[11px] text-charcoal-500">
                         <Clock className="h-3 w-3 shrink-0" />
-                        {fmtDate(b.event_date)} · {fmtSlot(b.slot)}
+                        {formatBookingDates(b.event_date, b.end_date)} · {fmtSlot(b.slot)}
                       </p>
                       <p className="mt-1 text-[11px] font-bold text-charcoal-800">
                         {formatPrice(b.total_amount)}

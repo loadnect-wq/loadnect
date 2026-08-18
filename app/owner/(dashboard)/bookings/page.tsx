@@ -1,3 +1,4 @@
+import { formatBookingDates } from "@/lib/dates";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { CalendarCheck, CalendarDays, Clock, Users } from "lucide-react";
@@ -138,7 +139,7 @@ export default async function OwnerBookingsPage({ searchParams }: Props) {
                     <div className="grid grid-cols-2 gap-2 text-xs text-charcoal-600">
                       <div className="flex items-center gap-1.5">
                         <CalendarDays className="h-3.5 w-3.5 shrink-0 text-charcoal-400" />
-                        {fmtDate(booking.event_date)}
+                        {formatBookingDates(booking.event_date, booking.end_date)}
                       </div>
                       <div className="flex items-center gap-1.5">
                         <Clock className="h-3.5 w-3.5 shrink-0 text-charcoal-400" />

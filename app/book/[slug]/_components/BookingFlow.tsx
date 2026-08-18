@@ -15,7 +15,7 @@ import { cn } from "@/lib/utils";
 import { formatPrice } from "@/lib/mock-data";
 import type { DaySlotAvailability } from "@/lib/availability";
 import { createBookingRequest, createPaymentSession, submitManualBookingRequest, type CreateBookingResult } from "../actions";
-import { todayInBusinessTz, addDaysToIsoDate, isoDateToLabelDate } from "@/lib/dates";
+import { todayInBusinessTz, addDaysToIsoDate, isoDateToLabelDate, isoDateRange, daysBetweenInclusive } from "@/lib/dates";
 
 const STEPS = ["Date", "Slot", "Details", "Summary", "Pay", "Done"] as const;
 type StepIndex = number;
@@ -106,7 +106,8 @@ export function BookingFlow({ hall, availability, windowDays, platformFeePercent
   const router = useRouter();
   const [step, setStep] = useState<StepIndex>(0);
 
-  const [date,      setDate]      = useState<string>("");
+  const [date,      setDate]      = useState<string>("");   // range START
+  const [endDate,   setEndDate]   = useState<string>("");   // range END (inclusive; ""=single day)
   const [slot,      setSlot]      = useState<SlotId | "">("");
   const [eventType, setEventType] = useState<string>("Wedding");
   const [guests,    setGuests]    = useState<string>("");
@@ -129,7 +130,21 @@ export function BookingFlow({ hall, availability, windowDays, platformFeePercent
     return hall.price_per_day;
   }
 
-  const baseAmount  = slot ? slotPrice(slot) : 0;
+  // ── Date range (max 4 days). Multi-day bookings are full-day only. ──────────
+  const MAX_BOOKING_DAYS = 4;
+  const rangeEnd    = endDate || date;
+  const bookingDays = date ? daysBetweenInclusive(date, rangeEnd) : 0;
+  const isMultiDay  = bookingDays > 1;
+  const effSlot: SlotId | "" = isMultiDay ? "full_day" : slot;
+
+  // Every day of the range must have the required slot free.
+  function rangeFullyAvailable(startIso: string, endIso: string, s: SlotId): boolean {
+    return isoDateRange(startIso, endIso).every((iso) => isSlotAvailable(iso, s));
+  }
+
+  // Display-only price preview — the server recomputes everything.
+  const dailyBase   = isMultiDay ? hall.price_per_day : (effSlot ? slotPrice(effSlot as SlotId) : 0);
+  const baseAmount  = dailyBase * Math.max(1, bookingDays || 1) * (effSlot ? 1 : 0);
   const platformFee = Math.round(baseAmount * PLATFORM_FEE_RATE);
   const totalAmount = baseAmount + platformFee;
   const advance     = Math.round(totalAmount * ADVANCE_RATE);
@@ -163,8 +178,9 @@ export function BookingFlow({ hall, availability, windowDays, platformFeePercent
   const selectedAvail = date ? availabilityByDate.get(date) : undefined;
 
   const canContinue =
-    (step === 0 && !!date && dayHasAnySlot(date)) ||
-    (step === 1 && !!slot && isSlotAvailable(date, slot)) ||
+    (step === 0 && !!date &&
+      (isMultiDay ? rangeFullyAvailable(date, rangeEnd, "full_day") : dayHasAnySlot(date))) ||
+    (step === 1 && !!effSlot && rangeFullyAvailable(date, rangeEnd, effSlot as SlotId)) ||
     (step === 2 && !!eventType && !!guests && !!name && !!phone &&
       parseInt(guests, 10) > 0 && parseInt(guests, 10) <= hall.capacity_max) ||
     (step === 3 && termsAccepted) ||
@@ -176,7 +192,7 @@ export function BookingFlow({ hall, availability, windowDays, platformFeePercent
   // The booking is NOT confirmed here — it stays `pending_payment` until the
   // server verifies the payment with Cashfree on the status page / webhook.
   function handlePayNow() {
-    if (!slot) return;
+    if (!effSlot) return;
     setServerError(null);
     startTransition(async () => {
       // 1. Ensure a pending booking exists (reuse if a prior attempt created one).
@@ -185,7 +201,8 @@ export function BookingFlow({ hall, availability, windowDays, platformFeePercent
         const result: CreateBookingResult = await createBookingRequest({
           hallId:        hall.id,
           eventDate:     date,
-          slot,
+          endDate:       endDate || undefined,
+          slot:          effSlot as SlotId,
           guestCount:    parseInt(guests, 10),
           customerNotes: `${eventType} event. Contact: ${name}, ${phone}.`,
           termsAccepted,
@@ -239,7 +256,7 @@ export function BookingFlow({ hall, availability, windowDays, platformFeePercent
   // Manual mode (Cashfree not configured): create the booking and submit it as a
   // request — no online payment. Hallnect confirms + collects payment offline.
   function handleSubmitRequest() {
-    if (!slot) return;
+    if (!effSlot) return;
     setServerError(null);
     startTransition(async () => {
       let id = bookingId;
@@ -247,7 +264,8 @@ export function BookingFlow({ hall, availability, windowDays, platformFeePercent
         const result: CreateBookingResult = await createBookingRequest({
           hallId:        hall.id,
           eventDate:     date,
-          slot,
+          endDate:       endDate || undefined,
+          slot:          effSlot as SlotId,
           guestCount:    parseInt(guests, 10),
           customerNotes: `${eventType} event. Contact: ${name}, ${phone}.`,
           termsAccepted,
@@ -331,16 +349,35 @@ export function BookingFlow({ hall, availability, windowDays, platformFeePercent
               <StepWrap title="Choose a date" subtitle={`Bookings open for the next ${windowDays} days.`}>
                 <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
                   {days.map(({ iso, label: d }) => {
-                    const active    = date === iso;
+                    const inRange   = !!date && !!endDate && iso >= date && iso <= endDate;
+                    const active    = date === iso || inRange;
                     const a         = availabilityByDate.get(iso);
                     const anyOpen   = !a || a.morning || a.evening || a.full_day;
-                    const allClosed = !anyOpen;
+                    // With a start selected (and no end yet), dim tiles that
+                    // cannot be a valid end: beyond 4 days, or range not free.
+                    const beyondMax = !!date && !endDate && iso > date
+                      && (daysBetweenInclusive(date, iso) > MAX_BOOKING_DAYS
+                          || !rangeFullyAvailable(date, iso, "full_day"));
+                    const allClosed = !anyOpen || beyondMax;
                     return (
                       <button
                         key={iso}
                         type="button"
                         disabled={allClosed}
-                        onClick={() => { setDate(iso); setSlot(""); }}
+                        onClick={() => {
+                          // 1st tap = start. 2nd tap after start (within 4 days)
+                          // = end. Tap before start, or with a range set, restarts.
+                          if (!date || iso < date || endDate) {
+                            setDate(iso); setEndDate(""); setSlot("");
+                          } else if (iso === date) {
+                            setEndDate("");                       // back to single day
+                          } else if (daysBetweenInclusive(date, iso) <= MAX_BOOKING_DAYS
+                                     && rangeFullyAvailable(date, iso, "full_day")) {
+                            setEndDate(iso); setSlot("full_day"); // multi-day = full day
+                          } else {
+                            setDate(iso); setEndDate(""); setSlot("");
+                          }
+                        }}
                         className={cn(
                           "relative flex flex-col items-center rounded-2xl border px-2 py-3 text-center shadow-sm transition",
                           allClosed         && "border-border bg-ivory-200 text-charcoal-400 line-through",
@@ -373,6 +410,15 @@ export function BookingFlow({ hall, availability, windowDays, platformFeePercent
                   })}
                 </div>
 
+                {/* Range hint */}
+                <div className="mt-3 rounded-xl bg-ivory-200/70 px-3 py-2 text-[11px] text-charcoal-600">
+                  {date && !endDate && <>Tap another date to book multiple days (up to {MAX_BOOKING_DAYS}). Tap the same date to keep a single day.</>}
+                  {date && endDate && (
+                    <>Selected <strong>{bookingDays} days</strong> ({isoDateToLabelDate(date).toLocaleDateString("en-IN", { day: "numeric", month: "short", timeZone: "UTC" })} – {isoDateToLabelDate(endDate).toLocaleDateString("en-IN", { day: "numeric", month: "short", timeZone: "UTC" })}). Multi-day bookings reserve the full day. Maximum {MAX_BOOKING_DAYS} days.</>
+                  )}
+                  {!date && <>Select your event date. You can book up to {MAX_BOOKING_DAYS} consecutive days.</>}
+                </div>
+
                 {/* Legend */}
                 <div className="mt-4 flex flex-wrap gap-3 text-[11px] text-charcoal-500">
                   <span className="flex items-center gap-1">
@@ -396,9 +442,14 @@ export function BookingFlow({ hall, availability, windowDays, platformFeePercent
               >
                 <div className="space-y-2.5">
                   {SLOTS.map((s) => {
-                    const active = slot === s.id;
-                    const open   = isSlotAvailable(date, s.id);
-                    const price  = slotPrice(s.id);
+                    const active = effSlot === s.id;
+                    // Multi-day bookings reserve whole days — only Full Day applies.
+                    const open   = isMultiDay
+                      ? (s.id === "full_day" && rangeFullyAvailable(date, rangeEnd, "full_day"))
+                      : isSlotAvailable(date, s.id);
+                    const price  = isMultiDay && s.id === "full_day"
+                      ? hall.price_per_day * bookingDays
+                      : slotPrice(s.id);
                     return (
                       <button
                         key={s.id}
@@ -441,6 +492,11 @@ export function BookingFlow({ hall, availability, windowDays, platformFeePercent
                   })}
                 </div>
 
+                {isMultiDay && (
+                  <p className="mt-3 rounded-xl bg-ivory-200/70 px-3 py-2 text-[11px] text-charcoal-600">
+                    {bookingDays}-day bookings reserve the hall for the full day on each date.
+                  </p>
+                )}
                 {selectedAvail && !selectedAvail.morning && !selectedAvail.evening && !selectedAvail.full_day && (
                   <div className="mt-3 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
                     <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
@@ -501,14 +557,25 @@ export function BookingFlow({ hall, availability, windowDays, platformFeePercent
             {step === 3 && (
               <StepWrap title="Price summary" subtitle="Review before paying the advance.">
                 <div className="rounded-2xl bg-white p-4 shadow-card">
-                  <Row icon={<CalendarDays className="h-4 w-4" />} label="Date" value={new Date(date).toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short" })} />
-                  <Row icon={<Clock className="h-4 w-4" />} label="Slot" value={`${SLOTS.find((s) => s.id === slot)?.label} · ${SLOTS.find((s) => s.id === slot)?.time}`} />
+                  <Row
+                    icon={<CalendarDays className="h-4 w-4" />}
+                    label={isMultiDay ? "Dates" : "Date"}
+                    value={
+                      isMultiDay
+                        ? `${isoDateToLabelDate(date).toLocaleDateString("en-IN", { day: "numeric", month: "short", timeZone: "UTC" })} – ${isoDateToLabelDate(rangeEnd).toLocaleDateString("en-IN", { day: "numeric", month: "short", timeZone: "UTC" })} · ${bookingDays} days`
+                        : isoDateToLabelDate(date).toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" })
+                    }
+                  />
+                  <Row icon={<Clock className="h-4 w-4" />} label="Slot" value={`${SLOTS.find((s) => s.id === effSlot)?.label} · ${SLOTS.find((s) => s.id === effSlot)?.time}`} />
                   <Row icon={<Sparkles className="h-4 w-4" />} label="Event" value={eventType} />
                   <Row icon={<Users className="h-4 w-4" />} label="Guests" value={guests} />
                 </div>
 
                 <div className="mt-4 rounded-2xl bg-white p-4 shadow-card">
-                  <PriceLine label="Hall base price"  value={formatPrice(baseAmount)} />
+                  <PriceLine
+                    label={isMultiDay ? `${formatPrice(dailyBase)} × ${bookingDays} days` : "Hall base price"}
+                    value={formatPrice(baseAmount)}
+                  />
                   <PriceLine label={`Platform fee (${platformFeePercent}%)`} value={formatPrice(platformFee)} />
                   <div className="my-2 h-px bg-border" />
                   <PriceLine label="Total"            value={formatPrice(totalAmount)} bold />

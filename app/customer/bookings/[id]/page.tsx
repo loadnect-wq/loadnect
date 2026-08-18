@@ -1,3 +1,4 @@
+import { formatBookingDates } from "@/lib/dates";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import type { Metadata } from "next";
@@ -200,7 +201,7 @@ export default async function BookingDetailPage({ params }: Props) {
           <BookingRow
             icon={<CalendarDays className="h-4 w-4" />}
             label="Event Date"
-            value={fmtDate(booking.event_date)}
+            value={formatBookingDates(booking.event_date, booking.end_date)}
           />
           <BookingRow
             icon={<Clock className="h-4 w-4" />}

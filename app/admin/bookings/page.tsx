@@ -1,3 +1,4 @@
+import { formatBookingDates } from "@/lib/dates";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { fetchAllBookings } from "@/lib/admin";
@@ -98,7 +99,7 @@ export default async function AdminBookingsPage({ searchParams }: Props) {
                         <p className="truncate text-[11px] text-charcoal-500">{b.customer_email ?? "—"}</p>
                       </Td>
                       <Td>
-                        <p>{fmtDate(b.event_date)}</p>
+                        <p>{formatBookingDates(b.event_date, b.end_date)}</p>
                         <p className="text-[11px] text-charcoal-500">{SLOT_LABELS[b.slot] ?? b.slot}</p>
                       </Td>
                       <Td className="font-semibold">{formatPrice(b.total_amount)}</Td>

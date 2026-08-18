@@ -66,6 +66,7 @@ export type OwnerBooking = {
   hall_name:      string;
   hall_slug:      string;
   event_date:     string;
+  end_date:       string;
   slot:           string;
   guest_count:    number | null;
   base_amount:    number;
@@ -370,7 +371,7 @@ export async function fetchOwnerBookings(
 
   let query = db
     .from("bookings")
-    .select("id, hall_id, event_date, slot, guest_count, base_amount, total_amount, status, customer_notes, owner_notes, cancel_reason, created_at, halls(name, slug)")
+    .select("id, hall_id, event_date, end_date, slot, guest_count, base_amount, total_amount, status, customer_notes, owner_notes, cancel_reason, created_at, halls(name, slug)")
     .in("hall_id", hallIds)
     .order("event_date", { ascending: true });
 
@@ -386,6 +387,7 @@ export async function fetchOwnerBookings(
     hall_name:      row.halls?.name ?? "Hall",
     hall_slug:      row.halls?.slug ?? "",
     event_date:     row.event_date,
+    end_date:       row.end_date ?? row.event_date,
     slot:           row.slot,
     guest_count:    row.guest_count ?? null,
     base_amount:    Number(row.base_amount),

@@ -4,7 +4,7 @@
 // creating a booking or payment.
 
 import { getSupabaseServerClient } from "@/lib/supabase/server";
-import { todayInBusinessTz, isoDateRange } from "@/lib/dates";
+import { todayInBusinessTz, isoDateRange, daysBetweenInclusive } from "@/lib/dates";
 
 export type BookingSlot = "morning" | "evening" | "full_day";
 
@@ -114,7 +114,10 @@ export async function checkSlotAvailability(
     .from("bookings")
     .select("slot, status")
     .eq("hall_id", hallId)
-    .eq("event_date", date)
+    // Range-aware: a booking covers `date` when event_date <= date <= end_date.
+    // (.eq on event_date alone missed multi-day bookings that started earlier.)
+    .lte("event_date", date)
+    .gte("end_date", date)
     .in("status", ACTIVE_BOOKING_STATUSES);
 
   if (bookingsErr) {
@@ -166,10 +169,13 @@ export async function fetchHallAvailabilityWindow(
       .gte("date", fromDate)
       .lte("date", toDate),
     db.from("bookings")
-      .select("event_date, slot, status")
+      .select("event_date, end_date, slot, status")
       .eq("hall_id", hallId)
-      .gte("event_date", fromDate)
+      // Overlap query: a range booking intersects the window when it STARTS
+      // before the window ends and ENDS after the window starts. The previous
+      // event_date-between filter missed ranges beginning before `fromDate`.
       .lte("event_date", toDate)
+      .gte("end_date", fromDate)
       .in("status", ACTIVE_BOOKING_STATUSES),
   ]);
 
@@ -199,20 +205,74 @@ export async function fetchHallAvailabilityWindow(
     }
   }
 
-  // Apply active bookings
-  for (const b of (bookingsRes.data ?? []) as { event_date: string; slot: string; status: string }[]) {
-    const day = result.get(b.event_date);
-    if (!day) continue;
-    if (b.slot === "full_day") {
-      day.morning = day.evening = day.full_day = false;
-    } else if (b.slot === "morning") {
-      day.morning  = false;
-      day.full_day = false;
-    } else if (b.slot === "evening") {
-      day.evening  = false;
-      day.full_day = false;
+  // Apply active bookings — a range booking blocks EVERY day it covers, not
+  // just its start date.
+  for (const b of (bookingsRes.data ?? []) as { event_date: string; end_date: string | null; slot: string; status: string }[]) {
+    for (const iso of isoDateRange(b.event_date, b.end_date ?? b.event_date)) {
+      const day = result.get(iso);
+      if (!day) continue;
+      if (b.slot === "full_day") {
+        day.morning = day.evening = day.full_day = false;
+      } else if (b.slot === "morning") {
+        day.morning  = false;
+        day.full_day = false;
+      } else if (b.slot === "evening") {
+        day.evening  = false;
+        day.full_day = false;
+      }
     }
   }
 
   return [...result.values()];
+}
+
+
+// ── Range availability (multi-day bookings, max 4 days) ───────────────────────
+
+export type RangeAvailability =
+  | { available: true; bookingDays: number }
+  | { available: false; reason: string; unavailableDates: string[] };
+
+/**
+ * Checks EVERY calendar day in [startDate, endDate] (inclusive) by reusing the
+ * authoritative single-day check. Multi-day bookings are full-day only, so the
+ * slot is forced to full_day whenever the range spans more than one day.
+ * Bounded: the 4-day maximum is validated before any query runs.
+ */
+export async function checkRangeAvailability(
+  hallId:    string,
+  startDate: string,
+  endDate:   string,
+  slot:      BookingSlot,
+): Promise<RangeAvailability> {
+  if (endDate < startDate) {
+    return { available: false, reason: "End date cannot be before the start date.", unavailableDates: [] };
+  }
+  const bookingDays = daysBetweenInclusive(startDate, endDate);
+  if (bookingDays > 4) {
+    return { available: false, reason: "Maximum booking duration is 4 days.", unavailableDates: [] };
+  }
+
+  const effectiveSlot: BookingSlot = bookingDays > 1 ? "full_day" : slot;
+  const unavailable: string[] = [];
+  let firstReason = "";
+
+  for (const iso of isoDateRange(startDate, endDate)) {
+    const check = await checkSlotAvailability(hallId, iso, effectiveSlot);
+    if (!check.available) {
+      unavailable.push(iso);
+      if (!firstReason) firstReason = check.reason;
+    }
+  }
+
+  if (unavailable.length > 0) {
+    return {
+      available: false,
+      reason: unavailable.length === 1
+        ? firstReason
+        : "One or more selected dates are unavailable.",
+      unavailableDates: unavailable,
+    };
+  }
+  return { available: true, bookingDays };
 }

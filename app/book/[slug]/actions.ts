@@ -3,7 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
-import { checkSlotAvailability, type BookingSlot } from "@/lib/availability";
+import { checkRangeAvailability, type BookingSlot } from "@/lib/availability";
+import { todayInBusinessTz, daysBetweenInclusive } from "@/lib/dates";
 import { startPaymentForBooking } from "@/lib/payments";
 import { isCashfreeConfigured } from "@/lib/cashfree";
 import { getCommissionRate } from "@/lib/platform-settings";
@@ -34,7 +35,8 @@ import { sanitizeError } from "@/lib/errors";
 
 export type CreateBookingInput = {
   hallId:       string;
-  eventDate:    string;       // YYYY-MM-DD
+  eventDate:    string;       // YYYY-MM-DD (range START)
+  endDate?:     string;       // YYYY-MM-DD (range END, inclusive; defaults to eventDate)
   slot:         BookingSlot;
   guestCount:   number;
   customerNotes?: string;
@@ -80,8 +82,30 @@ export async function createBookingRequest(
     return { error: "Please accept the booking, cancellation, and remaining balance terms to continue." };
   }
 
-  // ── Layer 1 — Authoritative availability re-check ───────────────────────────
-  const availability = await checkSlotAvailability(v.hallId, v.eventDate, v.slot);
+  // ── Date-range validation (SERVER-AUTHORITATIVE; spec: max 4 days) ─────────
+  // endDate is optional for backward compatibility: absent = single-day booking.
+  // The client's duration/price math is display-only — everything is re-derived
+  // here, and the DB enforces the same rules again (CHECKs + exclusion, 0024).
+  const rawEnd = (input.endDate ?? "").trim();
+  const endDate = rawEnd === "" ? v.eventDate : rawEnd;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
+    return { error: "Invalid end date." };
+  }
+  if (endDate < v.eventDate) {
+    return { error: "End date cannot be before the start date." };
+  }
+  if (endDate < todayInBusinessTz()) {
+    return { error: "Event dates cannot be in the past." };
+  }
+  const bookingDays = daysBetweenInclusive(v.eventDate, endDate);
+  if (bookingDays > 4) {
+    return { error: "Maximum booking duration is 4 days." };
+  }
+  // Multi-day bookings occupy whole days; morning/evening only exist for 1 day.
+  const effectiveSlot: BookingSlot = bookingDays > 1 ? "full_day" : v.slot;
+
+  // ── Layer 1 — Authoritative availability re-check (EVERY selected day) ──────
+  const availability = await checkRangeAvailability(v.hallId, v.eventDate, endDate, effectiveSlot);
   if (!availability.available) {
     return { error: availability.reason };
   }
@@ -99,11 +123,17 @@ export async function createBookingRequest(
     return { error: `Guest count exceeds the hall capacity (${hall.capacity_max}).` };
   }
 
-  // Pick the slot price from DB. Fall back to full-day if slot-specific is null.
-  let baseAmount: number;
-  if (v.slot === "morning" && hall.price_morning != null) baseAmount = Number(hall.price_morning);
-  else if (v.slot === "evening" && hall.price_evening != null) baseAmount = Number(hall.price_evening);
-  else baseAmount = Number(hall.price_per_day);
+  // Price from DB, never the client. Single-day bookings keep slot pricing;
+  // multi-day bookings are full days: daily price x number of days.
+  let dailyPrice: number;
+  if (bookingDays === 1 && effectiveSlot === "morning" && hall.price_morning != null) {
+    dailyPrice = Number(hall.price_morning);
+  } else if (bookingDays === 1 && effectiveSlot === "evening" && hall.price_evening != null) {
+    dailyPrice = Number(hall.price_evening);
+  } else {
+    dailyPrice = Number(hall.price_per_day);
+  }
+  const baseAmount = dailyPrice * bookingDays;
 
   // Commission rate is read server-side from platform_settings — never trust
   // the client's view of the rate. The booking's stored platform_fee snapshots
@@ -127,7 +157,8 @@ export async function createBookingRequest(
     hall_id:        v.hallId,
     customer_id:    user.id,
     event_date:     v.eventDate,
-    slot:           v.slot,
+    end_date:       endDate,
+    slot:           effectiveSlot,
     guest_count:    v.guestCount,
     base_amount:    baseAmount,
     platform_fee:   platformFee,

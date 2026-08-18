@@ -26,7 +26,8 @@ export type CustomerBooking = {
   hall_state:     string | null;
   hall_address:   string | null;
   hall_cover_url: string | null;
-  event_date:     string;           // YYYY-MM-DD
+  event_date:     string;
+  end_date:       string;           // YYYY-MM-DD
   slot:           "morning" | "evening" | "full_day";
   guest_count:    number | null;
   base_amount:    number;
@@ -94,7 +95,7 @@ function handleErr(label: string, error: { code?: string; message: string }) {
 }
 
 const BOOKING_SELECT = `
-  id, hall_id, event_date, slot, guest_count,
+  id, hall_id, event_date, end_date, slot, guest_count,
   base_amount, platform_fee, total_amount,
   status, customer_notes, owner_notes, cancel_reason,
   created_at, updated_at,
@@ -124,6 +125,7 @@ function mapBooking(row: any): CustomerBooking {
     hall_address:   hall?.address   ?? null,
     hall_cover_url: coverUrl,
     event_date:     row.event_date,
+    end_date:       row.end_date ?? row.event_date,
     slot:           row.slot,
     guest_count:    row.guest_count ?? null,
     base_amount:    Number(row.base_amount),

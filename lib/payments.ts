@@ -22,6 +22,7 @@
 import "server-only";
 
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
+import { isoDateRange } from "@/lib/dates";
 import {
   createCashfreeOrder,
   getCashfreeOrder,
@@ -306,6 +307,7 @@ type ApplyBooking = {
   hall_id:       string;
   customer_id:   string;
   event_date:    string;
+  end_date:      string;
   slot:          "morning" | "evening" | "full_day";
   base_amount:   number;
   platform_fee:  number;
@@ -320,7 +322,7 @@ async function loadBookingForApply(
 ): Promise<ApplyBooking | null> {
   const { data, error } = await db
     .from("bookings")
-    .select("id, hall_id, customer_id, event_date, slot, base_amount, platform_fee, total_amount, halls(owner_id)")
+    .select("id, hall_id, customer_id, event_date, end_date, slot, base_amount, platform_fee, total_amount, halls(owner_id)")
     .eq("id", bookingId)
     .maybeSingle();
 
@@ -331,6 +333,7 @@ async function loadBookingForApply(
     hall_id:       data.hall_id,
     customer_id:   data.customer_id,
     event_date:    data.event_date,
+    end_date:      data.end_date ?? data.event_date,
     slot:          data.slot,
     base_amount:   Number(data.base_amount),
     platform_fee:  Number(data.platform_fee),
@@ -353,18 +356,18 @@ async function blockAvailability(db: any, booking: ApplyBooking): Promise<void> 
     : booking.slot === "evening" ? "evening_booked"
     : "full_day_booked";
 
+  // A range booking blocks EVERY day it covers, not just its start date.
+  const rows = isoDateRange(booking.event_date, booking.end_date).map((date) => ({
+    hall_id:    booking.hall_id,
+    date,
+    slot:       booking.slot,
+    status,
+    booking_id: booking.id,
+  }));
+
   const { error } = await db
     .from("availability")
-    .upsert(
-      {
-        hall_id:    booking.hall_id,
-        date:       booking.event_date,
-        slot:       booking.slot,
-        status,
-        booking_id: booking.id,
-      },
-      { onConflict: "hall_id,date,slot" },
-    );
+    .upsert(rows, { onConflict: "hall_id,date,slot" });
 
   if (error) logSideEffectError("blockAvailability", error);
 }

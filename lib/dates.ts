@@ -58,6 +58,15 @@ export function isoDateRange(fromIso: string, toIso: string): string[] {
   return out;
 }
 
+/** Inclusive day count between two ISO dates: 15th→18th = 4. */
+export function daysBetweenInclusive(fromIso: string, toIso: string): number {
+  const [fy, fm, fd] = fromIso.split("-").map(Number);
+  const [ty, tm, td] = toIso.split("-").map(Number);
+  const a = Date.UTC(fy, (fm ?? 1) - 1, fd ?? 1);
+  const b = Date.UTC(ty, (tm ?? 1) - 1, td ?? 1);
+  return Math.round((b - a) / 86_400_000) + 1;
+}
+
 /** A Date whose UTC parts equal the ISO date — for LABELS ONLY. Render it with
  *  timeZone:"UTC" so weekday/day/month always match the ISO value. */
 export function isoDateToLabelDate(iso: string): Date {
@@ -75,4 +84,16 @@ export function formatIsoDateLabel(
     ...options,
     timeZone: "UTC",
   });
+}
+
+/** "15–18 Sep 2026 · 4 days" for ranges; single-date label otherwise. */
+export function formatBookingDates(startIso: string, endIso?: string | null): string {
+  const end = endIso && endIso !== startIso ? endIso : null;
+  if (!end) {
+    return formatIsoDateLabel(startIso, { day: "numeric", month: "short", year: "numeric" });
+  }
+  const days = daysBetweenInclusive(startIso, end);
+  const startLbl = formatIsoDateLabel(startIso, { day: "numeric", month: "short" });
+  const endLbl   = formatIsoDateLabel(end, { day: "numeric", month: "short", year: "numeric" });
+  return `${startLbl} – ${endLbl} · ${days} days`;
 }
