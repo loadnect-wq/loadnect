@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Lock, Mail } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { buildAuthCallbackUrl } from "@/lib/app-url";
@@ -14,8 +14,33 @@ import { toast } from "@/hooks/use-toast";
 import { GoogleIcon } from "@/components/icons/GoogleIcon";
 import { loginSchema } from "@/lib/validation/schemas";
 
+// Only root-relative internal paths are honoured; anything else (absolute URL,
+// protocol-relative //evil.com, backslash trick) falls back to the role router.
+function safeNextPath(raw: string | null): string {
+  const fallback = "/auth/redirect";
+  if (!raw) return fallback;
+  if (!raw.startsWith("/") || raw.startsWith("//") || raw.startsWith("/\\")) return fallback;
+  try {
+    const u = new URL(raw, "https://internal.invalid");
+    if (u.origin !== "https://internal.invalid") return fallback;
+  } catch {
+    return fallback;
+  }
+  return raw;
+}
+
+const AUTH_ERROR_MESSAGES: Record<string, string> = {
+  oauth_failed:     "Google sign-in could not be completed. Please try again.",
+  account_disabled: "This account has been deactivated. Contact Hallnect support if you think this is a mistake.",
+};
+
 export default function LoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  // Deep links like /book/<slug> send the user here as ?next=…; without this the
+  // destination was discarded and they landed on their dashboard instead.
+  const nextPath = safeNextPath(searchParams.get("next"));
+  const authError = AUTH_ERROR_MESSAGES[searchParams.get("error") ?? ""] ?? null;
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -39,7 +64,7 @@ export default function LoginPage() {
     if (error) {
       toast({ title: "Sign in failed", description: error.message, variant: "destructive" });
     } else {
-      router.push("/auth/redirect");
+      router.push(nextPath);
       router.refresh();
     }
 
@@ -49,7 +74,7 @@ export default function LoginPage() {
   function handleGoogleLogin() {
     getSupabaseClient().auth.signInWithOAuth({
       provider: "google",
-      options: { redirectTo: buildAuthCallbackUrl("/auth/redirect") },
+      options: { redirectTo: buildAuthCallbackUrl(nextPath) },
     });
   }
 
@@ -68,6 +93,14 @@ export default function LoginPage() {
         </div>
 
         <div className="rounded-2xl bg-white p-8 shadow-card space-y-5">
+          {authError && (
+            <div
+              role="alert"
+              className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+            >
+              {authError}
+            </div>
+          )}
           <button
             type="button"
             onClick={handleGoogleLogin}

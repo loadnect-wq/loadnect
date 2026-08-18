@@ -156,9 +156,9 @@ export default function OwnerRegisterPage() {
 
             <p className="text-center text-xs text-muted-foreground">
               By registering you agree to our{" "}
-              <Link href="/legal/terms" className="underline hover:text-foreground">Terms</Link>
+              <Link href="/terms" className="underline hover:text-foreground">Terms</Link>
               {" "}and{" "}
-              <Link href="/legal/privacy" className="underline hover:text-foreground">Privacy Policy</Link>
+              <Link href="/privacy" className="underline hover:text-foreground">Privacy Policy</Link>
             </p>
           </form>
         </div>

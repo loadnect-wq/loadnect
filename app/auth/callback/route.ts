@@ -2,9 +2,23 @@ import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import { NextResponse } from "next/server";
 
-// Internal destinations the OAuth flow may redirect a browser to after a
-// successful sign-in. Anything else falls back to /auth/redirect (role router).
-const ALLOWED_REDIRECTS = new Set(["/auth/redirect"]);
+// Path prefixes the OAuth flow may return a browser to after a successful
+// sign-in. Deep links matter here: a signed-out customer sent to
+// /login?next=/book/<slug> must land back on that booking page, not their
+// dashboard. Anything not matching falls back to /auth/redirect (role router).
+//
+// SECURITY: this is a SECOND layer, not the primary one. safeNext() has already
+// proven the value is a single-slash-rooted SAME-ORIGIN path (rejecting
+// //evil.com, /\evil.com, @evil.com, .evil.com and any absolute URL), so it can
+// only ever navigate within our own origin. This list additionally constrains
+// WHICH of our own pages an OAuth return may land on.
+const ALLOWED_REDIRECT_PREFIXES = [
+  "/auth/redirect",
+  "/book/",
+  "/customer",
+  "/owner",
+  "/halls",
+];
 
 // Intent marker used by the owner-registration Google flow. This is NOT a
 // redirect target — it's a signal that the just-authenticated user should be
@@ -43,7 +57,11 @@ function safeNext(raw: string | null): string {
   // The owner-intent marker is allowed through here so the GET handler can act
   // on it; it is never used as a literal redirect target.
   if (raw === OWNER_INTENT) return raw;
-  return ALLOWED_REDIRECTS.has(raw) ? raw : fallback;
+
+  const allowed = ALLOWED_REDIRECT_PREFIXES.some(
+    (prefix) => raw === prefix || raw.startsWith(prefix),
+  );
+  return allowed ? raw : fallback;
 }
 
 /**

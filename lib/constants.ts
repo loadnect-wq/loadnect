@@ -64,8 +64,11 @@ export function getDashboardPath(role: string): string {
     case "customer":       return "/customer";
     case "owner_approved": return "/owner/dashboard";
     // Legacy value — owner joining approval was removed (migration 0019).
-    // Any stale session carrying it lands on the owner dashboard.
-    case "owner_pending":  return "/owner/dashboard";
+    // MUST NOT point at a role-gated route: /owner/dashboard requires
+    // owner_approved, so requireRole would redirect here again and the browser
+    // would loop until ERR_TOO_MANY_REDIRECTS. Home is ungated, so a stale
+    // owner_pending session lands somewhere usable and can still sign out.
+    case "owner_pending":  return "/";
     case "admin":          return "/admin/dashboard";
     default:               return "/";
   }
