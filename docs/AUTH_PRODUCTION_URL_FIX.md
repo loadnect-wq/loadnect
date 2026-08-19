@@ -1,5 +1,7 @@
 # Auth Production URL Fix — `requested path is invalid`
 
+> **HISTORICAL (2026-08-15).** The production domain has since moved to **https://www.hallnect.com** (2026-08-19); `hallnect5.vercel.app` was released and no longer serves the app. URLs below are kept as a record of the original incident — do not copy them into configuration.
+
 **Date:** 2026-08-15 · Production URL: **https://hallnect5.vercel.app**
 
 ## Symptom

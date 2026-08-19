@@ -2,9 +2,9 @@
 // lib/app-url.ts — canonical public origin, safe to import from CLIENT code.
 //
 // WHY THIS EXISTS (production incident: "Log in to Vercel" during Google login).
-// Vercel SSO protection guards preview/branch/per-deployment URLs. Verified
-// cookie-free:
-//     https://hallnect5.vercel.app/login                      -> 200  (public)
+// Vercel SSO protection guards preview/branch/per-deployment URLs; only the
+// custom domain (www.hallnect.com) is public. Verified cookie-free:
+//     https://www.hallnect.com/login                          -> 200  (public)
 //     https://hallnect5-git-main-…vercel.app/login            -> 302 vercel.com/sso-api
 //     https://hallnect5-<hash>-…vercel.app/login              -> 302 vercel.com/sso-api
 //
@@ -21,28 +21,57 @@
 // build time, so it is readable in client components.
 // ─────────────────────────────────────────────────────────────────────────────
 
+// Hosts that USED to be this app's production origin and no longer serve it.
+// 2026-08-19: the project moved to the custom domain hallnect.com and the
+// hallnect5.vercel.app alias was RELEASED — it now returns DEPLOYMENT_NOT_FOUND.
+// A stale NEXT_PUBLIC_APP_URL still pointing there (env vars are inlined at
+// build time and easy to forget) must never win: an OAuth return or a Cashfree
+// return_url aimed at a dead host strands the user mid-flow. Any env value
+// whose host is in this set is ignored as poison.
+const RETIRED_HOSTS = new Set(["hallnect5.vercel.app"]);
+
+// The production origin used when no (valid, non-retired) env override exists.
+// This is the www host, not the apex: hallnect.com's DNS still points at the
+// registrar's parking page, while www.hallnect.com verifiably serves the app.
+// The Supabase redirect allow-list should carry BOTH /auth/callback variants
+// so a later apex cut-over needs no code change.
+const PRODUCTION_ORIGIN = "https://www.hallnect.com";
+
+/** Parses an env value into an http(s) origin; tolerates a missing scheme
+ *  (the common deploy typo "hallnect.com", which third parties would otherwise
+ *  resolve as a RELATIVE path, e.g. ".../supabase.co/hallnect.com/?code=…"). */
+function parseOrigin(raw: string | undefined): string | null {
+  if (typeof raw !== "string" || raw.trim() === "") return null;
+  const trimmed = raw.trim();
+  const candidate = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+  try {
+    const url = new URL(candidate);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+    return url.origin;
+  } catch {
+    return null;
+  }
+}
+
 /**
- * The canonical public origin, e.g. "https://hallnect5.vercel.app" — absolute,
- * no trailing slash. Tolerates a scheme-less env value (a common deploy typo:
- * "hallnect5.vercel.app"), which would otherwise be treated as a RELATIVE path
- * by Supabase and produce ".../supabase.co/hallnect5.vercel.app/?code=…".
+ * The canonical public origin — absolute, no trailing slash.
  *
- * Falls back to the current browser origin (then localhost) when the env var is
- * absent, so local development and previews still work.
+ * Resolution order:
+ *   1. NEXT_PUBLIC_SITE_URL   — explicit override, always wins
+ *   2. NEXT_PUBLIC_APP_URL    — legacy variable, honoured unless it points at
+ *                               a RETIRED host (see above)
+ *   3. production builds      — PRODUCTION_ORIGIN, so a stale or missing env
+ *                               var can never route auth to a dead domain
+ *   4. the browser origin / localhost — local development
  */
 export function getCanonicalAppUrl(): string {
-  const raw = process.env.NEXT_PUBLIC_APP_URL;
+  const site = parseOrigin(process.env.NEXT_PUBLIC_SITE_URL);
+  if (site) return site;
 
-  if (typeof raw === "string" && raw.trim() !== "") {
-    const trimmed = raw.trim();
-    const candidate = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
-    try {
-      const url = new URL(candidate);
-      if (url.protocol === "http:" || url.protocol === "https:") return url.origin;
-    } catch {
-      // fall through to the runtime origin below
-    }
-  }
+  const app = parseOrigin(process.env.NEXT_PUBLIC_APP_URL);
+  if (app && !RETIRED_HOSTS.has(new URL(app).host)) return app;
+
+  if (process.env.NODE_ENV === "production") return PRODUCTION_ORIGIN;
 
   if (typeof window !== "undefined" && window.location?.origin) {
     return window.location.origin;
