@@ -4,6 +4,7 @@ import { fetchAllUsers } from "@/lib/admin";
 import { Badge } from "@/components/ui/Badge";
 import { AdminPageHeader } from "../_components/AdminPageHeader";
 import { ConfirmButton } from "../_components/ConfirmButton";
+import { ReasonButton } from "../_components/ReasonButton";
 import { toggleUserActive } from "../actions";
 
 export const metadata: Metadata = { title: "Users — Admin" };
@@ -89,12 +90,21 @@ export default async function AdminUsersPage({ searchParams }: Props) {
                       </div>
                     </div>
                     <div className="mt-2.5">
-                      <ConfirmButton
-                        action={toggleUserActive.bind(null, u.id, !u.is_active)}
-                        label={u.is_active ? "Deactivate" : "Reactivate"}
-                        confirmText="Click again"
-                        variant={u.is_active ? "destructive" : "success"}
-                      />
+                      {u.is_active ? (
+                        <ReasonButton
+                          action={toggleUserActive.bind(null, u.id, false)}
+                          label="Deactivate"
+                          title="Deactivate this account"
+                          placeholder="e.g. Repeated fraudulent booking attempts."
+                        />
+                      ) : (
+                        <ConfirmButton
+                          action={toggleUserActive.bind(null, u.id, true)}
+                          label="Reactivate"
+                          confirmText="Click again"
+                          variant="success"
+                        />
+                      )}
                     </div>
                   </div>
                 );
@@ -132,12 +142,21 @@ export default async function AdminUsersPage({ searchParams }: Props) {
                         </Td>
                         <Td className="text-charcoal-500">{fmtDate(u.created_at)}</Td>
                         <Td align="right">
-                          <ConfirmButton
-                            action={toggleUserActive.bind(null, u.id, !u.is_active)}
-                            label={u.is_active ? "Deactivate" : "Reactivate"}
-                            confirmText="Click again"
-                            variant={u.is_active ? "destructive" : "success"}
-                          />
+                          {u.is_active ? (
+                            <ReasonButton
+                              action={toggleUserActive.bind(null, u.id, false)}
+                              label="Deactivate"
+                              title="Deactivate this account"
+                              placeholder="e.g. Repeated fraudulent booking attempts."
+                            />
+                          ) : (
+                            <ConfirmButton
+                              action={toggleUserActive.bind(null, u.id, true)}
+                              label="Reactivate"
+                              confirmText="Click again"
+                              variant="success"
+                            />
+                          )}
                         </Td>
                       </tr>
                     );

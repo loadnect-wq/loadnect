@@ -85,6 +85,23 @@ export default async function OwnerHallsPage() {
                     </div>
                   </div>
 
+                  {/* Why the listing is offline. Without this the owner sees a
+                      red "Rejected" badge and has no idea what to fix. */}
+                  {hall.rejection_reason &&
+                    (hall.status === "rejected" || hall.status === "suspended") && (
+                      <div className="mx-3 mb-3 rounded-xl border border-red-200 bg-red-50 p-2.5">
+                        <p className="text-[11px] font-semibold text-red-800">
+                          {hall.status === "rejected" ? "Why this was rejected" : "Why this was suspended"}
+                        </p>
+                        <p className="mt-0.5 text-[11px] leading-relaxed text-red-700">
+                          {hall.rejection_reason}
+                        </p>
+                        <p className="mt-1 text-[10px] text-red-600">
+                          Update your listing and resubmit for approval.
+                        </p>
+                      </div>
+                    )}
+
                   {/* Action row */}
                   <div className="grid grid-cols-4 border-t border-border text-[11px] font-semibold divide-x divide-border">
                     {[

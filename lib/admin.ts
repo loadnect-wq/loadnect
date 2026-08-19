@@ -780,3 +780,80 @@ export async function fetchAllTickets(statusFilter?: string): Promise<AdminTicke
     updated_at:     row.updated_at,
   }));
 }
+
+// ── Admin audit log (migration 0025) ─────────────────────────────────────────
+// Append-only trail of privileged actions. Readable by admins only (RLS), and
+// protected against modification by both RLS and a guard trigger — so what this
+// returns is the authoritative record of what actually happened.
+
+export type AdminAuditRow = {
+  id:              string;
+  actor_email:     string | null;
+  action:          string;
+  entity_type:     string;
+  entity_id:       string | null;
+  previous_status: string | null;
+  new_status:      string | null;
+  reason:          string | null;
+  created_at:      string;
+};
+
+export type AuditLogPage = {
+  rows:    AdminAuditRow[];
+  total:   number;
+  page:    number;
+  pages:   number;
+  /** True when migration 0025 has not been applied yet. */
+  unavailable?: boolean;
+};
+
+const AUDIT_PAGE_SIZE = 50;
+
+export async function fetchAuditLog(opts: {
+  entityType?: string;
+  action?:     string;
+  search?:     string;
+  page?:       number;
+} = {}): Promise<AuditLogPage> {
+  const supabase = await getSupabaseServerClient();
+  const page = Math.max(1, Math.floor(opts.page ?? 1));
+  const from = (page - 1) * AUDIT_PAGE_SIZE;
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let q = (supabase as any)
+    .from("admin_audit_log")
+    .select(
+      "id, actor_email, action, entity_type, entity_id, previous_status, new_status, reason, created_at",
+      { count: "exact" },
+    )
+    .order("created_at", { ascending: false })
+    .range(from, from + AUDIT_PAGE_SIZE - 1);
+
+  if (opts.entityType) q = q.eq("entity_type", opts.entityType);
+  if (opts.action)     q = q.eq("action", opts.action);
+  if (opts.search) {
+    // Escape PostgREST's `or` filter separators so a search string can't alter
+    // the filter expression.
+    const term = opts.search.replace(/[(),*]/g, " ").trim().slice(0, 80);
+    if (term) q = q.or(`actor_email.ilike.%${term}%,reason.ilike.%${term}%,action.ilike.%${term}%`);
+  }
+
+  const { data, error, count } = await q;
+
+  if (error) {
+    // Table not provisioned yet (migration 0025 not applied) — render an
+    // explanatory empty state instead of a 500.
+    if (error.code === "42P01" || error.code === "PGRST205") {
+      return { rows: [], total: 0, page: 1, pages: 1, unavailable: true };
+    }
+    throw error;
+  }
+
+  const total = count ?? 0;
+  return {
+    rows:  (data ?? []) as AdminAuditRow[],
+    total,
+    page,
+    pages: Math.max(1, Math.ceil(total / AUDIT_PAGE_SIZE)),
+  };
+}

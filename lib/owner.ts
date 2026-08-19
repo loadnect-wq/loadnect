@@ -37,6 +37,8 @@ export type OwnerHall = {
   cover_url:      string | null;
   image_count:    number;
   created_at:     string;
+  /** Admin's written reason when the hall was rejected or suspended (0025). */
+  rejection_reason: string | null;
 };
 
 export type OwnerHallDetail = OwnerHall & {
@@ -180,7 +182,7 @@ export async function fetchOwnerHalls(ownerId: string): Promise<OwnerHall[]> {
 
   const { data, error } = await db
     .from("halls")
-    .select("id, slug, name, city, state, capacity_max, price_per_day, status, is_premium, rating_average, rating_count, created_at, hall_images(url, is_cover)")
+    .select("id, slug, name, city, state, capacity_max, price_per_day, status, is_premium, rating_average, rating_count, created_at, rejection_reason, hall_images(url, is_cover)")
     .eq("owner_id", ownerId)
     .order("created_at", { ascending: false });
 
@@ -205,6 +207,7 @@ export async function fetchOwnerHalls(ownerId: string): Promise<OwnerHall[]> {
       rating_count:   row.rating_count,
       cover_url:      coverUrl,
       created_at:     row.created_at,
+      rejection_reason: row.rejection_reason ?? null,
     };
   });
 }
@@ -231,7 +234,7 @@ export async function fetchOwnerHall(hallId: string): Promise<OwnerHallDetail | 
 
   const { data, error } = await db
     .from("halls")
-    .select("id, slug, name, city, state, address, pincode, latitude, longitude, capacity_min, capacity_max, price_per_day, price_morning, price_evening, description, status, is_premium, rating_average, rating_count, created_at, hall_images(url, is_cover), hall_amenities(amenity_id), hall_custom_amenities(name, sort_order)")
+    .select("id, slug, name, city, state, address, pincode, latitude, longitude, capacity_min, capacity_max, price_per_day, price_morning, price_evening, description, status, is_premium, rating_average, rating_count, created_at, rejection_reason, hall_images(url, is_cover), hall_amenities(amenity_id), hall_custom_amenities(name, sort_order)")
     .eq("id", hallId)
     .eq("owner_id", ownerRow.id)   // ← ownership, not just visibility
     .maybeSingle();
@@ -272,6 +275,7 @@ export async function fetchOwnerHall(hallId: string): Promise<OwnerHallDetail | 
     rating_count:   data.rating_count,
     cover_url:      coverUrl,
     created_at:     data.created_at,
+    rejection_reason: data.rejection_reason ?? null,
     amenity_ids:    amenityIds,
   };
 }

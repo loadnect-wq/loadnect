@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import {
   LayoutDashboard, Users, BadgeCheck, Building2, ClipboardCheck,
   CalendarDays, CreditCard, Wallet, Star, Sparkles, Megaphone,
-  MessageSquare, Settings,
+  MessageSquare, ScrollText, Settings,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -48,6 +48,7 @@ const ITEMS: {
   { label: "Premium",    href: "/admin/premium-listings",icon: Sparkles },
   { label: "Ads",        href: "/admin/advertisements",  icon: Megaphone, badgeKey: "pendingAds" },
   { label: "Support",    href: "/admin/support-tickets", icon: MessageSquare, badgeKey: "openTickets" },
+  { label: "Audit Log",  href: "/admin/audit-logs",      icon: ScrollText },
   { label: "Settings",   href: "/admin/settings",        icon: Settings },
 ];
 

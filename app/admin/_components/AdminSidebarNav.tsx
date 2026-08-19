@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import {
   BadgeCheck, Building2, CalendarDays, ClipboardCheck,
   CreditCard, LayoutDashboard, Megaphone, MessageSquare,
-  Receipt, Settings, Sparkles, Star, Users, Wallet,
+  Receipt, ScrollText, Settings, Sparkles, Star, Users, Wallet,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -70,7 +70,8 @@ const SECTIONS: { title: string; items: NavItem[] }[] = [
   {
     title: "Account",
     items: [
-      { label: "Settings", href: "/admin/settings", icon: Settings },
+      { label: "Audit Log", href: "/admin/audit-logs", icon: ScrollText },
+      { label: "Settings",  href: "/admin/settings",   icon: Settings },
     ],
   },
 ];

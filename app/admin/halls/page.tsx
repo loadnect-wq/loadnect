@@ -6,6 +6,7 @@ import { formatPrice } from "@/lib/mock-data";
 import { Badge } from "@/components/ui/Badge";
 import { AdminPageHeader } from "../_components/AdminPageHeader";
 import { ConfirmButton } from "../_components/ConfirmButton";
+import { ReasonButton } from "../_components/ReasonButton";
 import { approveHall, rejectHall, suspendHall, unsuspendHall } from "../actions";
 
 export const metadata: Metadata = { title: "Halls — Admin" };
@@ -130,7 +131,7 @@ export default async function AdminHallsPage({ searchParams }: Props) {
                       {h.status === "approved" ? "View public page" : "Not public"}
                     </Link>
 
-                    <div className="flex flex-wrap gap-1.5">
+                    <div className="relative flex flex-wrap gap-1.5">
                       {h.status === "pending_approval" && (
                         <>
                           <ConfirmButton
@@ -140,21 +141,21 @@ export default async function AdminHallsPage({ searchParams }: Props) {
                             variant="success"
                             hideOnSuccess doneLabel="✓ Approved"
                           />
-                          <ConfirmButton
+                          <ReasonButton
                             action={rejectHall.bind(null, h.id)}
                             label="Reject"
-                            confirmText="Confirm reject"
-                            variant="destructive"
-                            hideOnSuccess doneLabel="✓ Rejected"
+                            title="Reject this hall"
+                            placeholder="e.g. Photos do not match the venue address provided."
                           />
                         </>
                       )}
                       {h.status === "approved" && (
-                        <ConfirmButton
+                        <ReasonButton
                           action={suspendHall.bind(null, h.id)}
                           label="Suspend"
-                          confirmText="Confirm suspend"
-                          variant="destructive"
+                          title="Suspend this hall"
+                          placeholder="e.g. Repeated booking no-shows reported by customers."
+                          variant="warning"
                         />
                       )}
                       {h.status === "suspended" && (

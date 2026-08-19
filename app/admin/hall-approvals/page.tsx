@@ -6,6 +6,7 @@ import { formatPrice } from "@/lib/mock-data";
 import { EmptyState } from "@/components/ui/empty-state";
 import { AdminPageHeader } from "../_components/AdminPageHeader";
 import { ConfirmButton } from "../_components/ConfirmButton";
+import { ReasonButton } from "../_components/ReasonButton";
 import { approveHall, rejectHall } from "../actions";
 
 export const metadata: Metadata = { title: "Hall Approvals — Admin" };
@@ -104,13 +105,12 @@ export default async function HallApprovalsPage() {
                         <ExternalLink className="h-3.5 w-3.5" />
                         Preview as owner
                       </Link>
-                      <div className="flex gap-2">
-                        <ConfirmButton
+                      <div className="relative flex gap-2">
+                        <ReasonButton
                           action={rejectHall.bind(null, h.id)}
                           label="Reject"
-                          confirmText="Confirm reject"
-                          variant="destructive"
-                          hideOnSuccess doneLabel="✓ Rejected"
+                          title="Reject this hall"
+                          placeholder="e.g. Photos do not match the venue address provided."
                         />
                         <ConfirmButton
                           action={approveHall.bind(null, h.id)}

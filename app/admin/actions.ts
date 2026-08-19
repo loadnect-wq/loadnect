@@ -17,6 +17,7 @@ import {
   parseSafe,
 } from "@/lib/validation/schemas";
 import { sanitizeError } from "@/lib/errors";
+import { recordAdminAction } from "@/lib/audit";
 import type { OverdueRunSummary } from "@/lib/commissions";
 
 function requireUuid(id: string, label = "id"): string | null {
@@ -39,82 +40,113 @@ async function getAuthUser() {
   return { supabase, user };
 }
 
+/**
+ * Server-side ADMIN gate for privileged actions.
+ *
+ * getAuthUser() only proves *authentication*. Without a role check, a
+ * non-admin calling one of these server actions directly hit RLS, which
+ * silently filtered the rows — the statement affected 0 rows, raised no error,
+ * and the action returned { success: true }. That reported a privileged change
+ * that never happened. Every sensitive admin action now starts here.
+ */
+async function requireAdminActor() {
+  const supabase = await getSupabaseServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { ok: false as const, error: "Not authenticated" };
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: profile } = await (supabase as any)
+    .from("profiles").select("role, is_active").eq("id", user.id).maybeSingle();
+
+  if (profile?.role !== "admin") return { ok: false as const, error: "Admin access required." };
+  if (profile?.is_active === false) return { ok: false as const, error: "This admin account is deactivated." };
+  return { ok: true as const, supabase, user };
+}
+
+/** Moderation reason: trimmed, length-capped, plain text. */
+function cleanReason(raw?: string | null): string | null {
+  const t = (raw ?? "").toString().trim();
+  if (t === "") return null;
+  return t.replace(/\s+/g, " ").slice(0, 1000);
+}
+
 // ── Hall approval ─────────────────────────────────────────────────────────────
 
 export async function approveHall(hallId: string): Promise<ActionResult> {
-  const { supabase, user } = await getAuthUser();
-  if (!user) return { error: "Not authenticated" };
-  const idErr = requireUuid(hallId, "hall id");
-  if (idErr) return { error: idErr };
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const db = supabase as any;
-
-  const { error } = await db
-    .from("halls")
-    .update({ status: "approved" })
-    .eq("id", hallId);
-
-  if (error) return { error: sanitizeError(error, "admin") };
-  revalidatePath("/admin/halls");
-  revalidatePath("/admin/hall-approvals");
-  revalidatePath("/admin/dashboard");
-  return { success: true };
+  return moderateHall(hallId, "approved", "hall.approve");
 }
 
-export async function rejectHall(hallId: string): Promise<ActionResult> {
-  const { supabase, user } = await getAuthUser();
-  if (!user) return { error: "Not authenticated" };
-  const idErr = requireUuid(hallId, "hall id");
-  if (idErr) return { error: idErr };
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const db = supabase as any;
-
-  const { error } = await db
-    .from("halls")
-    .update({ status: "rejected" })
-    .eq("id", hallId);
-
-  if (error) return { error: sanitizeError(error, "admin") };
-  revalidatePath("/admin/halls");
-  revalidatePath("/admin/hall-approvals");
-  revalidatePath("/admin/dashboard");
-  return { success: true };
+export async function rejectHall(hallId: string, reason?: string): Promise<ActionResult> {
+  return moderateHall(hallId, "rejected", "hall.reject", reason);
 }
 
-export async function suspendHall(hallId: string): Promise<ActionResult> {
-  const { supabase, user } = await getAuthUser();
-  if (!user) return { error: "Not authenticated" };
-  const idErr = requireUuid(hallId, "hall id");
-  if (idErr) return { error: idErr };
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const db = supabase as any;
-
-  const { error } = await db
-    .from("halls")
-    .update({ status: "suspended" })
-    .eq("id", hallId);
-
-  if (error) return { error: sanitizeError(error, "admin") };
-  revalidatePath("/admin/halls");
-  revalidatePath("/admin/dashboard");
-  return { success: true };
+export async function suspendHall(hallId: string, reason?: string): Promise<ActionResult> {
+  return moderateHall(hallId, "suspended", "hall.suspend", reason);
 }
 
 export async function unsuspendHall(hallId: string): Promise<ActionResult> {
-  const { supabase, user } = await getAuthUser();
-  if (!user) return { error: "Not authenticated" };
+  return moderateHall(hallId, "approved", "hall.unsuspend");
+}
+
+/**
+ * Single authoritative path for every hall status change.
+ *
+ * Verifies the admin role SERVER-SIDE, captures the previous status, requires
+ * the update to actually affect a row (an RLS-filtered write reports 0 rows
+ * with NO error and would otherwise look like success), stores the moderation
+ * reason so the owner can see why, and appends an attributable audit entry.
+ */
+async function moderateHall(
+  hallId: string,
+  newStatus: "approved" | "rejected" | "suspended",
+  action: string,
+  reason?: string,
+): Promise<ActionResult> {
+  const actor = await requireAdminActor();
+  if (!actor.ok) return { error: actor.error };
+
   const idErr = requireUuid(hallId, "hall id");
   if (idErr) return { error: idErr };
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const db = supabase as any;
 
-  const { error } = await db
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const db = actor.supabase as any;
+
+  const { data: current } = await db
+    .from("halls").select("status").eq("id", hallId).maybeSingle();
+  if (!current) return { error: "Hall not found." };
+
+  const cleaned = cleanReason(reason);
+  if ((newStatus === "rejected" || newStatus === "suspended") && !cleaned) {
+    return { error: "Please provide a reason — the owner will see it." };
+  }
+
+  const { error, count } = await db
     .from("halls")
-    .update({ status: "approved" })
+    .update({
+      status:           newStatus,
+      rejection_reason: newStatus === "approved" ? null : cleaned,
+      moderated_at:     new Date().toISOString(),
+      moderated_by:     actor.user.id,
+    }, { count: "exact" })
     .eq("id", hallId);
 
   if (error) return { error: sanitizeError(error, "admin") };
+  if (count === 0) return { error: "You do not have permission to moderate this hall." };
+
+  await recordAdminAction({
+    action,
+    entityType:     "hall",
+    entityId:       hallId,
+    previousStatus: current.status,
+    newStatus,
+    reason:         cleaned,
+  });
+
   revalidatePath("/admin/halls");
+  revalidatePath("/admin/hall-approvals");
+  revalidatePath("/admin/dashboard");
+  revalidatePath("/admin/audit-logs");
+  revalidatePath("/owner/halls");
   return { success: true };
 }
 
@@ -143,9 +175,17 @@ export async function approveOwner(profileId: string): Promise<ActionResult> {
     .update({ is_verified: true, verified_at: new Date().toISOString(), verified_by: user.id })
     .eq("profile_id", profileId);
 
+  await recordAdminAction({
+    action:     "owner.approve",
+    entityType: "user",
+    entityId:   profileId,
+    newStatus:  "owner_approved",
+  });
+
   revalidatePath("/admin/owners");
   revalidatePath("/admin/users");
   revalidatePath("/admin/dashboard");
+  revalidatePath("/admin/audit-logs");
   return { success: true };
 }
 
@@ -164,8 +204,17 @@ export async function rejectOwner(profileId: string): Promise<ActionResult> {
     .eq("id", profileId);
 
   if (error) return { error: sanitizeError(error, "admin") };
+
+  await recordAdminAction({
+    action:     "owner.reject",
+    entityType: "user",
+    entityId:   profileId,
+    newStatus:  "customer",
+  });
+
   revalidatePath("/admin/owners");
   revalidatePath("/admin/users");
+  revalidatePath("/admin/audit-logs");
   return { success: true };
 }
 
@@ -183,32 +232,69 @@ export async function verifyOwnerRow(ownerRowId: string): Promise<ActionResult> 
     .eq("id", ownerRowId);
 
   if (error) return { error: sanitizeError(error, "admin") };
+
+  await recordAdminAction({
+    action:     "owner.verify",
+    entityType: "hall_owner",
+    entityId:   ownerRowId,
+    newStatus:  "verified",
+  });
+
   revalidatePath("/admin/owners");
+  revalidatePath("/admin/audit-logs");
   return { success: true };
 }
 
 // ── User management ───────────────────────────────────────────────────────────
 
-export async function toggleUserActive(profileId: string, active: boolean): Promise<ActionResult> {
-  const { supabase, user } = await getAuthUser();
-  if (!user) return { error: "Not authenticated" };
+export async function toggleUserActive(
+  profileId: string,
+  active: boolean,
+  reason?: string,
+): Promise<ActionResult> {
+  const actor = await requireAdminActor();
+  if (!actor.ok) return { error: actor.error };
   const idErr = requireUuid(profileId, "profile id");
   if (idErr) return { error: idErr };
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const db = supabase as any;
+  const db = actor.supabase as any;
 
   // Safety: never let an admin deactivate themselves.
-  if (profileId === user.id && !active) {
+  if (profileId === actor.user.id && !active) {
     return { error: "You cannot deactivate your own account." };
   }
 
-  const { error } = await db
+  const { data: before } = await db
+    .from("profiles").select("role, is_active").eq("id", profileId).maybeSingle();
+  if (!before) return { error: "User not found." };
+
+  // Suspending an admin would lock a colleague out of the control centre —
+  // require it to be done deliberately, not from a one-click list row.
+  if (before.role === "admin" && !active) {
+    return { error: "Admin accounts cannot be suspended from this screen." };
+  }
+
+  const { error, count } = await db
     .from("profiles")
-    .update({ is_active: active })
+    .update({ is_active: active }, { count: "exact" })
     .eq("id", profileId);
 
   if (error) return { error: sanitizeError(error, "admin") };
+  if (count === 0) return { error: "You do not have permission to change this account." };
+
+  await recordAdminAction({
+    action:         active ? "user.reactivate" : "user.suspend",
+    entityType:     "user",
+    entityId:       profileId,
+    previousStatus: before.is_active ? "active" : "suspended",
+    newStatus:      active ? "active" : "suspended",
+    reason:         cleanReason(reason),
+    metadata:       { role: before.role },
+  });
+
   revalidatePath("/admin/users");
+  revalidatePath("/admin/owners");
+  revalidatePath("/admin/audit-logs");
   return { success: true };
 }
 
@@ -222,13 +308,24 @@ export async function toggleReviewVisible(reviewId: string, visible: boolean): P
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = supabase as any;
 
-  const { error } = await db
+  const { error, count } = await db
     .from("reviews")
-    .update({ is_visible: visible })
+    .update({ is_visible: visible }, { count: "exact" })
     .eq("id", reviewId);
 
   if (error) return { error: sanitizeError(error, "admin") };
+  if (count === 0) return { error: "You do not have permission to moderate this review." };
+
+  await recordAdminAction({
+    action:         visible ? "review.show" : "review.hide",
+    entityType:     "review",
+    entityId:       reviewId,
+    previousStatus: visible ? "hidden" : "visible",
+    newStatus:      visible ? "visible" : "hidden",
+  });
+
   revalidatePath("/admin/reviews");
+  revalidatePath("/admin/audit-logs");
   return { success: true };
 }
 
@@ -240,9 +337,28 @@ export async function deleteReview(reviewId: string): Promise<ActionResult> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = supabase as any;
 
-  const { error } = await db.from("reviews").delete().eq("id", reviewId);
+  // Snapshot first: once the row is gone the audit entry is the only record
+  // that it ever existed, so capture the identifying details up front.
+  const { data: before } = await db
+    .from("reviews").select("hall_id, rating, is_visible").eq("id", reviewId).maybeSingle();
+  if (!before) return { error: "Review not found." };
+
+  const { error, count } = await db
+    .from("reviews").delete({ count: "exact" }).eq("id", reviewId);
   if (error) return { error: sanitizeError(error, "admin") };
+  if (count === 0) return { error: "You do not have permission to delete this review." };
+
+  await recordAdminAction({
+    action:         "review.delete",
+    entityType:     "review",
+    entityId:       reviewId,
+    previousStatus: before.is_visible ? "visible" : "hidden",
+    newStatus:      "deleted",
+    metadata:       { hall_id: before.hall_id, rating: before.rating },
+  });
+
   revalidatePath("/admin/reviews");
+  revalidatePath("/admin/audit-logs");
   return { success: true };
 }
 
@@ -252,22 +368,37 @@ export async function updateAdStatus(
   adId: string,
   status: "active" | "paused" | "rejected" | "expired",
 ): Promise<ActionResult> {
-  const { supabase, user } = await getAuthUser();
-  if (!user) return { error: "Not authenticated" };
+  const actor = await requireAdminActor();
+  if (!actor.ok) return { error: actor.error };
   const idErr = requireUuid(adId, "ad id");
   if (idErr) return { error: idErr };
   if (!["active", "paused", "rejected", "expired"].includes(status)) {
     return { error: "Invalid ad status." };
   }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const db = supabase as any;
+  const db = actor.supabase as any;
 
-  const { error } = await db
+  const { data: before } = await db
+    .from("advertisements").select("status, title").eq("id", adId).maybeSingle();
+  if (!before) return { error: "Advertisement not found." };
+
+  const { error, count } = await db
     .from("advertisements")
-    .update({ status })
+    .update({ status }, { count: "exact" })
     .eq("id", adId);
 
   if (error) return { error: sanitizeError(error, "admin") };
+  if (count === 0) return { error: "You do not have permission to change this advertisement." };
+
+  await recordAdminAction({
+    action:         `ad.${status === "active" ? "approve" : status}`,
+    entityType:     "advertisement",
+    entityId:       adId,
+    previousStatus: before.status,
+    newStatus:      status,
+    metadata:       { title: before.title },
+  });
+  revalidatePath("/admin/audit-logs");
   revalidatePath("/admin/advertisements");
   revalidatePath("/");
   return { success: true };
@@ -373,20 +504,40 @@ export async function updateAdvertisement(
 }
 
 export async function deleteAdvertisement(adId: string): Promise<ActionResult> {
-  const { supabase, user } = await getAuthUser();
-  if (!user) return { error: "Not authenticated" };
+  const actor = await requireAdminActor();
+  if (!actor.ok) return { error: actor.error };
   const idErr = requireUuid(adId, "ad id");
   if (idErr) return { error: idErr };
-
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const db = supabase as any;
-  const { error } = await db.from("advertisements").delete().eq("id", adId);
+  const db = actor.supabase as any;
 
+  // Snapshot before the row disappears — afterwards the audit entry is the only
+  // record the ad ever existed.
+  const { data: before } = await db
+    .from("advertisements").select("status, title").eq("id", adId).maybeSingle();
+  if (!before) return { error: "Advertisement not found." };
+
+  const { error, count } = await db
+    .from("advertisements").delete({ count: "exact" }).eq("id", adId);
   if (error) return { error: sanitizeError(error, "admin") };
+  if (count === 0) return { error: "You do not have permission to delete this advertisement." };
+
+  // Logged only AFTER the delete actually affected a row.
+  await recordAdminAction({
+    action:         "ad.delete",
+    entityType:     "advertisement",
+    entityId:       adId,
+    previousStatus: before.status,
+    newStatus:      "deleted",
+    metadata:       { title: before.title },
+  });
+
   revalidatePath("/admin/advertisements");
+  revalidatePath("/admin/audit-logs");
   revalidatePath("/");
   return { success: true };
 }
+
 
 // ── Premium listings ──────────────────────────────────────────────────────────
 
@@ -398,13 +549,31 @@ export async function togglePremiumActive(listingId: string, isActive: boolean):
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = supabase as any;
 
-  const { error } = await db
+  const { data: before } = await db
+    .from("premium_listings").select("hall_id, is_active").eq("id", listingId).maybeSingle();
+  if (!before) return { error: "Premium listing not found." };
+
+  const { error, count } = await db
     .from("premium_listings")
-    .update({ is_active: isActive })
+    .update({ is_active: isActive }, { count: "exact" })
     .eq("id", listingId);
 
   if (error) return { error: sanitizeError(error, "admin") };
+  // premium_listings had NO update policy at one point, so a "successful"
+  // deactivate silently changed nothing. Never report success on 0 rows.
+  if (count === 0) return { error: "You do not have permission to change this listing." };
+
+  await recordAdminAction({
+    action:         isActive ? "premium.activate" : "premium.cancel",
+    entityType:     "premium_listing",
+    entityId:       listingId,
+    previousStatus: before.is_active ? "active" : "inactive",
+    newStatus:      isActive ? "active" : "inactive",
+    metadata:       { hall_id: before.hall_id },
+  });
+
   revalidatePath("/admin/premium-listings");
+  revalidatePath("/admin/audit-logs");
   return { success: true };
 }
 
@@ -556,8 +725,9 @@ export async function verifyCommissionPayment(
   decision: "approve" | "reject",
   adminNote?: string,
 ): Promise<ActionResult> {
-  const { supabase, user } = await getAuthUser();
-  if (!user) return { error: "Not authenticated" };
+  const actor = await requireAdminActor();
+  if (!actor.ok) return { error: actor.error };
+  const { supabase, user } = { supabase: actor.supabase, user: actor.user };
   const idErr = requireUuid(paymentId, "payment id");
   if (idErr) return { error: idErr };
   if (decision !== "approve" && decision !== "reject") return { error: "Invalid decision." };
@@ -614,8 +784,20 @@ export async function verifyCommissionPayment(
     // Commission stays pending/overdue so the owner can re-submit.
   }
 
+  await recordAdminAction({
+    action:         decision === "approve" ? "commission.payment.approve" : "commission.payment.reject",
+    entityType:     "commission_payment",
+    entityId:       paymentId,
+    previousStatus: pay.status,
+    newStatus:      decision === "approve" ? "verified" : "rejected",
+    reason:         note,
+    // upi_reference is a payment identifier, not a secret/credential.
+    metadata:       { commission_id: pay.commission_id },
+  });
+
   revalidatePath("/admin/commissions");
   revalidatePath("/owner/commissions");
+  revalidatePath("/admin/audit-logs");
   return { success: true };
 }
 

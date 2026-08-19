@@ -2,16 +2,20 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import {
   AlertCircle, Building2, CalendarDays, CheckCircle2,
-  ClipboardCheck, MessageSquare, Users, Wallet,
+  ClipboardCheck, MessageSquare, ScrollText, Users, Wallet,
 } from "lucide-react";
-import { fetchAdminStats } from "@/lib/admin";
+import { fetchAdminStats, fetchAuditLog } from "@/lib/admin";
 import { formatPrice } from "@/lib/mock-data";
 import { AdminPageHeader } from "../_components/AdminPageHeader";
 
 export const metadata: Metadata = { title: "Admin Dashboard" };
 
 export default async function AdminDashboardPage() {
-  const stats = await fetchAdminStats();
+  // Independent reads — run them together rather than serially.
+  const [stats, recentActivity] = await Promise.all([
+    fetchAdminStats(),
+    fetchAuditLog({ page: 1 }),
+  ]);
 
   const queue: { count: number; label: string; href: string; color: string }[] = [
     {
@@ -119,6 +123,44 @@ export default async function AdminDashboardPage() {
           </div>
         </section>
 
+        {/* Recent admin activity — real entries from the append-only audit log.
+            Nothing here is synthesised; an empty log renders an empty state. */}
+        <section>
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="font-serif text-sm font-semibold text-charcoal-900">Recent admin activity</h2>
+            <Link href="/admin/audit-logs" className="text-xs font-semibold text-maroon-600 hover:underline">
+              View full log
+            </Link>
+          </div>
+          <div className="overflow-hidden rounded-2xl border border-border bg-white">
+            {recentActivity.rows.length === 0 ? (
+              <div className="px-4 py-6 text-center">
+                <ScrollText className="mx-auto h-6 w-6 text-charcoal-300" />
+                <p className="mt-1.5 text-xs text-charcoal-500">
+                  {recentActivity.unavailable
+                    ? "Audit log not provisioned yet."
+                    : "No admin actions recorded yet."}
+                </p>
+              </div>
+            ) : (
+              <ul className="divide-y divide-border">
+                {recentActivity.rows.slice(0, 6).map((row) => (
+                  <li key={row.id} className="flex flex-wrap items-center gap-x-2 gap-y-0.5 px-4 py-2.5 text-xs">
+                    <span className="font-mono font-semibold text-charcoal-800">{row.action}</span>
+                    <span className="text-charcoal-500">by {row.actor_email ?? "unknown"}</span>
+                    <span className="ml-auto shrink-0 text-[10px] text-charcoal-400">
+                      {new Date(row.created_at).toLocaleString("en-IN", {
+                        timeZone: "Asia/Kolkata",
+                        day: "numeric", month: "short", hour: "numeric", minute: "2-digit", hour12: true,
+                      })}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </section>
+
         {/* Quick links */}
         <section>
           <h2 className="mb-3 font-serif text-sm font-semibold text-charcoal-900">Manage</h2>
@@ -127,6 +169,7 @@ export default async function AdminDashboardPage() {
             <QuickLink href="/admin/bookings"      icon={<CalendarDays    className="h-4 w-4" />} label="All Bookings"  />
             <QuickLink href="/admin/commissions"   icon={<Wallet          className="h-4 w-4" />} label="Commissions"   />
             <QuickLink href="/admin/support-tickets" icon={<MessageSquare className="h-4 w-4" />} label="Support"      />
+            <QuickLink href="/admin/audit-logs"    icon={<ScrollText     className="h-4 w-4" />} label="Audit Log"    />
           </div>
         </section>
       </div>
