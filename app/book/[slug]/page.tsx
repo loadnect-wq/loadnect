@@ -6,6 +6,7 @@ import { fetchHallAvailabilityWindow } from "@/lib/availability";
 import { getCommissionPercent } from "@/lib/platform-settings";
 import { isCashfreeConfigured } from "@/lib/cashfree";
 import { todayInBusinessTz, addDaysToIsoDate } from "@/lib/dates";
+import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { BookingFlow } from "./_components/BookingFlow";
 
 type Props = { params: Promise<{ slug: string }> };
@@ -40,6 +41,17 @@ export default async function BookPage({ params }: Props) {
   // manual "submit booking request" mode instead of online payment.
   const onlinePaymentEnabled = isCashfreeConfigured();
 
+  // Prefill the customer's saved phone so they don't retype it (§ don't ask
+  // repeatedly). Still editable; the server re-validates whatever is submitted.
+  let initialPhone: string | null = null;
+  try {
+    const supabase = await getSupabaseServerClient();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: prof } = await (supabase as any)
+      .from("profiles").select("phone").eq("id", user.id).maybeSingle();
+    initialPhone = prof?.phone ?? null;
+  } catch { /* prefill is convenience only */ }
+
   return (
     <BookingFlow
       hall={{
@@ -56,6 +68,7 @@ export default async function BookPage({ params }: Props) {
       windowDays={BOOKING_WINDOW_DAYS}
       platformFeePercent={platformFeePercent}
       onlinePaymentEnabled={onlinePaymentEnabled}
+      initialPhone={initialPhone}
     />
   );
 }

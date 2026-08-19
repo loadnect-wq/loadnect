@@ -16,6 +16,7 @@ import { formatPrice } from "@/lib/mock-data";
 import type { DaySlotAvailability } from "@/lib/availability";
 import { createBookingRequest, createPaymentSession, submitManualBookingRequest, type CreateBookingResult } from "../actions";
 import { todayInBusinessTz, addDaysToIsoDate, isoDateToLabelDate, isoDateRange, daysBetweenInclusive } from "@/lib/dates";
+import { isValidPhoneNumber } from "@/lib/notifications/phone";
 
 const STEPS = ["Date", "Slot", "Details", "Summary", "Pay", "Done"] as const;
 type StepIndex = number;
@@ -98,9 +99,11 @@ interface Props {
   windowDays:           number;
   platformFeePercent:   number;
   onlinePaymentEnabled: boolean;
+  /** Customer's saved phone (profiles.phone) — prefilled, still editable. */
+  initialPhone?:        string | null;
 }
 
-export function BookingFlow({ hall, availability, windowDays, platformFeePercent, onlinePaymentEnabled }: Props) {
+export function BookingFlow({ hall, availability, windowDays, platformFeePercent, onlinePaymentEnabled, initialPhone }: Props) {
   // Multiplier form of the platform fee % (e.g. 5 → 0.05).
   const PLATFORM_FEE_RATE = platformFeePercent / 100;
   const router = useRouter();
@@ -112,7 +115,7 @@ export function BookingFlow({ hall, availability, windowDays, platformFeePercent
   const [eventType, setEventType] = useState<string>("Wedding");
   const [guests,    setGuests]    = useState<string>("");
   const [name,      setName]      = useState<string>("");
-  const [phone,     setPhone]     = useState<string>("");
+  const [phone,     setPhone]     = useState<string>(initialPhone ?? "");
   const [termsAccepted, setTermsAccepted] = useState<boolean>(false);
 
   const [bookingId,     setBookingId]     = useState<string | null>(null);
@@ -181,7 +184,7 @@ export function BookingFlow({ hall, availability, windowDays, platformFeePercent
     (step === 0 && !!date &&
       (isMultiDay ? rangeFullyAvailable(date, rangeEnd, "full_day") : dayHasAnySlot(date))) ||
     (step === 1 && !!effSlot && rangeFullyAvailable(date, rangeEnd, effSlot as SlotId)) ||
-    (step === 2 && !!eventType && !!guests && !!name && !!phone &&
+    (step === 2 && !!eventType && !!guests && !!name && isValidPhoneNumber(phone) &&
       parseInt(guests, 10) > 0 && parseInt(guests, 10) <= hall.capacity_max) ||
     (step === 3 && termsAccepted) ||
     (step === 4) ||
@@ -204,6 +207,7 @@ export function BookingFlow({ hall, availability, windowDays, platformFeePercent
           endDate:       endDate || undefined,
           slot:          effSlot as SlotId,
           guestCount:    parseInt(guests, 10),
+          contactPhone:  phone,
           customerNotes: `${eventType} event. Contact: ${name}, ${phone}.`,
           termsAccepted,
         });
@@ -267,6 +271,7 @@ export function BookingFlow({ hall, availability, windowDays, platformFeePercent
           endDate:       endDate || undefined,
           slot:          effSlot as SlotId,
           guestCount:    parseInt(guests, 10),
+          contactPhone:  phone,
           customerNotes: `${eventType} event. Contact: ${name}, ${phone}.`,
           termsAccepted,
         });
@@ -285,7 +290,7 @@ export function BookingFlow({ hall, availability, windowDays, platformFeePercent
         setBookingId(result.bookingId);
       }
 
-      const res = await submitManualBookingRequest(id);
+      const res = await submitManualBookingRequest(id, phone);
       if ("error" in res) { setServerError(res.error); return; }
       setStep(5); // Done
     });
@@ -546,8 +551,23 @@ export function BookingFlow({ hall, availability, windowDays, platformFeePercent
                   </div>
 
                   <div>
-                    <Label htmlFor="phone">Phone</Label>
-                    <Input id="phone" type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+91 9876543210" />
+                    <Label htmlFor="phone">Mobile Number *</Label>
+                    <Input
+                      id="phone"
+                      type="tel"
+                      inputMode="tel"
+                      autoComplete="tel"
+                      value={phone}
+                      onChange={(e) => setPhone(e.target.value)}
+                      placeholder="+91 98765 43210"
+                      aria-invalid={phone !== "" && !isValidPhoneNumber(phone)}
+                      required
+                    />
+                    {phone !== "" && !isValidPhoneNumber(phone) && (
+                      <p className="mt-1 text-[11px] text-red-600">
+                        Enter a valid mobile number — booking updates are sent to it by SMS.
+                      </p>
+                    )}
                   </div>
                 </div>
               </StepWrap>

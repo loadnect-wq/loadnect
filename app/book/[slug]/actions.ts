@@ -10,6 +10,8 @@ import { isCashfreeConfigured } from "@/lib/cashfree";
 import { getCommissionRate } from "@/lib/platform-settings";
 import { bookingSchema, paymentSessionSchema, uuidSchema, parseSafe } from "@/lib/validation/schemas";
 import { sanitizeError } from "@/lib/errors";
+import { normalizePhoneE164 } from "@/lib/notifications/phone";
+import { notifyBookingEvent } from "@/lib/notifications/events";
 
 // ── Action ────────────────────────────────────────────────────────────────────
 //
@@ -39,6 +41,7 @@ export type CreateBookingInput = {
   endDate?:     string;       // YYYY-MM-DD (range END, inclusive; defaults to eventDate)
   slot:         BookingSlot;
   guestCount:   number;
+  contactPhone: string;       // customer mobile — REQUIRED; normalized to E.164
   customerNotes?: string;
   termsAccepted?: boolean;    // advance/cancellation/remaining-balance consent
 };
@@ -80,6 +83,15 @@ export async function createBookingRequest(
   // read the flag from the raw input.)
   if (input.termsAccepted !== true) {
     return { error: "Please accept the booking, cancellation, and remaining balance terms to continue." };
+  }
+
+  // ── Contact phone (SERVER-AUTHORITATIVE; §booking-notifications) ────────────
+  // A booking cannot be finalized without a reachable mobile number: SMS
+  // confirmations go to THIS number. Normalized to E.164 so one canonical
+  // format is stored ("+919876543210"), never a mix of local formats.
+  const contactPhone = normalizePhoneE164(input.contactPhone ?? "");
+  if (!contactPhone) {
+    return { error: "Please enter a valid mobile number (e.g. +91 98765 43210) — we send booking updates to it." };
   }
 
   // ── Date-range validation (SERVER-AUTHORITATIVE; spec: max 4 days) ─────────
@@ -164,6 +176,7 @@ export async function createBookingRequest(
     platform_fee:   platformFee,
     total_amount:   totalAmount,
     status:         "pending_payment",
+    contact_phone:  contactPhone,
     customer_notes: v.customerNotes || null,
     expires_at:     expiresAt,
   };
@@ -174,14 +187,28 @@ export async function createBookingRequest(
     .select("id, expires_at")
     .single();
 
-  // 42703 = terms_accepted columns not provisioned yet (pre-migration 0017) —
-  // retry without them so booking still works on un-migrated databases.
-  if (insertErr?.code === "42703") {
+  // Unknown-column fallbacks for un-migrated databases. PostgREST reports an
+  // unknown column in an INSERT body as PGRST204 (schema-cache miss), not the
+  // Postgres 42703 — check both. Two stages so a post-0017/pre-0026 database
+  // keeps its terms_accepted values: first drop only contact_phone, then (for
+  // truly old DBs) the terms columns as well.
+  const isUnknownColumn = (e: { code?: string } | null) =>
+    e?.code === "42703" || e?.code === "PGRST204";
+  if (isUnknownColumn(insertErr)) {
+    const { contact_phone: _cp, ...noPhonePayload } = basePayload;
+    void _cp;
     ({ data: inserted, error: insertErr } = await db
       .from("bookings")
-      .insert(basePayload)
+      .insert({ ...noPhonePayload, terms_accepted: true, terms_accepted_at: new Date().toISOString() })
       .select("id, expires_at")
       .single());
+    if (isUnknownColumn(insertErr)) {
+      ({ data: inserted, error: insertErr } = await db
+        .from("bookings")
+        .insert(noPhonePayload)
+        .select("id, expires_at")
+        .single());
+    }
   }
 
   if (insertErr) {
@@ -195,6 +222,16 @@ export async function createBookingRequest(
     }
     return { error: insertErr.message ?? "Could not create your booking. Please try again." };
   }
+
+  // Prefill convenience for next time: save the phone to the profile ONLY when
+  // the profile has none yet — never overwrite a number the user chose (it may
+  // be OTP-verified).
+  try {
+    const { data: prof } = await db.from("profiles").select("phone").eq("id", user.id).maybeSingle();
+    if (prof && !prof.phone) {
+      await db.from("profiles").update({ phone: contactPhone }).eq("id", user.id);
+    }
+  } catch { /* convenience only — never fail the booking over it */ }
 
   revalidatePath(`/halls/${v.hallId}`);
   revalidatePath("/customer/bookings");
@@ -228,7 +265,10 @@ export async function createBookingRequest(
 
 export type ManualBookingResult = { success: true } | { error: string };
 
-export async function submitManualBookingRequest(bookingId: string): Promise<ManualBookingResult> {
+export async function submitManualBookingRequest(
+  bookingId: string,
+  contactPhone?: string,
+): Promise<ManualBookingResult> {
   const supabase = await getSupabaseServerClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Please sign in to submit a booking request." };
@@ -251,6 +291,17 @@ export async function submitManualBookingRequest(bookingId: string): Promise<Man
     return { error: "This booking can no longer be submitted as a request." };
   }
 
+  // A retried checkout reuses the pending booking row — refresh contact_phone
+  // so the SMS goes to the number the customer LAST entered, not a stale one.
+  // Session client on the caller's own row; ignore failures (pre-0026 DBs).
+  const freshPhone = contactPhone ? normalizePhoneE164(contactPhone) : null;
+  if (freshPhone) {
+    await db.from("bookings")
+      .update({ contact_phone: freshPhone })
+      .eq("id", bookingId)
+      .eq("customer_id", user.id);
+  }
+
   // Trusted-backend promotion to booking_requested (no payment). Clear the
   // pending-payment expiry so the auto-cancel cleanup leaves it alone.
   const admin = getSupabaseAdminClient();
@@ -269,6 +320,11 @@ export async function submitManualBookingRequest(bookingId: string): Promise<Man
     }
     return { error: sanitizeError(error, "submitManualBookingRequest") };
   }
+
+  // The booking now EXISTS as a request — this is the moment the owner's
+  // "your hall has been booked" alert fires (never from a page view).
+  // Idempotent via the outbox dedupe key; a repeat submit sends nothing twice.
+  await notifyBookingEvent("booking.requested", bookingId);
 
   revalidatePath("/customer/bookings");
   revalidatePath("/owner/bookings");
@@ -335,6 +391,18 @@ export async function createPaymentSession(
   const customerPhone = (v.phone || profile?.phone || "").trim();
 
   if (!customerEmail) return { error: "Your account has no email on file. Cannot start payment." };
+
+  // A retried checkout reuses the pending booking row — keep contact_phone in
+  // step with the number the customer LAST entered so post-payment SMS reach
+  // the right person. Session client on the caller's own row; best-effort.
+  const freshPhone = customerPhone ? normalizePhoneE164(customerPhone) : null;
+  if (freshPhone) {
+    await db.from("bookings")
+      .update({ contact_phone: freshPhone })
+      .eq("id", v.bookingId)
+      .eq("customer_id", user.id)
+      .eq("status", "pending_payment");
+  }
 
   const result = await startPaymentForBooking({
     bookingId: v.bookingId,

@@ -13,6 +13,21 @@ export default async function OwnerProfilePage() {
   const profile  = await requireRole(["owner_approved"]);
   const ownerRow = await fetchOwnerRow();
 
+  // Personal phone + SMS preference live on profiles (not in requireRole's
+  // cached shape). This page previously passed phone={null} hard-coded, so the
+  // personal-phone field always rendered empty even after a save.
+  const supabase = await getSupabaseServerClient();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const db = supabase as any;
+  let { data: extra } = await db
+    .from("profiles")
+    .select("phone, sms_notifications_enabled")
+    .eq("id", profile.id)
+    .maybeSingle();
+  if (!extra) {
+    ({ data: extra } = await db.from("profiles").select("phone").eq("id", profile.id).maybeSingle());
+  }
+
   return (
     <div className="min-h-screen bg-ivory-100">
       <AppHeader title="Profile" />
@@ -39,7 +54,8 @@ export default async function OwnerProfilePage() {
           ownerRow={ownerRow}
           fullName={profile.full_name}
           email={profile.email}
-          phone={null}
+          phone={(extra as { phone?: string | null } | null)?.phone ?? null}
+          initialSmsEnabled={(extra as { sms_notifications_enabled?: boolean } | null)?.sms_notifications_enabled ?? true}
         />
 
         {/* Sign out */}

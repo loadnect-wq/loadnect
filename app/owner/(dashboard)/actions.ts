@@ -18,6 +18,7 @@ import {
   customAmenityListSchema,
 } from "@/lib/validation/schemas";
 import { sanitizeError } from "@/lib/errors";
+import { notifyBookingEvent, notifyHallSubmitted } from "@/lib/notifications/events";
 
 type ActionResult = { success: true; id?: string } | { error: string };
 
@@ -103,6 +104,7 @@ export async function upsertOwnerRow(data: {
 export async function updateOwnerProfileName(data: {
   fullName: string;
   phone:    string;
+  smsNotificationsEnabled?: boolean;
 }): Promise<ActionResult> {
   const { supabase, user } = await getAuthUser();
   if (!user) return { error: "Not authenticated" };
@@ -113,10 +115,26 @@ export async function updateOwnerProfileName(data: {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = supabase as any;
 
-  const { error } = await db
+  const updatePayload: Record<string, unknown> = {
+    full_name: parsed.data.fullName || null,
+    phone:     parsed.data.phone    || null,
+  };
+  // Non-critical SMS preference only — critical booking/payment SMS always send.
+  if (typeof data.smsNotificationsEnabled === "boolean") {
+    updatePayload.sms_notifications_enabled = data.smsNotificationsEnabled;
+  }
+
+  let { error } = await db
     .from("profiles")
-    .update({ full_name: parsed.data.fullName || null, phone: parsed.data.phone || null })
+    .update(updatePayload)
     .eq("id", user.id);
+
+  // Unknown column (pre-0026): PostgREST reports it as PGRST204, Postgres as
+  // 42703 — retry without it.
+  if ((error?.code === "42703" || error?.code === "PGRST204") && "sms_notifications_enabled" in updatePayload) {
+    delete updatePayload.sms_notifications_enabled;
+    ({ error } = await db.from("profiles").update(updatePayload).eq("id", user.id));
+  }
 
   if (error) return { error: sanitizeError(error, "owner") };
   revalidatePath("/owner/profile");
@@ -244,6 +262,9 @@ export async function createHall(data: {
   if (!customParsed.ok) return { error: customParsed.error };
   const customErr = await syncCustomAmenities(db, hall.id, customParsed.data);
   if (customErr) return { error: customErr };
+
+  // New halls are created straight into pending_approval — alert the admin.
+  await notifyHallSubmitted(hall.id);
 
   revalidatePath("/owner/halls");
   revalidatePath("/owner/dashboard");
@@ -424,6 +445,9 @@ export async function submitHallForApproval(hallId: string): Promise<ActionResul
   // An RLS-filtered UPDATE affects 0 rows WITHOUT raising, so `if (error)` alone
   // would report a success that never happened.
   if (count === 0) return { error: "You do not have permission to submit this hall." };
+
+  // Admin alert (max once/day per hall — resubmits after fixes still notify).
+  await notifyHallSubmitted(hallId);
   revalidatePath(`/owner/halls/${hallId}/edit`);
   revalidatePath("/owner/halls");
   return { success: true };
@@ -581,12 +605,20 @@ export async function acceptBooking(bookingId: string): Promise<ActionResult> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = supabase as any;
 
-  const { error } = await db
+  const { error, count } = await db
     .from("bookings")
-    .update({ status: "owner_confirmed" })
-    .eq("id", bookingId);
+    .update({ status: "owner_confirmed" }, { count: "exact" })
+    .eq("id", bookingId)
+    .eq("status", "booking_requested");
 
   if (error) return { error: sanitizeError(error, "owner") };
+  // 0 rows = not this owner's booking (RLS) or not in a confirmable state.
+  // Without this check we would report success — and SMS "confirmed!" —
+  // for a change that never happened.
+  if (count === 0) return { error: "This booking cannot be confirmed (it may have changed state)." };
+
+  await notifyBookingEvent("booking.confirmed", bookingId);
+
   revalidatePath("/owner/bookings");
   revalidatePath("/owner/dashboard");
   return { success: true };
@@ -600,15 +632,20 @@ export async function rejectBooking(bookingId: string, reason?: string): Promise
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = supabase as any;
 
-  const { error } = await db
+  const { error, count } = await db
     .from("bookings")
     .update({
       status:      "owner_rejected",
       owner_notes: cleanReason || "Booking declined by venue owner",
-    })
-    .eq("id", bookingId);
+    }, { count: "exact" })
+    .eq("id", bookingId)
+    .eq("status", "booking_requested");
 
   if (error) return { error: sanitizeError(error, "owner") };
+  if (count === 0) return { error: "This booking cannot be declined (it may have changed state)." };
+
+  await notifyBookingEvent("booking.rejected", bookingId, { reason: cleanReason || null });
+
   revalidatePath("/owner/bookings");
   revalidatePath("/owner/dashboard");
   return { success: true };

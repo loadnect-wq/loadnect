@@ -16,9 +16,10 @@ interface Props {
   fullName:  string | null;
   email:     string | null;
   phone:     string | null;
+  initialSmsEnabled?: boolean;
 }
 
-export function OwnerProfileForm({ ownerRow, fullName, email, phone }: Props) {
+export function OwnerProfileForm({ ownerRow, fullName, email, phone, initialSmsEnabled = true }: Props) {
   const [pending1, start1] = useTransition();
   const [pending2, start2] = useTransition();
   const [err1, setErr1]    = useState<string | null>(null);
@@ -29,6 +30,7 @@ export function OwnerProfileForm({ ownerRow, fullName, email, phone }: Props) {
   // Profile fields
   const [name,  setName]  = useState(fullName  ?? "");
   const [phoneV, setPhoneV] = useState(phone   ?? "");
+  const [smsEnabled, setSmsEnabled] = useState<boolean>(initialSmsEnabled);
 
   // Business fields
   const [bizName,  setBizName]  = useState(ownerRow?.business_name  ?? "");
@@ -45,7 +47,7 @@ export function OwnerProfileForm({ ownerRow, fullName, email, phone }: Props) {
     e.preventDefault();
     setErr1(null); setOk1(false);
     start1(async () => {
-      const r = await updateOwnerProfileName({ fullName: name, phone: phoneV });
+      const r = await updateOwnerProfileName({ fullName: name, phone: phoneV, smsNotificationsEnabled: smsEnabled });
       "error" in r ? setErr1(r.error) : setOk1(true);
     });
   }
@@ -90,6 +92,34 @@ export function OwnerProfileForm({ ownerRow, fullName, email, phone }: Props) {
         <Field label="Phone">
           <Input value={phoneV} onChange={(e) => setPhoneV(e.target.value)} placeholder="+91 98765 43210" type="tel" />
         </Field>
+
+        {/* SMS preference — non-critical messages only */}
+        <div className="flex items-start justify-between gap-3 rounded-xl border border-border bg-ivory-50 p-3">
+          <div>
+            <p className="text-xs font-semibold text-charcoal-800">SMS updates</p>
+            <p className="mt-0.5 text-[11px] leading-relaxed text-charcoal-500">
+              Optional updates by SMS. Essential booking, payment and approval messages are always sent.
+            </p>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={smsEnabled}
+            aria-label="SMS updates"
+            onClick={() => setSmsEnabled((v) => !v)}
+            className={
+              "relative mt-0.5 h-6 w-11 shrink-0 rounded-full transition-colors " +
+              (smsEnabled ? "bg-maroon-600" : "bg-charcoal-300")
+            }
+          >
+            <span
+              className={
+                "absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform " +
+                (smsEnabled ? "translate-x-[22px]" : "translate-x-0.5")
+              }
+            />
+          </button>
+        </div>
 
         <Button type="submit" variant="gold" size="sm" isLoading={pending1} disabled={pending1}>
           Save Account

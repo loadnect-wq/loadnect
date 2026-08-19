@@ -10,6 +10,7 @@ import {
   parseSafe,
 } from "@/lib/validation/schemas";
 import { sanitizeError } from "@/lib/errors";
+import { notifyBookingEvent } from "@/lib/notifications/events";
 
 type ActionResult = { success: true } | { error: string };
 
@@ -51,16 +52,22 @@ export async function cancelBooking(
     };
   }
 
-  const { error } = await db
+  const { error, count } = await db
     .from("bookings")
     .update({
       status: "cancelled",
       cancel_reason: cleanReason || "Cancelled by customer",
-    })
+    }, { count: "exact" })
     .eq("id", bookingId)
     .eq("customer_id", user.id);
 
   if (error) return { error: sanitizeError(error, "customer") };
+  // 0 rows = RLS filtered the write; do not report (or SMS) a cancellation
+  // that never happened.
+  if (count === 0) return { error: "This booking could not be cancelled." };
+
+  // §cancellation-flow: customer + owner + admin are all informed.
+  await notifyBookingEvent("booking.cancelled", bookingId, { reason: cleanReason || null });
 
   revalidatePath(`/customer/bookings/${bookingId}`);
   revalidatePath("/customer/bookings");
@@ -146,6 +153,7 @@ export async function submitReview(data: {
 export async function updateProfile(data: {
   fullName?: string;
   phone?:    string;
+  smsNotificationsEnabled?: boolean;
 }): Promise<ActionResult> {
   const supabase = await getSupabaseServerClient();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -157,13 +165,27 @@ export async function updateProfile(data: {
   const parsed = parseSafe(profileUpdateSchema, data);
   if (!parsed.ok) return { error: parsed.error };
 
-  const { error } = await db
+  const updatePayload: Record<string, unknown> = {
+    full_name: parsed.data.fullName || null,
+    phone:     parsed.data.phone    || null,
+  };
+  // §sms-preferences: controls NON-critical SMS only — critical transactional
+  // messages (booking/payment) are always sent regardless of this flag.
+  if (typeof data.smsNotificationsEnabled === "boolean") {
+    updatePayload.sms_notifications_enabled = data.smsNotificationsEnabled;
+  }
+
+  let { error } = await db
     .from("profiles")
-    .update({
-      full_name: parsed.data.fullName || null,
-      phone:     parsed.data.phone    || null,
-    })
+    .update(updatePayload)
     .eq("id", user.id);
+
+  // Unknown column (pre-0026): PostgREST reports it as PGRST204, Postgres as
+  // 42703 — retry without it so profile edits still work on un-migrated DBs.
+  if ((error?.code === "42703" || error?.code === "PGRST204") && "sms_notifications_enabled" in updatePayload) {
+    delete updatePayload.sms_notifications_enabled;
+    ({ error } = await db.from("profiles").update(updatePayload).eq("id", user.id));
+  }
 
   if (error) return { error: sanitizeError(error, "customer") };
 

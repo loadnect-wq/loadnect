@@ -29,6 +29,7 @@ import {
   getCashfreeOrderPayments,
 } from "@/lib/cashfree";
 import { getAppUrl } from "@/lib/env";
+import { notifyBookingEvent } from "@/lib/notifications/events";
 import { PLATFORM_FEE_PERCENT } from "@/lib/constants";
 
 const ADVANCE_RATE = 0.25; // 25% advance — mirrors app/book/[slug]/actions.ts
@@ -198,6 +199,10 @@ export async function verifyAndApplyPayment(orderId: string): Promise<ApplyPayme
   //    always safe to repeat on a webhook retry.
   if (payment.status === "payment_success") {
     if (booking) await applyPaidSideEffects(db, booking);
+    // Heal notifications from a prior partial run — dedupe keys make this a
+    // no-op when they were already recorded, so webhook retries send nothing.
+    await notifyBookingEvent("payment.success", payment.booking_id, { amount: Number(payment.amount) });
+    await notifyBookingEvent("booking.requested", payment.booking_id);
     return { state: "success", bookingId: payment.booking_id };
   }
   if (payment.status === "refunded") {
@@ -224,6 +229,9 @@ export async function verifyAndApplyPayment(orderId: string): Promise<ApplyPayme
       .update({ status: "payment_failed", payment_message: `Order ${status}` })
       .eq("id", payment.id)
       .neq("status", "payment_success"); // never downgrade a confirmed payment
+    // Keyed on the ORDER, not the booking: a retry payment's failure must
+    // still notify even though an earlier attempt already failed.
+    await notifyBookingEvent("payment.failed", payment.booking_id, { keySuffix: orderId });
     return { state: "failed", bookingId: payment.booking_id, message: `Payment ${status.toLowerCase()}.` };
   }
 
@@ -278,6 +286,7 @@ export async function verifyAndApplyPayment(orderId: string): Promise<ApplyPayme
         await db.from("payments")
           .update({ status: "refunded", payment_message: "Slot conflict — refund initiated" })
           .eq("id", payment.id);
+        await notifyBookingEvent("refund.initiated", payment.booking_id);
         return {
           state:     "slot_conflict",
           bookingId: payment.booking_id,
@@ -289,6 +298,13 @@ export async function verifyAndApplyPayment(orderId: string): Promise<ApplyPayme
 
     // c) Block availability + record commission (both idempotent).
     await applyPaidSideEffects(db, booking);
+
+    // d) Notify: payment confirmation to all parties, and the "your hall has
+    //    been booked" owner alert — fired only now that the booking is REAL
+    //    (verified PAID + transitioned), never from a page view. Idempotent
+    //    via outbox dedupe keys; SMS failures never fail the payment.
+    await notifyBookingEvent("payment.success", payment.booking_id, { amount: Number(payment.amount) });
+    await notifyBookingEvent("booking.requested", payment.booking_id);
 
     return { state: "success", bookingId: payment.booking_id };
   }

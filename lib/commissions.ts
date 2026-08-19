@@ -19,6 +19,7 @@
 import "server-only";
 
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
+import { notifyCommissionsOverdue } from "@/lib/notifications/events";
 
 const DEFAULT_DUE_DAYS = 7;
 
@@ -106,7 +107,13 @@ export async function runOverdueCommissionCheck(): Promise<OverdueRunSummary> {
       .in("id", overdueIds);
 
     if (markErr) summary.errors += 1;
-    else summary.markedOverdue = count ?? overdueIds.length;
+    else {
+      summary.markedOverdue = count ?? overdueIds.length;
+      // These commissions JUST went overdue — the exactly-once hook point.
+      // Owner SMS per commission + one admin summary; idempotent per day via
+      // outbox dedupe keys, and never fails the sweep.
+      await notifyCommissionsOverdue(overdueIds);
+    }
   }
 
   // ── Step 2: create settlement adjustments (only if enabled) ───────────────

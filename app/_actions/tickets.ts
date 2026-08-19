@@ -13,6 +13,7 @@ import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { type TicketPriority } from "@/lib/tickets";
 import { ticketSchema, parseSafe } from "@/lib/validation/schemas";
 import { sanitizeError } from "@/lib/errors";
+import { notifyTicketCreated } from "@/lib/notifications/events";
 
 type ActionResult = { success: true; ticketId: string } | { error: string };
 
@@ -61,6 +62,7 @@ export async function createTicket(input: {
         .select("id")
         .single();
       if (retryErr) return { error: sanitizeError(retryErr, "createTicket.retry") };
+      await notifyTicketCreated(retry.id, v.subject);
       revalidatePath("/customer/support");
       revalidatePath("/owner/support");
       revalidatePath("/admin/support-tickets");
@@ -68,6 +70,9 @@ export async function createTicket(input: {
     }
     return { error: sanitizeError(error, "createTicket") };
   }
+
+  // Admin alert — idempotent per ticket, never fails the ticket creation.
+  await notifyTicketCreated(data.id, v.subject);
 
   revalidatePath("/customer/support");
   revalidatePath("/owner/support");

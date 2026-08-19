@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  BadgeCheck, Building2, CalendarDays, ClipboardCheck,
+  BadgeCheck, BellRing, Building2, CalendarDays, ClipboardCheck,
   CreditCard, LayoutDashboard, Megaphone, MessageSquare,
   Receipt, ScrollText, Settings, Sparkles, Star, Users, Wallet,
 } from "lucide-react";
@@ -65,6 +65,7 @@ const SECTIONS: { title: string; items: NavItem[] }[] = [
     title: "Support",
     items: [
       { label: "Support Tickets", href: "/admin/support-tickets", icon: MessageSquare, badgeKey: "openTickets" },
+      { label: "Notifications",   href: "/admin/notifications",   icon: BellRing },
     ],
   },
   {

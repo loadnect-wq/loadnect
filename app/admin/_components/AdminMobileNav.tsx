@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  LayoutDashboard, Users, BadgeCheck, Building2, ClipboardCheck,
+  LayoutDashboard, Users, BadgeCheck, BellRing, Building2, ClipboardCheck,
   CalendarDays, CreditCard, Wallet, Star, Sparkles, Megaphone,
   MessageSquare, ScrollText, Settings,
 } from "lucide-react";
@@ -48,6 +48,7 @@ const ITEMS: {
   { label: "Premium",    href: "/admin/premium-listings",icon: Sparkles },
   { label: "Ads",        href: "/admin/advertisements",  icon: Megaphone, badgeKey: "pendingAds" },
   { label: "Support",    href: "/admin/support-tickets", icon: MessageSquare, badgeKey: "openTickets" },
+  { label: "Notifications", href: "/admin/notifications", icon: BellRing },
   { label: "Audit Log",  href: "/admin/audit-logs",      icon: ScrollText },
   { label: "Settings",   href: "/admin/settings",        icon: Settings },
 ];

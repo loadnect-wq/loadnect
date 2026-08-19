@@ -12,14 +12,19 @@ export const metadata: Metadata = { title: "Profile" };
 export default async function ProfilePage() {
   const profile = await requireRole(["customer"]);
 
-  // Fetch phone — not included in the cached requireRole profile
+  // Fetch phone + SMS preference — not included in the cached requireRole profile.
   const supabase = await getSupabaseServerClient();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: extra } = await (supabase as any)
+  const db = supabase as any;
+  let { data: extra } = await db
     .from("profiles")
-    .select("phone")
+    .select("phone, sms_notifications_enabled")
     .eq("id", profile.id)
     .maybeSingle();
+  // Pre-0026 databases have no sms_notifications_enabled column.
+  if (!extra) {
+    ({ data: extra } = await db.from("profiles").select("phone").eq("id", profile.id).maybeSingle());
+  }
 
   const initial = (profile.full_name ?? profile.email ?? "?")[0].toUpperCase();
 
@@ -53,6 +58,7 @@ export default async function ProfilePage() {
             initialName={profile.full_name}
             initialPhone={(extra as { phone?: string | null } | null)?.phone ?? null}
             email={profile.email}
+            initialSmsEnabled={(extra as { sms_notifications_enabled?: boolean } | null)?.sms_notifications_enabled ?? true}
           />
         </div>
 

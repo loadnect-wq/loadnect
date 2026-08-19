@@ -18,6 +18,11 @@ import {
 } from "@/lib/validation/schemas";
 import { sanitizeError } from "@/lib/errors";
 import { recordAdminAction } from "@/lib/audit";
+import {
+  notifyHallModerated,
+  notifyCommissionVerification,
+  notifyPremiumChanged,
+} from "@/lib/notifications/events";
 import type { OverdueRunSummary } from "@/lib/commissions";
 
 function requireUuid(id: string, label = "id"): string | null {
@@ -141,6 +146,16 @@ async function moderateHall(
     newStatus,
     reason:         cleaned,
   });
+
+  // Owner SMS: approved / rejected(+reason) / suspended(+reason) / restored.
+  // "unsuspend" and a fresh approval both land on status=approved — the action
+  // string distinguishes them for the right wording.
+  const smsKind =
+    action === "hall.unsuspend" ? "unsuspended"
+    : newStatus === "approved"  ? "approved"
+    : newStatus === "rejected"  ? "rejected"
+    : "suspended";
+  await notifyHallModerated(hallId, smsKind, cleaned);
 
   revalidatePath("/admin/halls");
   revalidatePath("/admin/hall-approvals");
@@ -550,7 +565,7 @@ export async function togglePremiumActive(listingId: string, isActive: boolean):
   const db = supabase as any;
 
   const { data: before } = await db
-    .from("premium_listings").select("hall_id, is_active").eq("id", listingId).maybeSingle();
+    .from("premium_listings").select("hall_id, is_active, plan_slug").eq("id", listingId).maybeSingle();
   if (!before) return { error: "Premium listing not found." };
 
   const { error, count } = await db
@@ -571,6 +586,9 @@ export async function togglePremiumActive(listingId: string, isActive: boolean):
     newStatus:      isActive ? "active" : "inactive",
     metadata:       { hall_id: before.hall_id },
   });
+
+  // Non-critical SMS — respects the owner's notification preference.
+  await notifyPremiumChanged(listingId, before.hall_id, isActive, before.plan_slug === "pro" ? "Pro" : "Premium");
 
   revalidatePath("/admin/premium-listings");
   revalidatePath("/admin/audit-logs");
@@ -638,16 +656,20 @@ export async function createPremiumListing(input: {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = supabase as any;
 
-  const { error } = await db.from("premium_listings").insert({
+  const { data: listing, error } = await db.from("premium_listings").insert({
     hall_id:    v.hallId,
     plan_slug:  v.planSlug,
     start_date: v.startDate,
     end_date:   v.endDate,
     amount:     Math.round(v.amount * 100) / 100,
     is_active:  true,
-  });
+  }).select("id").single();
 
   if (error) return { error: sanitizeError(error, "admin") };
+
+  // Non-critical owner SMS — respects the owner's notification preference.
+  await notifyPremiumChanged(listing.id, v.hallId, true, v.planSlug === "pro" ? "Pro" : "Premium");
+
   revalidatePath("/admin/premium-listings");
   revalidatePath("/admin/dashboard");
   return { success: true };
@@ -784,6 +806,8 @@ export async function verifyCommissionPayment(
     // Commission stays pending/overdue so the owner can re-submit.
   }
 
+  await notifyCommissionVerification(paymentId, decision, note);
+
   await recordAdminAction({
     action:         decision === "approve" ? "commission.payment.approve" : "commission.payment.reject",
     entityType:     "commission_payment",
@@ -918,5 +942,99 @@ export async function respondToTicket(
   if (error) return { error: sanitizeError(error, "admin") };
   revalidatePath("/admin/support-tickets");
   revalidatePath("/admin/dashboard");
+  return { success: true };
+}
+
+// ── SMS notification center actions ─────────────────────────────────────────
+
+/**
+ * Retries one failed/skipped SMS. Admin-only (server-verified), capped at
+ * MAX_SEND_ATTEMPTS per notification, audit-logged. This is the ONLY manual
+ * send path in the app — and even it cannot choose a phone number or message:
+ * both are locked into the outbox row that the server composed originally.
+ */
+export async function retryNotification(notificationId: string): Promise<ActionResult> {
+  const actor = await requireAdminActor();
+  if (!actor.ok) return { error: actor.error };
+  const idErr = requireUuid(notificationId, "notification id");
+  if (idErr) return { error: idErr };
+
+  // Service-role client: status updates on the outbox are trusted-backend writes.
+  const { getSupabaseAdminClient } = await import("@/lib/supabase/admin");
+  const { attemptSend, MAX_SEND_ATTEMPTS } = await import("@/lib/notifications/service");
+  const admin = getSupabaseAdminClient();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const db = admin as any;
+
+  const { data: row } = await db
+    .from("notifications")
+    .select("id, status, recipient_phone, message, attempt_count, created_at")
+    .eq("id", notificationId)
+    .maybeSingle();
+  if (!row) return { error: "Notification not found." };
+
+  if (row.status === "sent") return { error: "This SMS was already sent." };
+  // failed/skipped are always retryable. pending/processing normally means a
+  // send is in flight — but a crash between claim and result strands the row
+  // forever, so allow retry once the row is clearly stale (15+ min old).
+  if (row.status !== "failed" && row.status !== "skipped") {
+    const ageMs = Date.now() - new Date(row.created_at).getTime();
+    if ((row.status !== "pending" && row.status !== "processing") || ageMs < 15 * 60 * 1000) {
+      return { error: `Only failed or skipped notifications can be retried (this one is ${row.status}).` };
+    }
+  }
+  if (!row.recipient_phone) return { error: "This notification has no valid recipient phone number." };
+  if (row.attempt_count >= MAX_SEND_ATTEMPTS) {
+    return { error: `Maximum of ${MAX_SEND_ATTEMPTS} attempts reached for this notification.` };
+  }
+
+  const result = await attemptSend(db, row.id, row.recipient_phone, row.message, /* isRetry */ true);
+
+  await recordAdminAction({
+    action:     "notification.retry",
+    entityType: "notification",
+    entityId:   notificationId,
+    newStatus:  result.sent ? "sent" : "failed",
+    reason:     result.sent ? null : result.error ?? null,
+  });
+
+  revalidatePath("/admin/notifications");
+  if (!result.sent) return { error: result.error ?? "Send failed. See the notification's error details." };
+  return { success: true };
+}
+
+/** Marks all currently-unread notifications as read. */
+export async function markAllNotificationsRead(): Promise<ActionResult> {
+  const actor = await requireAdminActor();
+  if (!actor.ok) return { error: actor.error };
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const db = actor.supabase as any;
+  const { error } = await db
+    .from("notifications")
+    .update({ is_read: true })
+    .eq("is_read", false);
+
+  if (error) return { error: sanitizeError(error, "admin") };
+  revalidatePath("/admin/notifications");
+  return { success: true };
+}
+
+/** Marks one notification as read. */
+export async function markNotificationRead(notificationId: string): Promise<ActionResult> {
+  const actor = await requireAdminActor();
+  if (!actor.ok) return { error: actor.error };
+  const idErr = requireUuid(notificationId, "notification id");
+  if (idErr) return { error: idErr };
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const db = actor.supabase as any;
+  const { error } = await db
+    .from("notifications")
+    .update({ is_read: true })
+    .eq("id", notificationId);
+
+  if (error) return { error: sanitizeError(error, "admin") };
+  revalidatePath("/admin/notifications");
   return { success: true };
 }

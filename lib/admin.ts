@@ -857,3 +857,121 @@ export async function fetchAuditLog(opts: {
     pages: Math.max(1, Math.ceil(total / AUDIT_PAGE_SIZE)),
   };
 }
+
+// ── SMS notification center (migration 0026) ────────────────────────────────
+// The outbox is written exclusively by the trusted backend (lib/notifications).
+// This fetcher runs on the ADMIN's session client, so RLS enforces is_admin().
+
+export type AdminNotificationRow = {
+  id:                  string;
+  event_type:          string;
+  recipient_type:      "customer" | "owner" | "admin";
+  recipient_phone:     string | null;
+  booking_id:          string | null;
+  hall_id:             string | null;
+  message:             string;
+  status:              "pending" | "processing" | "sent" | "failed" | "skipped" | "cancelled";
+  provider_message_id: string | null;
+  error_message:       string | null;
+  attempt_count:       number;
+  is_read:             boolean;
+  created_at:          string;
+  sent_at:             string | null;
+  failed_at:           string | null;
+};
+
+export type NotificationsPage = {
+  rows:  AdminNotificationRow[];
+  total: number;
+  page:  number;
+  pages: number;
+  unavailable?: boolean;
+};
+
+const NOTIF_PAGE_SIZE = 50;
+
+export async function fetchNotifications(opts: {
+  status?:  string;
+  unread?:  boolean;
+  search?:  string;
+  page?:    number;
+} = {}): Promise<NotificationsPage> {
+  const supabase = await getSupabaseServerClient();
+  const page = Math.max(1, Math.floor(opts.page ?? 1));
+  const from = (page - 1) * NOTIF_PAGE_SIZE;
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let q = (supabase as any)
+    .from("notifications")
+    .select(
+      "id, event_type, recipient_type, recipient_phone, booking_id, hall_id, message, status, provider_message_id, error_message, attempt_count, is_read, created_at, sent_at, failed_at",
+      { count: "exact" },
+    )
+    .order("created_at", { ascending: false })
+    .range(from, from + NOTIF_PAGE_SIZE - 1);
+
+  if (opts.status) q = q.eq("status", opts.status);
+  if (opts.unread) q = q.eq("is_read", false);
+  if (opts.search) {
+    // Strip PostgREST `or` filter separators so search terms cannot alter the
+    // filter expression.
+    const term = opts.search.replace(/[(),*]/g, " ").trim().slice(0, 80);
+    if (term) q = q.or(`recipient_phone.ilike.%${term}%,event_type.ilike.%${term}%,message.ilike.%${term}%`);
+  }
+
+  const { data, error, count } = await q;
+
+  if (error) {
+    if (error.code === "42P01" || error.code === "PGRST205") {
+      return { rows: [], total: 0, page: 1, pages: 1, unavailable: true };
+    }
+    throw error;
+  }
+
+  const total = count ?? 0;
+  return {
+    rows:  (data ?? []) as AdminNotificationRow[],
+    total,
+    page,
+    pages: Math.max(1, Math.ceil(total / NOTIF_PAGE_SIZE)),
+  };
+}
+
+export type NotificationStats = {
+  totalSent:   number;
+  totalFailed: number;
+  totalSkipped: number;
+  unread:      number;
+  lastSentAt:  string | null;
+  lastFailedAt: string | null;
+};
+
+export async function fetchNotificationStats(): Promise<NotificationStats> {
+  const supabase = await getSupabaseServerClient();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const db = supabase as any;
+
+  const empty: NotificationStats = {
+    totalSent: 0, totalFailed: 0, totalSkipped: 0, unread: 0, lastSentAt: null, lastFailedAt: null,
+  };
+  try {
+    const [sent, failed, skipped, unread, lastSent, lastFailed] = await Promise.all([
+      db.from("notifications").select("id", { count: "exact", head: true }).eq("status", "sent"),
+      db.from("notifications").select("id", { count: "exact", head: true }).eq("status", "failed"),
+      db.from("notifications").select("id", { count: "exact", head: true }).eq("status", "skipped"),
+      db.from("notifications").select("id", { count: "exact", head: true }).eq("is_read", false),
+      db.from("notifications").select("sent_at").eq("status", "sent").order("sent_at", { ascending: false }).limit(1).maybeSingle(),
+      db.from("notifications").select("failed_at").eq("status", "failed").order("failed_at", { ascending: false }).limit(1).maybeSingle(),
+    ]);
+    return {
+      totalSent:    sent.count ?? 0,
+      totalFailed:  failed.count ?? 0,
+      totalSkipped: skipped.count ?? 0,
+      unread:       unread.count ?? 0,
+      lastSentAt:   lastSent.data?.sent_at ?? null,
+      lastFailedAt: lastFailed.data?.failed_at ?? null,
+    };
+  } catch {
+    return empty;
+  }
+}
