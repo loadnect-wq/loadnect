@@ -25,7 +25,19 @@ export function getSupabaseClient() {
 
   _client = createBrowserClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      // The session and the PKCE code_verifier live in these cookies — the most
+      // sensitive values the browser holds. They were being written without
+      // Secure, so a single plaintext request to the domain could disclose
+      // them, while the far less sensitive hn_auth_next cookie already set it.
+      // Only mark Secure over HTTPS so local http://localhost dev still works.
+      cookieOptions: {
+        secure: typeof window !== "undefined" && window.location.protocol === "https:",
+        sameSite: "lax",
+        path: "/",
+      },
+    }
   );
 
   return _client;

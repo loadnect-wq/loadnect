@@ -154,6 +154,9 @@ export async function GET(request: Request) {
   const { data, error } = await supabase.auth.exchangeCodeForSession(code);
 
   if (error || !data?.user) {
+    // Was discarded entirely, so a broken sign-in left no trace anywhere and
+    // was undiagnosable from logs. Message only — never the code or tokens.
+    console.error("[auth/callback] code exchange failed:", error?.message ?? "no user returned");
     return clearNextCookie(NextResponse.redirect(`${origin}/login?error=oauth_failed`));
   }
 
