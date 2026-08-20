@@ -1,11 +1,12 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { LogOut, Shield, AlertTriangle, Settings as SettingsIcon, Database, Timer, Percent, Sparkles } from "lucide-react";
+import { LogOut, Shield, AlertTriangle, Settings as SettingsIcon, Database, Timer, Percent, Sparkles, KeyRound, CheckCircle2, XCircle } from "lucide-react";
 import { requireRole } from "@/lib/auth";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { getCommissionPercent, getPublicPaymentSettings } from "@/lib/platform-settings";
 import { fetchPremiumPlans } from "@/lib/premium-plans";
+import { checkAuthRedirectHealth } from "@/lib/auth-health";
 import { Badge } from "@/components/ui/Badge";
 import { AdminPageHeader } from "../_components/AdminPageHeader";
 import { CleanupButton } from "./_components/CleanupButton";
@@ -17,10 +18,14 @@ export const metadata: Metadata = { title: "Admin Settings" };
 
 export default async function AdminSettingsPage() {
   const profile = await requireRole(["admin"]);
-  const [commissionPercent, premiumPlans, paymentSettings] = await Promise.all([
+  const [commissionPercent, premiumPlans, paymentSettings, authHealth] = await Promise.all([
     getCommissionPercent(),
     fetchPremiumPlans(),
     getPublicPaymentSettings(),
+    // Live probe of the Supabase redirect allow-list. A mismatch here is
+    // invisible everywhere else: Supabase silently falls back to its Site URL
+    // instead of erroring, which is what sent customers to Vercel's login page.
+    checkAuthRedirectHealth(),
   ]);
 
   return (
@@ -74,6 +79,59 @@ export default async function AdminSettingsPage() {
             Changes require code review and a deployment.
           </p>
         </Section>
+
+        {/* Google sign-in configuration health (live probe) */}
+        <div className={`rounded-2xl border-2 p-5 ${authHealth.healthy ? "border-green-200 bg-green-50" : "border-red-200 bg-red-50"}`}>
+          <div className="flex items-start gap-3">
+            <KeyRound className={`mt-0.5 h-5 w-5 shrink-0 ${authHealth.healthy ? "text-green-600" : "text-red-600"}`} />
+            <div className="min-w-0 flex-1">
+              <h3 className={`font-serif text-sm font-semibold ${authHealth.healthy ? "text-green-900" : "text-red-900"}`}>
+                Google sign-in redirect configuration
+              </h3>
+              <p className={`mt-0.5 text-xs ${authHealth.healthy ? "text-green-800" : "text-red-800"}`}>
+                {!authHealth.reachable
+                  ? "Could not reach the Supabase auth server to verify. Try again shortly."
+                  : authHealth.healthy
+                    ? "Supabase will return customers to this site after Google sign-in."
+                    : "Supabase does NOT recognise this site's callback URL, so it redirects customers elsewhere after Google sign-in."}
+              </p>
+
+              <ul className="mt-3 space-y-1.5">
+                {authHealth.checks.map((c) => (
+                  <li key={c.url} className="flex items-start gap-2 text-[11px]">
+                    {c.allowListed
+                      ? <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-green-600" />
+                      : <XCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-red-600" />}
+                    <span className="min-w-0">
+                      <span className="break-all font-mono text-charcoal-800">{c.url}</span>
+                      <span className={c.allowListed ? "ml-1 font-semibold text-green-700" : "ml-1 font-semibold text-red-700"}>
+                        {c.allowListed ? "allowed" : "not allowed"}
+                      </span>
+                      {!c.allowListed && c.actualDestination && (
+                        <span className="block text-charcoal-500">
+                          Customers are sent to <span className="break-all font-mono">{c.actualDestination}</span>
+                          {c.landsOnProtectedHost && " — a Vercel-protected page, not Hallnect"}
+                        </span>
+                      )}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+
+              {authHealth.reachable && !authHealth.healthy && (
+                <div className="mt-3 rounded-xl bg-white/70 p-3">
+                  <p className="text-[11px] font-semibold text-red-900">To fix (Supabase dashboard, ~1 minute):</p>
+                  <ol className="mt-1 list-decimal space-y-0.5 pl-4 text-[11px] text-red-800">
+                    <li>Authentication → URL Configuration</li>
+                    <li>Set <span className="font-semibold">Site URL</span> to <span className="break-all font-mono">{authHealth.canonicalOrigin}</span></li>
+                    <li>Add each URL marked &ldquo;not allowed&rdquo; above to <span className="font-semibold">Redirect URLs</span> (exactly, no query string)</li>
+                    <li>Save, then reload this page — it re-checks automatically</li>
+                  </ol>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
 
         {/* Security notes */}
         <Section title="Security Posture" icon={<Shield className="h-4 w-4" />}>
