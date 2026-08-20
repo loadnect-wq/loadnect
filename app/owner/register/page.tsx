@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Building2, CheckCircle2, Gem, Lock, Mail, User } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
-import { buildAuthCallbackUrl, rememberAuthNext } from "@/lib/app-url";
+import { buildAuthCallbackUrl, rememberAuthNext, rememberOwnerIntent } from "@/lib/app-url";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -55,10 +55,13 @@ export default function OwnerRegisterPage() {
   }
 
   function handleGoogleSignUp() {
-    // Owner-registration intent. Carried in the cookie for the same reason as
-    // `next`: a query string on redirect_to breaks Supabase's allow-list match.
-    // Still only actionable AFTER a verified code exchange in the callback.
-    rememberAuthNext("/auth/set-owner-role");
+    // Owner-registration intent, in its OWN cookie that only this page writes.
+    // It deliberately does NOT ride in `next`: that value comes from a ?next=
+    // query param on the login page, so a crafted link could otherwise promote
+    // any customer who signed in. Still only actionable AFTER a verified code
+    // exchange in the callback.
+    rememberOwnerIntent();
+    rememberAuthNext("/auth/redirect");
     getSupabaseClient().auth.signInWithOAuth({
       provider: "google",
       options: { redirectTo: buildAuthCallbackUrl() },

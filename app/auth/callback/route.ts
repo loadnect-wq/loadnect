@@ -2,7 +2,7 @@ import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { AUTH_NEXT_COOKIE } from "@/lib/app-url";
+import { AUTH_NEXT_COOKIE, OWNER_INTENT_COOKIE } from "@/lib/app-url";
 
 // Path prefixes the OAuth flow may return a browser to after a successful
 // sign-in. Deep links matter here: a signed-out customer sent to
@@ -22,11 +22,13 @@ const ALLOWED_REDIRECT_PREFIXES = [
   "/halls",
 ];
 
-// Intent marker used by the owner-registration Google flow. This is NOT a
-// redirect target — it's a signal that the just-authenticated user should be
-// upgraded customer → owner_approved (see handleOwnerIntent). The owner-register
-// page sends ?next=/auth/set-owner-role.
-const OWNER_INTENT = "/auth/set-owner-role";
+// Owner-registration intent now arrives in its OWN cookie (OWNER_INTENT_COOKIE),
+// written only by /owner/register. It used to ride inside `next`, which the
+// login page populates from a ?next= QUERY PARAM — so a link such as
+//     /login?next=/auth/set-owner-role
+// silently promoted any customer who completed a normal Google sign-in. The
+// OAuth code was genuine (the victim supplied it), so the "unforgeable code"
+// argument did not protect against it. A URL can no longer express this intent.
 
 /**
  * Returns a SAFE same-origin relative path, or the default.
@@ -56,10 +58,6 @@ function safeNext(raw: string | null): string {
   } catch {
     return fallback;
   }
-  // The owner-intent marker is allowed through here so the GET handler can act
-  // on it; it is never used as a literal redirect target.
-  if (raw === OWNER_INTENT) return raw;
-
   const allowed = ALLOWED_REDIRECT_PREFIXES.some(
     (prefix) => raw === prefix || raw.startsWith(prefix),
   );
@@ -125,7 +123,17 @@ export async function GET(request: Request) {
   // The query param is still read as a fallback for links already in flight.
   const jar = await cookies();
   const fromCookie = jar.get(AUTH_NEXT_COOKIE)?.value;
-  const rawNext = fromCookie ? decodeURIComponent(fromCookie) : searchParams.get("next");
+  // decodeURIComponent throws URIError on a malformed sequence (e.g. a stray
+  // "%"), which would 500 the whole sign-in. Treat an undecodable cookie as
+  // absent rather than failing the login.
+  let decodedCookie: string | null = null;
+  if (fromCookie) {
+    try { decodedCookie = decodeURIComponent(fromCookie); }
+    catch { decodedCookie = null; }
+  }
+  const rawNext = decodedCookie ?? searchParams.get("next");
+  // Owner intent: a dedicated cookie only /owner/register writes. Never `next`.
+  const wantsOwnerUpgrade = jar.get(OWNER_INTENT_COOKIE)?.value === "1";
   // Same validation as before: attacker-controlled either way, so safeNext()
   // remains the authority (same-origin, root-relative, allow-listed prefixes).
   const next = safeNext(rawNext);
@@ -133,6 +141,7 @@ export async function GET(request: Request) {
   // Single-use: drop the cookie however this request ends.
   const clearNextCookie = (res: NextResponse) => {
     res.cookies.set(AUTH_NEXT_COOKIE, "", { path: "/", maxAge: 0 });
+    res.cookies.set(OWNER_INTENT_COOKIE, "", { path: "/", maxAge: 0 });
     return res;
   };
 
@@ -150,7 +159,7 @@ export async function GET(request: Request) {
 
   // Owner-registration intent: the code exchange just proved this is a genuine,
   // fresh OAuth completion, so this is the one place it's safe to mutate role.
-  if (next === OWNER_INTENT) {
+  if (wantsOwnerUpgrade) {
     await handleOwnerIntent(data.user.id);
     // Route through the role router rather than hardcoding a destination: it
     // reads the user's ACTUAL role and sends them to the right place. If the

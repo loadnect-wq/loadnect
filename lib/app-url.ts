@@ -83,6 +83,22 @@ export function getCanonicalAppUrl(): string {
 export const AUTH_NEXT_COOKIE = "hn_auth_next";
 
 /**
+ * Short-lived cookie marking an OWNER-REGISTRATION sign-in.
+ *
+ * SECURITY — why this is separate from AUTH_NEXT_COOKIE. Owner intent used to
+ * ride inside the general-purpose `next` value. But `next` is populated from a
+ * ?next= QUERY PARAM on the login page, so anyone could send a victim
+ *   https://<site>/login?next=/auth/set-owner-role
+ * and that victim's ordinary Google sign-in would silently promote them to
+ * owner_approved. The OAuth code was genuine, so "the code is unforgeable" did
+ * not help: the victim supplied the code themselves.
+ *
+ * This cookie is written ONLY by the owner-registration page and is never
+ * derived from a URL, so a crafted link cannot set it.
+ */
+export const OWNER_INTENT_COOKIE = "hn_owner_intent";
+
+/**
  * Absolute OAuth/email return URL on the canonical public origin.
  *
  * ⚠️  RETURNS A BARE URL WITH NO QUERY STRING — deliberately.
@@ -104,6 +120,16 @@ export const AUTH_NEXT_COOKIE = "hn_auth_next";
  */
 export function buildAuthCallbackUrl(): string {
   return `${getCanonicalAppUrl()}/auth/callback`;
+}
+
+/**
+ * Marks the current sign-in as an owner registration. Written only from
+ * /owner/register — never from a URL-supplied value.
+ */
+export function rememberOwnerIntent(): void {
+  if (typeof document === "undefined") return;
+  const secure = typeof window !== "undefined" && window.location.protocol === "https:" ? "; Secure" : "";
+  document.cookie = `${OWNER_INTENT_COOKIE}=1; Max-Age=600; Path=/; SameSite=Lax${secure}`;
 }
 
 /**

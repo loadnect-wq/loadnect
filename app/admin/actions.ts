@@ -170,19 +170,23 @@ async function moderateHall(
 // Both writes are gated by `is_admin()` in RLS + triggers.
 
 export async function approveOwner(profileId: string): Promise<ActionResult> {
-  const { supabase, user } = await getAuthUser();
-  if (!user) return { error: "Not authenticated" };
+  const actor = await requireAdminActor();
+  if (!actor.ok) return { error: actor.error };
+  const user = actor.user;
   const idErr = requireUuid(profileId, "profile id");
   if (idErr) return { error: idErr };
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const db = supabase as any;
+  const db = actor.supabase as any;
 
-  // 1. Promote profile role to owner_approved.
-  const { error: roleErr } = await db
+  // 1. Promote profile role to owner_approved. count:"exact" because an
+  //    RLS-filtered update reports 0 rows with NO error — reporting success for
+  //    a role change that never happened is exactly the bug fixed elsewhere.
+  const { error: roleErr, count } = await db
     .from("profiles")
-    .update({ role: "owner_approved" })
+    .update({ role: "owner_approved" }, { count: "exact" })
     .eq("id", profileId);
-  if (roleErr) return { error: roleErr.message };
+  if (roleErr) return { error: sanitizeError(roleErr, "admin") };
+  if (count === 0) return { error: "You do not have permission to change this account." };
 
   // 2. Mark their hall_owners row as verified, if it exists.
   await db
@@ -205,20 +209,21 @@ export async function approveOwner(profileId: string): Promise<ActionResult> {
 }
 
 export async function rejectOwner(profileId: string): Promise<ActionResult> {
-  const { supabase, user } = await getAuthUser();
-  if (!user) return { error: "Not authenticated" };
+  const actor = await requireAdminActor();
+  if (!actor.ok) return { error: actor.error };
   const idErr = requireUuid(profileId, "profile id");
   if (idErr) return { error: idErr };
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const db = supabase as any;
+  const db = actor.supabase as any;
 
   // Downgrade to customer.
-  const { error } = await db
+  const { error, count } = await db
     .from("profiles")
-    .update({ role: "customer" })
+    .update({ role: "customer" }, { count: "exact" })
     .eq("id", profileId);
 
   if (error) return { error: sanitizeError(error, "admin") };
+  if (count === 0) return { error: "You do not have permission to change this account." };
 
   await recordAdminAction({
     action:     "owner.reject",

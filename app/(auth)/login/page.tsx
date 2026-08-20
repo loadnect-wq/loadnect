@@ -15,8 +15,18 @@ import { toast } from "@/hooks/use-toast";
 import { GoogleIcon } from "@/components/icons/GoogleIcon";
 import { loginSchema } from "@/lib/validation/schemas";
 
-// Only root-relative internal paths are honoured; anything else (absolute URL,
-// protocol-relative //evil.com, backslash trick) falls back to the role router.
+// Destinations a ?next= on the LOGIN page may name. This mirrors the callback's
+// allow-list rather than accepting any root-relative path.
+//
+// SECURITY: the old version ended in a bare `return raw`, so ?next= could name
+// ANY internal path — including the owner-intent marker /auth/set-owner-role,
+// which the callback acts on by promoting the user to owner_approved. A link
+// like /login?next=/auth/set-owner-role therefore silently escalated any
+// customer who signed in with Google. Owner intent now travels in its own
+// cookie that only /owner/register writes, and this list makes the login page
+// unable to name a privileged marker even if one is added later.
+const ALLOWED_NEXT_PREFIXES = ["/auth/redirect", "/book/", "/customer", "/owner/", "/halls"];
+
 function safeNextPath(raw: string | null): string {
   const fallback = "/auth/redirect";
   if (!raw) return fallback;
@@ -27,7 +37,9 @@ function safeNextPath(raw: string | null): string {
   } catch {
     return fallback;
   }
-  return raw;
+  // Never honour an /auth/* control path from a query param — only real pages.
+  const allowed = ALLOWED_NEXT_PREFIXES.some((p) => raw === p || raw.startsWith(p));
+  return allowed ? raw : fallback;
 }
 
 const AUTH_ERROR_MESSAGES: Record<string, string> = {
