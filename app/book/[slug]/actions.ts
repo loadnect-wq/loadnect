@@ -274,6 +274,20 @@ export async function submitManualBookingRequest(
   if (!user) return { error: "Please sign in to submit a booking request." };
   if (!parseSafe(uuidSchema, bookingId).ok) return { error: "Invalid booking." };
 
+  // ── PAYMENT-MODE GATE (server-authoritative) ────────────────────────────────
+  // This action promotes a booking to `booking_requested` WITHOUT any payment.
+  // That is only legitimate in MANUAL mode — i.e. when Cashfree is not
+  // configured and Hallnect collects payment offline.
+  //
+  // It used to be gated only by a UI prop (`onlinePaymentEnabled`), which is
+  // not a gate at all: server actions are directly invocable, so once Cashfree
+  // was configured ANY signed-in customer could skip checkout entirely and
+  // confirm a real booking for free — blocking the hall's calendar and
+  // creating an owner commission against money that was never collected.
+  if (isCashfreeConfigured()) {
+    return { error: "This booking must be paid for online. Please complete the payment to confirm it." };
+  }
+
   // Verify it's the caller's own pending booking (RLS-scoped read).
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = supabase as any;

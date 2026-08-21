@@ -271,14 +271,24 @@ export async function verifyAndApplyPayment(orderId: string): Promise<ApplyPayme
     //    to an ACTIVE status activates the partial unique index
     //    uq_booking_active_slot; if another booking already holds this exact
     //    slot we get 23505 and must refund.
-    const { error: upErr } = await db
+    const { error: upErr, count: movedRows } = await db
       .from("bookings")
-      .update({ status: "booking_requested" })
+      .update({ status: "booking_requested" }, { count: "exact" })
       .eq("id", payment.booking_id)
       .eq("status", "pending_payment");
 
     if (upErr) {
-      if (upErr.code === "23505" || (upErr.message ?? "").toLowerCase().includes("already booked")) {
+      // 23505 = the active-slot unique index. 23P01 = the GiST range-exclusion
+      // constraint (bookings_no_overlapping_ranges), which is what a TRUE
+      // concurrent race actually raises — it was previously unhandled, so the
+      // paying customer got a generic error, no booking, and no refund record.
+      if (
+        upErr.code === "23505" ||
+        upErr.code === "23P01" ||
+        (upErr.message ?? "").toLowerCase().includes("already booked") ||
+        (upErr.message ?? "").toLowerCase().includes("conflicting key value") ||
+        (upErr.message ?? "").toLowerCase().includes("exclusion constraint")
+      ) {
         await db.from("bookings")
           .update({ status: "cancelled", cancel_reason: "Slot already booked — refund due" })
           .eq("id", payment.booking_id)
@@ -294,6 +304,27 @@ export async function verifyAndApplyPayment(orderId: string): Promise<ApplyPayme
         };
       }
       return { state: "error", bookingId: payment.booking_id, message: upErr.message };
+    }
+
+    // A zero-row update means the booking was NOT in pending_payment — it had
+    // already been cancelled (expiry sweep, customer cancellation) or moved on.
+    // Treating that as success took the money, blocked the calendar and raised
+    // an owner commission for a booking that does not exist in a payable state.
+    // Surface it instead so the admin can refund; never run the paid side
+    // effects against a booking we did not actually transition.
+    if ((movedRows ?? 0) === 0) {
+      await db.from("payments")
+        .update({ payment_message: "Paid, but the booking was no longer awaiting payment — refund required" })
+        .eq("id", payment.id);
+      logSideEffectError("bookingNotPending", {
+        code: "booking_not_pending",
+        message: `order ${orderId} paid but booking ${payment.booking_id} was not pending_payment`,
+      });
+      return {
+        state:     "slot_conflict",
+        bookingId: payment.booking_id,
+        message:   "Payment succeeded but this booking was no longer awaiting payment. Our team will arrange a refund.",
+      };
     }
 
     // c) Block availability + record commission (both idempotent).
