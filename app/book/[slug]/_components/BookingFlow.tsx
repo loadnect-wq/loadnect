@@ -148,8 +148,11 @@ export function BookingFlow({ hall, availability, windowDays, platformFeePercent
   // Display-only price preview — the server recomputes everything.
   const dailyBase   = isMultiDay ? hall.price_per_day : (effSlot ? slotPrice(effSlot as SlotId) : 0);
   const baseAmount  = dailyBase * Math.max(1, bookingDays || 1) * (effSlot ? 1 : 0);
-  const platformFee = Math.round(baseAmount * PLATFORM_FEE_RATE);
-  const totalAmount = baseAmount + platformFee;
+  // The customer pays the HALL PRICE ONLY. Hallnect's commission is owed by the
+  // VENUE OWNER and settled separately, so it never appears on the customer's
+  // bill. (PLATFORM_FEE_RATE is still passed in for the owner-side display.)
+  void PLATFORM_FEE_RATE;
+  const totalAmount = baseAmount;
   const advance     = Math.round(totalAmount * ADVANCE_RATE);
 
   function next() { setStep((s) => Math.min(s + 1, STEPS.length - 1)); }
@@ -596,11 +599,13 @@ export function BookingFlow({ hall, availability, windowDays, platformFeePercent
                     label={isMultiDay ? `${formatPrice(dailyBase)} × ${bookingDays} days` : "Hall base price"}
                     value={formatPrice(baseAmount)}
                   />
-                  <PriceLine label={`Platform fee (${platformFeePercent}%)`} value={formatPrice(platformFee)} />
                   <div className="my-2 h-px bg-border" />
                   <PriceLine label="Total"            value={formatPrice(totalAmount)} bold />
                   <PriceLine label="Advance payable now" value={formatPrice(advance)} highlight />
                   <PriceLine label="Remaining balance" value={formatPrice(totalAmount - advance)} />
+                  <p className="mt-2 text-[11px] text-charcoal-500">
+                    No booking fee or platform charge is added — this is the venue&apos;s price.
+                  </p>
                 </div>
 
                 {/* Advance + cancellation + refund terms */}

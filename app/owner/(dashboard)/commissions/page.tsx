@@ -14,6 +14,8 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { buttonVariants } from "@/components/ui/Button";
 import { AppHeader } from "@/components/app/AppHeader";
 import { PayCommission } from "./_components/PayCommission";
+import { PayCommissionOnline } from "./_components/PayCommissionOnline";
+import { isCashfreeConfigured } from "@/lib/cashfree";
 
 export const metadata: Metadata = { title: "Commissions" };
 
@@ -96,6 +98,7 @@ export default async function OwnerCommissionsPage() {
   const overdue     = commissions.filter((c) => c.status === "overdue" || (statusBadge(c).label === "Overdue"));
   const paid        = commissions.filter((c) => PAID_STATUSES.includes(c.status));
 
+  const gatewayEnabled = isCashfreeConfigured();
   const totalOutstanding = outstanding.reduce((s, c) => s + c.commission_amount, 0);
   const totalOverdue     = overdue.reduce((s, c) => s + c.commission_amount, 0);
   const totalPaid        = paid.reduce((s, c) => s + c.commission_amount, 0);
@@ -178,8 +181,25 @@ export default async function OwnerCommissionsPage() {
                     />
                   </div>
 
+                  {/* Preferred: pay through Cashfree — settles instantly, no
+                      admin verification step. The manual UPI + screenshot flow
+                      stays available as a fallback when the gateway is off. */}
+                  {isOutstanding(c) && !hasOpenSubmission(c) && gatewayEnabled && (
+                    <div className="mt-3">
+                      <PayCommissionOnline
+                        commissionId={c.id}
+                        amountLabel={formatPrice(c.commission_amount)}
+                      />
+                    </div>
+                  )}
+
                   {payable && (
                     <div className="mt-3">
+                      {gatewayEnabled && (
+                        <p className="mb-2 text-center text-[10px] uppercase tracking-wide text-charcoal-400">
+                          or pay manually
+                        </p>
+                      )}
                       <PayCommission
                         commissionId={c.id}
                         amount={formatPrice(c.commission_amount)}

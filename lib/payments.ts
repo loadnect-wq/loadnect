@@ -448,11 +448,16 @@ async function createCommission(db: any, booking: ApplyBooking): Promise<void> {
         hall_id:             booking.hall_id,
         hall_owner_id:       booking.hall_owner_id,
         customer_id:         booking.customer_id,
-        booking_amount:      booking.total_amount,
+        // booking_amount is the HALL PRICE the commission is computed on.
+        // The customer now pays exactly this, so total_amount == base_amount;
+        // using base_amount explicitly keeps the intent unambiguous.
+        booking_amount:      booking.base_amount,
         advance_amount:      advance,
         commission_rate:     derivedRate,
+        // Owed BY THE OWNER: 5% of the hall price, settled via Cashfree.
         commission_amount:   booking.platform_fee,
-        owner_payout_amount: booking.base_amount,
+        // What the owner keeps once Hallnect's commission is settled.
+        owner_payout_amount: Math.max(0, booking.base_amount - booking.platform_fee),
         status:              "collected",
         due_date:            dueDate,
         settlement_adjustment_status: "none",

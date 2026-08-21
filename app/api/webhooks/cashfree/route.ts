@@ -33,6 +33,7 @@
 import { NextResponse } from "next/server";
 import { verifyCashfreeWebhookSignature } from "@/lib/cashfree";
 import { verifyAndApplyPayment } from "@/lib/payments";
+import { isCommissionOrderId, verifyAndApplyCommissionPayment } from "@/lib/commission-payments";
 
 export const runtime = "nodejs";       // crypto + raw body
 export const dynamic = "force-dynamic"; // never cache a webhook
@@ -89,7 +90,13 @@ export async function POST(request: Request) {
   //    PAYMENT_FAILED and USER_DROPPED (→ payment_failed), because it reads the
   //    authoritative order status rather than trusting the event name.
   try {
-    const result = await verifyAndApplyPayment(orderId);
+    // Two kinds of money flow through this one endpoint: CUSTOMER booking
+    // advances (HN_…) and OWNER commission settlements (HNC_…). The prefix
+    // routes them without an extra database round-trip. Both paths re-verify
+    // against Cashfree and are individually idempotent.
+    const result = isCommissionOrderId(orderId)
+      ? await verifyAndApplyCommissionPayment(orderId)
+      : await verifyAndApplyPayment(orderId);
     console.info(`[cashfree-webhook] order=${orderId} applied state=${result.state}`);
     // Always 200 on a handled event — even "pending"/"failed" are successfully
     // processed outcomes and should not trigger Cashfree retries.

@@ -78,6 +78,12 @@ export type OwnerBooking = {
   owner_notes:    string | null;
   cancel_reason:  string | null;
   created_at:     string;
+  /** Customer's contact number for THIS booking (E.164). */
+  contact_phone:  string | null;
+  /** When an unanswered request auto-expires and releases the dates. */
+  owner_response_due_at: string | null;
+  /** Advance actually received through the gateway, 0 when none. */
+  amount_paid:    number;
 };
 
 export type HallImage = {
@@ -375,7 +381,7 @@ export async function fetchOwnerBookings(
 
   let query = db
     .from("bookings")
-    .select("id, hall_id, event_date, end_date, slot, guest_count, base_amount, total_amount, status, customer_notes, owner_notes, cancel_reason, created_at, halls(name, slug)")
+    .select("id, hall_id, event_date, end_date, slot, guest_count, base_amount, total_amount, status, customer_notes, owner_notes, cancel_reason, created_at, contact_phone, owner_response_due_at, halls(name, slug), payments(amount, status)")
     .in("hall_id", hallIds)
     .order("event_date", { ascending: true });
 
@@ -401,6 +407,14 @@ export async function fetchOwnerBookings(
     owner_notes:    row.owner_notes ?? null,
     cancel_reason:  row.cancel_reason ?? null,
     created_at:     row.created_at,
+    contact_phone:  row.contact_phone ?? null,
+    owner_response_due_at: row.owner_response_due_at ?? null,
+    // Only a gateway-verified payment counts as money received.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    amount_paid: (row.payments ?? [])
+      .filter((p: any) => p?.status === "payment_success")
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .reduce((sum: number, p: any) => sum + Number(p.amount ?? 0), 0),
   }));
 }
 

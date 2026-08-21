@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/Badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { buttonVariants } from "@/components/ui/Button";
 import { AppHeader } from "@/components/app/AppHeader";
-import { BookingActions } from "./_components/BookingActions";
+import { BookingActions, ResponseDeadline } from "./_components/BookingActions";
 
 export const metadata: Metadata = { title: "Bookings" };
 
@@ -76,6 +76,29 @@ export default async function OwnerBookingsPage({ searchParams }: Props) {
     : allBookings;
 
   const pendingCount = allBookings.filter((b) => b.status === "booking_requested").length;
+
+  // Conflict detection: a pending REQUEST whose dates overlap a booking that is
+  // already committed on the same hall. Accepting it would double-book the
+  // venue, so the owner is warned before they tap Accept. (The database still
+  // refuses the overlap — this makes the refusal predictable instead of a
+  // surprise error after the customer has been told yes.)
+  const COMMITTED = new Set(["owner_confirmed", "completed"]);
+  const conflictIds = new Set(
+    allBookings
+      .filter((b) => b.status === "booking_requested")
+      .filter((req) =>
+        allBookings.some(
+          (other) =>
+            other.id !== req.id &&
+            other.hall_id === req.hall_id &&
+            COMMITTED.has(other.status) &&
+            // inclusive date-range overlap
+            req.event_date <= other.end_date &&
+            other.event_date <= req.end_date,
+        ),
+      )
+      .map((b) => b.id),
+  );
 
   return (
     <div className="min-h-screen bg-ivory-100">
@@ -156,14 +179,58 @@ export default async function OwnerBookingsPage({ searchParams }: Props) {
                       </div>
                     </div>
 
+                    {/* Money: what has actually reached Hallnect vs what the
+                        owner still collects at the venue. Only a verified
+                        gateway payment counts as received. */}
+                    <div className="grid grid-cols-2 gap-2 rounded-xl bg-ivory-100 p-2.5 text-[11px] sm:grid-cols-3">
+                      <div>
+                        <p className="text-charcoal-500">Advance received</p>
+                        <p className="font-semibold text-green-700">
+                          {booking.amount_paid > 0 ? formatPrice(booking.amount_paid) : "Not paid yet"}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-charcoal-500">Balance at venue</p>
+                        <p className="font-semibold text-charcoal-900">
+                          {formatPrice(Math.max(0, booking.total_amount - booking.amount_paid))}
+                        </p>
+                      </div>
+                      {booking.contact_phone && (
+                        <div>
+                          <p className="text-charcoal-500">Customer</p>
+                          <a
+                            href={`tel:${booking.contact_phone}`}
+                            className="font-semibold text-maroon-700 hover:underline"
+                          >
+                            {booking.contact_phone}
+                          </a>
+                        </div>
+                      )}
+                    </div>
+
+                    {booking.status === "booking_requested" && (
+                      <ResponseDeadline dueAt={booking.owner_response_due_at} />
+                    )}
+
                     {booking.customer_notes && (
                       <p className="rounded-xl bg-ivory-100 px-3 py-2 text-xs text-charcoal-600 italic">
                         &ldquo;{booking.customer_notes}&rdquo;
                       </p>
                     )}
 
+                    {booking.owner_notes && booking.status === "owner_rejected" && (
+                      <p className="rounded-xl bg-red-50 px-3 py-2 text-[11px] text-red-800">
+                        <span className="font-semibold">Your reason:</span> {booking.owner_notes}
+                      </p>
+                    )}
+
                     {/* Actions */}
-                    <BookingActions bookingId={booking.id} status={booking.status} />
+                    <BookingActions
+                      bookingId={booking.id}
+                      status={booking.status}
+                      customerLabel={booking.contact_phone ?? undefined}
+                      hasConflict={conflictIds.has(booking.id)}
+                    />
                   </div>
                 </div>
               );
