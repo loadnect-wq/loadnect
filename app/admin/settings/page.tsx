@@ -1,12 +1,13 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { LogOut, Shield, AlertTriangle, Settings as SettingsIcon, Database, Timer, Percent, Sparkles, KeyRound, CheckCircle2, XCircle } from "lucide-react";
+import { LogOut, Shield, AlertTriangle, Settings as SettingsIcon, Database, Timer, Percent, Sparkles, KeyRound, CheckCircle2, XCircle, CreditCard } from "lucide-react";
 import { requireRole } from "@/lib/auth";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { getCommissionPercent, getPublicPaymentSettings } from "@/lib/platform-settings";
 import { fetchPremiumPlans } from "@/lib/premium-plans";
 import { checkAuthRedirectHealth } from "@/lib/auth-health";
+import { checkCashfreeHealth } from "@/lib/cashfree-health";
 import { Badge } from "@/components/ui/Badge";
 import { AdminPageHeader } from "../_components/AdminPageHeader";
 import { CleanupButton } from "./_components/CleanupButton";
@@ -18,7 +19,7 @@ export const metadata: Metadata = { title: "Admin Settings" };
 
 export default async function AdminSettingsPage() {
   const profile = await requireRole(["admin"]);
-  const [commissionPercent, premiumPlans, paymentSettings, authHealth] = await Promise.all([
+  const [commissionPercent, premiumPlans, paymentSettings, authHealth, cashfree] = await Promise.all([
     getCommissionPercent(),
     fetchPremiumPlans(),
     getPublicPaymentSettings(),
@@ -26,6 +27,7 @@ export default async function AdminSettingsPage() {
     // invisible everywhere else: Supabase silently falls back to its Site URL
     // instead of erroring, which is what sent customers to Vercel's login page.
     checkAuthRedirectHealth(),
+    checkCashfreeHealth(),
   ]);
 
   return (
@@ -79,6 +81,92 @@ export default async function AdminSettingsPage() {
             Changes require code review and a deployment.
           </p>
         </Section>
+
+        {/* Cashfree payment configuration (live probe) */}
+        <div className={`rounded-2xl border-2 p-5 ${
+          !cashfree.configured ? "border-amber-200 bg-amber-50"
+          : cashfree.modeKeyMismatch || cashfree.credentialsAccepted === false ? "border-red-200 bg-red-50"
+          : cashfree.mode === "production" ? "border-green-200 bg-green-50"
+          : "border-blue-200 bg-blue-50"}`}>
+          <div className="flex items-start gap-3">
+            <CreditCard className="mt-0.5 h-5 w-5 shrink-0 text-charcoal-700" />
+            <div className="min-w-0 flex-1">
+              <h3 className="font-serif text-sm font-semibold text-charcoal-900">Cashfree payments</h3>
+
+              {!cashfree.configured ? (
+                <p className="mt-0.5 text-xs text-amber-800">
+                  Not configured — bookings run in manual request mode (no online payment).
+                </p>
+              ) : (
+                <>
+                  <p className="mt-0.5 text-xs text-charcoal-700">
+                    Running in{" "}
+                    <span className="font-bold uppercase">{cashfree.mode}</span>
+                    {cashfree.mode === "production"
+                      ? " — real money will be charged."
+                      : " — test money only, no real charges."}
+                  </p>
+
+                  <dl className="mt-3 space-y-1 text-[11px]">
+                    <div className="flex flex-wrap gap-x-2">
+                      <dt className="font-semibold text-charcoal-600">API endpoint</dt>
+                      <dd className="font-mono text-charcoal-800">{cashfree.apiBaseUrl}</dd>
+                    </div>
+                    <div className="flex flex-wrap gap-x-2">
+                      <dt className="font-semibold text-charcoal-600">App ID</dt>
+                      <dd className="font-mono text-charcoal-800">
+                        {cashfree.appIdMasked}
+                        {cashfree.appIdLooksLikeTestKey && (
+                          <span className="ml-1 rounded bg-blue-100 px-1 font-sans font-semibold text-blue-800">TEST key</span>
+                        )}
+                      </dd>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-x-2">
+                      <dt className="font-semibold text-charcoal-600">Credentials</dt>
+                      <dd className="flex items-center gap-1">
+                        {cashfree.credentialsAccepted === true ? (
+                          <><CheckCircle2 className="h-3.5 w-3.5 text-green-600" /><span className="font-semibold text-green-700">accepted by Cashfree</span></>
+                        ) : cashfree.credentialsAccepted === false ? (
+                          <><XCircle className="h-3.5 w-3.5 text-red-600" /><span className="font-semibold text-red-700">REJECTED</span></>
+                        ) : (
+                          <span className="text-charcoal-500">could not verify</span>
+                        )}
+                      </dd>
+                    </div>
+                    <div className="flex flex-wrap gap-x-2">
+                      <dt className="font-semibold text-charcoal-600">Webhook URL</dt>
+                      <dd className="break-all font-mono text-charcoal-800">{cashfree.webhookUrl}</dd>
+                    </div>
+                  </dl>
+
+                  {cashfree.modeKeyMismatch && (
+                    <p className="mt-2 rounded-lg bg-red-100 p-2 text-[11px] font-semibold text-red-900">
+                      Mismatch: CASHFREE_ENV says <span className="font-mono">{cashfree.mode}</span> but the App ID is a{" "}
+                      {cashfree.appIdLooksLikeTestKey ? "TEST" : "live"} key. Payments will fail. Set both to the same environment.
+                    </p>
+                  )}
+                  {cashfree.credentialsError && !cashfree.modeKeyMismatch && (
+                    <p className="mt-2 rounded-lg bg-white/70 p-2 text-[11px] text-red-800">{cashfree.credentialsError}</p>
+                  )}
+                  {!cashfree.webhookSecretConfigured && (
+                    <p className="mt-2 rounded-lg bg-white/70 p-2 text-[11px] text-charcoal-600">
+                      CASHFREE_WEBHOOK_SECRET is not set — webhook signatures are verified with the API secret key.
+                      Set it explicitly if your Cashfree dashboard shows a separate webhook secret.
+                    </p>
+                  )}
+                  {cashfree.publicEnvVarMisleading && (
+                    <p className="mt-2 rounded-lg bg-white/70 p-2 text-[11px] text-charcoal-600">
+                      NEXT_PUBLIC_CASHFREE_ENV is set to{" "}
+                      <span className="font-mono break-all">{cashfree.publicEnvVarValue}</span>, which is not
+                      &ldquo;production&rdquo; or &ldquo;sandbox&rdquo;. No code reads this variable — the checkout mode comes from
+                      CASHFREE_ENV above — so it is harmless, but it is safe to delete to avoid confusion.
+                    </p>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+        </div>
 
         {/* Google sign-in configuration health (live probe) */}
         <div className={`rounded-2xl border-2 p-5 ${authHealth.healthy ? "border-green-200 bg-green-50" : "border-red-200 bg-red-50"}`}>
