@@ -6,6 +6,7 @@ import { fetchOwnerRow } from "@/lib/owner";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { AppHeader } from "@/components/app/AppHeader";
 import { OwnerProfileForm } from "./_components/OwnerProfileForm";
+import { PayoutSetup } from "./_components/PayoutSetup";
 
 export const metadata: Metadata = { title: "Owner Profile" };
 
@@ -49,6 +50,17 @@ export default async function OwnerProfilePage() {
             </div>
           </div>
         </div>
+
+        {/* Automatic payout status — shown above the forms because the fields
+            it depends on (UPI, PAN, phone) live in Business Details below. */}
+        <PayoutSetup
+          vendorId={ownerRow?.cashfree_vendor_id ?? null}
+          kycStatus={ownerRow?.vendor_kyc_status ?? null}
+          lastError={ownerRow?.vendor_last_error ?? null}
+          hasUpi={!!ownerRow?.payout_upi}
+          hasPan={!!ownerRow?.pan_number}
+          hasPhone={!!ownerRow?.business_phone}
+        />
 
         <OwnerProfileForm
           ownerRow={ownerRow}

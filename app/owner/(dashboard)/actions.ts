@@ -21,6 +21,9 @@ import { sanitizeError } from "@/lib/errors";
 import { notifyBookingEvent, notifyHallSubmitted } from "@/lib/notifications/events";
 import { isCashfreeConfigured } from "@/lib/cashfree";
 import { startCommissionPayment, verifyAndApplyCommissionPayment } from "@/lib/commission-payments";
+import { payOwnerOnAcceptance } from "@/lib/owner-payout";
+import { isEasySplitEnabled, upsertVendor } from "@/lib/easy-split";
+import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 
 type ActionResult = { success: true; id?: string } | { error: string };
 
@@ -621,8 +624,18 @@ export async function acceptBooking(bookingId: string): Promise<ActionResult> {
 
   await notifyBookingEvent("booking.confirmed", bookingId);
 
+  // AUTOMATIC OWNER PAYOUT. Accepting is the commitment, so this is the moment
+  // the customer's advance is split: Hallnect retains its 5% commission and the
+  // remainder settles to the owner's Cashfree vendor balance. Deliberately
+  // AFTER the status flip and non-fatal — a booking the owner accepted must
+  // stay accepted even if payout plumbing is incomplete. Every outcome is
+  // recorded on payments.split_status for admin visibility and retry.
+  await payOwnerOnAcceptance(bookingId);
+
   revalidatePath("/owner/bookings");
   revalidatePath("/owner/dashboard");
+  revalidatePath("/owner/revenue");
+  revalidatePath("/owner/commissions");
   return { success: true };
 }
 
@@ -739,4 +752,62 @@ export async function checkCommissionPaymentStatus(
   revalidatePath("/owner/commissions");
   revalidatePath("/admin/commissions");
   return { state: result.state === "paid" ? "paid" : result.state === "failed" ? "failed" : result.state === "not_found" ? "not_found" : "pending" };
+}
+
+// ── Cashfree vendor onboarding (required before automatic payouts) ──────────
+// An owner cannot be paid automatically until Cashfree has them as a KYC-cleared
+// vendor. This registers/refreshes that record from the owner's own business
+// details and stores the resulting status so the dashboard can show it honestly.
+
+export async function connectPayoutAccount(): Promise<ActionResult> {
+  const { supabase, user } = await getAuthUser();
+  if (!user) return { error: "Not authenticated" };
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const db = supabase as any;
+  const { data: owner } = await db
+    .from("hall_owners")
+    .select("id, business_name, business_email, business_phone, payout_upi, pan_number")
+    .eq("profile_id", user.id)
+    .maybeSingle();
+
+  if (!owner) return { error: "Complete your business profile first." };
+  if (!owner.payout_upi) return { error: "Add your payout UPI ID in Business Details first." };
+  if (!owner.pan_number) return { error: "Add your PAN in Business Details first — Cashfree requires it for payouts." };
+  if (!owner.business_phone) return { error: "Add your business phone in Business Details first." };
+
+  if (!isEasySplitEnabled()) {
+    return { error: "Automatic payouts are not switched on yet. Hallnect will contact you when they are." };
+  }
+
+  const result = await upsertVendor({
+    vendorId: owner.id,
+    name:  owner.business_name ?? "Hallnect Venue Owner",
+    email: (owner.business_email || user.email || "").trim(),
+    phone: (owner.business_phone ?? "").replace(/\D/g, "").slice(-10),
+    upiVpa: owner.payout_upi,
+    pan:    owner.pan_number,
+  });
+
+  // Record the outcome either way — a failed onboarding must be visible, not
+  // silently retried forever. The service-role client is used because
+  // hall_owners' vendor columns are trusted-backend state, not owner-editable.
+  const adminDb = getSupabaseAdminClient();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  await (adminDb as any).from("hall_owners").update(
+    result.ok
+      ? {
+          cashfree_vendor_id: result.data.vendorId,
+          vendor_kyc_status:  result.data.settleable ? "VERIFIED" : "PENDING",
+          vendor_synced_at:   new Date().toISOString(),
+          vendor_last_error:  null,
+        }
+      : { vendor_synced_at: new Date().toISOString(), vendor_last_error: result.error },
+  ).eq("id", owner.id);
+
+  revalidatePath("/owner/profile");
+  revalidatePath("/owner/revenue");
+
+  if (!result.ok) return { error: result.error };
+  return { success: true };
 }

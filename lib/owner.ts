@@ -19,6 +19,10 @@ export type OwnerRow = {
   city:           string | null;
   state:          string | null;
   payout_upi:     string | null;
+  /** Cashfree Easy Split vendor state — governs automatic payouts. */
+  cashfree_vendor_id: string | null;
+  vendor_kyc_status:  string | null;
+  vendor_last_error:  string | null;
   is_verified:    boolean;
 };
 
@@ -168,7 +172,7 @@ export async function fetchOwnerRow(): Promise<OwnerRow | null> {
   // the halls_insert WITH CHECK owns_owner_row() test as a 42501).
   const { data, error } = await db
     .from("hall_owners")
-    .select("id, profile_id, business_name, business_email, business_phone, gst_number, pan_number, address, city, state, payout_upi, is_verified")
+    .select("id, profile_id, business_name, business_email, business_phone, gst_number, pan_number, address, city, state, payout_upi, is_verified, cashfree_vendor_id, vendor_kyc_status, vendor_last_error")
     .eq("profile_id", user.id)
     .maybeSingle();
 
