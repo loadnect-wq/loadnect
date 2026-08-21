@@ -17,14 +17,14 @@ export function PayoutSetup({
   vendorId,
   kycStatus,
   lastError,
-  hasUpi,
+  hasBank,
   hasPan,
   hasPhone,
 }: {
   vendorId: string | null;
   kycStatus: string | null;
   lastError: string | null;
-  hasUpi: boolean;
+  hasBank: boolean;
   hasPan: boolean;
   hasPhone: boolean;
 }) {
@@ -33,7 +33,7 @@ export function PayoutSetup({
   const [done, setDone] = useState(false);
 
   const missing = [
-    !hasUpi && "payout UPI ID",
+    !hasBank && "payout bank account + IFSC",
     !hasPan && "PAN",
     !hasPhone && "business phone",
   ].filter(Boolean) as string[];

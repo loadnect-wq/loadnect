@@ -42,6 +42,8 @@ export function OwnerProfileForm({ ownerRow, fullName, email, phone, initialSmsE
   const [city,     setCity]     = useState(ownerRow?.city            ?? "");
   const [state,    setState]    = useState(ownerRow?.state           ?? "");
   const [upi,      setUpi]      = useState(ownerRow?.payout_upi      ?? "");
+  const [acctNo,   setAcctNo]   = useState(ownerRow?.payout_account_number ?? "");
+  const [ifsc,     setIfsc]     = useState(ownerRow?.payout_ifsc      ?? "");
 
   function handleProfileSave(e: React.FormEvent) {
     e.preventDefault();
@@ -67,6 +69,8 @@ export function OwnerProfileForm({ ownerRow, fullName, email, phone, initialSmsE
         city,
         state,
         payoutUpi:     upi,
+        payoutAccountNumber: acctNo,
+        payoutIfsc:          ifsc,
       });
       "error" in r ? setErr2(r.error) : setOk2(true);
     });
@@ -183,7 +187,30 @@ export function OwnerProfileForm({ ownerRow, fullName, email, phone, initialSmsE
             </select>
           </Field>
         </div>
-        <Field label="UPI ID for Payouts">
+        {/* Bank account is what Cashfree actually settles payouts to — UPI
+            settlement is not enabled on this merchant account. */}
+        <Field label="Payout Bank Account Number">
+          <Input
+            value={acctNo}
+            onChange={(e) => setAcctNo(e.target.value.replace(/\D/g, "").slice(0, 20))}
+            placeholder="e.g. 50100123456789"
+            inputMode="numeric"
+          />
+          <p className="mt-1 text-[11px] text-charcoal-500">
+            Booking payouts are sent here. Digits only.
+          </p>
+        </Field>
+
+        <Field label="Payout IFSC">
+          <Input
+            value={ifsc}
+            onChange={(e) => setIfsc(e.target.value.toUpperCase().slice(0, 11))}
+            placeholder="e.g. HDFC0000001"
+            maxLength={11}
+          />
+        </Field>
+
+        <Field label="UPI ID (optional)">
           <Input value={upi} onChange={(e) => setUpi(e.target.value)} placeholder="yourname@upi" />
           <p className="text-[11px] text-charcoal-500 mt-1">Payouts are sent here after each completed booking.</p>
         </Field>

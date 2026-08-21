@@ -56,6 +56,8 @@ export async function upsertOwnerRow(data: {
   city:          string;
   state:         string;
   payoutUpi:     string;
+  payoutAccountNumber?: string;
+  payoutIfsc?:          string;
 }): Promise<ActionResult> {
   const { supabase, user } = await getAuthUser();
   if (!user) return { error: "Not authenticated" };
@@ -85,6 +87,10 @@ export async function upsertOwnerRow(data: {
     city:           v.city          || null,
     state:          v.state         || null,
     payout_upi:     v.payoutUpi     || null,
+    payout_account_number: v.payoutAccountNumber || null,
+    // IFSC is case-insensitive on input but stored uppercase to satisfy the
+    // DB CHECK and to match what Cashfree expects.
+    payout_ifsc:    v.payoutIfsc ? v.payoutIfsc.toUpperCase() : null,
   };
 
   if (existing) {
@@ -767,12 +773,14 @@ export async function connectPayoutAccount(): Promise<ActionResult> {
   const db = supabase as any;
   const { data: owner } = await db
     .from("hall_owners")
-    .select("id, business_name, business_email, business_phone, payout_upi, pan_number")
+    .select("id, business_name, business_email, business_phone, payout_upi, pan_number, payout_account_number, payout_ifsc")
     .eq("profile_id", user.id)
     .maybeSingle();
 
   if (!owner) return { error: "Complete your business profile first." };
-  if (!owner.payout_upi) return { error: "Add your payout UPI ID in Business Details first." };
+  if (!owner.payout_account_number || !owner.payout_ifsc) {
+    return { error: "Add your payout bank account number and IFSC in Business Details first — Cashfree settles owner payouts to a bank account." };
+  }
   if (!owner.pan_number) return { error: "Add your PAN in Business Details first — Cashfree requires it for payouts." };
   if (!owner.business_phone) return { error: "Add your business phone in Business Details first." };
 
@@ -785,8 +793,10 @@ export async function connectPayoutAccount(): Promise<ActionResult> {
     name:  owner.business_name ?? "Hallnect Venue Owner",
     email: (owner.business_email || user.email || "").trim(),
     phone: (owner.business_phone ?? "").replace(/\D/g, "").slice(-10),
-    upiVpa: owner.payout_upi,
-    pan:    owner.pan_number,
+    bankAccountNumber: owner.payout_account_number,
+    bankIfsc:          owner.payout_ifsc,
+    upiVpa:            owner.payout_upi,
+    pan:               owner.pan_number,
   });
 
   // Record the outcome either way — a failed onboarding must be visible, not

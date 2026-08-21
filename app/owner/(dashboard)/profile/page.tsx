@@ -57,7 +57,7 @@ export default async function OwnerProfilePage() {
           vendorId={ownerRow?.cashfree_vendor_id ?? null}
           kycStatus={ownerRow?.vendor_kyc_status ?? null}
           lastError={ownerRow?.vendor_last_error ?? null}
-          hasUpi={!!ownerRow?.payout_upi}
+          hasBank={!!(ownerRow?.payout_account_number && ownerRow?.payout_ifsc)}
           hasPan={!!ownerRow?.pan_number}
           hasPhone={!!ownerRow?.business_phone}
         />

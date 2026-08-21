@@ -27,6 +27,11 @@ import { getCashfreeConfig } from "@/lib/cashfree";
 
 /** Easy Split is a distinct Cashfree product; keep it behind an explicit flag
  *  so enabling live vendor money movement is always a deliberate act. */
+/** Must be one of Cashfree's accepted business types — an unrecognised value
+ *  is rejected with HTTP 400 at vendor creation. Wedding/event venue hire is
+ *  categorised as Travel and Hospitality. */
+const VENDOR_BUSINESS_TYPE = "Travel and Hospitality";
+
 export function isEasySplitEnabled(): boolean {
   return process.env.CASHFREE_EASY_SPLIT_ENABLED?.trim().toLowerCase() === "true";
 }
@@ -83,7 +88,12 @@ export type VendorInput = {
   name: string;
   email: string;
   phone: string;
-  /** Either UPI or a bank account is required by Cashfree. */
+  /** Bank payout details. Verified against the live sandbox: this account has
+   *  UPI settlements DISABLED, so a bank account is the working payout route
+   *  ("UPI settlements are not enabled for your account"). UPI is still sent
+   *  when present, for accounts where it is enabled. */
+  bankAccountNumber?: string | null;
+  bankIfsc?: string | null;
   upiVpa?: string | null;
   pan?: string | null;
 };
@@ -101,8 +111,9 @@ function readVendorStatus(vendorId: string, data: unknown): VendorStatus {
   return {
     vendorId,
     status,
-    // Cashfree blocks settlement for vendors that have not cleared KYC, so only
-    // an explicitly ACTIVE vendor is treated as payable.
+    // Cashfree blocks settlement for vendors that have not cleared validation,
+    // so only an explicitly ACTIVE vendor is treated as payable. A freshly
+    // created vendor sits in IN_BANK_VALIDATION until the account is verified.
     settleable: status === "ACTIVE",
   };
 }
@@ -112,8 +123,12 @@ export async function upsertVendor(input: VendorInput): Promise<CfResult<VendorS
   if (!isEasySplitEnabled()) {
     return { ok: false, error: "Easy Split is not enabled (CASHFREE_EASY_SPLIT_ENABLED)." };
   }
-  if (!input.upiVpa && !input.pan) {
-    return { ok: false, error: "A payout UPI ID and PAN are required before onboarding." };
+  const hasBank = !!(input.bankAccountNumber && input.bankIfsc);
+  if (!hasBank && !input.upiVpa) {
+    return { ok: false, error: "Add a payout bank account (account number + IFSC) before onboarding." };
+  }
+  if (!input.pan) {
+    return { ok: false, error: "PAN is required by Cashfree before payouts can be enabled." };
   }
 
   const payload: Record<string, unknown> = {
@@ -122,11 +137,21 @@ export async function upsertVendor(input: VendorInput): Promise<CfResult<VendorS
     name: input.name,
     email: input.email,
     phone: input.phone,
-    // Instant vendor settlement so an accepted booking pays out promptly.
-    // (Cashfree schedule ids 8/9 are the instant cycles.)
-    schedule_option: 8,
-    ...(input.upiVpa ? { upi: { vpa: input.upiVpa, account_holder: input.name } } : {}),
-    ...(input.pan ? { kyc_details: { account_type: "INDIVIDUAL", business_type: "Others", pan: input.pan } } : {}),
+    // schedule_option is deliberately OMITTED so the account's default
+    // settlement cycle applies. Verified against the live sandbox: requesting
+    // the instant cycles (8/9) is rejected unless they are enabled for the
+    // merchant ("ScheduleId: 8 not enable for merchantId"). This account
+    // defaults to T+2.
+    ...(hasBank
+      ? { bank: { account_number: input.bankAccountNumber, account_holder: input.name, ifsc: input.bankIfsc } }
+      : {}),
+    ...(!hasBank && input.upiVpa ? { upi: { vpa: input.upiVpa, account_holder: input.name } } : {}),
+    // Cashfree validates business_type against a fixed list and rejects
+    // anything else outright ("Others" is NOT accepted). Venue hire sits under
+    // Travel and Hospitality.
+    ...(input.pan
+      ? { kyc_details: { account_type: "INDIVIDUAL", business_type: VENDOR_BUSINESS_TYPE, pan: input.pan } }
+      : {}),
   };
 
   // Create is idempotent enough for our purposes: an existing vendor_id returns
