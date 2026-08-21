@@ -22,6 +22,59 @@ import "server-only";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import { isEasySplitEnabled, splitOrderToVendor } from "@/lib/easy-split";
 
+export type ShareResult =
+  | { ok: true; commission: number; ownerAmount: number }
+  | { ok: false; reason: string };
+
+/**
+ * Splits the advance into Hallnect's platform fee and the owner's share.
+ *
+ *   Hallnect keeps  = the 5% commission on the hall price
+ *   Owner receives  = advance − commission
+ *
+ * Kept pure so the money arithmetic is unit-testable without a database.
+ *
+ * REFUSES rather than guessing when the commission is unknown. The previous
+ * version defaulted a missing commission to 0, which paid the owner the ENTIRE
+ * advance and silently cost Hallnect its fee — a wrong payout is far worse than
+ * a deferred one, because a settled vendor share cannot be clawed back.
+ */
+export function computeOwnerShare(input: {
+  advance: number;
+  /** From the commissions row — the authoritative figure. */
+  commissionAmount: number | null | undefined;
+  /** Fallback: the rate snapshot stored on the booking at creation. */
+  bookingPlatformFee: number | null | undefined;
+}): ShareResult {
+  const advance = Number(input.advance);
+  if (!Number.isFinite(advance) || advance <= 0) {
+    return { ok: false, reason: "No advance was captured for this booking" };
+  }
+
+  const fromCommission = Number(input.commissionAmount);
+  const fromBooking = Number(input.bookingPlatformFee);
+  const commission = Number.isFinite(fromCommission) && input.commissionAmount != null
+    ? fromCommission
+    : Number.isFinite(fromBooking) && input.bookingPlatformFee != null
+      ? fromBooking
+      : NaN;
+
+  if (!Number.isFinite(commission) || commission < 0) {
+    return { ok: false, reason: "Commission for this booking is unknown — refusing to pay out" };
+  }
+  if (commission > advance) {
+    // Would mean paying the owner a negative amount; hold for a human.
+    return { ok: false, reason: "Commission exceeds the advance captured — needs review" };
+  }
+
+  const ownerAmount = Math.round((advance - commission) * 100) / 100;
+  if (ownerAmount <= 0) {
+    return { ok: false, reason: "Nothing left to pay out after the commission" };
+  }
+
+  return { ok: true, commission: Math.round(commission * 100) / 100, ownerAmount };
+}
+
 export type PayoutOutcome =
   | { state: "paid"; ownerAmount: number }
   | { state: "skipped"; reason: string }
@@ -64,12 +117,23 @@ export async function payOwnerOnAcceptance(bookingId: string): Promise<PayoutOut
       .eq("booking_id", bookingId)
       .maybeSingle();
 
-    const commissionAmount = Number(commission?.commission_amount ?? 0);
+    // Fallback source for the fee: the rate snapshot written onto the booking
+    // when it was created. Used only if the commissions row is missing.
+    const { data: bookingRow } = await db
+      .from("bookings")
+      .select("platform_fee")
+      .eq("id", bookingId)
+      .maybeSingle();
+
     const advance = Number(payment.amount ?? 0);
-    // Hallnect keeps the commission out of the advance; the owner gets the rest.
-    const ownerAmount = Math.round((advance - commissionAmount) * 100) / 100;
+    const share = computeOwnerShare({
+      advance,
+      commissionAmount: commission?.commission_amount ?? null,
+      bookingPlatformFee: bookingRow?.platform_fee ?? null,
+    });
 
     const vendorId: string | null = commission?.hall_owners?.cashfree_vendor_id ?? null;
+    const ownerAmount = share.ok ? share.ownerAmount : 0;
 
     // 3. Record WHY a payout cannot happen, rather than failing silently.
     const note = async (status: string, error: string | null) => {
@@ -87,9 +151,11 @@ export async function payOwnerOnAcceptance(bookingId: string): Promise<PayoutOut
       await note("failed", "Owner has not completed Cashfree vendor onboarding");
       return { state: "failed", reason: "Owner has not completed payout onboarding" };
     }
-    if (ownerAmount <= 0) {
-      await note("not_applicable", "Advance does not exceed the commission");
-      return { state: "skipped", reason: "Nothing left to pay out after commission" };
+    if (!share.ok) {
+      // Never fall back to paying out the full advance — that would hand the
+      // owner Hallnect's platform fee, and a settled split cannot be reversed.
+      await note("failed", share.reason);
+      return { state: "failed", reason: share.reason };
     }
 
     // 4. CLAIM the split before calling the gateway. A concurrent Accept sees
