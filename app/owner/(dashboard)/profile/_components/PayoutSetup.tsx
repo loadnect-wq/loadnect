@@ -115,14 +115,16 @@ export function PayoutSetup({
             </ul>
           )}
 
-          {lastError && !verified && (
+          {/* One error, not two. `error` is this attempt's result; `lastError`
+              is the stored outcome of the previous one — when an attempt has
+              just failed they are the same string, and rendering both made the
+              card look broken. Show the live one when present. */}
+          {(error ?? (verified ? null : lastError)) && (
             <p className="mt-2 flex items-start gap-1.5 rounded-lg bg-red-50 p-2 text-[11px] text-red-700">
               <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-              {lastError}
+              {error ?? lastError}
             </p>
           )}
-
-          {error && <p className="mt-2 text-[11px] text-red-600">{error}</p>}
           {done && !error && (
             <p className="mt-2 text-[11px] font-semibold text-green-700">
               Submitted — reload to see the latest verification status.

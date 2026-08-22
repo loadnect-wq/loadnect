@@ -32,6 +32,18 @@ import { getCashfreeConfig } from "@/lib/cashfree";
  *  categorised as Travel and Hospitality. */
 const VENDOR_BUSINESS_TYPE = "Travel and Hospitality";
 
+/**
+ * Cashfree requires vendor_id to be ALPHANUMERIC. Our hall_owners id is a UUID,
+ * whose hyphens are rejected outright:
+ *   "vendor_id : should be alpha numeric. Value received: ef52cf9c-717e-..."
+ * Stripping the hyphens keeps all 32 hex characters, so the mapping back to the
+ * owner row stays exact and collision-free — it is the same identifier, just in
+ * the shape Cashfree accepts.
+ */
+export function toVendorId(hallOwnerId: string): string {
+  return hallOwnerId.replace(/[^a-zA-Z0-9]/g, "");
+}
+
 export function isEasySplitEnabled(): boolean {
   return process.env.CASHFREE_EASY_SPLIT_ENABLED?.trim().toLowerCase() === "true";
 }
@@ -131,8 +143,12 @@ export async function upsertVendor(input: VendorInput): Promise<CfResult<VendorS
     return { ok: false, error: "PAN is required by Cashfree before payouts can be enabled." };
   }
 
+  // Normalise here too, so a caller that passes a raw UUID cannot reintroduce
+  // the rejected format.
+  const vendorId = toVendorId(input.vendorId);
+
   const payload: Record<string, unknown> = {
-    vendor_id: input.vendorId,
+    vendor_id: vendorId,
     status: "ACTIVE",
     name: input.name,
     email: input.email,
@@ -160,13 +176,13 @@ export async function upsertVendor(input: VendorInput): Promise<CfResult<VendorS
     method: "POST",
     body: JSON.stringify(payload),
   });
-  if (created.ok) return { ok: true, data: readVendorStatus(input.vendorId, created.data) };
+  if (created.ok) return { ok: true, data: readVendorStatus(vendorId, created.data) };
 
-  const updated = await cfFetch<unknown>(`/easy-split/vendors/${encodeURIComponent(input.vendorId)}`, {
+  const updated = await cfFetch<unknown>(`/easy-split/vendors/${encodeURIComponent(vendorId)}`, {
     method: "PATCH",
     body: JSON.stringify(payload),
   });
-  if (updated.ok) return { ok: true, data: readVendorStatus(input.vendorId, updated.data) };
+  if (updated.ok) return { ok: true, data: readVendorStatus(vendorId, updated.data) };
 
   return { ok: false, error: created.error };
 }
@@ -214,7 +230,7 @@ export async function splitOrderToVendor(params: {
 
   // Refuse to move money to a vendor Cashfree will not settle — otherwise the
   // split silently parks funds in a blocked balance.
-  const status = await getVendorStatus(params.vendorId);
+  const status = await getVendorStatus(toVendorId(params.vendorId));
   if (!status.ok) {
     return { ok: false, reason: "gateway_error", error: status.error };
   }
@@ -231,7 +247,7 @@ export async function splitOrderToVendor(params: {
     {
       method: "POST",
       body: JSON.stringify({
-        split: [{ vendor_id: params.vendorId, amount: Number(params.amountToOwner.toFixed(2)) }],
+        split: [{ vendor_id: toVendorId(params.vendorId), amount: Number(params.amountToOwner.toFixed(2)) }],
         // Hallnect's commission is simply the unsplit remainder. Closing the
         // order prevents any later split against the same payment.
         disable_split: true,
