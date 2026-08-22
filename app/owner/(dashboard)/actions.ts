@@ -82,7 +82,7 @@ export async function upsertOwnerRow(data: {
     business_email: v.businessEmail || null,
     business_phone: v.businessPhone || null,
     gst_number:     v.gstNumber     || null,
-    pan_number:     v.panNumber     || null,
+    pan_number:     v.panNumber ? v.panNumber.toUpperCase() : null,
     address:        v.address       || null,
     city:           v.city          || null,
     state:          v.state         || null,

@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/Button";
 import { type OwnerRow } from "@/lib/owner";
 import { upsertOwnerRow, updateOwnerProfileName } from "@/app/owner/(dashboard)/actions";
+import { BUSINESS_DETAILS_ID } from "./PayoutSetup";
 
 // Hallnect serves Tamil Nadu only.
 const STATES = ["Tamil Nadu"];
@@ -131,7 +132,13 @@ export function OwnerProfileForm({ ownerRow, fullName, email, phone, initialSmsE
       </form>
 
       {/* Business details */}
-      <form onSubmit={handleBusinessSave} className="rounded-2xl bg-white shadow-card p-5 space-y-4">
+      {/* id is the scroll target the payout card jumps to when a required
+          field is missing (see PayoutSetup.BUSINESS_DETAILS_ID). */}
+      <form
+        id={BUSINESS_DETAILS_ID}
+        onSubmit={handleBusinessSave}
+        className="scroll-mt-24 rounded-2xl bg-white shadow-card p-5 space-y-4 transition-shadow"
+      >
         <h3 className="font-serif text-sm font-semibold text-charcoal-900 border-b border-border pb-2">
           Business Details
           {ownerRow?.is_verified && (
