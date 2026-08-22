@@ -119,6 +119,11 @@ export function BookingFlow({ hall, availability, windowDays, platformFeePercent
   const [termsAccepted, setTermsAccepted] = useState<boolean>(false);
 
   const [bookingId,     setBookingId]     = useState<string | null>(null);
+  // Fingerprint of the inputs the pending booking was created from. If the
+  // customer steps back and edits anything, the existing booking no longer
+  // matches what they are looking at — reusing its id would charge them for,
+  // and confirm them on, the ORIGINAL dates and price.
+  const [bookingKey,    setBookingKey]    = useState<string | null>(null);
   const [expiresAt,     setExpiresAt]     = useState<string | null>(null);
   const [serverError,   setServerError]   = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -154,6 +159,19 @@ export function BookingFlow({ hall, availability, windowDays, platformFeePercent
   void PLATFORM_FEE_RATE;
   const totalAmount = baseAmount;
   const advance     = Math.round(totalAmount * ADVANCE_RATE);
+
+  // Everything that determines what is being bought. Any change invalidates a
+  // previously created pending booking.
+  const currentBookingKey = [date, rangeEnd, effSlot, guests].join("|");
+  useEffect(() => {
+    if (bookingId && bookingKey && bookingKey !== currentBookingKey) {
+      // The old pending booking simply lapses (it auto-cancels after its
+      // payment window); we just stop pointing at it.
+      setBookingId(null);
+      setBookingKey(null);
+      setExpiresAt(null);
+    }
+  }, [currentBookingKey, bookingId, bookingKey]);
 
   function next() { setStep((s) => Math.min(s + 1, STEPS.length - 1)); }
   function back() { if (step === 0) router.back(); else setStep((s) => Math.max(s - 1, 0)); }
@@ -231,6 +249,7 @@ export function BookingFlow({ hall, availability, windowDays, platformFeePercent
         }
         id = result.bookingId;
         setBookingId(result.bookingId);
+        setBookingKey(currentBookingKey);
         setExpiresAt(result.expiresAt);
       }
 
@@ -291,6 +310,7 @@ export function BookingFlow({ hall, availability, windowDays, platformFeePercent
         }
         id = result.bookingId;
         setBookingId(result.bookingId);
+        setBookingKey(currentBookingKey);
       }
 
       const res = await submitManualBookingRequest(id, phone);

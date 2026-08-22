@@ -232,8 +232,11 @@ export default async function BookingDetailPage({ params }: Props) {
           <p className="px-4 pt-4 pb-2 text-xs font-semibold uppercase tracking-wide text-charcoal-500">
             Amount
           </p>
-          <AmountRow label="Base amount"   amount={booking.base_amount}  />
-          <AmountRow label="Platform fee"  amount={booking.platform_fee} />
+          {/* The customer pays the HALL PRICE ONLY. platform_fee is the
+              commission the VENUE OWNER owes Hallnect out of the advance — it
+              is not charged to the customer, so showing it here billed them for
+              something they never pay and made Base + Fee ≠ Total. */}
+          <AmountRow label="Hall price" amount={booking.base_amount} />
           <div className="border-t border-border px-4 py-3 bg-ivory-50">
             <div className="flex items-center justify-between">
               <span className="text-sm font-bold text-charcoal-900">Total</span>

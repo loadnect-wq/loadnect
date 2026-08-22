@@ -14,7 +14,8 @@
 import "server-only";
 
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
-import { sanitizeSmsFreeText } from "@/lib/notifications/phone";
+import { normalizePhoneE164, sanitizeSmsFreeText } from "@/lib/notifications/phone";
+
 import { formatBookingDates, todayInBusinessTz } from "@/lib/dates";
 import {
   bookingRef,
@@ -29,6 +30,22 @@ import {
   getAdminNotificationPhone,
   type NotificationRequest,
 } from "@/lib/notifications/service";
+
+/**
+ * First candidate that is actually a VALID phone number.
+ *
+ * The fallback chain used to be presence-based (`business_phone ?? phone`), so
+ * an owner whose business_phone was malformed — e.g. a 9-digit number — had
+ * every SMS routed to that dead value and never fell through to their valid
+ * personal number. The owner then silently missed booking requests, which
+ * auto-expire after 48 hours.
+ */
+function pickPhone(...candidates: Array<string | null | undefined>): string | null {
+  for (const c of candidates) {
+    if (c && normalizePhoneE164(c)) return c;
+  }
+  return null;
+}
 
 export type BookingEventKind =
   | "booking.requested"
@@ -105,7 +122,7 @@ async function loadBookingContext(bookingId: string): Promise<BookingContext | n
     },
     owner: {
       userId: ownerRow?.profile_id ?? null,
-      phone: ownerRow?.business_phone ?? ownerProfile?.phone ?? null,
+      phone: pickPhone(ownerRow?.business_phone, ownerProfile?.phone),
       optedIn: ownerProfile?.sms_notifications_enabled ?? true,
     },
   };
@@ -287,7 +304,7 @@ export async function notifyHallModerated(
       eventType: `hall.${action}`,
       recipientType: "owner",
       recipientUserId: ownerRow?.profile_id ?? null,
-      phone: ownerRow?.business_phone ?? ownerRow?.profiles?.phone ?? null,
+      phone: pickPhone(ownerRow?.business_phone, ownerRow?.profiles?.phone),
       message,
       hallId,
       critical: true,
@@ -323,7 +340,7 @@ export async function notifyPremiumChanged(
       eventType: activated ? "premium.activated" : "premium.deactivated",
       recipientType: "owner",
       recipientUserId: ownerRow?.profile_id ?? null,
-      phone: ownerRow?.business_phone ?? ownerRow?.profiles?.phone ?? null,
+      phone: pickPhone(ownerRow?.business_phone, ownerRow?.profiles?.phone),
       message: activated
         ? ownerTemplates.premiumActivated(hallName, planLabel)
         : ownerTemplates.premiumDeactivated(hallName),
@@ -365,7 +382,7 @@ export async function notifyCommissionVerification(
       eventType: `commission.payment.${decision === "approve" ? "verified" : "rejected"}`,
       recipientType: "owner",
       recipientUserId: ownerRow?.profile_id ?? null,
-      phone: ownerRow?.business_phone ?? ownerRow?.profiles?.phone ?? null,
+      phone: pickPhone(ownerRow?.business_phone, ownerRow?.profiles?.phone),
       message: decision === "approve"
         ? ownerTemplates.commissionVerified(d)
         : ownerTemplates.commissionRejected(d),
@@ -411,7 +428,7 @@ export async function notifyCommissionsOverdue(commissionIds: string[]): Promise
         eventType: "commission.overdue",
         recipientType: "owner",
         recipientUserId: ownerRow?.profile_id ?? null,
-        phone: ownerRow?.business_phone ?? ownerRow?.profiles?.phone ?? null,
+        phone: pickPhone(ownerRow?.business_phone, ownerRow?.profiles?.phone),
         message: ownerTemplates.commissionOverdue({
           bookingRef: bookingRef(c.booking_id ?? ""), hallName: "", dateLabel: "",
         }),

@@ -50,7 +50,22 @@ export const CAPACITY_OPTIONS = [
   { label: "1000+ guests", value: "1000" },
 ] as const;
 
+/**
+ * Exact rupee amount, always in full: "₹1,50,000".
+ *
+ * This used to abbreviate anything from ₹1 lakh upward to one decimal
+ * ("₹1.5L"), which is fine on a browse card but wrong everywhere money is
+ * actually charged, owed or paid out — a customer could never see the exact
+ * figure leaving their account, and ₹1,49,000 and ₹1,52,000 both rendered as
+ * "₹1.5L". Money is now exact by default; use formatPriceCompact() where space
+ * genuinely demands abbreviation and precision does not matter.
+ */
 export function formatPrice(price: number): string {
+  return `₹${Math.round(price).toLocaleString("en-IN")}`;
+}
+
+/** Abbreviated form for dense listings only — never for an amount charged. */
+export function formatPriceCompact(price: number): string {
   if (price >= 100000) return `₹${(price / 100000).toFixed(1)}L`;
-  return `₹${price.toLocaleString("en-IN")}`;
+  return `₹${Math.round(price).toLocaleString("en-IN")}`;
 }

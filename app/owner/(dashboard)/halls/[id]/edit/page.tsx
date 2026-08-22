@@ -63,10 +63,32 @@ export default async function EditHallPage({ params }: Props) {
               <ExternalLink className="h-3 w-3" /> Public Page
             </Link>
           )}
-          {hall.status === "draft" && (
+          {/* submitHallForApproval accepts draft | rejected | pending_approval.
+              This used to render only for 'draft' — a status createHall never
+              produces — so an owner whose hall was REJECTED could fix it and
+              then had no way to send it back for review. */}
+          {(hall.status === "draft" || hall.status === "rejected") && (
             <SubmitForApprovalButton hallId={id} />
           )}
         </div>
+
+        {hall.status === "rejected" && (
+          <div className="mb-4 rounded-2xl border-2 border-red-200 bg-red-50 p-4">
+            <p className="text-sm font-semibold text-red-900">This hall needs changes</p>
+            {hall.rejection_reason ? (
+              <p className="mt-1 text-xs leading-relaxed text-red-800">
+                <span className="font-semibold">Reason from Hallnect:</span> {hall.rejection_reason}
+              </p>
+            ) : (
+              <p className="mt-1 text-xs text-red-800">
+                Contact Hallnect support if you are unsure what to change.
+              </p>
+            )}
+            <p className="mt-2 text-xs text-red-700">
+              Make your changes below, then use <strong>Submit for approval</strong> above to send it back for review.
+            </p>
+          </div>
+        )}
 
         <HallForm ownerId={ownerRow.id} amenities={amenities} hall={hall} />
 
