@@ -151,16 +151,18 @@ export async function createBookingRequest(
   // the client's view of the rate. The booking's stored platform_fee snapshots
   // the rate that was active at booking time so future rate changes don't
   // retroactively alter recorded commissions.
-  // PRICING MODEL: the customer pays the HALL PRICE ONLY. platform_fee records
-  // the commission the OWNER owes Hallnect (5% of the hall price) — it is a
-  // snapshot of the rate at booking time so a later rate change never
-  // retroactively alters what was owed. It is deliberately NOT added to
-  // total_amount: charging the customer for it AND billing the owner for it
-  // collected the same commission twice.
+  // PRICING MODEL: the customer pays the HALL PRICE ONLY.
+  //
+  // Hallnect's commission is a percentage OF THE ADVANCE the customer pays
+  // (not of the full hall price), and it is retained out of that advance when
+  // the owner accepts — see lib/owner-payout.ts. platform_fee snapshots that
+  // figure at booking time so a later rate change never retroactively alters
+  // what was owed. It is deliberately NOT added to total_amount: charging the
+  // customer for it AND billing the owner for it collected it twice.
   const platformFeeRate = await getCommissionRate();
-  const platformFee     = Math.round(baseAmount * platformFeeRate);
   const totalAmount     = baseAmount;
   const advance         = Math.round(totalAmount * ADVANCE_RATE);
+  const platformFee     = Math.round(advance * platformFeeRate);
 
   // ── Layer 2/3/4 — Insert with status='pending_payment' ──────────────────────
   // If a parallel request slipped through Layer 1, the partial unique index +

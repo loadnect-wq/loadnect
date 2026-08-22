@@ -429,8 +429,12 @@ async function blockAvailability(db: any, booking: ApplyBooking): Promise<void> 
  *  customer at booking time.                                                  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function createCommission(db: any, booking: ApplyBooking): Promise<void> {
-  const derivedRate = booking.base_amount > 0
-    ? Math.round((booking.platform_fee / booking.base_amount) * 10000) / 100
+  // Advance the customer actually paid — the base the commission is charged on.
+  const advanceForRate = Math.max(1, Math.round(booking.total_amount * ADVANCE_RATE));
+  // Rate is derived from the stored fee so the record reflects the rate that
+  // was actually applied, not today's setting.
+  const derivedRate = advanceForRate > 0
+    ? Math.round((booking.platform_fee / advanceForRate) * 10000) / 100
     : PLATFORM_FEE_PERCENT;
 
   // Advance the customer actually paid (mirrors ADVANCE_RATE used at checkout).
@@ -448,15 +452,15 @@ async function createCommission(db: any, booking: ApplyBooking): Promise<void> {
         hall_id:             booking.hall_id,
         hall_owner_id:       booking.hall_owner_id,
         customer_id:         booking.customer_id,
-        // booking_amount is the HALL PRICE the commission is computed on.
-        // The customer now pays exactly this, so total_amount == base_amount;
-        // using base_amount explicitly keeps the intent unambiguous.
+        // The full hall price, for reporting. The commission itself is charged
+        // on the ADVANCE (see commission_amount / advance_amount below).
         booking_amount:      booking.base_amount,
         advance_amount:      advance,
         commission_rate:     derivedRate,
-        // Owed BY THE OWNER: 5% of the hall price, settled via Cashfree.
+        // Owed BY THE OWNER: a percentage of the ADVANCE, retained from that
+        // advance at payout rather than billed separately.
         commission_amount:   booking.platform_fee,
-        // What the owner keeps once Hallnect's commission is settled.
+        // What the owner ends up with across advance + venue balance.
         owner_payout_amount: Math.max(0, booking.base_amount - booking.platform_fee),
         status:              "collected",
         due_date:            dueDate,

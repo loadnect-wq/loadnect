@@ -8,7 +8,8 @@ import { connectPayoutAccount } from "@/app/owner/(dashboard)/actions";
 // Automatic payout setup.
 //
 // Once connected, the customer's advance is split the moment the owner ACCEPTS
-// a booking: Hallnect keeps its 5% commission and the rest settles here. Until
+// a booking: Hallnect keeps its commission on the advance and the rest settles
+// here. Until
 // Cashfree has cleared the owner's KYC, no money can move — so this card states
 // the real status rather than implying it is ready.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -70,10 +71,10 @@ export function PayoutSetup({
 
           <p className="mt-0.5 text-xs leading-relaxed text-charcoal-600">
             {verified
-              ? "Connected. When you accept a booking, the customer's advance is paid to you automatically — minus Hallnect's 5% commission, which is deducted at the same time. You never receive a separate commission bill."
+              ? "Connected. When you accept a booking, the customer's advance is paid to you automatically — minus Hallnect's platform commission, which is deducted at the same time. You never receive a separate commission bill."
               : pendingKyc
                 ? "Your payout account is registered and awaiting verification by Cashfree. Once verified, accepted bookings pay out automatically."
-                : "Connect a payout account so accepted bookings pay you automatically. Hallnect's 5% commission is deducted from the advance, so you never get a separate bill."}
+                : "Connect a payout account so accepted bookings pay you automatically. Hallnect's platform commission is deducted from the advance, so you never get a separate bill."}
           </p>
 
           {missing.length > 0 && !verified && (

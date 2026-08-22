@@ -9,8 +9,9 @@
 // pays and WHAT the money settles.
 //
 // MONEY MODEL (set with the operator):
-//   customer pays the hall price  →  owner owes 5% of the hall price
-//   → owner settles that 5% here  →  Hallnect earns the commission ONCE.
+//   customer pays the hall price  →  owner owes a % of the ADVANCE paid
+//   → owner settles it here        →  Hallnect earns the commission ONCE.
+// (Used as the fallback when automatic Easy Split payout is unavailable.)
 //
 // SECURITY:
 //   • The amount is ALWAYS re-read from commissions.commission_amount. Nothing

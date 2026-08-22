@@ -3,13 +3,13 @@
 // SERVER-ONLY.
 //
 //   advance the customer paid
-//     − Hallnect's commission (5% of the hall price)
+//     − Hallnect's commission (a percentage OF THAT ADVANCE, currently 2%)
 //     = the owner's share, settled to their Cashfree vendor balance
 //
-// For a ₹29,400 booking: advance ₹7,350 − commission ₹1,470 = ₹5,880 to the
-// owner now, ₹22,050 collected at the venue → ₹27,930 net. Hallnect earns the
-// commission ONCE, taken out of the advance, so the owner is never separately
-// billed for it.
+// For a ₹29,400 booking with a 25% advance: advance ₹7,350 − commission ₹147
+// = ₹7,203 to the owner now, ₹22,050 collected at the venue → ₹29,253 net.
+// Hallnect earns the commission ONCE, retained from the advance, so the owner
+// is never separately billed for it.
 //
 // NEVER FAILS THE ACCEPTANCE. A booking the owner accepted must stay accepted
 // even if payout plumbing is missing, mid-KYC, or the gateway is down. Every
@@ -29,7 +29,7 @@ export type ShareResult =
 /**
  * Splits the advance into Hallnect's platform fee and the owner's share.
  *
- *   Hallnect keeps  = the 5% commission on the hall price
+ *   Hallnect keeps  = the commission charged on the advance
  *   Owner receives  = advance − commission
  *
  * Kept pure so the money arithmetic is unit-testable without a database.

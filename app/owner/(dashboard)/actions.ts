@@ -631,8 +631,8 @@ export async function acceptBooking(bookingId: string): Promise<ActionResult> {
   await notifyBookingEvent("booking.confirmed", bookingId);
 
   // AUTOMATIC OWNER PAYOUT. Accepting is the commitment, so this is the moment
-  // the customer's advance is split: Hallnect retains its 5% commission and the
-  // remainder settles to the owner's Cashfree vendor balance. Deliberately
+  // the customer's advance is split: Hallnect retains its commission on that
+  // advance and the remainder settles to the owner's Cashfree vendor balance. Deliberately
   // AFTER the status flip and non-fatal — a booking the owner accepted must
   // stay accepted even if payout plumbing is incomplete. Every outcome is
   // recorded on payments.split_status for admin visibility and retry.
@@ -691,7 +691,7 @@ export async function markBookingCompleted(bookingId: string): Promise<ActionRes
 }
 
 // ── Commission settlement via Cashfree ───────────────────────────────────────
-// The owner pays Hallnect's 5% commission through the same gateway customers
+// The owner pays Hallnect's platform commission through the same gateway customers
 // use for booking advances — UPI, cards, net-banking, wallets — instead of a
 // manual UPI transfer that an admin has to verify by eye.
 //
