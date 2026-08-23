@@ -339,25 +339,33 @@ export function hasMalformedSid(key: WhatsAppTemplateKey): boolean {
   return !!raw && !/^HX[0-9a-fA-F]{32}$/.test(raw);
 }
 
-/** Configuration snapshot for the admin dashboard. Contains no secrets: a
- *  Content SID identifies approved public message copy, not a credential. */
-export function templateConfigStatus(): Array<{
+export type TemplateConfigRow = {
   key: WhatsAppTemplateKey;
   envVar: string;
   audience: "customer" | "owner" | "admin";
   purpose: string;
   configured: boolean;
   malformed: boolean;
-}> {
+  /** The configured Content SID, or null. Used to join against Meta's
+   *  approval verdict — which is keyed by SID, not by the template name,
+   *  because names are editable in the Twilio console. */
+  sid: string | null;
+};
+
+/** Configuration snapshot for the admin dashboard. Contains no secrets: a
+ *  Content SID identifies approved public message copy, not a credential. */
+export function templateConfigStatus(): TemplateConfigRow[] {
   return ALL_TEMPLATE_KEYS.map((key) => {
     const t = WHATSAPP_TEMPLATES[key];
+    const sid = contentSidFor(key);
     return {
       key,
       envVar: t.envVar,
       audience: t.audience,
       purpose: t.purpose,
-      configured: contentSidFor(key) !== null,
+      configured: sid !== null,
       malformed: hasMalformedSid(key),
+      sid,
     };
   });
 }

@@ -8,6 +8,7 @@ import {
 } from "@/lib/admin";
 import { getWhatsAppStatus } from "@/lib/twilio/whatsapp";
 import { templateConfigStatus } from "@/lib/notifications/whatsapp-templates";
+import { fetchTemplateApprovals, type TemplateApprovalStatus } from "@/lib/twilio/approvals";
 import { maskPhone } from "@/lib/notifications/phone";
 import { resolveAdminNotificationPhone } from "@/lib/notifications/service";
 import { AdminAlertNumberForm } from "./_components/AdminAlertNumberForm";
@@ -58,6 +59,25 @@ const DELIVERY_TONE: Record<string, string> = {
   accepted:    "bg-charcoal-50 text-charcoal-600 border-charcoal-200",
   undelivered: "bg-red-50 text-red-700 border-red-200",
   failed:      "bg-red-50 text-red-700 border-red-200",
+};
+
+/** Meta's verdict on a template. `undefined` = no Content SID configured. */
+const APPROVAL_TONE: Record<string, string> = {
+  approved:    "bg-green-50 text-green-700 border-green-200",
+  pending:     "bg-amber-50 text-amber-800 border-amber-200",
+  received:    "bg-amber-50 text-amber-800 border-amber-200",
+  rejected:    "bg-red-50 text-red-700 border-red-200",
+  unsubmitted: "bg-charcoal-50 text-charcoal-600 border-charcoal-200",
+  unknown:     "bg-charcoal-50 text-charcoal-500 border-charcoal-200",
+};
+
+const APPROVAL_LABEL: Record<string, string> = {
+  approved:    "approved",
+  pending:     "awaiting Meta",
+  received:    "submitted",
+  rejected:    "rejected",
+  unsubmitted: "not submitted",
+  unknown:     "status unknown",
 };
 
 function fmtWhen(iso: string | null) {
@@ -175,7 +195,7 @@ export default async function AdminNotificationsPage({ searchParams }: Props) {
   const search = (q ?? "").trim();
   const pageNum = Number.parseInt(page ?? "1", 10) || 1;
 
-  const [log, stats, adminPhone] = await Promise.all([
+  const [log, stats, adminPhone, approvals] = await Promise.all([
     fetchNotifications({
       status:    activeFilter.value,
       unread:    activeFilter.unread,
@@ -186,14 +206,33 @@ export default async function AdminNotificationsPage({ searchParams }: Props) {
     }),
     fetchNotificationStats(),
     resolveAdminNotificationPhone(),
+    // Meta's verdict per template. Fails soft — the page renders without it.
+    fetchTemplateApprovals(),
   ]);
 
   const wa = getWhatsAppStatus();
-  const templates = templateConfigStatus();
+  // Join our configuration against Meta's verdict, keyed by Content SID.
+  // A configured SID only means "we know which template to reference"; it says
+  // nothing about whether Meta will let us send it.
+  const templates = templateConfigStatus().map((t) => ({
+    ...t,
+    approval: (approvals.ok && t.sid ? approvals.bySid[t.sid]?.status : undefined)
+      ?? (t.configured ? ("unknown" as TemplateApprovalStatus) : undefined),
+    rejectionReason:
+      approvals.ok && t.sid ? approvals.bySid[t.sid]?.rejectionReason ?? null : null,
+  }));
+
   const templatesReady = templates.filter((t) => t.configured).length;
   const templatesBroken = templates.filter((t) => t.malformed);
+  const templatesApproved = templates.filter((t) => t.approval === "approved").length;
+  const templatesRejected = templates.filter((t) => t.approval === "rejected");
+  const templatesWaiting = templates.filter(
+    (t) => t.approval === "pending" || t.approval === "received",
+  ).length;
 
-  const live = wa.enabled && wa.configured && templatesReady > 0;
+  // Only genuinely live when Meta has approved at least one template — a
+  // configured-but-unapproved SID fails at send time with error 63016.
+  const live = wa.enabled && wa.configured && templatesApproved > 0;
 
   const qs = (over: Record<string, string | undefined>) => {
     const p = new URLSearchParams();
@@ -224,7 +263,8 @@ export default async function AdminNotificationsPage({ searchParams }: Props) {
             <p className="mt-0.5 text-sm font-bold text-charcoal-900">
               {!wa.enabled ? "Disabled"
                 : !wa.configured ? "Enabled, no credentials"
-                : templatesReady === 0 ? "No templates approved"
+                : templatesReady === 0 ? "No templates configured"
+                : templatesApproved === 0 ? "Awaiting Meta approval"
                 : wa.testMode ? "Live — TEST MODE" : "Live"}
             </p>
             <p className="text-[10px] text-charcoal-500">
@@ -247,43 +287,68 @@ export default async function AdminNotificationsPage({ searchParams }: Props) {
           <div className="rounded-xl border border-border bg-white p-3">
             <p className="text-[10px] font-bold uppercase tracking-wide text-charcoal-500">Templates approved</p>
             <p className="mt-0.5 text-lg font-bold text-charcoal-900">
-              {templatesReady}<span className="text-sm font-semibold text-charcoal-400">/{templates.length}</span>
+              {templatesApproved}<span className="text-sm font-semibold text-charcoal-400">/{templates.length}</span>
             </p>
-            <p className="text-[10px] text-charcoal-500">{stats.totalPending} pending · {stats.unread} unread</p>
+            <p className="text-[10px] text-charcoal-500">
+              {!approvals.ok
+                ? "approval status unavailable"
+                : templatesRejected.length > 0
+                  ? `${templatesWaiting} awaiting · ${templatesRejected.length} rejected`
+                  : `${templatesWaiting} awaiting Meta`}
+            </p>
           </div>
         </div>
 
-        {/* Which templates still need a Content SID. Content SIDs are not
-            secrets — they identify approved public message copy. */}
-        {(templatesReady < templates.length || templatesBroken.length > 0) && (
+        {/* Per-template state: our configuration AND Meta's verdict. These
+            are two different things — a Content SID being set does not mean
+            WhatsApp will accept it — so both are shown side by side. Content
+            SIDs are not secrets; they identify approved public message copy. */}
+        {(templatesApproved < templates.length || !approvals.ok) && (
           <details className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-3">
             <summary className="cursor-pointer text-xs font-semibold text-amber-900">
-              {templates.length - templatesReady} WhatsApp template
-              {templates.length - templatesReady === 1 ? "" : "s"} not configured
-              {templatesBroken.length > 0 && ` · ${templatesBroken.length} malformed`}
-              {" — messages using them are recorded as skipped, not sent"}
+              {!approvals.ok
+                ? `Template approval status unavailable — ${approvals.reason}`
+                : templatesRejected.length > 0
+                  ? `${templatesRejected.length} template${templatesRejected.length === 1 ? "" : "s"} rejected by Meta · ${templatesApproved}/${templates.length} approved`
+                  : templatesReady < templates.length
+                    ? `${templates.length - templatesReady} template${templates.length - templatesReady === 1 ? "" : "s"} not configured — messages using them are recorded as skipped, not sent`
+                    : `${templatesApproved}/${templates.length} approved by Meta — the rest cannot be sent yet`}
             </summary>
-            <ul className="mt-2 space-y-1">
-              {templates.filter((t) => !t.configured).map((t) => (
-                <li key={t.key} className="flex flex-wrap items-baseline gap-x-2 text-[11px]">
-                  <code className="font-mono font-semibold text-amber-900">{t.envVar}</code>
-                  <span className="text-amber-800">{t.purpose}</span>
+
+            <ul className="mt-2 space-y-1.5">
+              {templates.map((t) => (
+                <li key={t.key} className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px]">
+                  <Chip
+                    text={t.approval ? APPROVAL_LABEL[t.approval] : "not configured"}
+                    tone={t.approval ? APPROVAL_TONE[t.approval] : APPROVAL_TONE.unsubmitted}
+                  />
+                  <code className="font-mono font-semibold text-charcoal-800">{t.key}</code>
+                  <span className="text-charcoal-600">{t.purpose}</span>
+
+                  {!t.configured && (
+                    <code className="font-mono text-amber-900">set {t.envVar}</code>
+                  )}
                   {t.malformed && (
                     <span className="font-semibold text-red-700">
                       set but not a valid HX… Content SID
                     </span>
                   )}
+                  {t.rejectionReason && (
+                    <span className="w-full text-red-700">
+                      Meta&apos;s reason: {t.rejectionReason}
+                    </span>
+                  )}
                 </li>
               ))}
             </ul>
+
+            <p className="mt-2 border-t border-amber-200 pt-2 text-[10px] leading-relaxed text-amber-800">
+              Approval comes from Meta and is read live from Twilio (cached ~2 min).
+              A template must be <strong>approved</strong> before it can open a
+              conversation — sending an unapproved one fails with Twilio error 63016.
+            </p>
           </details>
         )}
-
-        {/* Who receives admin alerts. Masked — never the raw number in HTML. */}
-        <AdminAlertNumberForm
-          currentMasked={maskPhone(adminPhone.phone)}
-          source={adminPhone.source}
-        />
 
         {/* Filters */}
         <div className="mb-3 flex flex-wrap items-center gap-1.5">
