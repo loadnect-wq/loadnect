@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Plain product name; never "WebView" or "Browser". -->
+    <string name="app_name">HALLNECT</string>
+
+    <string name="offline_title">No internet connection</string>
+    <string name="offline_body">Please check your connection.\nYour bookings are safe — nothing is lost.</string>
+    <string name="try_again">Try Again</string>
+    <string name="still_offline">Still no connection. Please check your network.</string>
+
+    <string name="choose_photos">Add hall photos</string>
+    <string name="download_started">Downloading %1$s…</string>
+    <string name="download_failed">Download could not be started.</string>
+</resources>

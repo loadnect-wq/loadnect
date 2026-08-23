@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Hallnect — Android manifest.
+
+  PERMISSIONS: exactly two, both non-dangerous.
+    INTERNET             — the app is a client of https://www.hallnect.com
+    ACCESS_NETWORK_STATE — powers the branded offline screen
+
+  Deliberately ABSENT:
+    CAMERA  — hall-photo capture uses ACTION_IMAGE_CAPTURE, which delegates to
+              the device camera app. Declaring CAMERA would *require* holding
+              the runtime permission before that intent may fire; not
+              declaring it means photo capture needs no permission at all.
+    READ/WRITE storage — the system photo picker and DownloadManager both work
+              without storage permissions on every supported API level.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <!-- Let url-policy checks resolve external handlers (UPI apps, WhatsApp,
+         dialer, mail) on Android 11+ package-visibility rules. -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="https" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="upi" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.DIAL" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.SENDTO" />
+            <data android:scheme="mailto" />
+        </intent>
+        <intent>
+            <action android:name="android.media.action.IMAGE_CAPTURE" />
+        </intent>
+    </queries>
+
+    <application
+        android:label="@string/app_name"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:theme="@style/Theme.Hallnect.Splash"
+        android:allowBackup="false"
+        android:supportsRtl="true"
+        android:usesCleartextTraffic="false"
+        android:enableOnBackInvokedCallback="true"
+        android:hardwareAccelerated="true">
+
+        <!-- Single-activity app. singleTask so an App Link (OAuth callback,
+             shared hall URL) re-enters the EXISTING WebView session instead of
+             stacking a second copy with an empty cookie jar. -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:screenOrientation="portrait"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"
+            android:windowSoftInputMode="adjustResize">
+
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+            <!-- Android App Links for hallnect.com. autoVerify requires
+                 https://hallnect.com/.well-known/assetlinks.json to list the
+                 RELEASE signing certificate fingerprint — the web app serves
+                 it from the ANDROID_ASSETLINKS_SHA256 environment variable.
+                 Until verified, these links simply keep opening in the
+                 browser; nothing breaks. -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" />
+                <data android:host="hallnect.com" />
+                <data android:host="www.hallnect.com" />
+            </intent-filter>
+        </activity>
+
+        <!-- Camera capture writes to a private cache path; the camera app is
+             granted one-shot URI access through this provider. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="com.hallnect.app.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+    </application>
+</manifest>

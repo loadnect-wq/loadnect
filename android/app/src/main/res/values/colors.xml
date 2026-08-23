@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Hallnect brand palette — mirrors tailwind.config.ts exactly. -->
+<resources>
+    <color name="maroon_600">#9B2038</color> <!-- main brand -->
+    <color name="maroon_700">#7A1830</color>
+    <color name="maroon_900">#3D0A18</color>
+    <color name="gold">#E0A820</color>       <!-- gold-400, main accent -->
+    <color name="gold_dark">#C9901A</color>
+    <color name="ivory">#FAF6EF</color>      <!-- ivory-100, main bg -->
+    <color name="ivory_dim">#E4D5B9</color>  <!-- ivory-400 -->
+</resources>

@@ -1,0 +1,15 @@
+# Gradle / build output
+.gradle/
+build/
+app/build/
+local.properties
+
+# Signing — the upload keystore and its passwords must NEVER be committed.
+keystore.properties
+*.keystore
+*.jks
+
+# IDE
+.idea/
+*.iml
+.kotlin/

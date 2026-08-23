@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Runtime theme: DayNight so system dialogs follow the device, but the
+         app surface itself is the website, which owns its own colours. -->
+    <style name="Theme.Hallnect" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/maroon_600</item>
+        <item name="colorSecondary">@color/gold</item>
+        <item name="android:statusBarColor">@color/maroon_700</item>
+        <item name="android:navigationBarColor">@color/maroon_700</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+
+    <!-- Launch theme: burgundy field, logo centred, then hands over to the
+         runtime theme. Uses the Android 12 SplashScreen API (backported). -->
+    <style name="Theme.Hallnect.Splash" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/maroon_700</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/splash_logo</item>
+        <item name="windowSplashScreenAnimationDuration">400</item>
+        <item name="postSplashScreenTheme">@style/Theme.Hallnect</item>
+    </style>
+</resources>
