@@ -121,17 +121,38 @@ $mig$;
 -- opted out of messages silently gets opted back in. That column is left in
 -- place: it is the historical record of a choice, and dropping it would
 -- destroy the evidence that the opt-out was ever made.
-alter table public.profiles
-  add column if not exists whatsapp_notifications_enabled boolean not null default true;
-
+-- The backfill runs ONCE, on first application only.
+--
+-- Re-running this migration must not touch the column again: by then people
+-- have set their WhatsApp preference directly, and copying the frozen
+-- sms_notifications_enabled over it would silently resurrect old opt-ins for
+-- anyone who has since opted out. So the "did this column already exist?"
+-- check is taken BEFORE the ALTER, and the backfill is conditional on it.
 do $mig$
+declare
+  already_existed boolean;
+  legacy_exists   boolean;
 begin
-  if exists (
+  select exists (
     select 1 from information_schema.columns
-    where table_schema = 'public'
-      and table_name = 'profiles'
+    where table_schema = 'public' and table_name = 'profiles'
+      and column_name = 'whatsapp_notifications_enabled'
+  ) into already_existed;
+
+  alter table public.profiles
+    add column if not exists whatsapp_notifications_enabled boolean not null default true;
+
+  if already_existed then
+    return;  -- re-run: leave live preferences alone
+  end if;
+
+  select exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'profiles'
       and column_name = 'sms_notifications_enabled'
-  ) then
+  ) into legacy_exists;
+
+  if legacy_exists then
     update public.profiles
        set whatsapp_notifications_enabled = sms_notifications_enabled
      where sms_notifications_enabled is distinct from whatsapp_notifications_enabled;

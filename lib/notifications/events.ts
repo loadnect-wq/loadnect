@@ -16,7 +16,7 @@
 import "server-only";
 
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
-import { normalizePhoneE164, sanitizeNotificationText } from "@/lib/notifications/phone";
+import { normalizePhoneE164, sanitizeNotificationText, sanitizeName } from "@/lib/notifications/phone";
 
 import { formatBookingDates, todayInBusinessTz } from "@/lib/dates";
 import { bookingRef, formatAmount } from "@/lib/notifications/templates";
@@ -56,7 +56,9 @@ function ownerRecipient(ownerRow: OwnerRow) {
     userId: ownerRow?.profile_id ?? null,
     phone: pickPhone(ownerRow?.business_phone, ownerRow?.profiles?.phone),
     optedIn: ownerRow?.profiles?.whatsapp_notifications_enabled ?? true,
-    name: ownerRow?.business_name ?? ownerRow?.profiles?.full_name ?? "a venue owner",
+    // Owner-chosen text landing in a branded message — sanitised like any
+    // other user-supplied string.
+    name: sanitizeName(ownerRow?.business_name ?? ownerRow?.profiles?.full_name, "a venue owner"),
   };
 }
 
@@ -141,12 +143,12 @@ async function loadBookingContext(bookingId: string): Promise<BookingContext | n
   return {
     bookingId: data.id,
     hallId: data.hall_id,
-    hallName: hall.name ?? "your venue",
+    hallName: sanitizeName(hall.name, "your venue"),
     dateLabel: formatBookingDates(data.event_date, data.end_date),
     totalAmount: Number(data.total_amount ?? 0),
     customer: {
       userId: data.customer_id,
-      name: customerProfile?.full_name ?? "there",
+      name: sanitizeName(customerProfile?.full_name, "there"),
       // An OTP-VERIFIED profile phone outranks the booking's contact_phone:
       // contact_phone is client-supplied at booking time, so on its own it
       // would let an account direct branded messages at an arbitrary number.
@@ -327,13 +329,20 @@ export async function notifyHallSubmitted(hallId: string): Promise<void> {
     if (!hall) return;
 
     const owner = ownerRecipient(hall.hall_owners);
-    const hallName = hall.name ?? "Unnamed hall";
-    const today = todayInBusinessTz();
+    const hallName = sanitizeName(hall.name, "Unnamed hall");
     const adminPhone = await getAdminNotificationPhone();
+
+    // Minute-resolution key, matching notifyHallModerated. A day-scoped key
+    // silently swallowed the common recovery loop: admin rejects in the
+    // morning, the owner fixes the listing and resubmits the same afternoon,
+    // and nobody was told — the hall then sat unreviewed. A double-clicked
+    // submit inside the same minute still dedupes, and the per-phone hourly
+    // ceiling in the service layer is what caps deliberate resubmit spam.
+    const submitMinute = new Date().toISOString().slice(0, 16);
 
     await dispatchAll([
       {
-        eventKey: `hall.submitted:${hallId}:${today}`,
+        eventKey: `hall.submitted:${hallId}:${submitMinute}`,
         eventType: "hall.submitted",
         recipientType: "owner",
         recipientUserId: owner.userId,
@@ -346,7 +355,7 @@ export async function notifyHallSubmitted(hallId: string): Promise<void> {
       },
       adminAlert({
         adminPhone,
-        eventKey: `hall.submitted:${hallId}:${today}`,
+        eventKey: `hall.submitted:${hallId}:${submitMinute}`,
         eventType: "hall.submitted",
         event: "New hall submitted",
         details: `${hallName}, submitted by ${owner.name}. Approval required.`,
@@ -377,7 +386,7 @@ export async function notifyHallModerated(
     if (!hall) return;
 
     const owner = ownerRecipient(hall.hall_owners);
-    const hallName = hall.name ?? "your hall";
+    const hallName = sanitizeName(hall.name, "your hall");
     const cleanReason = sanitizeNotificationText(reason);
 
     // Approval and rejection get their own dedicated templates because they are
@@ -452,7 +461,7 @@ export async function notifyPremiumChanged(
     if (!hall) return;
 
     const owner = ownerRecipient(hall.hall_owners);
-    const hallName = hall.name ?? "your hall";
+    const hallName = sanitizeName(hall.name, "your hall");
 
     await dispatchAll([{
       eventKey: `premium.${activated ? "activated" : "deactivated"}:${listingId}:${todayInBusinessTz()}`,
@@ -578,6 +587,56 @@ export async function notifyCommissionsOverdue(commissionIds: string[]): Promise
     await dispatchAll(requests);
   } catch (e) {
     console.error("[notifications] notifyCommissionsOverdue failed:", e instanceof Error ? e.message : e);
+  }
+}
+
+/**
+ * Re-resolves the recipient phone for an EXISTING outbox row.
+ *
+ * Why this exists: when an event fires and the recipient has no usable number,
+ * the row is still written (status 'failed') so the gap is visible — and that
+ * row permanently owns its dedupe key. Once the owner or customer adds a valid
+ * number, a fresh dispatch is suppressed by that key and the row itself has no
+ * phone to retry against, so the message was lost for good. That mattered most
+ * for exactly the message an owner cannot afford to miss: a booking request
+ * that auto-expires after 48 hours.
+ *
+ * The recipient is re-derived from the LINKED ENTITIES, never from anything a
+ * caller supplies, so a repair cannot redirect a message.
+ */
+export async function resolveRecipientPhoneForNotification(input: {
+  recipientType: "customer" | "owner" | "admin";
+  bookingId: string | null;
+  hallId: string | null;
+}): Promise<string | null> {
+  try {
+    if (input.recipientType === "admin") return await getAdminNotificationPhone();
+
+    const admin = getSupabaseAdminClient();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const db = admin as any;
+
+    if (input.bookingId) {
+      const ctx = await loadBookingContext(input.bookingId);
+      if (ctx) {
+        return input.recipientType === "customer" ? ctx.customer.phone : ctx.owner.phone;
+      }
+    }
+
+    // Hall-scoped events (submission, moderation, premium) carry no booking.
+    if (input.recipientType === "owner" && input.hallId) {
+      const { data: hall } = await db
+        .from("halls")
+        .select(`hall_owners!owner_id(${OWNER_EMBED})`)
+        .eq("id", input.hallId)
+        .maybeSingle();
+      if (hall) return ownerRecipient(hall.hall_owners).phone;
+    }
+
+    return null;
+  } catch (e) {
+    console.error("[notifications] recipient re-resolve failed:", e instanceof Error ? e.message : e);
+    return null;
   }
 }
 

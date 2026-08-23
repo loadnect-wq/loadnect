@@ -5,8 +5,8 @@
 // imported by client components (booking form validation) and exercised by
 // standalone unit tests. There is nothing secret here — just string rules.
 //
-// normalizePhoneE164 moved here from lib/twilio.ts unchanged; lib/twilio.ts
-// re-exports it so existing imports keep working.
+// normalizePhoneE164 moved here from the former lib/twilio.ts unchanged; the
+// lib/twilio barrel re-exports it so existing imports keep working.
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
@@ -62,6 +62,26 @@ export function maskPhone(phone: string | null | undefined): string {
   const m = /^(\+\d{1,3})(\d+)(\d{4})$/.exec(phone);
   if (!m) return "••••";
   return `${m[1]}${"•".repeat(Math.min(m[2].length, 8))}${m[3]}`;
+}
+
+/**
+ * Sanitizes a NAME (venue name, customer name, owner business name) for use as
+ * a WhatsApp template variable.
+ *
+ * These are user-controlled too: a venue owner picks their hall's name, and it
+ * appears inside every branded booking message. A hall named
+ * "ABC Mahal - claim your refund at bit.ly/xyz" would otherwise turn each
+ * official Hallnect message into a phishing carrier. Same stripping as
+ * sanitizeNotificationText, but shorter and with a caller-supplied fallback,
+ * because a name that sanitises to nothing must not render as an em dash in
+ * the middle of a sentence.
+ */
+export function sanitizeName(
+  raw: string | null | undefined,
+  fallback: string,
+  maxLen = 60,
+): string {
+  return sanitizeNotificationText(raw, maxLen) ?? fallback;
 }
 
 /**

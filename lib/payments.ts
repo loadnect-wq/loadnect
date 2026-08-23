@@ -202,7 +202,10 @@ export async function verifyAndApplyPayment(orderId: string): Promise<ApplyPayme
     // Heal notifications from a prior partial run — dedupe keys make this a
     // no-op when they were already recorded, so webhook retries send nothing.
     await notifyBookingEvent("payment.success", payment.booking_id, { amount: Number(payment.amount) });
-    await notifyBookingEvent("booking.requested", payment.booking_id);
+    // The advance MUST be passed here too: the owner's new-booking message
+    // states "Advance paid", and without it the message read "Not yet paid"
+    // immediately after a verified payment.
+    await notifyBookingEvent("booking.requested", payment.booking_id, { amount: Number(payment.amount) });
     return { state: "success", bookingId: payment.booking_id };
   }
   if (payment.status === "refunded") {
@@ -296,7 +299,9 @@ export async function verifyAndApplyPayment(orderId: string): Promise<ApplyPayme
         await db.from("payments")
           .update({ status: "refunded", payment_message: "Slot conflict — refund initiated" })
           .eq("id", payment.id);
-        await notifyBookingEvent("refund.initiated", payment.booking_id);
+        // Pass the captured amount — the refund message states it, and
+        // omitting it told the customer their refund was ₹0.
+        await notifyBookingEvent("refund.initiated", payment.booking_id, { amount: Number(payment.amount) });
         return {
           state:     "slot_conflict",
           bookingId: payment.booking_id,
@@ -335,7 +340,7 @@ export async function verifyAndApplyPayment(orderId: string): Promise<ApplyPayme
     //    (verified PAID + transitioned), never from a page view. Idempotent
     //    via outbox dedupe keys; notification failures never fail the payment.
     await notifyBookingEvent("payment.success", payment.booking_id, { amount: Number(payment.amount) });
-    await notifyBookingEvent("booking.requested", payment.booking_id);
+    await notifyBookingEvent("booking.requested", payment.booking_id, { amount: Number(payment.amount) });
 
     return { state: "success", bookingId: payment.booking_id };
   }

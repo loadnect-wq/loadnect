@@ -183,6 +183,25 @@ export async function updateProfile(data: {
     full_name: parsed.data.fullName || null,
     phone:     normalisedPhone,
   };
+
+  // CHANGING THE NUMBER INVALIDATES THE VERIFICATION.
+  //
+  // events.ts prefers an OTP-verified profile phone over the booking's
+  // client-supplied contact_phone, precisely so a branded message cannot be
+  // aimed at a number nobody proved they own. Leaving phone_verified set after
+  // an edit defeated that: verify your own number once, then change the field
+  // to someone else's, and every "HALLNECT" booking message would be delivered
+  // to them — with the verified flag vouching for it.
+  //
+  // Only clear it when the number actually CHANGES, so re-saving an unchanged
+  // profile does not make a user re-verify for nothing.
+  const { data: existing } = await db
+    .from("profiles").select("phone, phone_verified").eq("id", user.id).maybeSingle();
+  if (existing?.phone_verified && existing.phone !== normalisedPhone) {
+    updatePayload.phone_verified = false;
+    updatePayload.phone_verified_at = null;
+  }
+
   // Controls NON-critical messages only — critical transactional messages
   // (booking/payment) are always sent regardless of this flag.
   if (typeof data.notificationsEnabled === "boolean") {

@@ -1026,7 +1026,8 @@ export async function retryNotification(notificationId: string): Promise<ActionR
 
   const { data: row } = await db
     .from("notifications")
-    .select("id, status, recipient_phone, attempt_count, created_at, permanent_failure, error_message")
+    .select("id, status, recipient_phone, attempt_count, created_at, permanent_failure, " +
+            "error_message, provider_message_id, recipient_type, booking_id, hall_id")
     .eq("id", notificationId)
     .maybeSingle();
   if (!row) return { error: "Notification not found." };
@@ -1040,8 +1041,42 @@ export async function retryNotification(notificationId: string): Promise<ActionR
     if ((row.status !== "pending" && row.status !== "processing") || ageMs < 15 * 60 * 1000) {
       return { error: `Only failed or skipped notifications can be retried (this one is ${row.status}).` };
     }
+    // A stale row that ALREADY carries a Twilio message id was accepted by
+    // Twilio — only the bookkeeping update failed. Resending it would deliver
+    // the same message to the customer twice, which is worse than a row that
+    // looks stuck. Only rows that never reached Twilio may be re-sent.
+    if (row.provider_message_id) {
+      return {
+        error: "This message was already accepted by Twilio; resending would deliver it twice. Check its delivery status instead.",
+      };
+    }
   }
-  if (!row.recipient_phone) return { error: "This notification has no valid recipient phone number." };
+  // A row written when the recipient had NO usable number owns its dedupe key
+  // forever, so a fresh dispatch can never replace it. Re-derive the recipient
+  // from the linked booking/hall — if they have since added a valid number, the
+  // message becomes deliverable instead of being lost. The phone is resolved
+  // from the database, never from the request, so this cannot redirect it.
+  if (!row.recipient_phone) {
+    const { resolveRecipientPhoneForNotification } = await import("@/lib/notifications/events");
+    const { normalizePhoneE164 } = await import("@/lib/notifications/phone");
+    const repaired = normalizePhoneE164(
+      (await resolveRecipientPhoneForNotification({
+        recipientType: row.recipient_type,
+        bookingId: row.booking_id,
+        hallId: row.hall_id,
+      })) ?? "",
+    );
+    if (!repaired) {
+      return {
+        error: "This notification has no valid recipient phone number, and the account still has none on file.",
+      };
+    }
+    await db.from("notifications")
+      .update({ recipient_phone: repaired, permanent_failure: false })
+      .eq("id", notificationId);
+    row.recipient_phone = repaired;
+    row.permanent_failure = false;
+  }
   if (row.attempt_count >= MAX_SEND_ATTEMPTS) {
     return { error: `Maximum of ${MAX_SEND_ATTEMPTS} attempts reached for this notification.` };
   }

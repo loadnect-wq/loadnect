@@ -8,8 +8,8 @@
 // polling the console.
 //
 // SCOPE: this is a VISIBILITY endpoint only. Nothing in the app currently
-// gates behaviour on registration status (TWILIO_ENABLED is a separate, manual
-// switch — see lib/twilio.ts), so this does not need to update any database
+// gates behaviour on registration status (TWILIO_WHATSAPP_ENABLED is a separate,
+// manual switch — see lib/twilio/whatsapp.ts), so this does not update any database
 // row; it verifies the request is genuinely from Twilio and logs the outcome
 // so it's visible in Vercel's function logs without you having to check the
 // Twilio console. If a future feature needs to react to this (e.g. block message
@@ -18,9 +18,9 @@
 //
 // SECURITY:
 //   • The raw body is read FIRST, before any parsing, and used verbatim for
-//     signature verification (verifyTwilioWebhookSignature in lib/twilio.ts).
+//     signature verification (verifyTwilioWebhookSignature in lib/twilio/signature.ts).
 //   • Signature covers BOTH shapes Twilio may send this in (form-encoded or
-//     JSON) — see lib/twilio.ts for the two signing schemes.
+//     JSON) — see lib/twilio/signature.ts for the two signing schemes.
 //   • An invalid/missing signature -> 403. We do not process or log the body
 //     of a request we can't verify came from Twilio.
 //   • Only non-sensitive status fields are logged — never headers, tokens, or

@@ -83,7 +83,10 @@ function NotificationCard({ row }: { row: AdminNotificationRow }) {
     Date.now() - new Date(row.created_at).getTime() > 15 * 60 * 1000;
   const canRetry =
     (row.status === "failed" || row.status === "skipped" || isStale) &&
-    !!row.recipient_phone &&
+    // A row with NO recipient phone is still retryable when it is linked to a
+    // booking or hall: the retry re-derives the number, so a message written
+    // before the owner added their phone becomes deliverable rather than lost.
+    (!!row.recipient_phone || !!row.booking_id || !!row.hall_id || row.recipient_type === "admin") &&
     row.attempt_count < 5 &&
     // A permanent failure repeats identically; offering the button would only
     // burn an attempt. Skipped rows stay retryable — they are waiting on

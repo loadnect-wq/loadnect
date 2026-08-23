@@ -142,6 +142,17 @@ export async function updateOwnerProfileName(data: {
     full_name: parsed.data.fullName || null,
     phone:     normalisedPhone,
   };
+
+  // Changing the number invalidates its OTP verification — same reasoning as
+  // the customer profile: a verified flag must never vouch for a number the
+  // account holder did not prove they own.
+  const { data: existing } = await db
+    .from("profiles").select("phone, phone_verified").eq("id", user.id).maybeSingle();
+  if (existing?.phone_verified && existing.phone !== normalisedPhone) {
+    updatePayload.phone_verified = false;
+    updatePayload.phone_verified_at = null;
+  }
+
   // Non-critical preference only — critical booking/payment messages always send.
   if (typeof data.notificationsEnabled === "boolean") {
     updatePayload.whatsapp_notifications_enabled = data.notificationsEnabled;
