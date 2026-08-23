@@ -8,7 +8,7 @@ import { acceptBooking, rejectBooking, markBookingCompleted } from "@/app/owner/
 // Owner's accept / decline control for a booking request.
 //
 // Declining now REQUIRES a written reason: it is stored on the booking and sent
-// to the customer by SMS, so a customer whose event is refused is told why
+// to the customer on WhatsApp, so a customer whose event is refused is told why
 // rather than just seeing "declined". The server re-validates the reason.
 //
 // Sizing is mobile-first (44px targets, full-width stacked on phones,
@@ -62,7 +62,7 @@ export function BookingActions({ bookingId, status, customerLabel, hasConflict }
           Decline this booking{customerLabel ? ` from ${customerLabel}` : ""}?
         </p>
         <p className="mt-0.5 text-[11px] text-red-700">
-          The customer is told why by SMS. Any advance they paid is handled by Hallnect.
+          The customer is told why on WhatsApp. Any advance they paid is handled by Hallnect.
         </p>
 
         <textarea

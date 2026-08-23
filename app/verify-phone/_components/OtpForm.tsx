@@ -131,7 +131,7 @@ export function OtpForm({ initialPhone, configured }: Props) {
             </button>
           </div>
           <p className="mt-2 text-[11px] text-charcoal-500">
-            We&apos;ll text a one-time code to confirm this number. Standard SMS rates may apply.
+            We&apos;ll send a one-time code on WhatsApp to confirm this number.
           </p>
         </>
       )}

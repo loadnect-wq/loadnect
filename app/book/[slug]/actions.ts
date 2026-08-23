@@ -86,7 +86,7 @@ export async function createBookingRequest(
   }
 
   // ── Contact phone (SERVER-AUTHORITATIVE; §booking-notifications) ────────────
-  // A booking cannot be finalized without a reachable mobile number: SMS
+  // A booking cannot be finalized without a reachable mobile number: WhatsApp
   // confirmations go to THIS number. Normalized to E.164 so one canonical
   // format is stored ("+919876543210"), never a mix of local formats.
   const contactPhone = normalizePhoneE164(input.contactPhone ?? "");
@@ -314,7 +314,7 @@ export async function submitManualBookingRequest(
   }
 
   // A retried checkout reuses the pending booking row — refresh contact_phone
-  // so the SMS goes to the number the customer LAST entered, not a stale one.
+  // so the message goes to the number the customer LAST entered, not a stale one.
   // Session client on the caller's own row; ignore failures (pre-0026 DBs).
   const freshPhone = contactPhone ? normalizePhoneE164(contactPhone) : null;
   if (freshPhone) {
@@ -415,7 +415,7 @@ export async function createPaymentSession(
   if (!customerEmail) return { error: "Your account has no email on file. Cannot start payment." };
 
   // A retried checkout reuses the pending booking row — keep contact_phone in
-  // step with the number the customer LAST entered so post-payment SMS reach
+  // step with the number the customer LAST entered so post-payment messages reach
   // the right person. Session client on the caller's own row; best-effort.
   const freshPhone = customerPhone ? normalizePhoneE164(customerPhone) : null;
   if (freshPhone) {

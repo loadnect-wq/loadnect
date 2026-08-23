@@ -1,18 +1,21 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { BellRing, CheckCheck, MessageSquareWarning } from "lucide-react";
+import { BellRing, CheckCheck, MessageSquareWarning, ShieldCheck } from "lucide-react";
 import {
   fetchNotifications,
   fetchNotificationStats,
   type AdminNotificationRow,
 } from "@/lib/admin";
-import { getTwilioSmsStatus } from "@/lib/twilio";
+import { getWhatsAppStatus } from "@/lib/twilio/whatsapp";
+import { templateConfigStatus } from "@/lib/notifications/whatsapp-templates";
 import { maskPhone } from "@/lib/notifications/phone";
+import { resolveAdminNotificationPhone } from "@/lib/notifications/service";
+import { AdminAlertNumberForm } from "./_components/AdminAlertNumberForm";
 import { AdminPageHeader } from "../_components/AdminPageHeader";
 import { ConfirmButton } from "../_components/ConfirmButton";
 import { retryNotification, markNotificationRead, markAllNotificationsRead } from "../actions";
 
-export const metadata: Metadata = { title: "Notifications — Admin" };
+export const metadata: Metadata = { title: "WhatsApp notifications — Admin" };
 
 const STATUS_FILTERS = [
   { key: "all",     label: "All",     value: undefined },
@@ -21,6 +24,19 @@ const STATUS_FILTERS = [
   { key: "skipped", label: "Skipped", value: "skipped" },
   { key: "pending", label: "Pending", value: "pending" },
   { key: "unread",  label: "Unread",  value: undefined, unread: true },
+];
+
+/** §18: filter by who it went to and what it was about. */
+const RECIPIENT_FILTERS = [
+  { key: "customer", label: "Customer" },
+  { key: "owner",    label: "Owner" },
+  { key: "admin",    label: "Admin" },
+];
+const CATEGORY_FILTERS = [
+  { key: "booking",    label: "Booking" },
+  { key: "payment",    label: "Payment" },
+  { key: "hall",       label: "Hall" },
+  { key: "commission", label: "Commission" },
 ];
 
 const STATUS_TONE: Record<string, string> = {
@@ -32,6 +48,18 @@ const STATUS_TONE: Record<string, string> = {
   cancelled:  "bg-charcoal-50 text-charcoal-500 border-charcoal-200",
 };
 
+/** WhatsApp's own view of the message, which can disagree with ours. */
+const DELIVERY_TONE: Record<string, string> = {
+  delivered:   "bg-green-50 text-green-700 border-green-200",
+  read:        "bg-green-100 text-green-800 border-green-300",
+  sent:        "bg-blue-50 text-blue-700 border-blue-200",
+  queued:      "bg-charcoal-50 text-charcoal-600 border-charcoal-200",
+  sending:     "bg-charcoal-50 text-charcoal-600 border-charcoal-200",
+  accepted:    "bg-charcoal-50 text-charcoal-600 border-charcoal-200",
+  undelivered: "bg-red-50 text-red-700 border-red-200",
+  failed:      "bg-red-50 text-red-700 border-red-200",
+};
+
 function fmtWhen(iso: string | null) {
   if (!iso) return "—";
   return new Date(iso).toLocaleString("en-IN", {
@@ -41,10 +69,10 @@ function fmtWhen(iso: string | null) {
   });
 }
 
-function StatusChip({ status }: { status: string }) {
+function Chip({ text, tone }: { text: string; tone: string }) {
   return (
-    <span className={`rounded-md border px-2 py-0.5 font-mono text-[11px] font-semibold ${STATUS_TONE[status] ?? STATUS_TONE.pending}`}>
-      {status}
+    <span className={`rounded-md border px-2 py-0.5 font-mono text-[11px] font-semibold ${tone}`}>
+      {text}
     </span>
   );
 }
@@ -55,30 +83,56 @@ function NotificationCard({ row }: { row: AdminNotificationRow }) {
     Date.now() - new Date(row.created_at).getTime() > 15 * 60 * 1000;
   const canRetry =
     (row.status === "failed" || row.status === "skipped" || isStale) &&
-    !!row.recipient_phone && row.attempt_count < 5;
+    !!row.recipient_phone &&
+    row.attempt_count < 5 &&
+    // A permanent failure repeats identically; offering the button would only
+    // burn an attempt. Skipped rows stay retryable — they are waiting on
+    // configuration, and fixing it is exactly when a retry should work.
+    !(row.permanent_failure && row.status === "failed");
+
   return (
     <div className={`rounded-xl border bg-white p-3 ${row.is_read ? "border-border" : "border-maroon-300"}`}>
       <div className="flex flex-wrap items-center gap-2">
         {!row.is_read && <span className="h-2 w-2 shrink-0 rounded-full bg-maroon-600" aria-label="Unread" />}
         <span className="font-mono text-[11px] font-semibold text-charcoal-800">{row.event_type}</span>
-        <StatusChip status={row.status} />
+        <Chip text={row.status} tone={STATUS_TONE[row.status] ?? STATUS_TONE.pending} />
+        {row.delivery_status && (
+          <Chip
+            text={`WA: ${row.delivery_status}`}
+            tone={DELIVERY_TONE[row.delivery_status] ?? DELIVERY_TONE.queued}
+          />
+        )}
+        {row.test_mode && (
+          <Chip text="TEST" tone="bg-purple-50 text-purple-700 border-purple-200" />
+        )}
         <span className="rounded-md bg-ivory-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-charcoal-500">
           {row.recipient_type}
         </span>
         <span className="ml-auto shrink-0 text-[10px] text-charcoal-400">{fmtWhen(row.created_at)}</span>
       </div>
 
-      <p className="mt-1.5 text-xs leading-relaxed text-charcoal-700">{row.message}</p>
+      {/* The rendered template — exactly the text the recipient received. */}
+      <p className="mt-1.5 whitespace-pre-line text-xs leading-relaxed text-charcoal-700">{row.message}</p>
 
       <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-charcoal-500">
         <span>To: {maskPhone(row.recipient_phone)}</span>
+        {row.template_key && <span className="font-mono">{row.template_key}</span>}
         {row.sent_at && <span>Sent: {fmtWhen(row.sent_at)}</span>}
+        {row.delivery_updated_at && <span>Updated: {fmtWhen(row.delivery_updated_at)}</span>}
         {row.attempt_count > 0 && <span>Attempts: {row.attempt_count}</span>}
-        {row.provider_message_id && <span className="font-mono">SID: {row.provider_message_id.slice(0, 10)}…</span>}
+        {row.provider_message_id && (
+          <span className="font-mono">SID: {row.provider_message_id.slice(0, 12)}…</span>
+        )}
       </div>
 
       {row.error_message && (
-        <p className="mt-1.5 rounded-lg bg-red-50 p-2 text-[11px] text-red-700">{row.error_message}</p>
+        <p className="mt-1.5 rounded-lg bg-red-50 p-2 text-[11px] text-red-700">
+          {row.error_code && <span className="font-mono font-semibold">[{row.error_code}] </span>}
+          {row.error_message}
+          {row.permanent_failure && row.status === "failed" && (
+            <span className="ml-1 font-semibold">Retry will not help.</span>
+          )}
+        </p>
       )}
 
       <div className="mt-2 flex flex-wrap justify-end gap-1.5">
@@ -104,30 +158,47 @@ function NotificationCard({ row }: { row: AdminNotificationRow }) {
   );
 }
 
-type Props = { searchParams: Promise<{ filter?: string; q?: string; page?: string }> };
+type Props = {
+  searchParams: Promise<{
+    filter?: string; q?: string; page?: string; to?: string; cat?: string;
+  }>;
+};
 
 export default async function AdminNotificationsPage({ searchParams }: Props) {
-  const { filter, q, page } = await searchParams;
+  const { filter, q, page, to, cat } = await searchParams;
   const activeFilter = STATUS_FILTERS.find((f) => f.key === filter) ?? STATUS_FILTERS[0];
+  const activeTo  = RECIPIENT_FILTERS.find((f) => f.key === to)?.key;
+  const activeCat = CATEGORY_FILTERS.find((f) => f.key === cat)?.key;
   const search = (q ?? "").trim();
   const pageNum = Number.parseInt(page ?? "1", 10) || 1;
 
-  const [log, stats] = await Promise.all([
+  const [log, stats, adminPhone] = await Promise.all([
     fetchNotifications({
-      status: activeFilter.value,
-      unread: activeFilter.unread,
-      search: search || undefined,
-      page:   pageNum,
+      status:    activeFilter.value,
+      unread:    activeFilter.unread,
+      search:    search || undefined,
+      recipient: activeTo,
+      category:  activeCat,
+      page:      pageNum,
     }),
     fetchNotificationStats(),
+    resolveAdminNotificationPhone(),
   ]);
-  const twilio = getTwilioSmsStatus();
+
+  const wa = getWhatsAppStatus();
+  const templates = templateConfigStatus();
+  const templatesReady = templates.filter((t) => t.configured).length;
+  const templatesBroken = templates.filter((t) => t.malformed);
+
+  const live = wa.enabled && wa.configured && templatesReady > 0;
 
   const qs = (over: Record<string, string | undefined>) => {
     const p = new URLSearchParams();
     const merged = {
       filter: activeFilter.key === "all" ? undefined : activeFilter.key,
       q: search || undefined,
+      to: activeTo,
+      cat: activeCat,
       ...over,
     };
     for (const [k, v] of Object.entries(merged)) if (v) p.set(k, v);
@@ -138,29 +209,32 @@ export default async function AdminNotificationsPage({ searchParams }: Props) {
   return (
     <div>
       <AdminPageHeader
-        title="Notifications"
-        description="Every SMS the platform has queued — sent, failed, or skipped while Twilio is disabled."
+        title="WhatsApp notifications"
+        description="Every WhatsApp message the platform has queued — sent, delivered, failed, or skipped while Twilio is disabled."
       />
 
       <div className="p-4 sm:p-6 lg:p-8">
-        {/* Twilio status — masked config only, never credentials (§36). */}
+        {/* Twilio status — masked configuration only, never credentials. */}
         <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
-          <div className={`rounded-xl border p-3 ${twilio.enabled && twilio.configured ? "border-green-200 bg-green-50" : "border-amber-200 bg-amber-50"}`}>
-            <p className="text-[10px] font-bold uppercase tracking-wide text-charcoal-500">Twilio SMS</p>
+          <div className={`rounded-xl border p-3 ${live ? "border-green-200 bg-green-50" : "border-amber-200 bg-amber-50"}`}>
+            <p className="text-[10px] font-bold uppercase tracking-wide text-charcoal-500">Twilio WhatsApp</p>
             <p className="mt-0.5 text-sm font-bold text-charcoal-900">
-              {twilio.enabled ? (twilio.configured ? "Enabled" : "Enabled, not configured") : "Disabled"}
+              {!wa.enabled ? "Disabled"
+                : !wa.configured ? "Enabled, no credentials"
+                : templatesReady === 0 ? "No templates approved"
+                : wa.testMode ? "Live — TEST MODE" : "Live"}
             </p>
             <p className="text-[10px] text-charcoal-500">
-              {twilio.configured
-                ? `SID ${twilio.accountSidMasked} · ${twilio.sender === "messaging_service" ? "Messaging Service" : "Phone number"}`
-                : "Set TWILIO_* env vars, then TWILIO_ENABLED=true"}
+              {wa.configured
+                ? `SID ${wa.accountSidMasked} · ${wa.sender ?? "no sender"}`
+                : "Set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN and TWILIO_WHATSAPP_FROM"}
             </p>
           </div>
           {[
-            { label: "Sent",    value: stats.totalSent },
-            { label: "Failed",  value: stats.totalFailed },
-            { label: "Skipped", value: stats.totalSkipped },
-            { label: "Unread",  value: stats.unread },
+            { label: "Sent",        value: stats.totalSent },
+            { label: "Failed",      value: stats.totalFailed },
+            { label: "Undelivered", value: stats.undelivered },
+            { label: "Skipped",     value: stats.totalSkipped },
           ].map((s) => (
             <div key={s.label} className="rounded-xl border border-border bg-white p-3">
               <p className="text-[10px] font-bold uppercase tracking-wide text-charcoal-500">{s.label}</p>
@@ -168,14 +242,48 @@ export default async function AdminNotificationsPage({ searchParams }: Props) {
             </div>
           ))}
           <div className="rounded-xl border border-border bg-white p-3">
-            <p className="text-[10px] font-bold uppercase tracking-wide text-charcoal-500">Last sent / failed</p>
-            <p className="mt-0.5 text-[11px] font-semibold text-charcoal-800">{fmtWhen(stats.lastSentAt)}</p>
-            <p className="text-[11px] text-red-600">{fmtWhen(stats.lastFailedAt)}</p>
+            <p className="text-[10px] font-bold uppercase tracking-wide text-charcoal-500">Templates approved</p>
+            <p className="mt-0.5 text-lg font-bold text-charcoal-900">
+              {templatesReady}<span className="text-sm font-semibold text-charcoal-400">/{templates.length}</span>
+            </p>
+            <p className="text-[10px] text-charcoal-500">{stats.totalPending} pending · {stats.unread} unread</p>
           </div>
         </div>
 
+        {/* Which templates still need a Content SID. Content SIDs are not
+            secrets — they identify approved public message copy. */}
+        {(templatesReady < templates.length || templatesBroken.length > 0) && (
+          <details className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-3">
+            <summary className="cursor-pointer text-xs font-semibold text-amber-900">
+              {templates.length - templatesReady} WhatsApp template
+              {templates.length - templatesReady === 1 ? "" : "s"} not configured
+              {templatesBroken.length > 0 && ` · ${templatesBroken.length} malformed`}
+              {" — messages using them are recorded as skipped, not sent"}
+            </summary>
+            <ul className="mt-2 space-y-1">
+              {templates.filter((t) => !t.configured).map((t) => (
+                <li key={t.key} className="flex flex-wrap items-baseline gap-x-2 text-[11px]">
+                  <code className="font-mono font-semibold text-amber-900">{t.envVar}</code>
+                  <span className="text-amber-800">{t.purpose}</span>
+                  {t.malformed && (
+                    <span className="font-semibold text-red-700">
+                      set but not a valid HX… Content SID
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </details>
+        )}
+
+        {/* Who receives admin alerts. Masked — never the raw number in HTML. */}
+        <AdminAlertNumberForm
+          currentMasked={maskPhone(adminPhone.phone)}
+          source={adminPhone.source}
+        />
+
         {/* Filters */}
-        <div className="mb-4 flex flex-wrap items-center gap-1.5">
+        <div className="mb-3 flex flex-wrap items-center gap-1.5">
           {STATUS_FILTERS.map((f) => (
             <Link
               key={f.key}
@@ -201,8 +309,43 @@ export default async function AdminNotificationsPage({ searchParams }: Props) {
           )}
         </div>
 
+        <div className="mb-4 flex flex-wrap items-center gap-1.5">
+          <span className="text-[10px] font-bold uppercase tracking-wide text-charcoal-400">To</span>
+          {RECIPIENT_FILTERS.map((f) => (
+            <Link
+              key={f.key}
+              href={qs({ to: activeTo === f.key ? undefined : f.key, page: undefined })}
+              className={
+                "rounded-full px-2.5 py-1 text-[11px] font-semibold transition-colors " +
+                (activeTo === f.key
+                  ? "bg-charcoal-900 text-white"
+                  : "border border-border bg-white text-charcoal-600 hover:bg-ivory-50")
+              }
+            >
+              {f.label}
+            </Link>
+          ))}
+          <span className="ml-2 text-[10px] font-bold uppercase tracking-wide text-charcoal-400">About</span>
+          {CATEGORY_FILTERS.map((f) => (
+            <Link
+              key={f.key}
+              href={qs({ cat: activeCat === f.key ? undefined : f.key, page: undefined })}
+              className={
+                "rounded-full px-2.5 py-1 text-[11px] font-semibold transition-colors " +
+                (activeCat === f.key
+                  ? "bg-charcoal-900 text-white"
+                  : "border border-border bg-white text-charcoal-600 hover:bg-ivory-50")
+              }
+            >
+              {f.label}
+            </Link>
+          ))}
+        </div>
+
         <form action="/admin/notifications" className="mb-4 flex gap-2">
           {activeFilter.key !== "all" && <input type="hidden" name="filter" value={activeFilter.key} />}
+          {activeTo && <input type="hidden" name="to" value={activeTo} />}
+          {activeCat && <input type="hidden" name="cat" value={activeCat} />}
           <input
             type="search"
             name="q"
@@ -223,7 +366,8 @@ export default async function AdminNotificationsPage({ searchParams }: Props) {
             <MessageSquareWarning className="mx-auto h-8 w-8 text-amber-500" />
             <p className="mt-2 text-sm font-semibold text-amber-900">Notifications not provisioned</p>
             <p className="mt-1 text-xs text-amber-700">
-              Run migration <code className="font-mono">0026_notifications.sql</code> to enable the SMS outbox.
+              Run migrations <code className="font-mono">0026_notifications.sql</code> and{" "}
+              <code className="font-mono">0030_whatsapp_notifications.sql</code> to enable the outbox.
             </p>
           </div>
         ) : log.rows.length === 0 ? (
@@ -231,9 +375,9 @@ export default async function AdminNotificationsPage({ searchParams }: Props) {
             <BellRing className="mx-auto h-8 w-8 text-charcoal-300" />
             <p className="mt-2 text-sm font-semibold text-charcoal-900">No notifications</p>
             <p className="mt-1 text-xs text-charcoal-500">
-              {search || activeFilter.key !== "all"
+              {search || activeFilter.key !== "all" || activeTo || activeCat
                 ? "Nothing matches these filters."
-                : "Booking, payment and moderation SMS will appear here as they are queued."}
+                : "Booking, payment and moderation messages will appear here as they are queued."}
             </p>
           </div>
         ) : (
@@ -264,6 +408,12 @@ export default async function AdminNotificationsPage({ searchParams }: Props) {
             )}
           </>
         )}
+
+        <p className="mt-6 flex items-start gap-1.5 text-[11px] leading-relaxed text-charcoal-400">
+          <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          Recipient numbers are masked here and Twilio credentials are never displayed or logged.
+          Message content is composed server-side from approved templates — it can never be set by a customer.
+        </p>
       </div>
     </div>
   );

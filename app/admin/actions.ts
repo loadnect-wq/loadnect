@@ -147,15 +147,15 @@ async function moderateHall(
     reason:         cleaned,
   });
 
-  // Owner SMS: approved / rejected(+reason) / suspended(+reason) / restored.
+  // Owner WhatsApp: approved / rejected(+reason) / suspended(+reason) / restored.
   // "unsuspend" and a fresh approval both land on status=approved — the action
   // string distinguishes them for the right wording.
-  const smsKind =
+  const moderationKind =
     action === "hall.unsuspend" ? "unsuspended"
     : newStatus === "approved"  ? "approved"
     : newStatus === "rejected"  ? "rejected"
     : "suspended";
-  await notifyHallModerated(hallId, smsKind, cleaned);
+  await notifyHallModerated(hallId, moderationKind, cleaned);
 
   revalidatePath("/admin/halls");
   revalidatePath("/admin/hall-approvals");
@@ -592,7 +592,7 @@ export async function togglePremiumActive(listingId: string, isActive: boolean):
     metadata:       { hall_id: before.hall_id },
   });
 
-  // Non-critical SMS — respects the owner's notification preference.
+  // Non-critical message — respects the owner's notification preference.
   await notifyPremiumChanged(listingId, before.hall_id, isActive, before.plan_slug === "pro" ? "Pro" : "Premium");
 
   revalidatePath("/admin/premium-listings");
@@ -672,7 +672,7 @@ export async function createPremiumListing(input: {
 
   if (error) return { error: sanitizeError(error, "admin") };
 
-  // Non-critical owner SMS — respects the owner's notification preference.
+  // Non-critical owner message — respects the owner's notification preference.
   await notifyPremiumChanged(listing.id, v.hallId, true, v.planSlug === "pro" ? "Pro" : "Premium");
 
   revalidatePath("/admin/premium-listings");
@@ -950,10 +950,63 @@ export async function respondToTicket(
   return { success: true };
 }
 
-// ── SMS notification center actions ─────────────────────────────────────────
+// ── WhatsApp notification center actions ────────────────────────────────────
 
 /**
- * Retries one failed/skipped SMS. Admin-only (server-verified), capped at
+ * Sets the phone number that receives platform admin alerts.
+ *
+ * Stored on platform_settings (the existing single-row admin config table)
+ * rather than in an environment variable, so it can be changed without a
+ * redeploy. ADMIN_WHATSAPP_NUMBER remains a deployment-level fallback and
+ * lib/constants CONTACT.phone the last resort — see getAdminNotificationPhone.
+ *
+ * Admin-only and audited. Normalised to E.164 before storage: the column has a
+ * CHECK constraint requiring it, and an un-normalised number is one we could
+ * never actually message.
+ */
+export async function updateAdminWhatsAppNumber(raw: string): Promise<ActionResult> {
+  const actor = await requireAdminActor();
+  if (!actor.ok) return { error: actor.error };
+
+  const { normalizePhoneE164 } = await import("@/lib/notifications/phone");
+  const trimmed = (raw ?? "").trim();
+
+  // Empty clears the override and falls back to the env var / constant.
+  let value: string | null = null;
+  if (trimmed !== "") {
+    value = normalizePhoneE164(trimmed);
+    if (!value) {
+      return { error: "Enter a valid mobile number, e.g. +91 98765 43210." };
+    }
+  }
+
+  const { getSupabaseAdminClient } = await import("@/lib/supabase/admin");
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const db = getSupabaseAdminClient() as any;
+
+  const { error } = await db
+    .from("platform_settings")
+    .upsert({ id: true, admin_whatsapp_phone: value, updated_by: actor.user.id }, { onConflict: "id" });
+
+  if (error) return { error: sanitizeError(error, "admin") };
+
+  await recordAdminAction({
+    action:     "settings.admin_whatsapp_number",
+    entityType: "platform_settings",
+    entityId:   null,
+    // The number itself is deliberately NOT recorded in the audit log: the log
+    // is readable by every admin and this is a personal phone number. That it
+    // changed, and by whom, is what matters.
+    metadata:   { cleared: value === null },
+  });
+
+  revalidatePath("/admin/notifications");
+  return { success: true };
+}
+
+
+/**
+ * Retries one failed/skipped message. Admin-only (server-verified), capped at
  * MAX_SEND_ATTEMPTS per notification, audit-logged. This is the ONLY manual
  * send path in the app — and even it cannot choose a phone number or message:
  * both are locked into the outbox row that the server composed originally.
@@ -973,12 +1026,12 @@ export async function retryNotification(notificationId: string): Promise<ActionR
 
   const { data: row } = await db
     .from("notifications")
-    .select("id, status, recipient_phone, message, attempt_count, created_at")
+    .select("id, status, recipient_phone, attempt_count, created_at, permanent_failure, error_message")
     .eq("id", notificationId)
     .maybeSingle();
   if (!row) return { error: "Notification not found." };
 
-  if (row.status === "sent") return { error: "This SMS was already sent." };
+  if (row.status === "sent") return { error: "This message was already sent." };
   // failed/skipped are always retryable. pending/processing normally means a
   // send is in flight — but a crash between claim and result strands the row
   // forever, so allow retry once the row is clearly stale (15+ min old).
@@ -992,8 +1045,19 @@ export async function retryNotification(notificationId: string): Promise<ActionR
   if (row.attempt_count >= MAX_SEND_ATTEMPTS) {
     return { error: `Maximum of ${MAX_SEND_ATTEMPTS} attempts reached for this notification.` };
   }
+  // A permanent failure (not a WhatsApp user, template unapproved, bad
+  // credentials) repeats identically on retry and only burns an attempt.
+  // 'skipped' rows are exempt: they are permanent-flagged only when a config
+  // gap caused them, and fixing that config is exactly when a retry is right.
+  if (row.permanent_failure && row.status === "failed") {
+    return {
+      error: `This cannot be retried as-is: ${row.error_message ?? "the failure is permanent"}.`,
+    };
+  }
 
-  const result = await attemptSend(db, row.id, row.recipient_phone, row.message, /* isRetry */ true);
+  // attemptSend re-reads the recipient and template from the row itself, so an
+  // admin retry cannot redirect the message or change its content.
+  const result = await attemptSend(db, row.id, /* isRetry */ true);
 
   await recordAdminAction({
     action:     "notification.retry",

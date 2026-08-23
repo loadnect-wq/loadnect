@@ -110,7 +110,7 @@ export async function runOverdueCommissionCheck(): Promise<OverdueRunSummary> {
     else {
       summary.markedOverdue = count ?? overdueIds.length;
       // These commissions JUST went overdue — the exactly-once hook point.
-      // Owner SMS per commission + one admin summary; idempotent per day via
+      // One owner message per commission + one admin summary; idempotent per day via
       // outbox dedupe keys, and never fails the sweep.
       await notifyCommissionsOverdue(overdueIds);
     }

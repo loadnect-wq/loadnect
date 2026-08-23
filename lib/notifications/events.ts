@@ -1,11 +1,13 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// lib/notifications/events.ts — business events → notifications (SERVER-ONLY).
+// lib/notifications/events.ts — business events → WhatsApp notifications
+// (SERVER-ONLY).
 //
 // The single translation layer between "something happened" and "who gets
-// which SMS". Call sites pass ENTITY IDS ONLY — every recipient phone number
-// is resolved here from the database (booking → hall → owner → profile),
-// never accepted from the client (§6: do NOT trust a phone supplied by the
-// customer for owner alerts).
+// which message". Call sites pass ENTITY IDS ONLY — every recipient phone
+// number is resolved here from the database (booking → hall → owner → profile),
+// never accepted from the client. A customer cannot make the platform message
+// a number of their choosing, cannot pick the template, and cannot pick the
+// sender: all three are decided here from server-side data.
 //
 // Every function is fire-safe: errors are logged and swallowed so the business
 // action that triggered the event can never be failed by its notification.
@@ -14,29 +16,23 @@
 import "server-only";
 
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
-import { normalizePhoneE164, sanitizeSmsFreeText } from "@/lib/notifications/phone";
+import { normalizePhoneE164, sanitizeNotificationText } from "@/lib/notifications/phone";
 
 import { formatBookingDates, todayInBusinessTz } from "@/lib/dates";
-import {
-  bookingRef,
-  formatAmountForSms,
-  customerTemplates,
-  ownerTemplates,
-  adminTemplates,
-  type BookingSmsData,
-} from "@/lib/notifications/templates";
+import { bookingRef, formatAmount } from "@/lib/notifications/templates";
 import {
   dispatchAll,
   getAdminNotificationPhone,
   type NotificationRequest,
 } from "@/lib/notifications/service";
+import type { WhatsAppTemplateKey } from "@/lib/notifications/whatsapp-templates";
 
 /**
  * First candidate that is actually a VALID phone number.
  *
  * The fallback chain used to be presence-based (`business_phone ?? phone`), so
  * an owner whose business_phone was malformed — e.g. a 9-digit number — had
- * every SMS routed to that dead value and never fell through to their valid
+ * every message routed to that dead value and never fell through to their valid
  * personal number. The owner then silently missed booking requests, which
  * auto-expire after 48 hours.
  */
@@ -45,6 +41,48 @@ function pickPhone(...candidates: Array<string | null | undefined>): string | nu
     if (c && normalizePhoneE164(c)) return c;
   }
   return null;
+}
+
+/** Owner contact columns, selected identically everywhere an owner is notified. */
+const OWNER_EMBED =
+  "business_phone, business_name, profile_id, " +
+  "profiles!profile_id(full_name, phone, whatsapp_notifications_enabled)";
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type OwnerRow = any;
+
+function ownerRecipient(ownerRow: OwnerRow) {
+  return {
+    userId: ownerRow?.profile_id ?? null,
+    phone: pickPhone(ownerRow?.business_phone, ownerRow?.profiles?.phone),
+    optedIn: ownerRow?.profiles?.whatsapp_notifications_enabled ?? true,
+    name: ownerRow?.business_name ?? ownerRow?.profiles?.full_name ?? "a venue owner",
+  };
+}
+
+/** Builds the single admin-alert request. `phone` is resolved by the caller. */
+function adminAlert(input: {
+  adminPhone: string | null;
+  eventKey: string;
+  eventType: string;
+  event: string;
+  details: string;
+  reference: string;
+  bookingId?: string | null;
+  hallId?: string | null;
+}): NotificationRequest {
+  return {
+    eventKey: input.eventKey,
+    eventType: input.eventType,
+    recipientType: "admin",
+    recipientUserId: null,
+    phone: input.adminPhone,
+    templateKey: "ADMIN_ALERT",
+    templateVariables: [input.event, input.details, input.reference],
+    bookingId: input.bookingId ?? null,
+    hallId: input.hallId ?? null,
+    critical: true,
+  };
 }
 
 export type BookingEventKind =
@@ -62,16 +100,16 @@ type BookingContext = {
   hallName: string;
   dateLabel: string;
   totalAmount: number;
-  customer: { userId: string; phone: string | null; optedIn: boolean };
-  owner: { userId: string | null; phone: string | null; optedIn: boolean };
+  customer: { userId: string; name: string; phone: string | null; optedIn: boolean };
+  owner: { userId: string | null; name: string; phone: string | null; optedIn: boolean };
 };
 
 /**
  * Loads everything needed to notify about one booking in a single query.
  * Owner phone resolution: hall_owners.business_phone first (the number the
  * owner registered for their venue), falling back to their personal
- * profiles.phone. Customer phone: the booking's own contact_phone snapshot
- * first, falling back to profiles.phone.
+ * profiles.phone. Customer phone: an OTP-verified profile number first, then
+ * the booking's own contact_phone snapshot.
  */
 async function loadBookingContext(bookingId: string): Promise<BookingContext | null> {
   const admin = getSupabaseAdminClient();
@@ -84,9 +122,8 @@ async function loadBookingContext(bookingId: string): Promise<BookingContext | n
       // hall_owners has TWO FKs to profiles (profile_id, verified_by) — the
       // embed must disambiguate with !profile_id or PostgREST errors out.
       "id, hall_id, customer_id, event_date, end_date, total_amount, contact_phone, " +
-      "halls(name, owner_id, hall_owners!owner_id(business_name, business_phone, profile_id, " +
-      "profiles!profile_id(phone, sms_notifications_enabled)))," +
-      "profiles!customer_id(phone, phone_verified, sms_notifications_enabled)"
+      `halls(name, owner_id, hall_owners!owner_id(${OWNER_EMBED})),` +
+      "profiles!customer_id(full_name, phone, phone_verified, whatsapp_notifications_enabled)"
     )
     .eq("id", bookingId)
     .maybeSingle();
@@ -98,8 +135,8 @@ async function loadBookingContext(bookingId: string): Promise<BookingContext | n
 
   const hall = data.halls ?? {};
   const ownerRow = hall.hall_owners ?? null;
-  const ownerProfile = ownerRow?.profiles ?? null;
   const customerProfile = data.profiles ?? null;
+  const owner = ownerRecipient(ownerRow);
 
   return {
     bookingId: data.id,
@@ -109,47 +146,31 @@ async function loadBookingContext(bookingId: string): Promise<BookingContext | n
     totalAmount: Number(data.total_amount ?? 0),
     customer: {
       userId: data.customer_id,
+      name: customerProfile?.full_name ?? "there",
       // An OTP-VERIFIED profile phone outranks the booking's contact_phone:
       // contact_phone is client-supplied at booking time, so on its own it
-      // would let an account direct branded SMS at an arbitrary number. With a
-      // verified number on file, that number wins; otherwise the booking's
-      // contact number is used (capped per-account in the service layer).
+      // would let an account direct branded messages at an arbitrary number.
+      // With a verified number on file, that number wins; otherwise the
+      // booking's contact number is used (capped per-account in the service).
       phone:
         (customerProfile?.phone_verified && customerProfile?.phone)
           ? customerProfile.phone
           : data.contact_phone ?? customerProfile?.phone ?? null,
-      optedIn: customerProfile?.sms_notifications_enabled ?? true,
+      optedIn: customerProfile?.whatsapp_notifications_enabled ?? true,
     },
     owner: {
-      userId: ownerRow?.profile_id ?? null,
-      phone: pickPhone(ownerRow?.business_phone, ownerProfile?.phone),
-      optedIn: ownerProfile?.sms_notifications_enabled ?? true,
+      userId: owner.userId,
+      name: owner.name,
+      phone: owner.phone,
+      optedIn: owner.optedIn,
     },
-  };
-}
-
-function adminRequest(
-  eventKey: string,
-  eventType: string,
-  message: string,
-  ids: { bookingId?: string | null; hallId?: string | null } = {},
-): NotificationRequest {
-  return {
-    eventKey,
-    eventType,
-    recipientType: "admin",
-    recipientUserId: null,
-    phone: getAdminNotificationPhone(),
-    message,
-    bookingId: ids.bookingId ?? null,
-    hallId: ids.hallId ?? null,
-    critical: true,
   };
 }
 
 /**
- * Fires SMS for one booking lifecycle event. Idempotent per (event, booking,
- * recipient) — safe to call from webhook redeliveries and re-run actions.
+ * Fires WhatsApp messages for one booking lifecycle event. Idempotent per
+ * (event, booking, recipient) — safe to call from webhook redeliveries and
+ * re-run actions.
  *
  * opts.amount     — display rupees for payment messages (e.g. the advance paid)
  * opts.reason     — owner's rejection note, cancellation reason, …
@@ -165,74 +186,107 @@ export async function notifyBookingEvent(
     const ctx = await loadBookingContext(bookingId);
     if (!ctx) return;
 
+    const adminPhone = await getAdminNotificationPhone();
     const eventKey = `${kind}:${bookingId}${opts.keySuffix ? `:${opts.keySuffix}` : ""}`;
-    const d: BookingSmsData = {
-      bookingRef: bookingRef(bookingId),
-      hallName: ctx.hallName,
-      dateLabel: ctx.dateLabel,
-      amountLabel: formatAmountForSms(opts.amount ?? ctx.totalAmount),
-      // Free text (e.g. an owner's rejection note) is stripped of URLs, long
-      // digit runs and handles before entering a branded SMS — phishing text
-      // must not ride on "HALLNECT:" credibility.
-      reason: sanitizeSmsFreeText(opts.reason),
-    };
 
-    const toCustomer = (message: string): NotificationRequest => ({
+    const ref = bookingRef(bookingId);
+    const paid = opts.amount ?? 0;
+    const totalLabel = formatAmount(ctx.totalAmount);
+    const paidLabel = formatAmount(paid);
+    // Free text (e.g. an owner's rejection note) is stripped of URLs, long
+    // digit runs and handles before entering a branded message — phishing text
+    // must not ride on Hallnect's credibility.
+    const reason = sanitizeNotificationText(opts.reason);
+
+    const toCustomer = (
+      templateKey: WhatsAppTemplateKey,
+      templateVariables: Array<string | number | null | undefined>,
+    ): NotificationRequest => ({
       eventKey, eventType: kind, recipientType: "customer",
       recipientUserId: ctx.customer.userId, phone: ctx.customer.phone,
-      message, bookingId, hallId: ctx.hallId,
-      critical: true, smsOptedIn: ctx.customer.optedIn,
+      templateKey, templateVariables,
+      bookingId, hallId: ctx.hallId,
+      critical: true, optedIn: ctx.customer.optedIn,
     });
-    const toOwner = (message: string): NotificationRequest => ({
+
+    const toOwner = (
+      templateKey: WhatsAppTemplateKey,
+      templateVariables: Array<string | number | null | undefined>,
+    ): NotificationRequest => ({
       eventKey, eventType: kind, recipientType: "owner",
       recipientUserId: ctx.owner.userId, phone: ctx.owner.phone,
-      message, bookingId, hallId: ctx.hallId,
-      critical: true, smsOptedIn: ctx.owner.optedIn,
+      templateKey, templateVariables,
+      bookingId, hallId: ctx.hallId,
+      critical: true, optedIn: ctx.owner.optedIn,
     });
-    const toAdmin = (message: string) => adminRequest(eventKey, kind, message, { bookingId, hallId: ctx.hallId });
+
+    const toAdmin = (event: string, details: string) =>
+      adminAlert({
+        adminPhone, eventKey, eventType: kind, event, details,
+        reference: `Booking ${ref}`, bookingId, hallId: ctx.hallId,
+      });
 
     const requests: NotificationRequest[] = [];
     switch (kind) {
       case "booking.requested":
         requests.push(
-          toCustomer(customerTemplates.bookingRequested(d)),
-          toOwner(ownerTemplates.newBooking(d)),
-          toAdmin(adminTemplates.newBooking(d)),
+          toCustomer("CUSTOMER_BOOKING_CREATED",
+            [ctx.customer.name, ctx.hallName, ctx.dateLabel, totalLabel, ref]),
+          toOwner("OWNER_NEW_BOOKING",
+            [ctx.hallName, ctx.customer.name, ctx.dateLabel, ref,
+             paid > 0 ? paidLabel : "Not yet paid", totalLabel]),
+          toAdmin("New booking request",
+            `${ctx.hallName} on ${ctx.dateLabel} for ${ctx.customer.name}. Value ${totalLabel}.`),
         );
         break;
+
       case "booking.confirmed":
-        requests.push(toCustomer(customerTemplates.bookingConfirmed(d)));
+        requests.push(
+          toCustomer("CUSTOMER_BOOKING_CONFIRMED",
+            [ctx.customer.name, ctx.hallName, ctx.dateLabel, ref]),
+        );
         break;
+
       case "booking.rejected":
         requests.push(
-          toCustomer(customerTemplates.bookingRejected(d)),
-          toAdmin(adminTemplates.bookingCancelled(d)),
+          toCustomer("CUSTOMER_BOOKING_CANCELLED",
+            [ctx.customer.name, ctx.hallName, ctx.dateLabel, ref,
+             reason ? `Declined by the venue — ${reason}` : "Declined by the venue"]),
+          toAdmin("Booking declined by venue",
+            `${ctx.hallName} on ${ctx.dateLabel}.${reason ? ` Reason: ${reason}.` : ""}`),
         );
         break;
+
       case "booking.cancelled":
         requests.push(
-          toCustomer(customerTemplates.bookingCancelled(d)),
-          toOwner(ownerTemplates.bookingCancelled(d)),
-          toAdmin(adminTemplates.bookingCancelled(d)),
+          toCustomer("CUSTOMER_BOOKING_CANCELLED",
+            [ctx.customer.name, ctx.hallName, ctx.dateLabel, ref,
+             reason ? `Cancelled — ${reason}` : "Cancelled"]),
+          toOwner("OWNER_BOOKING_CANCELLED", [ctx.hallName, ctx.dateLabel, ref]),
+          toAdmin("Booking cancelled", `${ctx.hallName} on ${ctx.dateLabel}.`),
         );
         break;
+
       case "payment.success":
         requests.push(
-          toCustomer(customerTemplates.paymentSuccess(d)),
-          toOwner(ownerTemplates.paymentReceived(d)),
-          toAdmin(adminTemplates.paymentReceived(d)),
+          toCustomer("CUSTOMER_PAYMENT_SUCCESS",
+            [ctx.customer.name, ctx.hallName, ref, paidLabel, balanceNote(paid, ctx.totalAmount)]),
+          toOwner("OWNER_PAYMENT_RECEIVED", [ctx.hallName, ref, paidLabel]),
+          toAdmin("Payment received", `${paidLabel} for ${ctx.hallName} on ${ctx.dateLabel}.`),
         );
         break;
+
       case "payment.failed":
         requests.push(
-          toCustomer(customerTemplates.paymentFailed(d)),
-          toAdmin(adminTemplates.paymentFailed(d)),
+          toCustomer("CUSTOMER_PAYMENT_FAILED", [ctx.customer.name, ctx.hallName, ref]),
+          toAdmin("Payment FAILED", `${ctx.hallName} on ${ctx.dateLabel}. Check the payments dashboard.`),
         );
         break;
+
       case "refund.initiated":
         requests.push(
-          toCustomer(customerTemplates.refundInitiated(d)),
-          toAdmin(adminTemplates.refundDue(d)),
+          toCustomer("CUSTOMER_REFUND_INITIATED", [ctx.customer.name, ref, paidLabel]),
+          toAdmin("Refund due", `Booking cancelled after payment for ${ctx.hallName}. Amount ${paidLabel}.`),
         );
         break;
     }
@@ -243,7 +297,23 @@ export async function notifyBookingEvent(
   }
 }
 
-/** Admin alert: a hall was submitted (creation or resubmission). Max 1/day/hall. */
+/**
+ * Whether anything remains payable. Stated explicitly rather than left implied,
+ * because "Amount paid ₹7,350" against a ₹29,400 booking reads as a shortfall
+ * unless the message says the rest is due at the venue.
+ */
+function balanceNote(paid: number, total: number): string {
+  const balance = Math.round((total - paid) * 100) / 100;
+  if (!(paid > 0)) return "Your booking is not yet paid.";
+  if (balance <= 0.5) return "Your booking is paid in full.";
+  return `Balance ${formatAmount(balance)} is payable directly at the venue.`;
+}
+
+/**
+ * A hall was submitted for review (creation or resubmission).
+ * Notifies BOTH the admin (who must action it) and the owner (who otherwise
+ * has no confirmation that their submission was received). Max 1/day/hall.
+ */
 export async function notifyHallSubmitted(hallId: string): Promise<void> {
   try {
     const admin = getSupabaseAdminClient();
@@ -251,19 +321,38 @@ export async function notifyHallSubmitted(hallId: string): Promise<void> {
     const db = admin as any;
     const { data: hall } = await db
       .from("halls")
-      .select("name, hall_owners!owner_id(business_name)")
+      .select(`name, hall_owners!owner_id(${OWNER_EMBED})`)
       .eq("id", hallId)
       .maybeSingle();
     if (!hall) return;
 
-    const ownerName = hall.hall_owners?.business_name ?? "a venue owner";
+    const owner = ownerRecipient(hall.hall_owners);
+    const hallName = hall.name ?? "Unnamed hall";
+    const today = todayInBusinessTz();
+    const adminPhone = await getAdminNotificationPhone();
+
     await dispatchAll([
-      adminRequest(
-        `hall.submitted:${hallId}:${todayInBusinessTz()}`,
-        "hall.submitted",
-        adminTemplates.newHall(hall.name ?? "Unnamed hall", ownerName),
-        { hallId },
-      ),
+      {
+        eventKey: `hall.submitted:${hallId}:${today}`,
+        eventType: "hall.submitted",
+        recipientType: "owner",
+        recipientUserId: owner.userId,
+        phone: owner.phone,
+        templateKey: "OWNER_HALL_SUBMITTED",
+        templateVariables: [hallName],
+        hallId,
+        critical: true,
+        optedIn: owner.optedIn,
+      },
+      adminAlert({
+        adminPhone,
+        eventKey: `hall.submitted:${hallId}:${today}`,
+        eventType: "hall.submitted",
+        event: "New hall submitted",
+        details: `${hallName}, submitted by ${owner.name}. Approval required.`,
+        reference: hallName,
+        hallId,
+      }),
     ]);
   } catch (e) {
     console.error("[notifications] notifyHallSubmitted failed:", e instanceof Error ? e.message : e);
@@ -282,18 +371,46 @@ export async function notifyHallModerated(
     const db = admin as any;
     const { data: hall } = await db
       .from("halls")
-      .select("name, hall_owners!owner_id(business_phone, profile_id, profiles!profile_id(phone, sms_notifications_enabled))")
+      .select(`name, hall_owners!owner_id(${OWNER_EMBED})`)
       .eq("id", hallId)
       .maybeSingle();
     if (!hall) return;
 
-    const ownerRow = hall.hall_owners ?? null;
+    const owner = ownerRecipient(hall.hall_owners);
     const hallName = hall.name ?? "your hall";
-    const message =
-      action === "approved" ? ownerTemplates.hallApproved(hallName)
-      : action === "rejected" ? ownerTemplates.hallRejected(hallName, sanitizeSmsFreeText(reason))
-      : action === "suspended" ? ownerTemplates.hallSuspended(hallName, sanitizeSmsFreeText(reason))
-      : ownerTemplates.hallUnsuspended(hallName);
+    const cleanReason = sanitizeNotificationText(reason);
+
+    // Approval and rejection get their own dedicated templates because they are
+    // the two the owner acts on. Suspension/restoration reuse the general
+    // account-update template rather than burning two more Meta approvals.
+    let templateKey: WhatsAppTemplateKey;
+    let templateVariables: Array<string | null>;
+    switch (action) {
+      case "approved":
+        templateKey = "OWNER_HALL_APPROVED";
+        templateVariables = [hallName];
+        break;
+      case "rejected":
+        templateKey = "OWNER_HALL_REJECTED";
+        templateVariables = [hallName, cleanReason ?? "Please review your listing details."];
+        break;
+      case "suspended":
+        templateKey = "OWNER_ACCOUNT_UPDATE";
+        templateVariables = [
+          `${hallName} has been suspended.`,
+          cleanReason
+            ? `Reason: ${cleanReason}. Contact Hallnect support to resolve this.`
+            : "Contact Hallnect support to resolve this.",
+        ];
+        break;
+      default:
+        templateKey = "OWNER_ACCOUNT_UPDATE";
+        templateVariables = [
+          `${hallName} has been restored.`,
+          "Your hall is visible to customers again.",
+        ];
+        break;
+    }
 
     // Minute-resolution key: a double-click resends nothing, but a SECOND
     // decision later the same day (reject → owner fixes → reject again with a
@@ -303,19 +420,20 @@ export async function notifyHallModerated(
       eventKey: `hall.${action}:${hallId}:${decisionMinute}`,
       eventType: `hall.${action}`,
       recipientType: "owner",
-      recipientUserId: ownerRow?.profile_id ?? null,
-      phone: pickPhone(ownerRow?.business_phone, ownerRow?.profiles?.phone),
-      message,
+      recipientUserId: owner.userId,
+      phone: owner.phone,
+      templateKey,
+      templateVariables,
       hallId,
       critical: true,
-      smsOptedIn: ownerRow?.profiles?.sms_notifications_enabled ?? true,
+      optedIn: owner.optedIn,
     }]);
   } catch (e) {
     console.error("[notifications] notifyHallModerated failed:", e instanceof Error ? e.message : e);
   }
 }
 
-/** Owner alert when premium is activated/deactivated. NON-critical (respects the SMS preference). */
+/** Owner alert when premium is activated/deactivated. NON-critical (respects the preference). */
 export async function notifyPremiumChanged(
   listingId: string,
   hallId: string,
@@ -328,25 +446,29 @@ export async function notifyPremiumChanged(
     const db = admin as any;
     const { data: hall } = await db
       .from("halls")
-      .select("name, hall_owners!owner_id(business_phone, profile_id, profiles!profile_id(phone, sms_notifications_enabled))")
+      .select(`name, hall_owners!owner_id(${OWNER_EMBED})`)
       .eq("id", hallId)
       .maybeSingle();
     if (!hall) return;
 
-    const ownerRow = hall.hall_owners ?? null;
+    const owner = ownerRecipient(hall.hall_owners);
     const hallName = hall.name ?? "your hall";
+
     await dispatchAll([{
       eventKey: `premium.${activated ? "activated" : "deactivated"}:${listingId}:${todayInBusinessTz()}`,
       eventType: activated ? "premium.activated" : "premium.deactivated",
       recipientType: "owner",
-      recipientUserId: ownerRow?.profile_id ?? null,
-      phone: pickPhone(ownerRow?.business_phone, ownerRow?.profiles?.phone),
-      message: activated
-        ? ownerTemplates.premiumActivated(hallName, planLabel)
-        : ownerTemplates.premiumDeactivated(hallName),
+      recipientUserId: owner.userId,
+      phone: owner.phone,
+      templateKey: "OWNER_ACCOUNT_UPDATE",
+      templateVariables: activated
+        ? [`Premium listing is active for ${hallName}.`,
+           `Your ${planLabel} plan gives this hall priority placement in search results.`]
+        : [`Premium listing has ended for ${hallName}.`,
+           "Your hall remains listed with standard placement."],
       hallId,
       critical: false,
-      smsOptedIn: ownerRow?.profiles?.sms_notifications_enabled ?? true,
+      optedIn: owner.optedIn,
     }]);
   } catch (e) {
     console.error("[notifications] notifyPremiumChanged failed:", e instanceof Error ? e.message : e);
@@ -365,30 +487,30 @@ export async function notifyCommissionVerification(
     const db = admin as any;
     const { data: pay } = await db
       .from("owner_commission_payments")
-      .select("commission_id, commissions(booking_id), hall_owners!owner_id(business_phone, profile_id, profiles!profile_id(phone, sms_notifications_enabled))")
+      .select(`commission_id, commissions(booking_id), hall_owners!owner_id(${OWNER_EMBED})`)
       .eq("id", paymentId)
       .maybeSingle();
     if (!pay) return;
 
-    const ownerRow = pay.hall_owners ?? null;
+    const owner = ownerRecipient(pay.hall_owners);
     const bId: string = pay.commissions?.booking_id ?? "";
-    const d: BookingSmsData = {
-      bookingRef: bId ? bookingRef(bId) : "—",
-      hallName: "", dateLabel: "",
-      reason: sanitizeSmsFreeText(note),
-    };
+    const ref = bId ? bookingRef(bId) : "—";
+    const cleanNote = sanitizeNotificationText(note);
+
     await dispatchAll([{
       eventKey: `commission.payment.${decision}:${paymentId}`,
       eventType: `commission.payment.${decision === "approve" ? "verified" : "rejected"}`,
       recipientType: "owner",
-      recipientUserId: ownerRow?.profile_id ?? null,
-      phone: pickPhone(ownerRow?.business_phone, ownerRow?.profiles?.phone),
-      message: decision === "approve"
-        ? ownerTemplates.commissionVerified(d)
-        : ownerTemplates.commissionRejected(d),
+      recipientUserId: owner.userId,
+      phone: owner.phone,
+      templateKey: "OWNER_ACCOUNT_UPDATE",
+      templateVariables: decision === "approve"
+        ? [`Commission payment verified for booking ${ref}.`, "Thank you — nothing further is due."]
+        : [`Commission payment for booking ${ref} could not be verified.`,
+           cleanNote ? `Note: ${cleanNote}. Please submit it again.` : "Please submit it again."],
       bookingId: bId || null,
       critical: true,
-      smsOptedIn: ownerRow?.profiles?.sms_notifications_enabled ?? true,
+      optedIn: owner.optedIn,
     }]);
   } catch (e) {
     console.error("[notifications] notifyCommissionVerification failed:", e instanceof Error ? e.message : e);
@@ -396,7 +518,7 @@ export async function notifyCommissionVerification(
 }
 
 /**
- * Overdue sweep alerts: one SMS per newly-overdue commission to its owner
+ * Overdue sweep alerts: one message per newly-overdue commission to its owner
  * (max once/day per commission — a rejected resubmission can go overdue again)
  * plus one daily summary to the admin.
  */
@@ -413,7 +535,7 @@ export async function notifyCommissionsOverdue(commissionIds: string[]): Promise
     for (let i = 0; i < commissionIds.length; i += 100) {
       const { data: chunk } = await db
         .from("commissions")
-        .select("id, booking_id, hall_owners!hall_owner_id(business_phone, profile_id, profiles!profile_id(phone, sms_notifications_enabled))")
+        .select(`id, booking_id, hall_owners!hall_owner_id(${OWNER_EMBED})`)
         .in("id", commissionIds.slice(i, i + 100));
       rows.push(...(chunk ?? []));
     }
@@ -422,27 +544,35 @@ export async function notifyCommissionsOverdue(commissionIds: string[]): Promise
     const requests: NotificationRequest[] = [];
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     for (const c of rows as any[]) {
-      const ownerRow = c.hall_owners ?? null;
+      const owner = ownerRecipient(c.hall_owners);
+      const ref = bookingRef(c.booking_id ?? "");
       requests.push({
         eventKey: `commission.overdue:${c.id}:${today}`,
         eventType: "commission.overdue",
         recipientType: "owner",
-        recipientUserId: ownerRow?.profile_id ?? null,
-        phone: pickPhone(ownerRow?.business_phone, ownerRow?.profiles?.phone),
-        message: ownerTemplates.commissionOverdue({
-          bookingRef: bookingRef(c.booking_id ?? ""), hallName: "", dateLabel: "",
-        }),
+        recipientUserId: owner.userId,
+        phone: owner.phone,
+        templateKey: "OWNER_ACCOUNT_UPDATE",
+        templateVariables: [
+          `Commission for booking ${ref} is overdue.`,
+          "Pay it from the Commissions page in your owner dashboard to avoid a settlement adjustment.",
+        ],
         bookingId: c.booking_id ?? null,
         critical: true,
-        smsOptedIn: ownerRow?.profiles?.sms_notifications_enabled ?? true,
+        optedIn: owner.optedIn,
       });
     }
+
+    const adminPhone = await getAdminNotificationPhone();
     requests.push(
-      adminRequest(
-        `commission.overdue.summary:${today}`,
-        "commission.overdue",
-        adminTemplates.commissionOverdue(commissionIds.length),
-      ),
+      adminAlert({
+        adminPhone,
+        eventKey: `commission.overdue.summary:${today}`,
+        eventType: "commission.overdue",
+        event: "Commissions overdue",
+        details: `${commissionIds.length} commission${commissionIds.length === 1 ? " is" : "s are"} now overdue.`,
+        reference: today,
+      }),
     );
 
     await dispatchAll(requests);
@@ -454,8 +584,18 @@ export async function notifyCommissionsOverdue(commissionIds: string[]): Promise
 /** Admin alert: new support ticket. */
 export async function notifyTicketCreated(ticketId: string, subject: string): Promise<void> {
   try {
+    const adminPhone = await getAdminNotificationPhone();
     await dispatchAll([
-      adminRequest(`ticket.created:${ticketId}`, "ticket.created", adminTemplates.supportTicket(subject)),
+      adminAlert({
+        adminPhone,
+        eventKey: `ticket.created:${ticketId}`,
+        eventType: "ticket.created",
+        event: "New support ticket",
+        // A ticket subject is user-supplied text landing in a branded message —
+        // sanitise it exactly like an owner's rejection note.
+        details: sanitizeNotificationText(subject, 120) ?? "No subject",
+        reference: `Ticket ${ticketId.slice(0, 8).toUpperCase()}`,
+      }),
     ]);
   } catch (e) {
     console.error("[notifications] notifyTicketCreated failed:", e instanceof Error ? e.message : e);

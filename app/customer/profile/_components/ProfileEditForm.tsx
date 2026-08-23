@@ -8,13 +8,13 @@ interface Props {
   initialName:  string | null;
   initialPhone: string | null;
   email:        string | null;
-  initialSmsEnabled?: boolean;
+  initialNotificationsEnabled?: boolean;
 }
 
-export function ProfileEditForm({ initialName, initialPhone, email, initialSmsEnabled = true }: Props) {
+export function ProfileEditForm({ initialName, initialPhone, email, initialNotificationsEnabled = true }: Props) {
   const [fullName, setFullName] = useState(initialName ?? "");
   const [phone,    setPhone]    = useState(initialPhone ?? "");
-  const [smsEnabled, setSmsEnabled] = useState<boolean>(initialSmsEnabled);
+  const [notifyEnabled, setNotifyEnabled] = useState<boolean>(initialNotificationsEnabled);
   const [loading,  setLoading]  = useState(false);
   const [message,  setMessage]  = useState<{ type: "success" | "error"; text: string } | null>(null);
 
@@ -22,7 +22,7 @@ export function ProfileEditForm({ initialName, initialPhone, email, initialSmsEn
     e.preventDefault();
     setLoading(true);
     setMessage(null);
-    const result = await updateProfile({ fullName, phone, smsNotificationsEnabled: smsEnabled });
+    const result = await updateProfile({ fullName, phone, notificationsEnabled: notifyEnabled });
     setLoading(false);
     if ("error" in result) {
       setMessage({ type: "error", text: result.error });
@@ -79,29 +79,29 @@ export function ProfileEditForm({ initialName, initialPhone, email, initialSmsEn
         />
       </div>
 
-      {/* SMS preference — non-critical messages only */}
+      {/* Notification preference — non-critical messages only */}
       <div className="flex items-start justify-between gap-3 rounded-xl border border-border bg-ivory-50 p-3">
         <div>
-          <p className="text-xs font-semibold text-charcoal-800">SMS updates</p>
+          <p className="text-xs font-semibold text-charcoal-800">WhatsApp updates</p>
           <p className="mt-0.5 text-[11px] leading-relaxed text-charcoal-500">
-            Optional updates by SMS. Essential booking and payment messages are always sent.
+            Optional updates on WhatsApp. Essential booking and payment messages are always sent.
           </p>
         </div>
         <button
           type="button"
           role="switch"
-          aria-checked={smsEnabled}
-          aria-label="SMS updates"
-          onClick={() => setSmsEnabled((v) => !v)}
+          aria-checked={notifyEnabled}
+          aria-label="WhatsApp updates"
+          onClick={() => setNotifyEnabled((v) => !v)}
           className={
             "relative mt-0.5 h-6 w-11 shrink-0 rounded-full transition-colors " +
-            (smsEnabled ? "bg-maroon-600" : "bg-charcoal-300")
+            (notifyEnabled ? "bg-maroon-600" : "bg-charcoal-300")
           }
         >
           <span
             className={
               "absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform " +
-              (smsEnabled ? "translate-x-[22px]" : "translate-x-0.5")
+              (notifyEnabled ? "translate-x-[22px]" : "translate-x-0.5")
             }
           />
         </button>

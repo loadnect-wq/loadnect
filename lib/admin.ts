@@ -858,7 +858,7 @@ export async function fetchAuditLog(opts: {
   };
 }
 
-// ── SMS notification center (migration 0026) ────────────────────────────────
+// ── WhatsApp notification center (migrations 0026 + 0030) ───────────────────
 // The outbox is written exclusively by the trusted backend (lib/notifications).
 // This fetcher runs on the ADMIN's session client, so RLS enforces is_admin().
 
@@ -878,6 +878,17 @@ export type AdminNotificationRow = {
   created_at:          string;
   sent_at:             string | null;
   failed_at:           string | null;
+  // WhatsApp (migration 0030). `status` is OUR send-side state; delivery_status
+  // is what WhatsApp reported afterwards over the status callback — a message
+  // can be status='sent' but delivery_status='undelivered'.
+  channel:             string | null;
+  template_key:        string | null;
+  template_sid:        string | null;
+  delivery_status:     string | null;
+  delivery_updated_at: string | null;
+  error_code:          string | null;
+  permanent_failure:   boolean | null;
+  test_mode:           boolean | null;
 };
 
 export type NotificationsPage = {
@@ -890,11 +901,23 @@ export type NotificationsPage = {
 
 const NOTIF_PAGE_SIZE = 50;
 
+/** Event-type prefixes behind each dashboard category chip. */
+const NOTIF_CATEGORY_PREFIXES: Record<string, string[]> = {
+  booking:    ["booking."],
+  payment:    ["payment.", "refund."],
+  hall:       ["hall."],
+  commission: ["commission.", "premium."],
+};
+
 export async function fetchNotifications(opts: {
-  status?:  string;
-  unread?:  boolean;
-  search?:  string;
-  page?:    number;
+  status?:    string;
+  unread?:    boolean;
+  search?:    string;
+  page?:      number;
+  /** customer | owner | admin */
+  recipient?: string;
+  /** booking | payment | hall | commission */
+  category?:  string;
 } = {}): Promise<NotificationsPage> {
   const supabase = await getSupabaseServerClient();
   const page = Math.max(1, Math.floor(opts.page ?? 1));
@@ -904,7 +927,10 @@ export async function fetchNotifications(opts: {
   let q = (supabase as any)
     .from("notifications")
     .select(
-      "id, event_type, recipient_type, recipient_phone, booking_id, hall_id, message, status, provider_message_id, error_message, attempt_count, is_read, created_at, sent_at, failed_at",
+      "id, event_type, recipient_type, recipient_phone, booking_id, hall_id, message, status, " +
+      "provider_message_id, error_message, attempt_count, is_read, created_at, sent_at, failed_at, " +
+      "channel, template_key, template_sid, delivery_status, delivery_updated_at, error_code, " +
+      "permanent_failure, test_mode",
       { count: "exact" },
     )
     .order("created_at", { ascending: false })
@@ -912,6 +938,16 @@ export async function fetchNotifications(opts: {
 
   if (opts.status) q = q.eq("status", opts.status);
   if (opts.unread) q = q.eq("is_read", false);
+
+  // Whitelisted, never interpolated: both values index fixed maps, so a crafted
+  // query string cannot reach the filter expression.
+  if (opts.recipient && ["customer", "owner", "admin"].includes(opts.recipient)) {
+    q = q.eq("recipient_type", opts.recipient);
+  }
+  const prefixes = opts.category ? NOTIF_CATEGORY_PREFIXES[opts.category] : undefined;
+  if (prefixes) {
+    q = q.or(prefixes.map((pre) => `event_type.like.${pre}*`).join(","));
+  }
   if (opts.search) {
     // Strip PostgREST `or` filter separators so search terms cannot alter the
     // filter expression.
@@ -941,6 +977,9 @@ export type NotificationStats = {
   totalSent:   number;
   totalFailed: number;
   totalSkipped: number;
+  totalPending: number;
+  /** Handed to Twilio successfully, but WhatsApp then reported non-delivery. */
+  undelivered: number;
   unread:      number;
   lastSentAt:  string | null;
   lastFailedAt: string | null;
@@ -952,13 +991,16 @@ export async function fetchNotificationStats(): Promise<NotificationStats> {
   const db = supabase as any;
 
   const empty: NotificationStats = {
-    totalSent: 0, totalFailed: 0, totalSkipped: 0, unread: 0, lastSentAt: null, lastFailedAt: null,
+    totalSent: 0, totalFailed: 0, totalSkipped: 0, totalPending: 0, undelivered: 0,
+    unread: 0, lastSentAt: null, lastFailedAt: null,
   };
   try {
-    const [sent, failed, skipped, unread, lastSent, lastFailed] = await Promise.all([
+    const [sent, failed, skipped, pending, undelivered, unread, lastSent, lastFailed] = await Promise.all([
       db.from("notifications").select("id", { count: "exact", head: true }).eq("status", "sent"),
       db.from("notifications").select("id", { count: "exact", head: true }).eq("status", "failed"),
       db.from("notifications").select("id", { count: "exact", head: true }).eq("status", "skipped"),
+      db.from("notifications").select("id", { count: "exact", head: true }).in("status", ["pending", "processing"]),
+      db.from("notifications").select("id", { count: "exact", head: true }).in("delivery_status", ["undelivered", "failed"]),
       db.from("notifications").select("id", { count: "exact", head: true }).eq("is_read", false),
       db.from("notifications").select("sent_at").eq("status", "sent").order("sent_at", { ascending: false }).limit(1).maybeSingle(),
       db.from("notifications").select("failed_at").eq("status", "failed").order("failed_at", { ascending: false }).limit(1).maybeSingle(),
@@ -967,6 +1009,8 @@ export async function fetchNotificationStats(): Promise<NotificationStats> {
       totalSent:    sent.count ?? 0,
       totalFailed:  failed.count ?? 0,
       totalSkipped: skipped.count ?? 0,
+      totalPending: pending.count ?? 0,
+      undelivered:  undelivered.count ?? 0,
       unread:       unread.count ?? 0,
       lastSentAt:   lastSent.data?.sent_at ?? null,
       lastFailedAt: lastFailed.data?.failed_at ?? null,

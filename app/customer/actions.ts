@@ -11,6 +11,7 @@ import {
 } from "@/lib/validation/schemas";
 import { sanitizeError } from "@/lib/errors";
 import { notifyBookingEvent } from "@/lib/notifications/events";
+import { normalizePhoneE164 } from "@/lib/notifications/phone";
 
 type ActionResult = { success: true } | { error: string };
 
@@ -62,7 +63,7 @@ export async function cancelBooking(
     .eq("customer_id", user.id);
 
   if (error) return { error: sanitizeError(error, "customer") };
-  // 0 rows = RLS filtered the write; do not report (or SMS) a cancellation
+  // 0 rows = RLS filtered the write; do not report (or notify) a cancellation
   // that never happened.
   if (count === 0) return { error: "This booking could not be cancelled." };
 
@@ -153,7 +154,7 @@ export async function submitReview(data: {
 export async function updateProfile(data: {
   fullName?: string;
   phone?:    string;
-  smsNotificationsEnabled?: boolean;
+  notificationsEnabled?: boolean;
 }): Promise<ActionResult> {
   const supabase = await getSupabaseServerClient();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -165,14 +166,27 @@ export async function updateProfile(data: {
   const parsed = parseSafe(profileUpdateSchema, data);
   if (!parsed.ok) return { error: parsed.error };
 
+  // NORMALISE before storing. profiles.phone previously took whatever the form
+  // sent, so the same person could be '9876543210' here and '+919876543210' on
+  // their booking — and WhatsApp needs E.164 exactly. Rejecting an
+  // un-normalisable number is better than silently storing one we can never
+  // message.
+  let normalisedPhone: string | null = null;
+  if (parsed.data.phone) {
+    normalisedPhone = normalizePhoneE164(parsed.data.phone);
+    if (!normalisedPhone) {
+      return { error: "Enter a valid mobile number, e.g. 98765 43210 or +91 98765 43210." };
+    }
+  }
+
   const updatePayload: Record<string, unknown> = {
     full_name: parsed.data.fullName || null,
-    phone:     parsed.data.phone    || null,
+    phone:     normalisedPhone,
   };
-  // §sms-preferences: controls NON-critical SMS only — critical transactional
-  // messages (booking/payment) are always sent regardless of this flag.
-  if (typeof data.smsNotificationsEnabled === "boolean") {
-    updatePayload.sms_notifications_enabled = data.smsNotificationsEnabled;
+  // Controls NON-critical messages only — critical transactional messages
+  // (booking/payment) are always sent regardless of this flag.
+  if (typeof data.notificationsEnabled === "boolean") {
+    updatePayload.whatsapp_notifications_enabled = data.notificationsEnabled;
   }
 
   let { error } = await db
@@ -182,8 +196,8 @@ export async function updateProfile(data: {
 
   // Unknown column (pre-0026): PostgREST reports it as PGRST204, Postgres as
   // 42703 — retry without it so profile edits still work on un-migrated DBs.
-  if ((error?.code === "42703" || error?.code === "PGRST204") && "sms_notifications_enabled" in updatePayload) {
-    delete updatePayload.sms_notifications_enabled;
+  if ((error?.code === "42703" || error?.code === "PGRST204") && "whatsapp_notifications_enabled" in updatePayload) {
+    delete updatePayload.whatsapp_notifications_enabled;
     ({ error } = await db.from("profiles").update(updatePayload).eq("id", user.id));
   }
 

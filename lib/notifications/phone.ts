@@ -37,7 +37,7 @@ export function normalizePhoneE164(raw: string): string | null {
   } else {
     // No "+" and not a recognisable Indian format: REJECT rather than guess.
     // Blindly prepending "+" turned a 9-digit Indian typo ("934404001") into a
-    // structurally valid Afghanistan number (+93...) — an SMS to a stranger in
+    // structurally valid Afghanistan number (+93...) — a message to a stranger in
     // the wrong country. International numbers must include their "+CC".
     return null;
   }
@@ -65,14 +65,15 @@ export function maskPhone(phone: string | null | undefined): string {
 }
 
 /**
- * Sanitizes free text (owner rejection notes, admin reasons) before it is
- * interpolated into a branded SMS. The SMS arrives as "HALLNECT: …", so any
- * text we embed inherits the platform's credibility — a malicious venue owner
- * must not be able to smuggle a phishing link or a call-this-number scam into
- * an official message. Strips URL-shaped tokens, @handles, and long digit runs
- * (phone numbers / account numbers), then caps the length.
+ * Sanitizes free text (owner rejection notes, admin reasons, ticket subjects)
+ * before it is interpolated into a branded WhatsApp message. The message
+ * arrives from Hallnect's verified business sender, so any text we embed
+ * inherits the platform's credibility — a malicious venue owner must not be
+ * able to smuggle a phishing link or a call-this-number scam into an official
+ * message. Strips URL-shaped tokens, @handles, and long digit runs (phone
+ * numbers / account numbers), then caps the length.
  */
-export function sanitizeSmsFreeText(raw: string | null | undefined, maxLen = 140): string | null {
+export function sanitizeNotificationText(raw: string | null | undefined, maxLen = 140): string | null {
   if (!raw) return null;
   const cleaned = raw
     .replace(/https?:\/\/\S+/gi, "")            // explicit URLs

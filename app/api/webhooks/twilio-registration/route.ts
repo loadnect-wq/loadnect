@@ -12,7 +12,7 @@
 // switch — see lib/twilio.ts), so this does not need to update any database
 // row; it verifies the request is genuinely from Twilio and logs the outcome
 // so it's visible in Vercel's function logs without you having to check the
-// Twilio console. If a future feature needs to react to this (e.g. block SMS
+// Twilio console. If a future feature needs to react to this (e.g. block message
 // sends until a campaign is approved), extend the handler below rather than
 // building a second endpoint.
 //
@@ -30,7 +30,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { NextResponse } from "next/server";
-import { verifyTwilioWebhookSignature } from "@/lib/twilio";
+import { verifyTwilioWebhookSignature, twilioCandidateOrigins } from "@/lib/twilio/signature";
 import { getCanonicalAppUrl } from "@/lib/app-url";
 
 export const runtime = "nodejs";        // crypto for signature verification
@@ -45,18 +45,11 @@ export async function POST(request: Request) {
   // from our own canonical config rather than the Host header, so a spoofed
   // Host can't change what we verify against — but BOTH the apex and www hosts
   // are accepted, because either may legitimately have been pasted into the
-  // Twilio console and both serve this site.
-  const canonical = getCanonicalAppUrl();
-  const candidateOrigins = Array.from(new Set([
-    canonical,
-    canonical.includes("://www.")
-      ? canonical.replace("://www.", "://")
-      : canonical.replace("://", "://www."),
-  ]));
-
+  // Twilio console and both serve this site. Shared with the WhatsApp
+  // status-callback route so the two cannot drift apart.
   const result = verifyTwilioWebhookSignature({
     requestUrl: request.url,   // carries ?bodySHA256=… which the JSON scheme signs
-    candidateOrigins,
+    candidateOrigins: twilioCandidateOrigins(getCanonicalAppUrl()),
     signature,
     rawBody,
     contentType,

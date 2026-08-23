@@ -333,7 +333,7 @@ export async function verifyAndApplyPayment(orderId: string): Promise<ApplyPayme
     // d) Notify: payment confirmation to all parties, and the "your hall has
     //    been booked" owner alert — fired only now that the booking is REAL
     //    (verified PAID + transitioned), never from a page view. Idempotent
-    //    via outbox dedupe keys; SMS failures never fail the payment.
+    //    via outbox dedupe keys; notification failures never fail the payment.
     await notifyBookingEvent("payment.success", payment.booking_id, { amount: Number(payment.amount) });
     await notifyBookingEvent("booking.requested", payment.booking_id);
 

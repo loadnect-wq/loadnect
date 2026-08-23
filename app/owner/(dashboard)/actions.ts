@@ -19,6 +19,7 @@ import {
 } from "@/lib/validation/schemas";
 import { sanitizeError } from "@/lib/errors";
 import { notifyBookingEvent, notifyHallSubmitted } from "@/lib/notifications/events";
+import { normalizePhoneE164 } from "@/lib/notifications/phone";
 import { isCashfreeConfigured } from "@/lib/cashfree";
 import { startCommissionPayment, verifyAndApplyCommissionPayment } from "@/lib/commission-payments";
 import { payOwnerOnAcceptance } from "@/lib/owner-payout";
@@ -115,7 +116,7 @@ export async function upsertOwnerRow(data: {
 export async function updateOwnerProfileName(data: {
   fullName: string;
   phone:    string;
-  smsNotificationsEnabled?: boolean;
+  notificationsEnabled?: boolean;
 }): Promise<ActionResult> {
   const { supabase, user } = await getAuthUser();
   if (!user) return { error: "Not authenticated" };
@@ -126,13 +127,24 @@ export async function updateOwnerProfileName(data: {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = supabase as any;
 
+  // NORMALISE before storing, exactly as the customer profile does: WhatsApp
+  // needs E.164, and a profile phone stored in some other shape is a number we
+  // can never message.
+  let normalisedPhone: string | null = null;
+  if (parsed.data.phone) {
+    normalisedPhone = normalizePhoneE164(parsed.data.phone);
+    if (!normalisedPhone) {
+      return { error: "Enter a valid mobile number, e.g. 98765 43210 or +91 98765 43210." };
+    }
+  }
+
   const updatePayload: Record<string, unknown> = {
     full_name: parsed.data.fullName || null,
-    phone:     parsed.data.phone    || null,
+    phone:     normalisedPhone,
   };
-  // Non-critical SMS preference only — critical booking/payment SMS always send.
-  if (typeof data.smsNotificationsEnabled === "boolean") {
-    updatePayload.sms_notifications_enabled = data.smsNotificationsEnabled;
+  // Non-critical preference only — critical booking/payment messages always send.
+  if (typeof data.notificationsEnabled === "boolean") {
+    updatePayload.whatsapp_notifications_enabled = data.notificationsEnabled;
   }
 
   let { error } = await db
@@ -142,8 +154,8 @@ export async function updateOwnerProfileName(data: {
 
   // Unknown column (pre-0026): PostgREST reports it as PGRST204, Postgres as
   // 42703 — retry without it.
-  if ((error?.code === "42703" || error?.code === "PGRST204") && "sms_notifications_enabled" in updatePayload) {
-    delete updatePayload.sms_notifications_enabled;
+  if ((error?.code === "42703" || error?.code === "PGRST204") && "whatsapp_notifications_enabled" in updatePayload) {
+    delete updatePayload.whatsapp_notifications_enabled;
     ({ error } = await db.from("profiles").update(updatePayload).eq("id", user.id));
   }
 
@@ -624,7 +636,7 @@ export async function acceptBooking(bookingId: string): Promise<ActionResult> {
 
   if (error) return { error: sanitizeError(error, "owner") };
   // 0 rows = not this owner's booking (RLS) or not in a confirmable state.
-  // Without this check we would report success — and SMS "confirmed!" —
+  // Without this check we would report success — and message "confirmed!" —
   // for a change that never happened.
   if (count === 0) return { error: "This booking cannot be confirmed (it may have changed state)." };
 
