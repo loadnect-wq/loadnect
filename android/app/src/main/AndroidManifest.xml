@@ -89,10 +89,13 @@
         </activity>
 
         <!-- Camera capture writes to a private cache path; the camera app is
-             granted one-shot URI access through this provider. -->
+             granted one-shot URI access through this provider. The authority
+             must track the applicationId — the debug build's ".debug" suffix
+             would otherwise collide with the release install on one device
+             (provider authorities are globally unique per Android). -->
         <provider
             android:name="androidx.core.content.FileProvider"
-            android:authorities="com.hallnect.app.fileprovider"
+            android:authorities="${applicationId}.fileprovider"
             android:exported="false"
             android:grantUriPermissions="true">
             <meta-data

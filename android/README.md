@@ -38,6 +38,12 @@ cd android
 Requires JDK 17 and the Android SDK (`ANDROID_HOME`, platform 36,
 build-tools). First build downloads Gradle 8.11.1 via the wrapper.
 
+If the checkout lives in a cloud-synced folder (OneDrive/Dropbox), set
+`buildRoot=<plain local path>` in `local.properties` — the sync client
+otherwise holds locks on `build/` intermediates and randomly fails builds
+with `IOException`/`AccessDenied`. With it set, all outputs land under
+`<buildRoot>/app/` instead of `app/build/`.
+
 ## Release signing
 
 `bundleRelease` expects `android/keystore.properties` (gitignored):

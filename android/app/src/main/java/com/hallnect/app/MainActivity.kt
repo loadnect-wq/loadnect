@@ -376,7 +376,7 @@ class MainActivity :
         val photoDir = File(cacheDir, "camera").apply { mkdirs() }
         val photoFile = File.createTempFile("hall_", ".jpg", photoDir)
         val uri = FileProvider.getUriForFile(
-            this, "com.hallnect.app.fileprovider", photoFile,
+            this, "$packageName.fileprovider", photoFile,
         )
         pendingCameraUri = uri
         Intent(MediaStore.ACTION_IMAGE_CAPTURE).apply {
