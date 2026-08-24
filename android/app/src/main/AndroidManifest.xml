@@ -69,18 +69,21 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
-            <!-- Android App Links for hallnect.com. autoVerify requires
-                 https://hallnect.com/.well-known/assetlinks.json to list the
-                 RELEASE signing certificate fingerprint — the web app serves
-                 it from the ANDROID_ASSETLINKS_SHA256 environment variable.
-                 Until verified, these links simply keep opening in the
-                 browser; nothing breaks. -->
+            <!-- Android App Links — WWW HOST ONLY, deliberately.
+                 autoVerify fetches /.well-known/assetlinks.json from every
+                 declared host and does NOT follow redirects; the apex
+                 hallnect.com 301s to www at the edge, so declaring it would
+                 fail verification — and on Android ≤11 one failing host sinks
+                 the whole filter, killing the OAuth-callback round trip.
+                 Everything canonical (including the Supabase callback) lives
+                 on www; apex links open in the browser and redirect there.
+                 The web app serves the file from ANDROID_ASSETLINKS_SHA256.
+                 Until verified, links open in the browser; nothing breaks. -->
             <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="https" />
-                <data android:host="hallnect.com" />
                 <data android:host="www.hallnect.com" />
             </intent-filter>
         </activity>
