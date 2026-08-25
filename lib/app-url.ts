@@ -84,12 +84,25 @@ function parseOrigin(raw: string | undefined): string | null {
  *                               var can never route auth to a dead domain
  *   4. the browser origin / localhost — local development
  */
+/** True when an origin names a host that does not serve the app. */
+function isNonServingHost(origin: string): boolean {
+  try {
+    return RETIRED_HOSTS.has(new URL(origin).host);
+  } catch {
+    return true;
+  }
+}
+
 export function getCanonicalAppUrl(): string {
+  // BOTH overrides are filtered through the same guard. NEXT_PUBLIC_SITE_URL
+  // used to bypass it, which is how a stale www value survived the apex
+  // cut-over and kept every canonical pointing at a redirect: the highest-
+  // priority variable was the one input nothing validated.
   const site = parseOrigin(process.env.NEXT_PUBLIC_SITE_URL);
-  if (site) return site;
+  if (site && !isNonServingHost(site)) return site;
 
   const app = parseOrigin(process.env.NEXT_PUBLIC_APP_URL);
-  if (app && !RETIRED_HOSTS.has(new URL(app).host)) return app;
+  if (app && !isNonServingHost(app)) return app;
 
   if (process.env.NODE_ENV === "production") return PRODUCTION_ORIGIN;
 
