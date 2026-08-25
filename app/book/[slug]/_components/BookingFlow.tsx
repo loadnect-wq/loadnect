@@ -17,7 +17,7 @@ import type { DaySlotAvailability } from "@/lib/availability";
 import { createBookingRequest, createPaymentSession, submitManualBookingRequest, type CreateBookingResult } from "../actions";
 import { todayInBusinessTz, addDaysToIsoDate, isoDateToLabelDate, isoDateRange, daysBetweenInclusive } from "@/lib/dates";
 import { isValidPhoneNumber } from "@/lib/notifications/phone";
-import { ADVANCE_RATE, PLATFORM_FEE_RUPEES } from "@/lib/booking-payment";
+import { advanceFromTotal, PLATFORM_FEE_RUPEES } from "@/lib/booking-payment";
 
 const STEPS = ["Date", "Slot", "Details", "Summary", "Pay", "Done"] as const;
 type StepIndex = number;
@@ -82,7 +82,6 @@ const EVENT_TYPES = ["Wedding", "Reception", "Engagement", "Birthday", "Corporat
 // Display-only preview constants from the ONE central money module
 // (lib/booking-payment.ts — pure, client-safe). The server recomputes every
 // authoritative figure in createBookingRequest; these only paint the preview.
-const DISPLAY_ADVANCE_RATE = ADVANCE_RATE;
 const DISPLAY_PLATFORM_FEE = PLATFORM_FEE_RUPEES;
 
 export type BookingHall = {
@@ -157,9 +156,12 @@ export function BookingFlow({ hall, availability, windowDays, onlinePaymentEnabl
   // PLATFORM FEE now, and the balance directly at the venue. Nothing else is
   // ever added — Hallnect's commission is settled with the venue, not billed
   // to the customer.
+  // advanceFromTotal is the SAME helper the server uses, so the figure previewed
+  // here is exactly the figure Cashfree will charge — a preview that rounds
+  // differently from the charge is a support ticket waiting to happen.
   const totalAmount = baseAmount;
-  const advance     = Math.round(totalAmount * DISPLAY_ADVANCE_RATE);
-  const payNowTotal = advance + DISPLAY_PLATFORM_FEE;
+  const advance     = totalAmount > 0 ? advanceFromTotal(totalAmount) : 0;
+  const payNowTotal = advance > 0 ? advance + DISPLAY_PLATFORM_FEE : 0;
 
   // Everything that determines what is being bought. Any change invalidates a
   // previously created pending booking.

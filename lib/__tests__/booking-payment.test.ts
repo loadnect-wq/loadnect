@@ -179,6 +179,24 @@ describe("computeOwnerShare — the split never hands the owner the platform fee
   });
 });
 
+describe("checkout preview matches the actual charge", () => {
+  // BookingFlow previews `advanceFromTotal(total) + PLATFORM_FEE_RUPEES`;
+  // startPaymentForBooking charges the booking's stored advance + the same fee.
+  // Both go through these helpers, so the preview can never round differently
+  // from the money that leaves the customer's account.
+  const hallPrices = [200, 1_500, 12_000, 29_400, 40_000, 55_555, 125_000, 999_999];
+  for (const total of hallPrices) {
+    it(`hall total ₹${total}: previewed total equals the charged total`, () => {
+      const advance = advanceFromTotal(total);
+      const previewed = advance + PLATFORM_FEE_RUPEES;
+      const charged = calculateBookingPayment({
+        advanceAmount: advance, commissionRate: 2.5,
+      }).customerTotal;
+      expect(previewed).toBe(charged);
+    });
+  }
+});
+
 describe("server-authoritative amounts (frontend manipulation)", () => {
   it("the calculation takes no client input — identical output for identical DB state", () => {
     // Every caller derives advance from the DB total and the rate from
