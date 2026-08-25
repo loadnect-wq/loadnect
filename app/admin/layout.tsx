@@ -1,9 +1,17 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { Shield } from "lucide-react";
 import { requireRole } from "@/lib/auth";
 import { fetchAdminStats } from "@/lib/admin";
 import { AdminSidebarNav } from "./_components/AdminSidebarNav";
 import { AdminMobileNav } from "./_components/AdminMobileNav";
+
+// SEO: this whole subtree is private. Declaring robots ONCE on the layout means
+// every nested page inherits noindex — a new page added under here cannot leak
+// into the index by forgetting a directive.
+export const metadata: Metadata = {
+  robots: { index: false, follow: false, nocache: true },
+};
 
 export default async function AdminLayout({
   children,

@@ -1,9 +1,12 @@
 import type { Metadata } from "next";
+import { buildMetadata } from "@/lib/seo/metadata";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = buildMetadata({
   title: "Refund Policy",
-  description: "Hallnect Refund Policy — when and how refunds are issued for hall bookings.",
-};
+  description:
+    "When a Hallnect booking advance is refundable, the cancellation refund schedule, and how the flat platform fee is treated on customer and venue cancellations.",
+  path: "/refund-policy",
+});
 
 export default function RefundPolicyPage() {
   return (

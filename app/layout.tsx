@@ -59,8 +59,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           {children}
         </main>
 
-        {/* Desktop footer (hidden on mobile to preserve app feel) */}
-        <div className="hidden lg:block">
+        {/* Footer — rendered at EVERY viewport.
+            SEO: it used to sit inside `hidden lg:block`. Google indexes
+            mobile-first at a ~412px viewport, so display:none removed the
+            entire site-wide link graph (cities, categories, legal, contact)
+            from what Googlebot could see and follow. The app feel is preserved
+            by the padding below, which keeps the footer clear of BottomNav. */}
+        <div className="pb-[calc(var(--bottom-nav-h,4.5rem)+env(safe-area-inset-bottom))] lg:pb-0">
           <Footer />
         </div>
 

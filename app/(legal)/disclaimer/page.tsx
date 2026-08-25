@@ -1,9 +1,12 @@
 import type { Metadata } from "next";
+import { buildMetadata } from "@/lib/seo/metadata";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = buildMetadata({
   title: "Disclaimer",
-  description: "Hallnect Disclaimer — important limitations and disclosures about using our platform.",
-};
+  description:
+    "Hallnect is a venue discovery and booking marketplace. What we verify, what remains the venue owner's responsibility, and the limits of our liability.",
+  path: "/disclaimer",
+});
 
 export default function DisclaimerPage() {
   return (

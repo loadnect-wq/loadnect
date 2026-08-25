@@ -7,6 +7,8 @@ import { CARD_GRADIENTS } from "@/lib/mock-data";
 import { type HallImage } from "@/lib/halls";
 
 interface Props {
+  /** Venue city — makes each photo's alt text specific and locally relevant. */
+  hallCity?: string;
   images:   HallImage[];
   hallName: string;
   hallId:   string;
@@ -18,7 +20,7 @@ function gradientForId(id: string): string {
   return CARD_GRADIENTS[Math.abs(hash) % CARD_GRADIENTS.length];
 }
 
-export function ImageGallery({ images, hallName, hallId }: Props) {
+export function ImageGallery({ images, hallName, hallCity, hallId }: Props) {
   const [current, setCurrent] = useState(0);
   const trackRef = useRef<HTMLDivElement>(null);
   const total = images.length;
@@ -70,7 +72,13 @@ export function ImageGallery({ images, hallName, hallId }: Props) {
           >
             <Image
               src={img.url}
-              alt={img.alt_text ?? hallName}
+              alt={
+                img.alt_text?.trim()
+                  ? img.alt_text
+                  : i === 0
+                    ? `${hallName}, a wedding hall in ${hallCity ?? "Tamil Nadu"}`
+                    : `${hallName} in ${hallCity ?? "Tamil Nadu"} — photo ${i + 1}`
+              }
               fill
               sizes="100vw"
               className="object-cover"

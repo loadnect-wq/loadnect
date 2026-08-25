@@ -1,9 +1,12 @@
 import type { Metadata } from "next";
+import { buildMetadata } from "@/lib/seo/metadata";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = buildMetadata({
   title: "Privacy Policy",
-  description: "Hallnect Privacy Policy — how we collect, use, and protect your personal information.",
-};
+  description:
+    "How Hallnect collects, uses and protects your personal data — what we store for bookings, who we share it with, and how to request deletion.",
+  path: "/privacy",
+});
 
 export default function PrivacyPage() {
   return (

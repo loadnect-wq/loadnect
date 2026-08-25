@@ -38,7 +38,7 @@ export function HallCard({ hall }: HallCardProps) {
         {hall.cover_url ? (
           <Image
             src={hall.cover_url}
-            alt={hall.name}
+            alt={`${hall.name}, a wedding hall in ${hall.city}`}
             fill
             sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
             className="object-cover"

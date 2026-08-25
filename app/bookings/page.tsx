@@ -1,11 +1,13 @@
 import type { Metadata } from "next";
+import { noindexMetadata } from "@/lib/seo/metadata";
 import Link from "next/link";
 import { CalendarCheck, ChevronRight, Clock, MapPin } from "lucide-react";
 import { AppHeader } from "@/components/app/AppHeader";
 import { EmptyState } from "@/components/ui/empty-state";
 import { buttonVariants } from "@/components/ui/Button";
 
-export const metadata: Metadata = { title: "My Bookings" };
+// SEO: private/transactional page — must never be indexed.
+export const metadata: Metadata = noindexMetadata("My Bookings");
 
 // Mock — would come from DB once integrated
 const MOCK_BOOKINGS: {

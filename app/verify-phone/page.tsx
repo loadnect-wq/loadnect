@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { noindexMetadata } from "@/lib/seo/metadata";
 import { redirect } from "next/navigation";
 import { ShieldCheck } from "lucide-react";
 import { getProfile } from "@/lib/auth";
@@ -7,7 +8,8 @@ import { isTwilioConfigured } from "@/lib/twilio";
 import { AppHeader } from "@/components/app/AppHeader";
 import { OtpForm } from "./_components/OtpForm";
 
-export const metadata: Metadata = { title: "Verify Phone" };
+// SEO: private/transactional page — must never be indexed.
+export const metadata: Metadata = noindexMetadata("Verify Phone");
 
 // Any signed-in role may verify their phone; verification never changes roles.
 export default async function VerifyPhonePage() {

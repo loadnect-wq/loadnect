@@ -13,6 +13,13 @@ import { AdSlot } from "@/components/ads/AdSlot";
 import { HeroSearch } from "@/components/sections/HeroSearch";
 import { HallCard } from "@/app/halls/_components/HallCard";
 import { fetchHalls, type HallListing } from "@/lib/halls";
+import type { Metadata } from "next";
+import { buildMetadata } from "@/lib/seo/metadata";
+import { JsonLd } from "@/components/seo/JsonLd";
+import {
+  jsonLdGraph, organizationJsonLd, websiteJsonLd, faqJsonLd,
+} from "@/lib/seo/jsonld";
+import { fetchCityInventory } from "@/lib/seo/cities";
 
 const CATEGORIES = [
   { key: "wedding",   label: "Wedding Halls",   icon: "heart",      href: "/halls?category=wedding"   },
@@ -37,23 +44,31 @@ const CATEGORY_ICONS: Record<string, React.ReactNode> = {
 };
 
 const HOW_IT_WORKS = [
-  { step: "01", title: "Discover", body: "Browse hundreds of verified wedding halls across India with detailed photos and real reviews." },
+  { step: "01", title: "Discover", body: "Browse verified wedding halls across Tamil Nadu with real photos, capacity, pricing and amenities." },
   { step: "02", title: "Compare",  body: "Filter by city, capacity, budget, and amenities. Check availability instantly." },
   { step: "03", title: "Book",     body: "Pay a small advance to secure your date. Settle the balance with the venue directly." },
 ];
 
 const FAQ_ITEMS = [
   { q: "How do I book a venue?",
-    a: "Search and pick a hall, choose a date and slot, and pay the 25% advance through our secure payment partner. You'll get an instant confirmation." },
+    a: "Pick a hall, choose your date and slot, then pay the 25% advance plus the Rs 200 platform fee through Cashfree. Your booking is confirmed once the venue owner accepts it." },
   { q: "Is the advance payment refundable?",
-    a: "Refund eligibility depends on when you cancel. See our Refund Policy — full refund up to 30 days before the event, partial up to 7 days." },
+    a: "It depends when you cancel: the full advance is refundable more than 30 days before the event, and partially up to 7 days before. The Rs 200 platform fee is non-refundable on customer cancellations." },
   { q: "Can I see the venue before booking?",
     a: "Yes. We strongly recommend visiting in person. Contact details for the venue owner are shared once a booking is confirmed." },
   { q: "How much does Hallnect charge?",
-    a: "Hallnect charges a small platform fee (currently 5%) on each booking. There are no hidden fees." },
+    a: "You pay the venue advance plus a flat platform fee of Rs 200 at checkout, shown clearly before you pay. There are no other charges from Hallnect." },
   { q: "I'm a venue owner — how do I list?",
     a: "Register as an owner, complete your business profile, and submit your venue for approval. Listings are reviewed within 48 hours." },
 ];
+
+export const metadata: Metadata = buildMetadata({
+  title: "Wedding Halls & Marriage Halls in Tamil Nadu",
+  description:
+    "Find and book verified wedding halls, marriage halls and event venues across Tamil Nadu. " +
+    "Compare real photos, capacity, pricing and availability, then reserve your date online.",
+  path: "/",
+});
 
 export default async function HomePage() {
   // Featured = real APPROVED halls from Supabase (RLS-filtered), top-rated first.
@@ -61,9 +76,24 @@ export default async function HomePage() {
   // never link to a slug that 404s.
   const featured: HallListing[] = (await fetchHalls({ sort: "rating" })).slice(0, 6);
   const cities = POPULAR_CITIES.slice(0, 8);
+  // Real approved-venue counts, so the city links below point at pages that
+  // actually have something on them (lib/seo/cities.ts).
+  const cityInventory = await fetchCityInventory();
+  const citiesWithVenues = cityInventory.filter((c) => c.venueCount > 0);
 
   return (
     <div className="bg-ivory-100">
+      {/* Organization + WebSite + the FAQ that is genuinely rendered below.
+          FAQPage markup is only legitimate when the answers are visible on the
+          page, which they are (the SEO section further down renders every
+          FAQ_ITEMS entry at all viewports). */}
+      <JsonLd
+        data={jsonLdGraph(
+          organizationJsonLd(),
+          websiteJsonLd(),
+          faqJsonLd(FAQ_ITEMS.map((f) => ({ q: f.q, a: f.a }))),
+        )}
+      />
       {/* ════════════════════════════════════════════════════════
           MOBILE — app-style stack (lg:hidden)
           ════════════════════════════════════════════════════════ */}
@@ -74,8 +104,11 @@ export default async function HomePage() {
           <div className="flex items-end justify-between gap-3">
             <div>
               <p className="text-xs font-semibold uppercase tracking-widest text-maroon-500">Welcome</p>
+              {/* THE page H1. Google indexes mobile-first, so the keyword- and
+                  location-bearing heading must live in the MOBILE tree — the
+                  desktop hero below is display:none to Googlebot. */}
               <h1 className="mt-1 font-serif text-2xl font-bold text-charcoal-900">
-                Find your perfect venue
+                Wedding Halls &amp; Marriage Halls in Tamil Nadu
               </h1>
             </div>
           </div>
@@ -147,12 +180,16 @@ export default async function HomePage() {
               <span className="inline-flex items-center gap-1.5 rounded-full border border-gold-400/40 bg-white/5 px-3 py-1 text-[11px] font-semibold uppercase tracking-widest text-gold-300 backdrop-blur">
                 <Sparkles className="h-3 w-3" /> India&apos;s Premium Wedding Venue Marketplace
               </span>
-              <h1 className="mt-5 font-serif text-5xl font-bold leading-tight text-ivory-100 xl:text-6xl">
+              {/* Visually the desktop hero headline, but NOT an <h1>: the
+                  homepage already emits its H1 in the mobile tree above, and
+                  two H1s in one document is what a crawler actually receives
+                  (both trees ship in the same HTML). */}
+              <p className="mt-5 font-serif text-5xl font-bold leading-tight text-ivory-100 xl:text-6xl">
                 Find the venue that makes your day{" "}
                 <span className="bg-gradient-to-r from-gold-300 to-gold-500 bg-clip-text text-transparent">
                   unforgettable
                 </span>
-              </h1>
+              </p>
               <p className="mx-auto mt-5 max-w-xl text-base text-ivory-300/90">
                 Discover, compare, and book verified wedding halls across India.
                 Transparent pricing, real photos, instant confirmation.
@@ -338,6 +375,80 @@ export default async function HomePage() {
           </div>
         </section>
       </div>
+
+      {/* ════════════════════════════════════════════════════════
+          SHARED SEO CONTENT — rendered at EVERY viewport.
+          The rest of this page is split into a mobile tree (lg:hidden) and a
+          desktop tree (hidden lg:block). Google indexes mobile-first, so
+          anything living only in the desktop tree is display:none to the
+          crawler. This block sits outside both, so the copy that explains what
+          Hallnect is — and the links into the city pages — are always crawlable.
+          ════════════════════════════════════════════════════════ */}
+      <section className="container-app border-t border-border py-10">
+        <h2 className="font-serif text-xl font-bold text-charcoal-900">
+          Wedding halls and marriage halls across Tamil Nadu
+        </h2>
+        <div className="mt-3 space-y-3 text-sm leading-relaxed text-charcoal-600">
+          <p>
+            Hallnect is a booking platform for wedding halls, marriage halls, reception
+            venues and banquet halls in Tamil Nadu. Every venue is reviewed by our team
+            before it goes live, so the photos, seating capacity and pricing you compare
+            are the venue&apos;s own — not a stock listing.
+          </p>
+          <p>
+            Check which dates are free, see the advance payable before you commit, and
+            reserve online. The balance is settled directly with the venue, and booking
+            updates reach you on WhatsApp at every step.
+          </p>
+        </div>
+
+        {citiesWithVenues.length > 0 && (
+          <div className="mt-6">
+            <h3 className="text-sm font-semibold text-charcoal-900">Browse by city</h3>
+            <ul className="mt-2 flex flex-wrap gap-2">
+              {citiesWithVenues.map((c) => (
+                <li key={c.slug}>
+                  <Link
+                    href={`/wedding-halls/${c.slug}`}
+                    className="inline-block rounded-full border border-border bg-white px-3 py-1.5 text-xs font-medium text-charcoal-700 transition hover:border-maroon-300 hover:text-maroon-700"
+                  >
+                    Wedding halls in {c.city}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        <div className="mt-6">
+          <h3 className="text-sm font-semibold text-charcoal-900">Popular searches</h3>
+          <ul className="mt-2 flex flex-wrap gap-2 text-xs">
+            {CATEGORIES.slice(0, 6).map((c) => (
+              <li key={c.key}>
+                <Link href={c.href} className="text-maroon-700 underline-offset-2 hover:underline">
+                  {c.label} in Tamil Nadu
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        {/* The FAQ answers that the FAQPage JSON-LD above declares. Visible at
+            every viewport, which is what makes the markup eligible. */}
+        <div className="mt-8">
+          <h3 className="font-serif text-lg font-bold text-charcoal-900">
+            Frequently asked questions
+          </h3>
+          <dl className="mt-3 space-y-4">
+            {FAQ_ITEMS.map((f) => (
+              <div key={f.q}>
+                <dt className="text-sm font-semibold text-charcoal-900">{f.q}</dt>
+                <dd className="mt-1 text-sm leading-relaxed text-charcoal-600">{f.a}</dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+      </section>
     </div>
   );
 }
@@ -444,6 +555,7 @@ function EmptyVenues() {
           List your venue
         </Link>
       </div>
+
     </div>
   );
 }

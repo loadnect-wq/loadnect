@@ -1,5 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 import type { Metadata } from "next";
+import { noindexMetadata } from "@/lib/seo/metadata";
 import { getSession } from "@/lib/auth";
 import { fetchHallBySlug } from "@/lib/halls";
 import { fetchHallAvailabilityWindow } from "@/lib/availability";
@@ -13,7 +14,9 @@ type Props = { params: Promise<{ slug: string }> };
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params;
   const hall = await fetchHallBySlug(slug);
-  return { title: hall ? `Book ${hall.name}` : "Book Hall" };
+  // SEO: the checkout wizard is transactional and auth-gated — never indexed.
+  // The public, indexable page for this venue is /halls/[slug].
+  return noindexMetadata(hall ? `Book ${hall.name}` : "Book Hall");
 }
 
 const BOOKING_WINDOW_DAYS = 60;

@@ -1,9 +1,12 @@
 import type { Metadata } from "next";
+import { buildMetadata } from "@/lib/seo/metadata";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = buildMetadata({
   title: "Terms and Conditions",
-  description: "Hallnect Terms and Conditions — rules governing use of our platform.",
-};
+  description:
+    "The terms governing use of Hallnect — bookings, advance payments, the flat platform fee, venue owner obligations and platform liability.",
+  path: "/terms",
+});
 
 export default function TermsPage() {
   return (

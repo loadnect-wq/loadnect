@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { buildMetadata } from "@/lib/seo/metadata";
 import Link from "next/link";
 import { CheckCircle2, Zap } from "lucide-react";
 import { buttonVariants } from "@/components/ui/Button";
@@ -7,11 +8,12 @@ import { SectionHeader } from "@/components/sections/SectionHeader";
 import { PREMIUM_TIERS } from "@/lib/content";
 import { cn } from "@/lib/utils";
 
-export const metadata: Metadata = {
-  title: "Premium Listings — Boost Your Hall's Visibility",
+export const metadata: Metadata = buildMetadata({
+  title: "Premium Listings for Venue Owners",
   description:
-    "Premium listing plans for hall owners on Hallnect — get top placement in Tamil Nadu search results and on the homepage.",
-};
+    "Premium listing plans for hall owners on Hallnect — top placement in Tamil Nadu search results and on the homepage, so more couples find your venue.",
+  path: "/premium",
+});
 
 function formatPrice(n: number) {
   return `₹${n.toLocaleString("en-IN")}`;

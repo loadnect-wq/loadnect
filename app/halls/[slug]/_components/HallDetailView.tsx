@@ -126,7 +126,7 @@ export function HallDetailView({ hall, similar, isPreview, sidebarAd }: Props) {
 
       {/* ── Hero image gallery ────────────────────────────────── */}
       <div className="relative">
-        <ImageGallery images={hall.images} hallName={hall.name} hallId={hall.id} />
+        <ImageGallery images={hall.images} hallName={hall.name} hallCity={hall.city} hallId={hall.id} />
 
         {/* Overlay action bar */}
         <div className="absolute inset-x-0 top-0 flex items-center justify-between p-4">

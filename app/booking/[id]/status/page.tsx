@@ -14,6 +14,7 @@
 import { redirect, notFound } from "next/navigation";
 import Link from "next/link";
 import type { Metadata } from "next";
+import { noindexMetadata } from "@/lib/seo/metadata";
 import {
   CheckCircle2, Clock, AlertTriangle, XCircle, RefreshCw, CreditCard,
 } from "lucide-react";
@@ -26,7 +27,8 @@ import { verifyAndApplyPayment, type ApplyPaymentState } from "@/lib/payments";
 import { formatPrice } from "@/lib/mock-data";
 import { AdSlot } from "@/components/ads/AdSlot";
 
-export const metadata: Metadata = { title: "Booking Status" };
+// SEO: private/transactional page — must never be indexed.
+export const metadata: Metadata = noindexMetadata("Booking Status");
 
 type Props = {
   params:       Promise<{ id: string }>;

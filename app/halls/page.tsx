@@ -8,8 +8,21 @@ import { HallCard } from "./_components/HallCard";
 import { SearchControls } from "./_components/SearchControls";
 import { AppHeader } from "@/components/app/AppHeader";
 import { AdSlot } from "@/components/ads/AdSlot";
+import { buildMetadata } from "@/lib/seo/metadata";
+import { JsonLd } from "@/components/seo/JsonLd";
+import { jsonLdGraph, breadcrumbJsonLd } from "@/lib/seo/jsonld";
 
-export const metadata: Metadata = { title: "Browse Wedding Halls" };
+/**
+ * CRAWL-TRAP CONTROL. This route accepts TEN independent query parameters
+ * (city, area, capacity, priceMin, priceMax, q, category, amenity, date, sort),
+ * whose combinations are effectively unbounded. Left open, Googlebot would
+ * spend its crawl budget enumerating filter permutations of one page.
+ *
+ * The canonical below therefore always names the CLEAN /halls URL, so every
+ * filtered variant consolidates into it, and generateMetadata additionally
+ * marks filtered variants noindex,follow — indexing nothing, still following
+ * the venue links so individual halls are discovered.
+ */
 
 type SearchParams = Promise<{
   city?:     string;
@@ -23,6 +36,28 @@ type SearchParams = Promise<{
   date?:     string;
   sort?:     string;
 }>;
+
+export async function generateMetadata({
+  searchParams,
+}: {
+  searchParams: SearchParams;
+}): Promise<Metadata> {
+  const sp = await searchParams;
+  const filtered = Object.entries(sp).some(
+    ([k, v]) => k !== "sort" && typeof v === "string" && v.trim() !== "",
+  );
+
+  // A filtered view is a slice of the same collection: keep it out of the
+  // index, keep the canonical pointed at /halls, keep following venue links.
+  return buildMetadata({
+    title: filtered ? "Wedding Hall Search Results" : "Browse Wedding Halls & Event Venues",
+    description:
+      "Browse every verified wedding hall, marriage hall and event venue on Hallnect. " +
+      "Filter by city, guest capacity, budget, date and amenities, then book your date online.",
+    path: "/halls",
+    indexable: !filtered,
+  });
+}
 
 export default async function HallsPage({
   searchParams,
@@ -51,6 +86,14 @@ export default async function HallsPage({
 
   return (
     <div className="min-h-screen bg-ivory-100">
+      <JsonLd
+        data={jsonLdGraph(
+          breadcrumbJsonLd([
+            { name: "Home", path: "/" },
+            { name: "Wedding Halls", path: "/halls" },
+          ]),
+        )}
+      />
       <AppHeader title="Search" />
 
       {/* ── Controls (sticky on mobile) ───────────────────────────── */}
@@ -71,6 +114,25 @@ export default async function HallsPage({
           />
         </Suspense>
       </div>
+
+      {/* ── Page heading ─────────────────────────────────────────────
+          This template previously had NO h1 at all — the most commercially
+          important listing page gave a crawler nothing to rank. The heading
+          reflects the active city filter so a filtered view still reads
+          correctly to a human, while the canonical keeps /halls as the one
+          indexable URL. */}
+      <section className="container-app pt-4 lg:max-w-7xl">
+        <h1 className="font-serif text-xl font-bold text-charcoal-900 lg:text-2xl">
+          {city
+            ? `Wedding halls in ${city}`
+            : "Wedding halls and event venues in Tamil Nadu"}
+        </h1>
+        <p className="mt-1 text-sm text-charcoal-600">
+          {halls.length > 0
+            ? `${halls.length} verified ${halls.length === 1 ? "venue" : "venues"} with photos, capacity, pricing and live availability.`
+            : "Verified venues with photos, capacity, pricing and live availability."}
+        </p>
+      </section>
 
       {/* ── Sponsored banner ─────────────────────────────────────── */}
       <section className="container-app pt-4 lg:max-w-7xl">
