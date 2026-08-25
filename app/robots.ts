@@ -37,7 +37,11 @@ export default function robots(): MetadataRoute.Robots {
     rules: [
       {
         userAgent: "*",
-        allow: "/",
+        // Longest-match wins in robots.txt, so these Allow rules override the
+        // broader Disallow entries below. /owner/register is a PUBLIC landing
+        // page for venue owners — it must stay crawlable even though the rest
+        // of /owner is the private dashboard.
+        allow: ["/", "/owner/register"],
         disallow,
       },
     ],
