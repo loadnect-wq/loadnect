@@ -235,3 +235,20 @@ describe("json-ld graph", () => {
     expect(escaped).not.toContain("<img");
   });
 });
+
+describe("canonical origin resolution (apex cut-over)", () => {
+  // The production env vars still carry the pre-cut-over www value and cannot
+  // be edited in place (Vercel refuses to re-save a NEXT_PUBLIC_ variable typed
+  // as a Secret). lib/app-url.ts therefore ignores non-serving hosts outright,
+  // so a stale override cannot drag canonicals back onto a redirect.
+  it("treats the redirecting www host as non-canonical", () => {
+    expect(isPublishableUrl("https://hallnect.com/halls")).toBe(true);
+    // www is a valid https host, so isPublishableUrl accepts it; the guard that
+    // matters lives in getCanonicalAppUrl, asserted by the SITE_URL check below.
+    expect(SITE_URL.includes("www.")).toBe(false);
+  });
+
+  it("resolves SITE_URL to a host with no leading www", () => {
+    expect(SITE_URL).not.toMatch(/^https?:\/\/www\./);
+  });
+});

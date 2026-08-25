@@ -21,14 +21,28 @@
 // build time, so it is readable in client components.
 // ─────────────────────────────────────────────────────────────────────────────
 
-// Hosts that USED to be this app's production origin and no longer serve it.
+// Hosts that must never be adopted from an env override because they are not
+// the origin that actually serves the app.
 // 2026-08-19: the project moved to the custom domain hallnect.com and the
 // hallnect5.vercel.app alias was RELEASED — it now returns DEPLOYMENT_NOT_FOUND.
 // A stale NEXT_PUBLIC_APP_URL still pointing there (env vars are inlined at
 // build time and easy to forget) must never win: an OAuth return or a Cashfree
 // return_url aimed at a dead host strands the user mid-flow. Any env value
 // whose host is in this set is ignored as poison.
-const RETIRED_HOSTS = new Set(["hallnect5.vercel.app"]);
+//
+// 2026-08-25: www.hallnect.com joins the list for the same reason, one step
+// removed. It is not dead — it 301s to the apex — but it is NO LONGER THE
+// SERVING HOST, and a canonical, an OAuth redirect_to or a Cashfree return_url
+// aimed at a redirect is a bug: the canonical fights the server, and the
+// gateway round-trip takes an extra hop it does not need. The production env
+// vars still hold the old www value (they are typed as Secrets, so Vercel will
+// not let them be edited in place), which is exactly the stale-override case
+// this guard exists to neutralise.
+//
+// KEEP IN SYNC WITH THE VERCEL PRIMARY DOMAIN. If the primary is ever switched
+// back to www, remove www from this set and update PRODUCTION_ORIGIN in the
+// same change — otherwise the app would ignore a host that genuinely serves.
+const RETIRED_HOSTS = new Set(["hallnect5.vercel.app", "www.hallnect.com"]);
 
 // The production origin used when no (valid, non-retired) env override exists.
 //
