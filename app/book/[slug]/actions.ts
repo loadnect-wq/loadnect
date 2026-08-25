@@ -7,7 +7,8 @@ import { checkRangeAvailability, type BookingSlot } from "@/lib/availability";
 import { todayInBusinessTz, daysBetweenInclusive } from "@/lib/dates";
 import { startPaymentForBooking } from "@/lib/payments";
 import { isCashfreeConfigured } from "@/lib/cashfree";
-import { getCommissionRate } from "@/lib/platform-settings";
+import { getCommissionPercent } from "@/lib/platform-settings";
+import { calculateBookingPayment, advanceFromTotal } from "@/lib/booking-payment";
 import { bookingSchema, paymentSessionSchema, uuidSchema, parseSafe } from "@/lib/validation/schemas";
 import { sanitizeError } from "@/lib/errors";
 import { normalizePhoneE164 } from "@/lib/notifications/phone";
@@ -47,18 +48,23 @@ export type CreateBookingInput = {
 };
 
 export type CreateBookingResult =
-  | { success: true; bookingId: string; totalAmount: number; advanceAmount: number; expiresAt: string }
+  | {
+      success: true;
+      bookingId: string;
+      totalAmount: number;
+      advanceAmount: number;
+      /** Flat ₹200 collected with the advance — always disclosed to the customer. */
+      platformFee: number;
+      /** advanceAmount + platformFee — what checkout will actually charge. */
+      customerTotal: number;
+      expiresAt: string;
+    }
   | { error: string };
 
 // Pending bookings auto-cancel after this window (see migration 0011).
 // Mirrored in client UI as a countdown. Backend uses a DB trigger to stamp
 // expires_at so this constant only affects display, not authoritative timing.
 const PENDING_PAYMENT_TIMEOUT_MIN = 15;
-
-// PLATFORM_FEE_RATE is read at booking time from platform_settings (admin-
-// editable, default 5%). A constant local fallback is no longer needed —
-// getCommissionRate() handles the missing-settings case itself.
-const ADVANCE_RATE = 0.25;
 
 export async function createBookingRequest(
   input: CreateBookingInput,
@@ -147,22 +153,22 @@ export async function createBookingRequest(
   }
   const baseAmount = dailyPrice * bookingDays;
 
-  // Commission rate is read server-side from platform_settings — never trust
-  // the client's view of the rate. The booking's stored platform_fee snapshots
-  // the rate that was active at booking time so future rate changes don't
-  // retroactively alter recorded commissions.
-  // PRICING MODEL: the customer pays the HALL PRICE ONLY.
-  //
-  // Hallnect's commission is a percentage OF THE ADVANCE the customer pays
-  // (not of the full hall price), and it is retained out of that advance when
-  // the owner accepts — see lib/owner-payout.ts. platform_fee snapshots that
-  // figure at booking time so a later rate change never retroactively alters
-  // what was owed. It is deliberately NOT added to total_amount: charging the
-  // customer for it AND billing the owner for it collected it twice.
-  const platformFeeRate = await getCommissionRate();
-  const totalAmount     = baseAmount;
-  const advance         = Math.round(totalAmount * ADVANCE_RATE);
-  const platformFee     = Math.round(advance * platformFeeRate);
+  // PRICING MODEL (the only active one — lib/booking-payment.ts):
+  //   • total_amount = the hall price. The customer pays a 25% ADVANCE of it
+  //     now plus a flat ₹200 PLATFORM FEE (disclosed, non-refundable), and the
+  //     balance directly at the venue.
+  //   • Hallnect's commission = 2.5% of the ADVANCE (rate from
+  //     platform_settings, never the client), absorbed INSIDE the advance —
+  //     the owner nets advance − commission at payout (lib/owner-payout.ts).
+  //     It is never added on top of what the customer pays.
+  // Every figure is computed by the ONE central calculation and snapshotted
+  // onto the booking so later rate changes never touch this booking's money.
+  const commissionPercent = await getCommissionPercent();
+  const totalAmount       = baseAmount;
+  const pay = calculateBookingPayment({
+    advanceAmount:  advanceFromTotal(totalAmount),
+    commissionRate: commissionPercent,
+  });
 
   // ── Layer 2/3/4 — Insert with status='pending_payment' ──────────────────────
   // If a parallel request slipped through Layer 1, the partial unique index +
@@ -173,6 +179,19 @@ export async function createBookingRequest(
   // nullable until 0011, so this insert is forward-compatible.
   const expiresAt = new Date(Date.now() + PENDING_PAYMENT_TIMEOUT_MIN * 60_000).toISOString();
 
+  // New-model breakdown columns (0031). Kept in their own object so the
+  // un-migrated-DB fallback below can drop them as one stage. The legacy
+  // platform_fee column keeps its 0027 meaning (commission snapshot) and is
+  // written equal to commission_amount for pre-0031 readers.
+  const breakdownPayload: Record<string, unknown> = {
+    advance_amount:        pay.advanceAmount,
+    platform_fee_amount:   pay.platformFee,
+    customer_total_amount: pay.customerTotal,
+    commission_rate:       pay.commissionRate,
+    commission_amount:     pay.commissionAmount,
+    owner_net_advance:     pay.ownerNetAdvance,
+  };
+
   const basePayload: Record<string, unknown> = {
     hall_id:        v.hallId,
     customer_id:    user.id,
@@ -181,7 +200,7 @@ export async function createBookingRequest(
     slot:           effectiveSlot,
     guest_count:    v.guestCount,
     base_amount:    baseAmount,
-    platform_fee:   platformFee,
+    platform_fee:   pay.commissionAmount,
     total_amount:   totalAmount,
     status:         "pending_payment",
     contact_phone:  contactPhone,
@@ -189,33 +208,49 @@ export async function createBookingRequest(
     expires_at:     expiresAt,
   };
 
-  let { data: inserted, error: insertErr } = await db
+  // TRUSTED-BACKEND INSERT. Migration 0031 revoked the client INSERT policy on
+  // bookings (it validated identity but not amounts, leaving price fields
+  // client-writable via the Supabase JS client). This action has already
+  // validated auth, availability, capacity, and recomputed every amount from
+  // the DB — it IS the trusted path, so it writes with the service role.
+  const adminInsert = getSupabaseAdminClient();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const insertDb = adminInsert as any;
+
+  let { data: inserted, error: insertErr } = await insertDb
     .from("bookings")
-    .insert({ ...basePayload, terms_accepted: true, terms_accepted_at: new Date().toISOString() })
+    .insert({ ...basePayload, ...breakdownPayload, terms_accepted: true, terms_accepted_at: new Date().toISOString() })
     .select("id, expires_at")
     .single();
 
   // Unknown-column fallbacks for un-migrated databases. PostgREST reports an
   // unknown column in an INSERT body as PGRST204 (schema-cache miss), not the
-  // Postgres 42703 — check both. Two stages so a post-0017/pre-0026 database
-  // keeps its terms_accepted values: first drop only contact_phone, then (for
-  // truly old DBs) the terms columns as well.
+  // Postgres 42703 — check both. Three stages, newest first: drop the 0031
+  // breakdown columns, then contact_phone (pre-0026), then the terms columns
+  // (pre-0017) — so each vintage of database keeps every column it has.
   const isUnknownColumn = (e: { code?: string } | null) =>
     e?.code === "42703" || e?.code === "PGRST204";
   if (isUnknownColumn(insertErr)) {
-    const { contact_phone: _cp, ...noPhonePayload } = basePayload;
-    void _cp;
-    ({ data: inserted, error: insertErr } = await db
+    ({ data: inserted, error: insertErr } = await insertDb
       .from("bookings")
-      .insert({ ...noPhonePayload, terms_accepted: true, terms_accepted_at: new Date().toISOString() })
+      .insert({ ...basePayload, terms_accepted: true, terms_accepted_at: new Date().toISOString() })
       .select("id, expires_at")
       .single());
     if (isUnknownColumn(insertErr)) {
-      ({ data: inserted, error: insertErr } = await db
+      const { contact_phone: _cp, ...noPhonePayload } = basePayload;
+      void _cp;
+      ({ data: inserted, error: insertErr } = await insertDb
         .from("bookings")
-        .insert(noPhonePayload)
+        .insert({ ...noPhonePayload, terms_accepted: true, terms_accepted_at: new Date().toISOString() })
         .select("id, expires_at")
         .single());
+      if (isUnknownColumn(insertErr)) {
+        ({ data: inserted, error: insertErr } = await insertDb
+          .from("bookings")
+          .insert(noPhonePayload)
+          .select("id, expires_at")
+          .single());
+      }
     }
   }
 
@@ -248,7 +283,9 @@ export async function createBookingRequest(
     success: true,
     bookingId:     inserted.id,
     totalAmount,
-    advanceAmount: advance,
+    advanceAmount: pay.advanceAmount,
+    platformFee:   pay.platformFee,
+    customerTotal: pay.customerTotal,
     expiresAt:     inserted.expires_at ?? expiresAt,
   };
 }

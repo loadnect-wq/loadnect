@@ -15,6 +15,10 @@ export type CustomerPayment = {
   status:         string; // payment_status enum
   payment_method: string | null;
   created_at:     string;
+  /** 0031 breakdown — null on payments made before the ₹200 platform fee. */
+  advance_amount:      number | null;
+  platform_fee_amount: number | null;
+  refund_amount:       number | null;
 };
 
 export type CustomerBooking = {
@@ -33,6 +37,11 @@ export type CustomerBooking = {
   base_amount:    number;
   platform_fee:   number;
   total_amount:   number;
+  /** 0031 breakdown — null on bookings made before the ₹200 platform fee.
+   *  Deliberately EXCLUDES the internal commission: never a customer figure. */
+  advance_amount:        number | null;
+  platform_fee_amount:   number | null;
+  customer_total_amount: number | null;
   status:         string;           // booking_status enum
   customer_notes: string | null;
   owner_notes:    string | null;
@@ -85,7 +94,7 @@ const UPCOMING_STATUSES = ["payment_success", "booking_requested", "owner_confir
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+ 
 function handleErr(label: string, error: { code?: string; message: string }) {
   if (error.code === "PGRST205" || error.code === "42P01") {
     console.info(`[${label}] table not provisioned yet — run supabase/migrations.`);
@@ -97,17 +106,18 @@ function handleErr(label: string, error: { code?: string; message: string }) {
 const BOOKING_SELECT = `
   id, hall_id, event_date, end_date, slot, guest_count,
   base_amount, platform_fee, total_amount,
+  advance_amount, platform_fee_amount, customer_total_amount,
   status, customer_notes, owner_notes, cancel_reason,
   created_at, updated_at,
   halls(id, name, slug, city, state, address, hall_images(url, is_cover)),
-  payments(id, amount, currency, status, payment_method, created_at)
+  payments(id, amount, currency, status, payment_method, created_at, advance_amount, platform_fee_amount, refund_amount)
 `;
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function mapBooking(row: any): CustomerBooking {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const hall = row.halls as any;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   const imgs: { url: string; is_cover: boolean }[] = hall?.hall_images ?? [];
   const coverUrl = imgs.find((i) => i.is_cover)?.url ?? imgs[0]?.url ?? null;
 
@@ -131,6 +141,9 @@ function mapBooking(row: any): CustomerBooking {
     base_amount:    Number(row.base_amount),
     platform_fee:   Number(row.platform_fee),
     total_amount:   Number(row.total_amount),
+    advance_amount:        row.advance_amount        == null ? null : Number(row.advance_amount),
+    platform_fee_amount:   row.platform_fee_amount   == null ? null : Number(row.platform_fee_amount),
+    customer_total_amount: row.customer_total_amount == null ? null : Number(row.customer_total_amount),
     status:         row.status,
     customer_notes: row.customer_notes ?? null,
     owner_notes:    row.owner_notes    ?? null,
@@ -144,6 +157,9 @@ function mapBooking(row: any): CustomerBooking {
       status:         payment.status,
       payment_method: payment.payment_method ?? null,
       created_at:     payment.created_at,
+      advance_amount:      payment.advance_amount      == null ? null : Number(payment.advance_amount),
+      platform_fee_amount: payment.platform_fee_amount == null ? null : Number(payment.platform_fee_amount),
+      refund_amount:       payment.refund_amount       == null ? null : Number(payment.refund_amount),
     } : null,
   };
 }
@@ -259,7 +275,7 @@ export async function fetchMySavedHalls(): Promise<MySavedHall[]> {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const hall = row.halls as any;
     if (!hall) return { hall_id: row.hall_id, saved_at: row.created_at, hall: null };
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
     const imgs: { url: string; is_cover: boolean }[] = hall.hall_images ?? [];
     const coverUrl = imgs.find((i) => i.is_cover)?.url ?? imgs[0]?.url ?? null;
     return {

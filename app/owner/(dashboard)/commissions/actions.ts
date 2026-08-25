@@ -20,6 +20,7 @@
 import { revalidatePath } from "next/cache";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { sanitizeError } from "@/lib/errors";
+import { settledReason } from "@/lib/commission-payments";
 
 type ActionResult = { success: true } | { error: string };
 
@@ -78,11 +79,12 @@ export async function submitCommissionUpiPayment(input: {
     return { error: "You can only pay commission for your own halls." };
   }
 
-  // Only unpaid commissions can be paid. Block already-settled ones.
-  const payableStatuses = ["pending", "collected", "overdue", "rejected"];
-  if (!payableStatuses.includes(commission.status)) {
-    return { error: `This commission is not awaiting payment (status: ${commission.status}).` };
-  }
+  // Only genuinely owner-billed commissions can be paid. 'collected' means the
+  // commission was already retained from the customer's advance, so accepting a
+  // UPI transfer for it would collect the same money twice — the shared guard
+  // in lib/commission-payments.ts is the single definition of that rule.
+  const blocked = settledReason(commission.status);
+  if (blocked) return { error: blocked };
 
   // Insert the submission. amount is from the DB, never the client. verified_*
   // are left null (owner cannot self-verify — guard trigger enforces this too).

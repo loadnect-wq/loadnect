@@ -388,7 +388,7 @@ export async function fetchOwnerBookings(
 
   let query = db
     .from("bookings")
-    .select("id, hall_id, event_date, end_date, slot, guest_count, base_amount, total_amount, status, customer_notes, owner_notes, cancel_reason, created_at, contact_phone, owner_response_due_at, halls(name, slug), payments(amount, status)")
+    .select("id, hall_id, event_date, end_date, slot, guest_count, base_amount, total_amount, status, customer_notes, owner_notes, cancel_reason, created_at, contact_phone, owner_response_due_at, halls(name, slug), payments(amount, advance_amount, status)")
     .in("hall_id", hallIds)
     .order("event_date", { ascending: true });
 
@@ -416,12 +416,17 @@ export async function fetchOwnerBookings(
     created_at:     row.created_at,
     contact_phone:  row.contact_phone ?? null,
     owner_response_due_at: row.owner_response_due_at ?? null,
-    // Only a gateway-verified payment counts as money received.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // Only a gateway-verified payment counts as money received — and only its
+    // ADVANCE portion. payments.amount now includes the customer's ₹200
+    // platform fee, which is Hallnect's and is NOT a rupee toward the hall
+    // total; counting it here understated "balance at venue" by ₹200 on every
+    // online-paid booking. Legacy rows have no advance_amount and their amount
+    // WAS the advance, so the fallback keeps them correct.
+
     amount_paid: (row.payments ?? [])
       .filter((p: any) => p?.status === "payment_success")
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .reduce((sum: number, p: any) => sum + Number(p.amount ?? 0), 0),
+      .reduce((sum: number, p: any) => sum + Number(p.advance_amount ?? p.amount ?? 0), 0),
   }));
 }
 
@@ -471,6 +476,9 @@ export type OwnerCommissionRow = {
   hall_id:             string | null;
   hall_name:           string;
   booking_amount:      number;
+  /** Gross advance the customer paid (the base the commission is charged on).
+   *  0 on very old rows written before the column existed. */
+  advance_amount:      number;
   commission_rate:     number;
   commission_amount:   number;
   owner_payout_amount: number;
@@ -493,7 +501,7 @@ export async function fetchOwnerCommissions(hallIds: string[]): Promise<OwnerCom
   // Newer columns (due_date/paid_at/settlement_adjustment_status) exist after
   // migration 0017. Fall back gracefully if the migration hasn't run yet.
   const fullCols =
-    "id, booking_id, hall_id, booking_amount, commission_rate, commission_amount, owner_payout_amount, status, created_at, due_date, paid_at, settlement_adjustment_status, bookings(halls(name))";
+    "id, booking_id, hall_id, booking_amount, advance_amount, commission_rate, commission_amount, owner_payout_amount, status, created_at, due_date, paid_at, settlement_adjustment_status, bookings(halls(name))";
   const baseCols =
     "id, booking_id, hall_id, booking_amount, commission_rate, commission_amount, owner_payout_amount, status, created_at, bookings(halls(name))";
 
@@ -537,6 +545,7 @@ export async function fetchOwnerCommissions(hallIds: string[]): Promise<OwnerCom
     hall_id:             row.hall_id ?? null,
     hall_name:           row.bookings?.halls?.name ?? "Hall",
     booking_amount:      Number(row.booking_amount),
+    advance_amount:      row.advance_amount == null ? 0 : Number(row.advance_amount),
     commission_rate:     Number(row.commission_rate),
     commission_amount:   Number(row.commission_amount),
     owner_payout_amount: Number(row.owner_payout_amount),

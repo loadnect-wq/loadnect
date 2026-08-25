@@ -3,7 +3,6 @@ import type { Metadata } from "next";
 import { getSession } from "@/lib/auth";
 import { fetchHallBySlug } from "@/lib/halls";
 import { fetchHallAvailabilityWindow } from "@/lib/availability";
-import { getCommissionPercent } from "@/lib/platform-settings";
 import { isCashfreeConfigured } from "@/lib/cashfree";
 import { todayInBusinessTz, addDaysToIsoDate } from "@/lib/dates";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
@@ -35,7 +34,8 @@ export default async function BookPage({ params }: Props) {
   const today = todayInBusinessTz();
   const end   = addDaysToIsoDate(today, BOOKING_WINDOW_DAYS - 1);
   const availability = await fetchHallAvailabilityWindow(hall.id, today, end);
-  const platformFeePercent = await getCommissionPercent();
+  // The commission rate is deliberately NOT sent to the browser: it is an
+  // internal figure between Hallnect and the venue, never a customer line item.
 
   // Cashfree is optional. When it's not configured the booking flow runs in
   // manual "submit booking request" mode instead of online payment.
@@ -66,7 +66,6 @@ export default async function BookPage({ params }: Props) {
       }}
       availability={availability}
       windowDays={BOOKING_WINDOW_DAYS}
-      platformFeePercent={platformFeePercent}
       onlinePaymentEnabled={onlinePaymentEnabled}
       initialPhone={initialPhone}
     />

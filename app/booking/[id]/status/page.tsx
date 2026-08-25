@@ -135,13 +135,24 @@ export default async function BookingStatusPage({ params, searchParams }: Props)
           </p>
 
           <div className="mt-3 border-t border-border pt-3 space-y-1.5">
-            <Line label="Total amount" value={formatPrice(booking.total_amount)} />
+            <Line label="Hall total" value={formatPrice(booking.total_amount)} />
             {booking.payment && (
-              <Line
-                label="Advance paid"
-                value={formatPrice(booking.payment.amount)}
-                strong={paid}
-              />
+              <>
+                {/* payment.amount is the FULL charge (advance + ₹200 platform
+                    fee) on new bookings — labelling it "advance paid" would
+                    have the customer settle ₹200 too little at the venue.
+                    Legacy payments have no breakdown and their amount WAS the
+                    advance, so they keep the single line. */}
+                {booking.payment.advance_amount != null ? (
+                  <>
+                    <Line label="Advance paid" value={formatPrice(booking.payment.advance_amount)} strong={paid} />
+                    <Line label="Platform fee" value={formatPrice(booking.payment.platform_fee_amount ?? 0)} />
+                    <Line label="Total paid" value={formatPrice(booking.payment.amount)} strong={paid} />
+                  </>
+                ) : (
+                  <Line label="Advance paid" value={formatPrice(booking.payment.amount)} strong={paid} />
+                )}
+              </>
             )}
             {booking.payment && (
               <div className="flex items-center justify-between pt-1 text-sm">

@@ -23,6 +23,7 @@ import { normalizePhoneE164 } from "@/lib/notifications/phone";
 import { isCashfreeConfigured } from "@/lib/cashfree";
 import { startCommissionPayment, verifyAndApplyCommissionPayment } from "@/lib/commission-payments";
 import { payOwnerOnAcceptance } from "@/lib/owner-payout";
+import { recordBookingRefund } from "@/lib/refunds";
 import { isEasySplitEnabled, upsertVendor } from "@/lib/easy-split";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 
@@ -689,6 +690,14 @@ export async function rejectBooking(bookingId: string, reason?: string): Promise
   if (count === 0) return { error: "This booking cannot be declined (it may have changed state)." };
 
   await notifyBookingEvent("booking.rejected", bookingId, { reason: cleanReason || null });
+
+  // The venue declined, so the customer gets EVERYTHING back — advance and the
+  // ₹200 platform fee alike, exactly as /refund-policy §5 promises. Recorded
+  // idempotently; never fails the decline.
+  const refund = await recordBookingRefund(bookingId, "owner");
+  if (refund && refund.refundAmount > 0) {
+    await notifyBookingEvent("refund.initiated", bookingId, { amount: refund.refundAmount });
+  }
 
   revalidatePath("/owner/bookings");
   revalidatePath("/owner/dashboard");

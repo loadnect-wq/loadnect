@@ -59,14 +59,25 @@ export default async function OwnerDashboardPage() {
 
   // Settlement snapshot — all figures derived from server-fetched commission
   // rows (never client-supplied). Mirrors /owner/commissions bucketing.
-  const PAID     = ["paid", "paid_out"];
+  // 'collected' = the commission was ABSORBED from the customer's advance that
+  // Hallnect holds — the owner owes NOTHING on it, so it is never outstanding.
+  const PAID     = ["paid", "paid_out", "collected"];
   const ADJUSTED = ["adjusted_from_owner_settlement"];
   const outstanding = commissions.filter(
     (c) => !PAID.includes(c.status) && !ADJUSTED.includes(c.status) && c.status !== "waived",
   );
-  const grossAdvance   = commissions.reduce((s, c) => s + c.booking_amount, 0);
-  const totalCommission = commissions.reduce((s, c) => s + c.commission_amount, 0);
-  const netPayout      = commissions.reduce((s, c) => s + c.owner_payout_amount, 0);
+  // Per the settlement model (lib/booking-payment.ts): gross advance paid by
+  // customers, Hallnect's commission out of it, and the owner's NET ADVANCE
+  // (gross − commission). advance_amount is 0 only on very old rows — fall
+  // back to a 25% estimate from the booking amount for those.
+  const grossAdvance = commissions.reduce(
+    (s, c) => s + (c.advance_amount > 0 ? c.advance_amount : Math.round(c.booking_amount * 0.25)), 0);
+  // A waived commission was never taken, so it must not reduce the owner's net
+  // advance — counting it understated what they actually received.
+  const totalCommission = commissions
+    .filter((c) => c.status !== "waived")
+    .reduce((s, c) => s + c.commission_amount, 0);
+  const netAdvance     = Math.max(0, Math.round((grossAdvance - totalCommission) * 100) / 100);
   const outstandingAmt = outstanding.reduce((s, c) => s + c.commission_amount, 0);
   const hasOverdue     = outstanding.some((c) => c.status === "overdue");
 
@@ -145,10 +156,15 @@ export default async function OwnerDashboardPage() {
           </div>
 
           <dl className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
-            <SettlementRow label="Gross advance paid" value={formatPrice(grossAdvance)} />
+            <SettlementRow label="Gross advance" value={formatPrice(grossAdvance)} />
             <SettlementRow label="Hallnect commission" value={formatPrice(totalCommission)} tone="commission" />
-            <SettlementRow label="Net owner payout" value={formatPrice(netPayout)} tone="payout" />
+            <SettlementRow label="Net advance to you" value={formatPrice(netAdvance)} tone="payout" />
           </dl>
+          <p className="mt-2 text-[11px] text-charcoal-500">
+            The commission is retained from the advance — you are never billed for it, and the
+            customer&apos;s ₹200 platform fee is never deducted from you. The venue balance is
+            collected by you directly.
+          </p>
 
           {outstandingAmt > 0 && (
             <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl bg-ivory-100 px-3 py-2.5">

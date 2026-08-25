@@ -17,6 +17,7 @@ import type { DaySlotAvailability } from "@/lib/availability";
 import { createBookingRequest, createPaymentSession, submitManualBookingRequest, type CreateBookingResult } from "../actions";
 import { todayInBusinessTz, addDaysToIsoDate, isoDateToLabelDate, isoDateRange, daysBetweenInclusive } from "@/lib/dates";
 import { isValidPhoneNumber } from "@/lib/notifications/phone";
+import { ADVANCE_RATE, PLATFORM_FEE_RUPEES } from "@/lib/booking-payment";
 
 const STEPS = ["Date", "Slot", "Details", "Summary", "Pay", "Done"] as const;
 type StepIndex = number;
@@ -78,9 +79,11 @@ const SLOTS: SlotMeta[] = [
 
 const EVENT_TYPES = ["Wedding", "Reception", "Engagement", "Birthday", "Corporate", "Other"] as const;
 
-// Display-only rate. The server recomputes the authoritative fee from
-// platform_settings in createBookingRequest — this is purely for UI preview.
-const ADVANCE_RATE = 0.25;
+// Display-only preview constants from the ONE central money module
+// (lib/booking-payment.ts — pure, client-safe). The server recomputes every
+// authoritative figure in createBookingRequest; these only paint the preview.
+const DISPLAY_ADVANCE_RATE = ADVANCE_RATE;
+const DISPLAY_PLATFORM_FEE = PLATFORM_FEE_RUPEES;
 
 export type BookingHall = {
   id:            string;
@@ -97,15 +100,12 @@ interface Props {
   hall:                 BookingHall;
   availability:         DaySlotAvailability[];
   windowDays:           number;
-  platformFeePercent:   number;
   onlinePaymentEnabled: boolean;
   /** Customer's saved phone (profiles.phone) — prefilled, still editable. */
   initialPhone?:        string | null;
 }
 
-export function BookingFlow({ hall, availability, windowDays, platformFeePercent, onlinePaymentEnabled, initialPhone }: Props) {
-  // Multiplier form of the platform fee % (e.g. 5 → 0.05).
-  const PLATFORM_FEE_RATE = platformFeePercent / 100;
+export function BookingFlow({ hall, availability, windowDays, onlinePaymentEnabled, initialPhone }: Props) {
   const router = useRouter();
   const [step, setStep] = useState<StepIndex>(0);
 
@@ -153,12 +153,13 @@ export function BookingFlow({ hall, availability, windowDays, platformFeePercent
   // Display-only price preview — the server recomputes everything.
   const dailyBase   = isMultiDay ? hall.price_per_day : (effSlot ? slotPrice(effSlot as SlotId) : 0);
   const baseAmount  = dailyBase * Math.max(1, bookingDays || 1) * (effSlot ? 1 : 0);
-  // The customer pays the HALL PRICE ONLY. Hallnect's commission is owed by the
-  // VENUE OWNER and settled separately, so it never appears on the customer's
-  // bill. (PLATFORM_FEE_RATE is still passed in for the owner-side display.)
-  void PLATFORM_FEE_RATE;
+  // The customer pays the ADVANCE (25% of the hall price) + the flat ₹200
+  // PLATFORM FEE now, and the balance directly at the venue. Nothing else is
+  // ever added — Hallnect's commission is settled with the venue, not billed
+  // to the customer.
   const totalAmount = baseAmount;
-  const advance     = Math.round(totalAmount * ADVANCE_RATE);
+  const advance     = Math.round(totalAmount * DISPLAY_ADVANCE_RATE);
+  const payNowTotal = advance + DISPLAY_PLATFORM_FEE;
 
   // Everything that determines what is being bought. Any change invalidates a
   // previously created pending booking.
@@ -620,11 +621,15 @@ export function BookingFlow({ hall, availability, windowDays, platformFeePercent
                     value={formatPrice(baseAmount)}
                   />
                   <div className="my-2 h-px bg-border" />
-                  <PriceLine label="Total"            value={formatPrice(totalAmount)} bold />
-                  <PriceLine label="Advance payable now" value={formatPrice(advance)} highlight />
-                  <PriceLine label="Remaining balance" value={formatPrice(totalAmount - advance)} />
+                  <PriceLine label="Advance Payment"  value={formatPrice(advance)} />
+                  <PriceLine label="Platform Fee"     value={formatPrice(DISPLAY_PLATFORM_FEE)} />
+                  <PriceLine label="Total Payable Now" value={formatPrice(payNowTotal)} bold highlight />
+                  <div className="my-2 h-px bg-border" />
+                  <PriceLine label="Balance at the venue" value={formatPrice(totalAmount - advance)} />
                   <p className="mt-2 text-[11px] text-charcoal-500">
-                    No booking fee or platform charge is added — this is the venue&apos;s price.
+                    The ₹{DISPLAY_PLATFORM_FEE} platform fee covers secure payment and booking
+                    support, and is non-refundable. The balance is paid directly to the venue —
+                    nothing else is added.
                   </p>
                 </div>
 
@@ -667,11 +672,14 @@ export function BookingFlow({ hall, availability, windowDays, platformFeePercent
 
             {/* STEP 4 — pay (online) OR confirm request (manual) */}
             {step === 4 && onlinePaymentEnabled && (
-              <StepWrap title="Pay the advance" subtitle="Secured by Cashfree Payments">
+              <StepWrap title="Pay now" subtitle="Secured by Cashfree Payments">
                 <div className="rounded-2xl bg-white p-5 shadow-card text-center">
                   <CreditCard className="mx-auto h-10 w-10 text-maroon-500" />
-                  <p className="mt-3 text-xs text-charcoal-500">Pay advance</p>
-                  <p className="font-serif text-3xl font-bold text-maroon-700">{formatPrice(advance)}</p>
+                  <p className="mt-3 text-xs text-charcoal-500">Total payable now</p>
+                  <p className="font-serif text-3xl font-bold text-maroon-700">{formatPrice(payNowTotal)}</p>
+                  <p className="mt-1 text-[11px] text-charcoal-500">
+                    Advance {formatPrice(advance)} + platform fee {formatPrice(DISPLAY_PLATFORM_FEE)}
+                  </p>
                   <p className="mt-1 text-[11px] text-charcoal-500">Balance {formatPrice(totalAmount - advance)} due before event</p>
                 </div>
                 <div className="mt-4 rounded-2xl bg-amber-50 border border-amber-200 p-3 text-center text-[11px] text-amber-800">
@@ -747,7 +755,7 @@ export function BookingFlow({ hall, availability, windowDays, platformFeePercent
               {step === 3
                 ? (onlinePaymentEnabled ? "Proceed to payment" : "Review request")
                 : step === 4
-                  ? (onlinePaymentEnabled ? `Pay ${formatPrice(advance)} with Cashfree` : "Submit Booking Request")
+                  ? (onlinePaymentEnabled ? `Pay ${formatPrice(payNowTotal)} with Cashfree` : "Submit Booking Request")
                   : "Continue"}
             </Button>
           </div>

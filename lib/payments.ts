@@ -7,8 +7,9 @@
 //     may insert/update payment rows.  This module IS that trusted backend.
 //
 // SECURITY MODEL:
-//   • Amount is ALWAYS recomputed from the booking row in the DB — never taken
-//     from the client.  We charge the 25% advance of booking.total_amount.
+//   • Amount is ALWAYS taken from the booking row in the DB — never from the
+//     client.  We charge the booking's stored ADVANCE + the flat ₹200 platform
+//     fee (lib/booking-payment.ts is the single source of that arithmetic).
 //   • customer_id is read from the booking row (which was itself created with
 //     customer_id = auth.uid()), never from the client.
 //   • A booking is only moved to `payment_success` AFTER we query Cashfree's
@@ -30,9 +31,12 @@ import {
 } from "@/lib/cashfree";
 import { getAppUrl } from "@/lib/env";
 import { notifyBookingEvent } from "@/lib/notifications/events";
-import { PLATFORM_FEE_PERCENT } from "@/lib/constants";
-
-const ADVANCE_RATE = 0.25; // 25% advance — mirrors app/book/[slug]/actions.ts
+import {
+  calculateBookingPayment,
+  advanceFromTotal,
+  DEFAULT_COMMISSION_PERCENT,
+  PLATFORM_FEE_RUPEES,
+} from "@/lib/booking-payment";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -97,7 +101,7 @@ export async function startPaymentForBooking(
   // 1. Load the booking authoritatively (service-role read).
   const { data: booking, error: bErr } = await db
     .from("bookings")
-    .select("id, customer_id, status, total_amount, expires_at")
+    .select("id, customer_id, status, total_amount, expires_at, advance_amount, platform_fee_amount, customer_total_amount")
     .eq("id", input.bookingId)
     .maybeSingle();
 
@@ -119,30 +123,60 @@ export async function startPaymentForBooking(
     return { ok: false, error: "This booking's payment window has expired. Please book again." };
   }
 
-  // 5. Amount — recompute the advance from the DB total (never trust client).
-  const total   = Number(booking.total_amount);
-  const advance = Math.max(1, Math.round(total * ADVANCE_RATE));
+  // 5. Amount — from the booking's stored breakdown (0031), never the client.
+  //    The customer pays ADVANCE + ₹200 PLATFORM FEE. A pre-0031 booking with
+  //    no stored breakdown gets it computed now via the one central
+  //    calculation, from DB values only.
+  const storedAdvance = Number(booking.advance_amount);
+  const storedFee     = Number(booking.platform_fee_amount);
+  const hasBreakdown  =
+    booking.advance_amount != null && Number.isFinite(storedAdvance) && storedAdvance > 0;
+
+  const advance = hasBreakdown
+    ? storedAdvance
+    : advanceFromTotal(Number(booking.total_amount));
+
+  // CAN WE RECORD THE SPLIT? The ₹200 fee may only ride the order if the
+  // payments row can say so. On a pre-0031 database the breakdown columns do
+  // not exist, and a fee-inclusive `amount` would be indistinguishable from a
+  // legacy advance-only row — every downstream reader (owner payout above all)
+  // would treat the fee as the owner's money and overpay it. So when the
+  // columns are absent we charge the ADVANCE ALONE, preserving the legacy
+  // invariant `amount === advance` exactly.
+  const { error: probeErr } = await db
+    .from("payments").select("advance_amount").limit(1);
+  const canRecordBreakdown = !(probeErr?.code === "42703" || probeErr?.code === "PGRST204");
+  if (!canRecordBreakdown) {
+    console.warn("[payments] 0031 columns missing — charging the advance only; run supabase/migrations to enable the platform fee.");
+  }
+
+  const platformFee = !canRecordBreakdown
+    ? 0
+    : hasBreakdown && booking.platform_fee_amount != null && Number.isFinite(storedFee)
+      ? storedFee
+      : PLATFORM_FEE_RUPEES;
+  const chargeTotal = Math.round((advance + platformFee) * 100) / 100;
 
   const phone = normalisePhone(input.customerPhone);
   if (phone.length < 10) {
     return { ok: false, error: "A valid 10-digit phone number is required for payment." };
   }
 
-  // 6. Create the Cashfree order.
+  // 6. Create the Cashfree order for the FULL customer total (advance + fee).
   const orderId   = buildOrderId(input.bookingId);
   const returnUrl = `${appUrl()}/booking/${input.bookingId}/status?order_id={order_id}`;
   const notifyUrl = `${appUrl()}/api/webhooks/cashfree`;
 
   const order = await createCashfreeOrder({
     orderId,
-    amount:        advance,
+    amount:        chargeTotal,
     customerId:    input.customerId,
     customerName:  input.customerName || "Hallnect Customer",
     customerEmail: input.customerEmail,
     customerPhone: phone,
     returnUrl,
     notifyUrl,
-    note:          `Advance for booking ${input.bookingId}`,
+    note:          `Advance + platform fee for booking ${input.bookingId}`,
   });
 
   if (!order.ok) return { ok: false, error: order.error };
@@ -150,16 +184,24 @@ export async function startPaymentForBooking(
     return { ok: false, error: "Cashfree did not return a payment session. Please retry." };
   }
 
-  // 7. Record the payment row (service-role write — payments has no client policy).
-  const { error: pErr } = await db.from("payments").insert({
+  // 7. Record the payment row (service-role write — payments has no client
+  //    policy). amount = the total charged; advance/fee stored alongside so no
+  //    reader ever assumes amount == advance again.
+  const paymentRow: Record<string, unknown> = {
     booking_id:         input.bookingId,
     customer_id:        booking.customer_id,
-    amount:             advance,
+    amount:             chargeTotal,
     currency:           "INR",
     status:             "created",
     cashfree_order_id:  orderId,
     payment_session_id: order.data.payment_session_id,
-  });
+    // Only when the columns exist. Otherwise platformFee is 0 and chargeTotal
+    // IS the advance, so the legacy-shaped row stays truthful.
+    ...(canRecordBreakdown
+      ? { advance_amount: advance, platform_fee_amount: platformFee }
+      : {}),
+  };
+  const { error: pErr } = await db.from("payments").insert(paymentRow);
 
   if (pErr) return { ok: false, error: pErr.message };
 
@@ -167,7 +209,7 @@ export async function startPaymentForBooking(
     ok:               true,
     paymentSessionId: order.data.payment_session_id,
     orderId,
-    amount:           advance,
+    amount:           chargeTotal,
   };
 }
 
@@ -180,15 +222,26 @@ export async function verifyAndApplyPayment(orderId: string): Promise<ApplyPayme
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = admin as any;
 
-  // 1. Find our payment row for this Cashfree order.
+  // 1. Find our payment row for this Cashfree order. select("*") rather than a
+  //    column list so the 0031 breakdown columns are picked up when present
+  //    without failing on a pre-0031 database.
   const { data: payment, error: pErr } = await db
     .from("payments")
-    .select("id, booking_id, customer_id, status, amount")
+    .select("*")
     .eq("cashfree_order_id", orderId)
     .maybeSingle();
 
   if (pErr)      return { state: "error", message: pErr.message };
   if (!payment)  return { state: "not_found" };
+
+  // The ADVANCE portion of this payment — what messages may call "advance
+  // paid" and what the owner's split is based on. On new payments the ₹200
+  // platform fee rides the same order, so payment.amount is advance + fee;
+  // legacy rows have no breakdown and their amount IS the advance.
+  const advancePortion =
+    payment.advance_amount != null && Number.isFinite(Number(payment.advance_amount))
+      ? Number(payment.advance_amount)
+      : Number(payment.amount);
 
   // Load the booking with the fields needed for the success side effects.
   const booking = await loadBookingForApply(db, payment.booking_id);
@@ -201,11 +254,11 @@ export async function verifyAndApplyPayment(orderId: string): Promise<ApplyPayme
     if (booking) await applyPaidSideEffects(db, booking);
     // Heal notifications from a prior partial run — dedupe keys make this a
     // no-op when they were already recorded, so webhook retries send nothing.
-    await notifyBookingEvent("payment.success", payment.booking_id, { amount: Number(payment.amount) });
+    await notifyBookingEvent("payment.success", payment.booking_id, { amount: advancePortion });
     // The advance MUST be passed here too: the owner's new-booking message
     // states "Advance paid", and without it the message read "Not yet paid"
     // immediately after a verified payment.
-    await notifyBookingEvent("booking.requested", payment.booking_id, { amount: Number(payment.amount) });
+    await notifyBookingEvent("booking.requested", payment.booking_id, { amount: advancePortion });
     return { state: "success", bookingId: payment.booking_id };
   }
   if (payment.status === "refunded") {
@@ -242,6 +295,26 @@ export async function verifyAndApplyPayment(orderId: string): Promise<ApplyPayme
   if (status === "PAID") {
     if (!booking) {
       return { state: "error", bookingId: payment.booking_id, message: "Booking not found for a paid order." };
+    }
+
+    // AMOUNT VERIFICATION: the gateway's captured order_amount must match what
+    // we asked for. A mismatch (tampered order, stale in-flight order created
+    // under different pricing) is surfaced for a human — never auto-confirmed.
+    const gatewayAmount = Number(order.data.order_amount);
+    if (Number.isFinite(gatewayAmount) && Math.abs(gatewayAmount - Number(payment.amount)) > 0.5) {
+      await db.from("payments")
+        .update({ payment_message: `Amount mismatch: gateway captured ₹${gatewayAmount}, expected ₹${Number(payment.amount)} — manual review required` })
+        .eq("id", payment.id)
+        .neq("status", "payment_success");
+      logSideEffectError("amountMismatch", {
+        code: "amount_mismatch",
+        message: `order ${orderId}: gateway ₹${gatewayAmount} != expected ₹${Number(payment.amount)}`,
+      });
+      return {
+        state:     "error",
+        bookingId: payment.booking_id,
+        message:   "Payment amount did not match the booking. Our team will review it.",
+      };
     }
 
     // a) Record the successful payment (idempotent: the .neq guard makes a repeat
@@ -296,9 +369,22 @@ export async function verifyAndApplyPayment(orderId: string): Promise<ApplyPayme
           .update({ status: "cancelled", cancel_reason: "Slot already booked — refund due" })
           .eq("id", payment.booking_id)
           .eq("status", "pending_payment");
-        await db.from("payments")
-          .update({ status: "refunded", payment_message: "Slot conflict — refund initiated" })
-          .eq("id", payment.id);
+        // PLATFORM-CAUSED failure: the customer received nothing, so the FULL
+        // captured amount — platform fee included — is refunded. The fee's
+        // non-refundability applies to customer cancellations, not to our own
+        // slot race (see calculateRefund's refundPlatformFee flag).
+        const refundUpdate: Record<string, unknown> = {
+          status: "refunded",
+          payment_message: "Slot conflict — full refund (incl. platform fee) initiated",
+          refund_amount: Number(payment.amount),
+        };
+        let { error: refErr } = await db.from("payments").update(refundUpdate).eq("id", payment.id);
+        if (refErr && (refErr.code === "42703" || refErr.code === "PGRST204")) {
+          const { refund_amount: _r, ...legacyUpdate } = refundUpdate;
+          void _r;
+          ({ error: refErr } = await db.from("payments").update(legacyUpdate).eq("id", payment.id));
+        }
+        if (refErr) logSideEffectError("slotConflictRefund", refErr);
         // Pass the captured amount — the refund message states it, and
         // omitting it told the customer their refund was ₹0.
         await notifyBookingEvent("refund.initiated", payment.booking_id, { amount: Number(payment.amount) });
@@ -318,12 +404,29 @@ export async function verifyAndApplyPayment(orderId: string): Promise<ApplyPayme
     // Surface it instead so the admin can refund; never run the paid side
     // effects against a booking we did not actually transition.
     if ((movedRows ?? 0) === 0) {
-      await db.from("payments")
-        .update({ payment_message: "Paid, but the booking was no longer awaiting payment — refund required" })
-        .eq("id", payment.id);
+      // PLATFORM-CAUSED again: the customer paid for a booking we could not
+      // honour, so the FULL captured amount (platform fee included) goes back.
+      // Record the figure — "our team will arrange a refund" must be backed by
+      // a number on the row, and everyone involved has to be told.
+      const staleUpdate: Record<string, unknown> = {
+        status: "refunded",
+        payment_message: "Paid, but the booking was no longer awaiting payment — full refund (incl. platform fee) required",
+        refund_amount: Number(payment.amount),
+      };
+      let { error: staleErr } = await db.from("payments").update(staleUpdate).eq("id", payment.id);
+      if (staleErr && (staleErr.code === "42703" || staleErr.code === "PGRST204")) {
+        const { refund_amount: _r, ...legacyStale } = staleUpdate;
+        void _r;
+        ({ error: staleErr } = await db.from("payments").update(legacyStale).eq("id", payment.id));
+      }
+      if (staleErr) logSideEffectError("bookingNotPendingRefund", staleErr);
       logSideEffectError("bookingNotPending", {
         code: "booking_not_pending",
         message: `order ${orderId} paid but booking ${payment.booking_id} was not pending_payment`,
+      });
+      await notifyBookingEvent("refund.initiated", payment.booking_id, {
+        amount: Number(payment.amount),
+        keySuffix: orderId,
       });
       return {
         state:     "slot_conflict",
@@ -339,8 +442,10 @@ export async function verifyAndApplyPayment(orderId: string): Promise<ApplyPayme
     //    been booked" owner alert — fired only now that the booking is REAL
     //    (verified PAID + transitioned), never from a page view. Idempotent
     //    via outbox dedupe keys; notification failures never fail the payment.
-    await notifyBookingEvent("payment.success", payment.booking_id, { amount: Number(payment.amount) });
-    await notifyBookingEvent("booking.requested", payment.booking_id, { amount: Number(payment.amount) });
+    //    The ADVANCE portion is passed (fee excluded) so "Advance paid ₹X" and
+    //    the venue-balance arithmetic stay correct.
+    await notifyBookingEvent("payment.success", payment.booking_id, { amount: advancePortion });
+    await notifyBookingEvent("booking.requested", payment.booking_id, { amount: advancePortion });
 
     return { state: "success", bookingId: payment.booking_id };
   }
@@ -365,6 +470,10 @@ type ApplyBooking = {
   platform_fee:  number;
   total_amount:  number;
   hall_owner_id: string | null;
+  /** 0031 breakdown — null on pre-model bookings. */
+  advance_amount:    number | null;
+  commission_rate:   number | null;
+  commission_amount: number | null;
 };
 
 async function loadBookingForApply(
@@ -372,14 +481,18 @@ async function loadBookingForApply(
   db: any,
   bookingId: string,
 ): Promise<ApplyBooking | null> {
+  // select("*") + join so the 0031 breakdown columns come along when the
+  // migration has run, without erroring when it has not.
   const { data, error } = await db
     .from("bookings")
-    .select("id, hall_id, customer_id, event_date, end_date, slot, base_amount, platform_fee, total_amount, halls(owner_id)")
+    .select("*, halls(owner_id)")
     .eq("id", bookingId)
     .maybeSingle();
 
   if (error || !data) return null;
   const hall = Array.isArray(data.halls) ? data.halls[0] : data.halls;
+  const num = (v: unknown): number | null =>
+    v == null || !Number.isFinite(Number(v)) ? null : Number(v);
   return {
     id:            data.id,
     hall_id:       data.hall_id,
@@ -391,6 +504,9 @@ async function loadBookingForApply(
     platform_fee:  Number(data.platform_fee),
     total_amount:  Number(data.total_amount),
     hall_owner_id: hall?.owner_id ?? null,
+    advance_amount:    num(data.advance_amount),
+    commission_rate:   num(data.commission_rate),
+    commission_amount: num(data.commission_amount),
   };
 }
 
@@ -427,26 +543,38 @@ async function blockAvailability(db: any, booking: ApplyBooking): Promise<void> 
 /** Records the platform commission for the booking. booking_id is UNIQUE, so a
  *  duplicate insert (e.g. a re-delivered webhook) is ignored — no double rows.
  *
- *  The commission_rate is DERIVED from the booking's stored platform_fee /
- *  base_amount, not re-read from the live setting. This keeps historical
- *  commissions correct if the admin later changes the global rate: each
- *  commission record reflects the rate that was actually charged to the
- *  customer at booking time.                                                  */
+ *  Amounts come from the booking's 0031 snapshot (written by the ONE central
+ *  calculation at creation), so this record always reflects what was actually
+ *  charged — never today's live setting. Pre-0031 bookings fall back to the
+ *  legacy derivation from their stored platform_fee.
+ *
+ *  Status is 'collected': the commission is ABSORBED inside the advance that
+ *  Hallnect already holds — the owner owes nothing separately, so the overdue
+ *  sweep must never treat these rows as unpaid (see lib/commissions.ts).      */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function createCommission(db: any, booking: ApplyBooking): Promise<void> {
-  // Advance the customer actually paid — the base the commission is charged on.
-  const advanceForRate = Math.max(1, Math.round(booking.total_amount * ADVANCE_RATE));
-  // Rate is derived from the stored fee so the record reflects the rate that
-  // was actually applied, not today's setting.
-  const derivedRate = advanceForRate > 0
-    ? Math.round((booking.platform_fee / advanceForRate) * 10000) / 100
-    : PLATFORM_FEE_PERCENT;
+  let advance: number;
+  let rate: number;
+  let commission: number;
 
-  // Advance the customer actually paid (mirrors ADVANCE_RATE used at checkout).
-  const advance = Math.max(1, Math.round(booking.total_amount * ADVANCE_RATE));
-  // Commission is owed by the owner and due 7 days from now. The overdue-check
-  // route (app/api/admin/commissions/run-overdue-check) uses the admin-configured
-  // commission_due_days for the sweep; this is the per-record default.
+  if (booking.advance_amount != null && booking.advance_amount > 0) {
+    // New-model booking: use the exact snapshot.
+    advance    = booking.advance_amount;
+    rate       = booking.commission_rate ?? DEFAULT_COMMISSION_PERCENT;
+    commission = booking.commission_amount
+      ?? calculateBookingPayment({ advanceAmount: advance, commissionRate: rate }).commissionAmount;
+  } else {
+    // Legacy booking (pre-0031): platform_fee stored the commission charged on
+    // a 25% advance; derive the historical rate from those stored figures.
+    advance    = advanceFromTotal(booking.total_amount);
+    commission = booking.platform_fee;
+    rate       = advance > 0
+      ? Math.round((commission / advance) * 10000) / 100
+      : DEFAULT_COMMISSION_PERCENT;
+  }
+
+  // due_date is a legacy column (owner-billed era). Kept for schema
+  // compatibility; 'collected' rows are excluded from the overdue sweep.
   const dueDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
 
   const { error } = await db
@@ -461,12 +589,11 @@ async function createCommission(db: any, booking: ApplyBooking): Promise<void> {
         // on the ADVANCE (see commission_amount / advance_amount below).
         booking_amount:      booking.base_amount,
         advance_amount:      advance,
-        commission_rate:     derivedRate,
-        // Owed BY THE OWNER: a percentage of the ADVANCE, retained from that
-        // advance at payout rather than billed separately.
-        commission_amount:   booking.platform_fee,
+        commission_rate:     rate,
+        // Absorbed inside the advance Hallnect holds — never billed to anyone.
+        commission_amount:   commission,
         // What the owner ends up with across advance + venue balance.
-        owner_payout_amount: Math.max(0, booking.base_amount - booking.platform_fee),
+        owner_payout_amount: Math.max(0, Math.round((booking.base_amount - commission) * 100) / 100),
         status:              "collected",
         due_date:            dueDate,
         settlement_adjustment_status: "none",
@@ -477,7 +604,7 @@ async function createCommission(db: any, booking: ApplyBooking): Promise<void> {
   if (error) logSideEffectError("createCommission", error);
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+ 
 function logSideEffectError(label: string, error: { code?: string; message?: string }): void {
   if (error.code === "PGRST205" || error.code === "42P01") {
     console.info(`[payments:${label}] table not provisioned yet — run supabase/migrations.`);

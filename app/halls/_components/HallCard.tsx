@@ -4,16 +4,16 @@ import { MapPin, Star, Users } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
 import { type HallListing } from "@/lib/halls";
 import { CARD_GRADIENTS, formatPrice } from "@/lib/mock-data";
-import { PLATFORM_FEE_PERCENT } from "@/lib/constants";
+import { advanceFromTotal } from "@/lib/booking-payment";
 import { SaveHeart } from "@/app/_components/SaveHeart";
 
-// Booking advance = 25% of (base + platform fee) — mirrors the checkout math in
-// app/book/[slug]/actions.ts. Shown with "≈" because the platform fee % is
-// admin-configurable; the authoritative amount is always recomputed server-side.
-const ADVANCE_RATE = 0.25;
+// Booking advance = 25% of the hall price — the same central calculation the
+// checkout uses (lib/booking-payment.ts). Shown with "≈" because the
+// authoritative amount is always recomputed server-side at booking time.
+// (The customer additionally pays the flat ₹200 platform fee at checkout,
+// which is disclosed there — a card estimate stays the venue's price.)
 function estimateAdvance(pricePerDay: number): number {
-  const total = pricePerDay * (1 + PLATFORM_FEE_PERCENT / 100);
-  return Math.round(total * ADVANCE_RATE);
+  return advanceFromTotal(pricePerDay);
 }
 
 interface HallCardProps {

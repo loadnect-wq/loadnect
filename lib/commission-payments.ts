@@ -8,10 +8,13 @@
 // the browser" rule, same idempotency shape. The two flows differ only in WHO
 // pays and WHAT the money settles.
 //
-// MONEY MODEL (set with the operator):
-//   customer pays the hall price  →  owner owes a % of the ADVANCE paid
-//   → owner settles it here        →  Hallnect earns the commission ONCE.
-// (Used as the fallback when automatic Easy Split payout is unavailable.)
+// MONEY MODEL (lib/booking-payment.ts is the source of truth):
+//   For ONLINE-paid bookings the commission is ABSORBED from the customer's
+//   advance at settlement — status 'collected' — and the owner owes nothing.
+//   This module is the FALLBACK for the remaining owner-billed cases only
+//   (manual/offline bookings, or Easy Split unavailable). Charging an owner for
+//   an already-absorbed commission would collect the same money twice, so every
+//   entry point here is gated on isOwnerBillable() below.
 //
 // SECURITY:
 //   • The amount is ALWAYS re-read from commissions.commission_amount. Nothing
@@ -47,6 +50,39 @@ function buildCommissionOrderId(commissionId: string): string {
 /** Cashfree requires a plain 10–15 digit number, no "+" or spaces. */
 function normalisePhone(raw: string | null | undefined): string {
   return (raw ?? "").replace(/\D/g, "").slice(-12);
+}
+
+/**
+ * Statuses that mean "Hallnect already has this money" — an owner must never be
+ * asked, or allowed, to pay these again:
+ *   collected                      absorbed from the customer's advance at source
+ *   paid / paid_out                already settled by the owner
+ *   waived                         written off by an admin
+ *   adjusted_from_owner_settlement recovered from a settlement deduction
+ *   refunded                       the underlying booking money went back
+ */
+const ALREADY_SETTLED_STATUSES = new Set([
+  "collected",
+  "paid",
+  "paid_out",
+  "waived",
+  "adjusted_from_owner_settlement",
+  "refunded",
+]);
+
+/** True only when a commission is genuinely still owed BY THE OWNER. */
+export function isOwnerBillable(status: string | null | undefined): boolean {
+  return !ALREADY_SETTLED_STATUSES.has(String(status ?? ""));
+}
+
+/** Owner-facing reason a commission cannot be paid, or null when it can. */
+export function settledReason(status: string | null | undefined): string | null {
+  const s = String(status ?? "");
+  if (s === "collected")  return "This commission was already retained from the customer's advance — you owe nothing.";
+  if (s === "paid" || s === "paid_out") return "This commission has already been paid.";
+  if (s === "refunded")   return "The booking was refunded — no commission is due.";
+  if (ALREADY_SETTLED_STATUSES.has(s)) return "This commission has already been settled by Hallnect.";
+  return null;
 }
 
 export type StartCommissionPaymentResult =
@@ -85,13 +121,11 @@ export async function startCommissionPayment(input: {
     return { ok: false, error: "This commission does not belong to you." };
   }
 
-  // 3. Status — never charge twice for something already settled.
-  if (commission.status === "paid") {
-    return { ok: false, error: "This commission has already been paid." };
-  }
-  if (commission.status === "waived" || commission.status === "adjusted_from_owner_settlement") {
-    return { ok: false, error: "This commission has already been settled by Hallnect." };
-  }
+  // 3. Status — never charge twice for something already settled. This
+  //    deliberately covers 'collected' (absorbed from the customer's advance):
+  //    charging the owner for it would collect the same commission twice.
+  const blocked = settledReason(commission.status);
+  if (blocked) return { ok: false, error: blocked };
 
   // 4. Amount — SERVER-AUTHORITATIVE. Read from the commission row only.
   const amount = Number(commission.commission_amount);

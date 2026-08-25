@@ -23,8 +23,8 @@ export default function TermsPage() {
         You must be at least 18 years old to create an account. By registering, you confirm that the information you provide is accurate and that you have the legal capacity to enter into a contract under Indian law.
       </Section>
 
-      <Section title="4. Bookings and Advance Payment">
-        All bookings on Hallnect require an <strong>advance payment</strong> at checkout to secure the venue and date. The advance amount is displayed before payment is confirmed. A booking is not guaranteed until payment is processed and the venue owner confirms the booking. The remaining balance (if any) is settled directly with the venue owner as agreed.
+      <Section title="4. Bookings, Advance Payment and Platform Fee">
+        All bookings on Hallnect require an <strong>advance payment</strong> at checkout to secure the venue and date, plus a flat <strong>₹200 platform fee</strong> collected with the advance. Both amounts are displayed clearly before payment is confirmed. The platform fee is non-refundable except where a cancellation is initiated by the venue or by Hallnect (see the Refund Policy). A booking is not guaranteed until payment is processed and the venue owner confirms the booking. The remaining balance (if any) is settled directly with the venue owner as agreed.
       </Section>
 
       <Section title="5. Venue Verification">
@@ -32,7 +32,7 @@ export default function TermsPage() {
       </Section>
 
       <Section title="6. Payments">
-        All payments are processed through Cashfree Payments. By making a payment, you agree to Cashfree&apos;s terms of service. Hallnect does not store your card number, CVV, or banking credentials. The platform service fee is deducted before the owner receives their payout.
+        All payments are processed through Cashfree Payments. By making a payment, you agree to Cashfree&apos;s terms of service. Hallnect does not store your card number, CVV, or banking credentials. The ₹200 platform fee is collected from the customer together with the advance; Hallnect&apos;s service commission is settled with the venue owner out of the advance and is never an additional customer charge.
       </Section>
 
       <Section title="7. Hall Owner Obligations">

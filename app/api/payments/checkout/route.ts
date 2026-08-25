@@ -44,10 +44,28 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const { split, ownerId } = resolved;
+  const { split, ownerId, platformFeePaise } = resolved;
   const admin = getSupabaseAdminClient();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = admin as any;
+
+  // Ledger writes carry the platform fee as its own named figure; the split
+  // gross stays the ADVANCE (commission + owner === gross, fee never inside).
+  // The fallback retry keeps pre-0031 databases working.
+  const ledgerAmounts: Record<string, unknown> = {
+    gross_amount_paise:      split.grossPaise,
+    commission_amount_paise: split.commissionPaise,
+    owner_amount_paise:      split.ownerPaise,
+    commission_rate:         split.ratePercent,
+    platform_fee_paise:      platformFeePaise,
+  };
+  const isUnknownColumn = (e: { code?: string } | null) =>
+    e?.code === "42703" || e?.code === "PGRST204";
+  const withoutFee = () => {
+    const { platform_fee_paise: _p, ...rest } = ledgerAmounts;
+    void _p;
+    return rest;
+  };
 
   // Idempotency: reuse an existing pending transaction for this booking+customer.
   const { data: existing } = await db
@@ -61,28 +79,31 @@ export async function POST(request: Request) {
   let transactionId: string;
   if (existing?.id) {
     transactionId = existing.id;
-    await db.from("payment_transactions").update({
-      gross_amount_paise:      split.grossPaise,
-      commission_amount_paise: split.commissionPaise,
-      owner_amount_paise:      split.ownerPaise,
-      commission_rate:         split.ratePercent,
-    }).eq("id", existing.id);
+    const { error: upErr } = await db.from("payment_transactions")
+      .update(ledgerAmounts).eq("id", existing.id);
+    if (isUnknownColumn(upErr)) {
+      await db.from("payment_transactions").update(withoutFee()).eq("id", existing.id);
+    }
   } else {
-    const { data: created, error: insErr } = await db
+    const insertRow = {
+      booking_id:     bookingId,
+      customer_id:    user.id,
+      owner_id:       ownerId,
+      payment_status: "PENDING",
+      split_status:   isEasySplitEnabled() ? "PENDING" : "NOT_APPLICABLE",
+    };
+    let { data: created, error: insErr } = await db
       .from("payment_transactions")
-      .insert({
-        booking_id:              bookingId,
-        customer_id:             user.id,
-        owner_id:                ownerId,
-        gross_amount_paise:      split.grossPaise,
-        commission_amount_paise: split.commissionPaise,
-        owner_amount_paise:      split.ownerPaise,
-        commission_rate:         split.ratePercent,
-        payment_status:          "PENDING",
-        split_status:            isEasySplitEnabled() ? "PENDING" : "NOT_APPLICABLE",
-      })
+      .insert({ ...insertRow, ...ledgerAmounts })
       .select("id")
       .single();
+    if (isUnknownColumn(insErr)) {
+      ({ data: created, error: insErr } = await db
+        .from("payment_transactions")
+        .insert({ ...insertRow, ...withoutFee() })
+        .select("id")
+        .single());
+    }
     if (insErr) {
       console.error("[payments/checkout] ledger insert failed", insErr.message);
       return NextResponse.json({ error: "Could not start checkout." }, { status: 500 });
@@ -104,17 +125,14 @@ export async function POST(request: Request) {
     ownerAmountPaise: split.ownerPaise,
   });
 
+  // The response deliberately EXCLUDES the commission/owner split: the caller
+  // is the customer's browser, and the internal commission is never a
+  // customer-facing figure. The split lives in the ledger row, server-side.
   return NextResponse.json({
     ok: true,
     transactionId,
     easySplitEnabled: isEasySplitEnabled(),
-    split: {
-      grossPaise:      split.grossPaise,
-      commissionPaise: split.commissionPaise,
-      ownerPaise:      split.ownerPaise,
-      ratePercent:     split.ratePercent,
-    },
-    liveSplit: splitResult,
+    liveSplitDispatched: splitResult.ok && "enabled" in splitResult ? splitResult.enabled : false,
     // Until Easy Split is wired, the browser completes payment via the existing
     // verified server-action flow (createPaymentSession). This route is the
     // authoritative ledger + split source of truth.

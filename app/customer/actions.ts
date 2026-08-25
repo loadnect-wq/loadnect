@@ -12,6 +12,7 @@ import {
 import { sanitizeError } from "@/lib/errors";
 import { notifyBookingEvent } from "@/lib/notifications/events";
 import { normalizePhoneE164 } from "@/lib/notifications/phone";
+import { recordBookingRefund } from "@/lib/refunds";
 
 type ActionResult = { success: true } | { error: string };
 
@@ -69,6 +70,15 @@ export async function cancelBooking(
 
   // §cancellation-flow: customer + owner + admin are all informed.
   await notifyBookingEvent("booking.cancelled", bookingId, { reason: cleanReason || null });
+
+  // Record what is owed back per the published schedule (advance only — the
+  // ₹200 platform fee is non-refundable on a customer cancellation). Recording
+  // is idempotent and never fails the cancellation; when money is actually due
+  // the customer is told the exact figure rather than left guessing.
+  const refund = await recordBookingRefund(bookingId, "customer");
+  if (refund && refund.refundAmount > 0) {
+    await notifyBookingEvent("refund.initiated", bookingId, { amount: refund.refundAmount });
+  }
 
   revalidatePath(`/customer/bookings/${bookingId}`);
   revalidatePath("/customer/bookings");

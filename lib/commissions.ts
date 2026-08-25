@@ -34,12 +34,17 @@ export type OverdueRunSummary = {
 };
 
 // Statuses that still represent an UNPAID commission (owner hasn't settled).
-// A verified 'paid'/'collected'/'paid_out'/'refunded'/'waived'/'adjusted' row is
-// NOT swept. 'payment_submitted'/'payment_under_review'/'rejected' are still
-// unpaid (a claim isn't payment), so they can go overdue.
+//
+// 'collected' is NOT in this list — deliberately. Under the active model
+// (lib/booking-payment.ts) every gateway-paid booking's commission is ABSORBED
+// inside the advance Hallnect already holds; its commissions row is created as
+// 'collected' and the owner owes nothing separately. The old code treated
+// 'collected' as owner-still-owes and swept it into a settlement adjustment
+// after 7 days — collecting the same commission TWICE (once at source, once
+// from the owner's settlement). Only genuinely owner-billed rows ('pending',
+// manual-payment claims, rejections) may go overdue.
 const UNPAID_STATUSES = [
   "pending",
-  "collected", // legacy: fee collected from customer at booking, owner still owes
   "payment_submitted",
   "payment_under_review",
   "rejected",
@@ -85,12 +90,14 @@ export async function runOverdueCommissionCheck(): Promise<OverdueRunSummary> {
   // ── Step 1: mark overdue ──────────────────────────────────────────────────
   // Only rows that are still unpaid AND past their due_date AND not already
   // overdue. due_date is authoritative (set at creation as created_at + N days).
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
+  // 'collected' is deliberately absent: absorbed-at-source commissions are
+  // already Hallnect's money (see UNPAID_STATUSES above).
   const { data: toMark, error: markSelErr } = await (db as any)
     .from("commissions")
     .select("id")
     .lt("due_date", nowIso)
-    .in("status", ["pending", "collected", "payment_submitted", "payment_under_review", "rejected"]);
+    .in("status", ["pending", "payment_submitted", "payment_under_review", "rejected"]);
 
   if (markSelErr) {
     summary.errors += 1;

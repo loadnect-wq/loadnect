@@ -72,6 +72,8 @@ export default async function AdminCommissionsPage({ searchParams }: Props) {
   const totalCommission = commissions.reduce((s, c) => s + c.commission_amount,   0);
   const totalPayouts    = commissions.reduce((s, c) => s + c.owner_payout_amount, 0);
   const totalBookings   = commissions.reduce((s, c) => s + c.booking_amount,      0);
+  const totalAdvances   = commissions.reduce((s, c) => s + c.advance_amount,      0);
+  const totalNetAdvance = commissions.reduce((s, c) => s + c.owner_net_advance,   0);
 
   // ── Group by owner for "View commission by owner" ─────────────────────────
   type OwnerAgg = { owner_business: string; bookings: number; commission: number; payout: number };
@@ -91,16 +93,21 @@ export default async function AdminCommissionsPage({ searchParams }: Props) {
 
   return (
     <div>
-      <AdminPageHeader title="Commissions" description="Platform fee taken from each booking. Records are written by the server after payment success." />
+      <AdminPageHeader title="Commissions" description="2.5% of each customer advance, absorbed inside the advance at settlement. Records are written by the server after verified payment — never by the browser." />
 
       <div className="px-4 py-4 sm:px-6 lg:px-8 space-y-4">
 
         {/* Summary cards */}
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 lg:grid-cols-5">
           <SummaryCard
             icon={<TrendingUp className="h-4 w-4 text-charcoal-600" />}
             label="Gross bookings"
             value={formatPrice(totalBookings)}
+          />
+          <SummaryCard
+            icon={<TrendingUp className="h-4 w-4 text-charcoal-600" />}
+            label="Gross advances"
+            value={formatPrice(totalAdvances)}
           />
           <SummaryCard
             icon={<Wallet className="h-4 w-4 text-maroon-600" />}
@@ -110,7 +117,12 @@ export default async function AdminCommissionsPage({ searchParams }: Props) {
           />
           <SummaryCard
             icon={<Wallet className="h-4 w-4 text-charcoal-600" />}
-            label="Owner payouts"
+            label="Net advance to owners"
+            value={formatPrice(totalNetAdvance)}
+          />
+          <SummaryCard
+            icon={<Wallet className="h-4 w-4 text-charcoal-600" />}
+            label="Owner payouts (full booking)"
             value={formatPrice(totalPayouts)}
           />
         </div>
@@ -258,9 +270,10 @@ export default async function AdminCommissionsPage({ searchParams }: Props) {
                   <Th>Booking</Th>
                   <Th>Hall / Owner</Th>
                   <Th>Booking ₹</Th>
+                  <Th>Advance</Th>
                   <Th>Rate</Th>
                   <Th>Commission</Th>
-                  <Th>Payout</Th>
+                  <Th>Net advance</Th>
                   <Th>Status</Th>
                   <Th>Date</Th>
                 </tr>
@@ -278,9 +291,10 @@ export default async function AdminCommissionsPage({ searchParams }: Props) {
                         <p className="text-[11px] text-charcoal-500 truncate max-w-[180px]">{c.owner_business ?? "—"}</p>
                       </Td>
                       <Td>{formatPrice(c.booking_amount)}</Td>
+                      <Td>{c.advance_amount > 0 ? formatPrice(c.advance_amount) : "—"}</Td>
                       <Td className="text-charcoal-500">{c.commission_rate}%</Td>
                       <Td className="font-semibold text-maroon-700">{formatPrice(c.commission_amount)}</Td>
-                      <Td>{formatPrice(c.owner_payout_amount)}</Td>
+                      <Td>{c.advance_amount > 0 ? formatPrice(c.owner_net_advance) : formatPrice(c.owner_payout_amount)}</Td>
                       <Td><Badge variant={cfg.variant} size="sm">{cfg.label}</Badge></Td>
                       <Td className="text-xs text-charcoal-500">{fmtDate(c.created_at)}</Td>
                     </tr>

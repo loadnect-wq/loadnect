@@ -89,9 +89,13 @@ export type AdminCommissionRow = {
   owner_business:      string | null;
   hall_name:           string;
   booking_amount:      number;
+  /** Gross advance the customer paid — the commission base. 0 on very old rows. */
+  advance_amount:      number;
   commission_rate:     number;
   commission_amount:   number;
   owner_payout_amount: number;
+  /** advance − commission: the owner's net advance settlement. */
+  owner_net_advance:   number;
   status:              string;
   created_at:          string;
 };
@@ -180,8 +184,12 @@ export type AdminStats = {
   };
   revenue: {
     grossBookings:  number;
+    grossAdvances:  number;
     commission:     number;
+    platformFees:   number;
+    netRevenue:     number;   // commission + platform fees
     ownerPayouts:   number;
+    refunds:        number;
   };
   open: {
     pendingHalls:   number;
@@ -212,17 +220,20 @@ export async function fetchAdminStats(): Promise<AdminStats> {
     users:    { total: 0, customers: 0, ownersPending: 0, ownersApproved: 0, admins: 0 },
     halls:    { total: 0, approved: 0, pending: 0, rejected: 0, suspended: 0 },
     bookings: { total: 0, requested: 0, confirmed: 0, completed: 0, cancelled: 0 },
-    revenue:  { grossBookings: 0, commission: 0, ownerPayouts: 0 },
+    revenue:  { grossBookings: 0, grossAdvances: 0, commission: 0, platformFees: 0, netRevenue: 0, ownerPayouts: 0, refunds: 0 },
     open:     { pendingHalls: 0, pendingOwners: 0, openTickets: 0, pendingAds: 0 },
   };
 
-  const [usersRes, hallsRes, bookingsRes, commissionsRes, ticketsRes, adsRes] = await Promise.all([
+  const [usersRes, hallsRes, bookingsRes, commissionsRes, ticketsRes, adsRes, paymentsRes] = await Promise.all([
     db.from("profiles").select("role"),
     db.from("halls").select("status"),
     db.from("bookings").select("status, total_amount"),
-    db.from("commissions").select("commission_amount, owner_payout_amount, status"),
+    db.from("commissions").select("commission_amount, owner_payout_amount, advance_amount, status"),
     db.from("support_tickets").select("status"),
     db.from("advertisements").select("status"),
+    // Platform fees + refunds live on payments (0031). select("*") keeps this
+    // working on a pre-0031 database, where the columns simply come back absent.
+    db.from("payments").select("*").in("status", ["payment_success", "refunded"]),
   ]);
 
   if (usersRes.error) { handleError("fetchAdminStats(users)", usersRes.error); return empty; }
@@ -251,9 +262,35 @@ export async function fetchAdminStats(): Promise<AdminStats> {
     .filter((b) => ["owner_confirmed", "completed"].includes(b.status))
     .reduce((sum, b) => sum + Number(b.total_amount), 0);
 
-  const commissions = (commissionsRes.data ?? []) as { commission_amount: number | string; owner_payout_amount: number | string }[];
-  empty.revenue.commission   = commissions.reduce((s, c) => s + Number(c.commission_amount),   0);
-  empty.revenue.ownerPayouts = commissions.reduce((s, c) => s + Number(c.owner_payout_amount), 0);
+  const commissions = (commissionsRes.data ?? []) as {
+    commission_amount: number | string; owner_payout_amount: number | string;
+    advance_amount: number | string | null; status: string;
+  }[];
+  // Waived commissions were never earned — including them overstated revenue.
+  empty.revenue.commission    = commissions
+    .filter((c) => c.status !== "waived")
+    .reduce((s, c) => s + Number(c.commission_amount), 0);
+  empty.revenue.ownerPayouts  = commissions.reduce((s, c) => s + Number(c.owner_payout_amount), 0);
+  empty.revenue.grossAdvances = commissions.reduce((s, c) => s + Number(c.advance_amount ?? 0), 0);
+
+  const payments = (paymentsRes.data ?? []) as {
+    status: string; amount: number | string;
+    platform_fee_amount?: number | string | null; refund_amount?: number | string | null;
+  }[];
+  // Platform fees retained: every successful payment's fee counts; on refunded
+  // payments the fee still counts UNLESS the refund returned the full charge
+  // (platform-caused cancellations refund fee included — refund_amount equals
+  // payments.amount there; policy refunds are advance-only and keep the fee).
+  empty.revenue.platformFees = payments.reduce((s, p) => {
+    const fee = Number(p.platform_fee_amount ?? 0);
+    if (!fee) return s;
+    if (p.status !== "refunded") return s + fee;
+    const refunded = Number(p.refund_amount ?? 0);
+    const fullRefund = refunded >= Number(p.amount) - 0.01;
+    return s + (fullRefund ? 0 : fee);
+  }, 0);
+  empty.revenue.refunds    = payments.reduce((s, p) => s + Number(p.refund_amount ?? 0), 0);
+  empty.revenue.netRevenue = empty.revenue.commission + empty.revenue.platformFees;
 
   empty.open.pendingHalls  = empty.halls.pending;
   // Owner joining approval was removed (migration 0019) — the hall is the only
@@ -466,7 +503,7 @@ export async function fetchAllCommissions(
 
   let query = db
     .from("commissions")
-    .select("id, booking_id, hall_id, hall_owner_id, booking_amount, commission_rate, commission_amount, owner_payout_amount, status, created_at, bookings(halls(name)), hall_owners(business_name)")
+    .select("id, booking_id, hall_id, hall_owner_id, booking_amount, advance_amount, commission_rate, commission_amount, owner_payout_amount, status, created_at, bookings(halls(name)), hall_owners(business_name)")
     .order("created_at", { ascending: false })
     .limit(500);
 
@@ -493,9 +530,14 @@ export async function fetchAllCommissions(
     owner_business:      row.hall_owners?.business_name ?? null,
     hall_name:           row.bookings?.halls?.name      ?? "Hall",
     booking_amount:      Number(row.booking_amount),
+    advance_amount:      row.advance_amount == null ? 0 : Number(row.advance_amount),
     commission_rate:     Number(row.commission_rate),
     commission_amount:   Number(row.commission_amount),
     owner_payout_amount: Number(row.owner_payout_amount),
+    owner_net_advance:   Math.max(
+      0,
+      Math.round(((row.advance_amount == null ? 0 : Number(row.advance_amount)) - Number(row.commission_amount)) * 100) / 100,
+    ),
     status:              row.status,
     created_at:          row.created_at,
   }));
@@ -596,7 +638,7 @@ export async function fetchOwnerOptions(): Promise<{ id: string; business_name: 
     .select("id, business_name")
     .order("business_name", { ascending: true });
   if (error) { handleError("fetchOwnerOptions", error); return []; }
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   return (data ?? []) as { id: string; business_name: string }[];
 }
 

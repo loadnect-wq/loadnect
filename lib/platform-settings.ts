@@ -10,9 +10,9 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { getSupabaseServerClient } from "@/lib/supabase/server";
-import { PLATFORM_FEE_PERCENT } from "@/lib/constants";
+import { DEFAULT_COMMISSION_PERCENT } from "@/lib/booking-payment";
 
-const FALLBACK = PLATFORM_FEE_PERCENT; // 5
+const FALLBACK = DEFAULT_COMMISSION_PERCENT; // 2.5
 
 /** Returns the active platform commission rate as a percent (e.g. 5, 7.5).
  *  Falls back to the compile-time default if the settings row or table is

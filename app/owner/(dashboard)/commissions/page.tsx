@@ -20,14 +20,17 @@ import { isCashfreeConfigured } from "@/lib/cashfree";
 export const metadata: Metadata = { title: "Commissions" };
 
 const OWNER_TERMS =
-  "Commission is payable to Hallnect for confirmed/advance-paid bookings. If unpaid " +
-  "after the due date, Hallnect may adjust the outstanding commission from the owner's " +
-  "pending settlement as per platform terms.";
+  "For online-paid bookings, Hallnect's commission is retained from the customer's advance " +
+  "automatically — you are never billed for it. A commission is payable separately only for " +
+  "bookings settled outside the platform; if such a commission stays unpaid after its due " +
+  "date, Hallnect may adjust it from your pending settlement as per platform terms.";
 
 // Buckets for owner-facing display.
-const PAID_STATUSES     = ["paid", "paid_out"];
+// 'collected' = absorbed from the customer's advance at source — SETTLED, the
+// owner owes nothing on it (it was wrongly listed outstanding before).
+const PAID_STATUSES     = ["paid", "paid_out", "collected"];
 const ADJUSTED_STATUSES = ["adjusted_from_owner_settlement"];
-const OUTSTANDING_STATUSES = ["pending", "collected", "overdue", "rejected", "payment_submitted", "payment_under_review"];
+const OUTSTANDING_STATUSES = ["pending", "overdue", "rejected", "payment_submitted", "payment_under_review"];
 
 function fmtDate(iso: string | null) {
   if (!iso) return "—";
@@ -45,6 +48,7 @@ type BadgeVar = "success" | "warning" | "secondary" | "destructive" | "default";
 function statusBadge(c: OwnerCommissionRow): { label: string; variant: BadgeVar } {
   if (ADJUSTED_STATUSES.includes(c.status) || c.settlement_adjustment_status === "adjusted")
     return { label: "Adjusted from settlement", variant: "secondary" };
+  if (c.status === "collected") return { label: "Retained from advance", variant: "success" };
   if (PAID_STATUSES.includes(c.status)) return { label: "Paid", variant: "success" };
   if (c.status === "waived")   return { label: "Waived", variant: "secondary" };
   if (c.status === "disputed") return { label: "Disputed", variant: "destructive" };

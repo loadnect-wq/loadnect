@@ -24,6 +24,7 @@ import {
   notifyPremiumChanged,
 } from "@/lib/notifications/events";
 import type { OverdueRunSummary } from "@/lib/commissions";
+import { settledReason } from "@/lib/commission-payments";
 
 function requireUuid(id: string, label = "id"): string | null {
   return parseSafe(uuidSchema, id).ok ? null : `Invalid ${label}.`;
@@ -779,6 +780,17 @@ export async function verifyCommissionPayment(
   }
 
   if (decision === "approve") {
+    // The commission must still be genuinely OWNER-BILLED. Approving a payment
+    // against an already-settled commission — above all 'collected', which was
+    // absorbed from the customer's advance — would bank the same commission
+    // twice and leave the owner out of pocket.
+    const { data: linked } = await db
+      .from("commissions").select("status").eq("id", pay.commission_id).maybeSingle();
+    const blocked = settledReason(linked?.status);
+    if (blocked) {
+      return { error: `${blocked} Reject this submission and refund the owner directly.` };
+    }
+
     const { error: upErr } = await db
       .from("owner_commission_payments")
       .update({

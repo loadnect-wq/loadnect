@@ -2,11 +2,13 @@
 // lib/easy-split.ts — Cashfree Easy Split: owner (vendor) onboarding and the
 // automatic owner payout that fires when a booking is ACCEPTED.  SERVER-ONLY.
 //
-// MONEY FLOW
-//   customer pays advance  → funds sit in Hallnect's Cashfree account, unsplit
-//   owner ACCEPTS          → splitOnBookingAccepted() assigns the owner's share
-//                            to their vendor balance; Hallnect keeps the 5%
-//                            commission by simply NOT splitting it
+// MONEY FLOW (model: lib/booking-payment.ts — 2.5% absorbed + ₹200 fee)
+//   customer pays advance + ₹200 platform fee → funds sit in Hallnect's
+//                            Cashfree account, unsplit
+//   owner ACCEPTS          → payOwnerOnAcceptance() assigns the owner's NET
+//                            ADVANCE (advance − 2.5% commission, fee excluded)
+//                            to their vendor balance; Hallnect keeps the
+//                            commission AND the fee by simply NOT splitting them
 //   owner DECLINES/expires → no split was created, so the customer refund is
 //                            clean and there is nothing to recover
 //

@@ -57,7 +57,10 @@ export const HALL_CAPACITIES = [
   { label: "500+ guests", value: "500+" },
 ] as const;
 
-export const PLATFORM_FEE_PERCENT = 5; // 5 % commission taken from each booking
+// The old 5% commission model is DISCONTINUED. The active money model lives in
+// lib/booking-payment.ts: 2.5% commission absorbed inside the advance + a flat
+// ₹200 customer platform fee. Import DEFAULT_COMMISSION_PERCENT /
+// PLATFORM_FEE_RUPEES from there — no rate constant lives here any more.
 
 export function getDashboardPath(role: string): string {
   switch (role) {

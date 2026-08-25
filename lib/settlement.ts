@@ -97,31 +97,44 @@ export async function markWebhookProcessed(
  * rate and computes integer-paise commission/owner shares.
  */
 export async function resolveSplitForBooking(bookingId: string): Promise<
-  | { ok: true; split: CommissionSplit; ownerId: string | null; customerId: string; advancePaise: number }
+  | { ok: true; split: CommissionSplit; ownerId: string | null; customerId: string; advancePaise: number; platformFeePaise: number }
   | { ok: false; error: string }
 > {
   const db = getSupabaseAdminClient();
+  // select("*") so the 0031 breakdown columns come along when present without
+  // erroring on a pre-0031 database.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data: booking, error } = await (db as any)
     .from("bookings")
-    .select("id, customer_id, total_amount, platform_fee, base_amount, halls(owner_id)")
+    .select("*, halls(owner_id)")
     .eq("id", bookingId)
     .maybeSingle();
 
   if (error || !booking) return { ok: false, error: "Booking not found." };
 
-  // Advance = 25% of total (mirrors the existing rupee checkout), converted to
-  // integer paise. All downstream math is integer-only.
-  const totalPaise = Math.round(Number(booking.total_amount) * 100);
-  const advancePaise = Math.max(1, Math.round(totalPaise * 0.25));
+  let advancePaise: number;
+  let ratePercent: number;
+  let platformFeePaise: number;
 
-  // Commission rate snapshot: derive from the booking's stored platform_fee vs
-  // base_amount so historical rate changes don't retroactively alter the split.
-  const base = Number(booking.base_amount);
-  const fee = Number(booking.platform_fee);
-  const ratePercent = base > 0 ? Math.round((fee / base) * 10000) / 100 : 0;
+  if (booking.advance_amount != null && Number(booking.advance_amount) > 0) {
+    // New-model booking: the 0031 snapshot is authoritative. The platform fee
+    // is a SEPARATE figure — it never enters the split gross, which must keep
+    // reconciling commission + owner === advance exactly.
+    advancePaise = Math.round(Number(booking.advance_amount) * 100);
+    ratePercent = Number(booking.commission_rate ?? 0);
+    platformFeePaise = Math.round(Number(booking.platform_fee_amount ?? 0) * 100);
+  } else {
+    // Legacy booking: advance = 25% of total; the stored platform_fee was the
+    // commission charged ON THE ADVANCE, so the rate divides by the advance.
+    // (The previous code divided by base_amount — a 4× understatement.)
+    const totalPaise = Math.round(Number(booking.total_amount) * 100);
+    advancePaise = Math.max(1, Math.round(totalPaise * 0.25));
+    const feePaise = Math.round(Number(booking.platform_fee) * 100);
+    ratePercent = advancePaise > 0 ? Math.round((feePaise / advancePaise) * 10000) / 100 : 0;
+    platformFeePaise = 0; // no customer fee existed under the legacy model
+  }
 
-  const split = computeCommissionSplit(advancePaise, ratePercent);
+  const split = computeCommissionSplit(advancePaise, Math.min(100, Math.max(0, ratePercent)));
   const hall = Array.isArray(booking.halls) ? booking.halls[0] : booking.halls;
 
   return {
@@ -130,6 +143,7 @@ export async function resolveSplitForBooking(bookingId: string): Promise<
     ownerId: hall?.owner_id ?? null,
     customerId: booking.customer_id,
     advancePaise,
+    platformFeePaise,
   };
 }
 

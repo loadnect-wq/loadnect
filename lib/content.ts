@@ -54,7 +54,7 @@ export const FAQ_ITEMS = [
   },
   {
     q: "What is the platform fee?",
-    a: "Hallnect charges a 5% platform fee on confirmed bookings. This covers secure payment processing, booking guarantees, and 24/7 customer support.",
+    a: "Hallnect charges a flat ₹200 platform fee, collected with your advance at checkout. It covers secure payment processing, booking support, and WhatsApp updates, and is shown clearly before you pay. The fee is non-refundable if you cancel; if the venue cancels on you, it is refunded in full.",
   },
   {
     q: "Can I cancel my booking?",

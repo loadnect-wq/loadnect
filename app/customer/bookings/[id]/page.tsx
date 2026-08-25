@@ -232,18 +232,37 @@ export default async function BookingDetailPage({ params }: Props) {
           <p className="px-4 pt-4 pb-2 text-xs font-semibold uppercase tracking-wide text-charcoal-500">
             Amount
           </p>
-          {/* The customer pays the HALL PRICE ONLY. platform_fee is the
-              commission the VENUE OWNER owes Hallnect out of the advance — it
-              is not charged to the customer, so showing it here billed them for
-              something they never pay and made Base + Fee ≠ Total. */}
+          {/* The customer pays the hall price + the flat ₹200 platform fee
+              (disclosed at checkout, collected with the advance). Hallnect's
+              internal commission is settled with the VENUE, never billed to
+              the customer — so it is deliberately not a line here. */}
           <AmountRow label="Hall price" amount={booking.base_amount} />
+          {booking.advance_amount != null && (
+            // advance_amount is snapshotted when the booking is CREATED, before
+            // any money moves — so it is only "paid" once a payment actually
+            // succeeded. Otherwise it is the amount still payable.
+            <AmountRow
+              label={booking.payment?.status === "payment_success" ? "Advance paid" : "Advance payable"}
+              amount={booking.advance_amount}
+            />
+          )}
+          {booking.platform_fee_amount != null && booking.platform_fee_amount > 0 && (
+            <AmountRow label="Platform fee" amount={booking.platform_fee_amount} />
+          )}
           <div className="border-t border-border px-4 py-3 bg-ivory-50">
             <div className="flex items-center justify-between">
-              <span className="text-sm font-bold text-charcoal-900">Total</span>
+              <span className="text-sm font-bold text-charcoal-900">Hall total</span>
               <span className="text-base font-bold text-maroon-700">
                 {formatPrice(booking.total_amount)}
               </span>
             </div>
+            {booking.advance_amount != null && (
+              <p className="mt-1 text-[11px] text-charcoal-500">
+                Balance {formatPrice(Math.max(0, booking.total_amount - booking.advance_amount))} is
+                payable directly at the venue. The platform fee is separate from the hall total
+                and non-refundable.
+              </p>
+            )}
           </div>
         </div>
 
@@ -255,9 +274,23 @@ export default async function BookingDetailPage({ params }: Props) {
             </p>
             <BookingRow
               icon={<CreditCard className="h-4 w-4" />}
-              label="Paid"
+              label="Total paid"
               value={formatPrice(booking.payment.amount)}
             />
+            {booking.payment.advance_amount != null && booking.payment.platform_fee_amount != null && (
+              <BookingRow
+                icon={<CreditCard className="h-4 w-4" />}
+                label="Breakdown"
+                value={`${formatPrice(booking.payment.advance_amount)} advance + ${formatPrice(booking.payment.platform_fee_amount)} platform fee`}
+              />
+            )}
+            {booking.payment.refund_amount != null && booking.payment.refund_amount > 0 && (
+              <BookingRow
+                icon={<CreditCard className="h-4 w-4" />}
+                label="Refunded"
+                value={formatPrice(booking.payment.refund_amount)}
+              />
+            )}
             {booking.payment.payment_method && (
               <BookingRow
                 icon={<CreditCard className="h-4 w-4" />}

@@ -110,9 +110,28 @@ export default async function AdminDashboardPage() {
               value={formatPrice(stats.revenue.grossBookings)}
             />
             <RevenueCard
+              icon={<CheckCircle2 className="h-5 w-5 text-emerald-600" />}
+              label="Gross advances"
+              value={formatPrice(stats.revenue.grossAdvances)}
+            />
+            <RevenueCard
               icon={<Wallet className="h-5 w-5 text-maroon-600" />}
-              label="Platform commission"
+              // Not labelled "2.5%": the sum spans historical bookings that
+              // carry their own snapshotted rate from the previous model.
+              label="Commission earned"
               value={formatPrice(stats.revenue.commission)}
+              highlight
+            />
+            <RevenueCard
+              icon={<Wallet className="h-5 w-5 text-gold-600" />}
+              label="Platform fees (₹200/booking)"
+              value={formatPrice(stats.revenue.platformFees)}
+              highlight
+            />
+            <RevenueCard
+              icon={<Wallet className="h-5 w-5 text-maroon-600" />}
+              label="Net Hallnect revenue"
+              value={formatPrice(stats.revenue.netRevenue)}
               highlight
             />
             <RevenueCard
@@ -121,6 +140,12 @@ export default async function AdminDashboardPage() {
               value={formatPrice(stats.revenue.ownerPayouts)}
             />
           </div>
+          {stats.revenue.refunds > 0 && (
+            <p className="mt-2 text-xs text-charcoal-500">
+              Refunds issued: {formatPrice(stats.revenue.refunds)} (platform fees are retained
+              except on venue/platform-caused cancellations).
+            </p>
+          )}
         </section>
 
         {/* Recent admin activity — real entries from the append-only audit log.
