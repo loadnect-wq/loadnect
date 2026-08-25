@@ -32,6 +32,12 @@ export const metadata: Metadata = {
   appleWebApp: { capable: true, title: APP_NAME, statusBarStyle: "default" },
   openGraph: { type: "website", siteName: APP_NAME, title: APP_NAME, description: APP_DESCRIPTION },
   twitter:   { card: "summary_large_image", title: APP_NAME, description: APP_DESCRIPTION },
+  // Google Search Console ownership proof for the https://hallnect.com
+  // property. Emitted site-wide as
+  //   <meta name="google-site-verification" content="..." />
+  // Google re-checks this periodically, so it must NOT be removed after
+  // verification succeeds or the property silently loses ownership.
+  verification: { google: "-NpXvVXPqo0ifxqQvyUdyQxcnin43rtVfea-Uy2CYMQ" },
 };
 
 export const viewport: Viewport = {
