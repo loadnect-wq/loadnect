@@ -39,7 +39,7 @@ import java.io.File
 
 /**
  * The single activity: a full-screen, security-hardened WebView on
- * https://www.hallnect.com with the native affordances a browser tab lacks —
+ * https://hallnect.com with the native affordances a browser tab lacks —
  * splash, offline screen, camera/gallery hall-photo upload, UPI hand-off,
  * downloads, App Links and sane back navigation.
  */

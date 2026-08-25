@@ -34,7 +34,7 @@ import android.net.Uri
  */
 object UrlPolicy {
 
-    const val HOME_URL = "https://www.hallnect.com/"
+    const val HOME_URL = "https://hallnect.com/"
 
     /** Hosts allowed to render inside the WebView. */
     private val TRUSTED_SUFFIXES = listOf(

@@ -5,20 +5,17 @@
 // entry and robots directive resolves from SITE_URL below — there is exactly
 // one place to change it.
 //
-// Why www and not the apex: the apex is not the serving host. Verified live:
-//     https://hallnect.com/         -> 301  https://www.hallnect.com/
-//     https://www.hallnect.com/     -> 200
+// The canonical host is the APEX, hallnect.com. Verified live after the
+// 2026-08-25 Vercel cut-over:
+//     https://hallnect.com/         -> 200  (Production)
+//     https://www.hallnect.com/     -> 301  https://hallnect.com/  (path-preserving)
 //     https://hallnect5.vercel.app/ -> 404  (alias released; no duplicate host)
-// A canonical must name the URL that actually returns 200. Pointing canonicals
-// at the apex while the apex 301s would make every canonical a redirect, which
-// Google resolves back to www anyway — the tag would fight the server and slow
-// indexing rather than help it.
 //
-// TO MAKE THE APEX CANONICAL INSTEAD: switch the primary domain in Vercel so
-// hallnect.com serves 200 and www redirects to it, then set the env var
-// NEXT_PUBLIC_SITE_URL=https://hallnect.com. No code change is needed — the
-// override is read first (lib/app-url.ts). Do NOT set it before flipping
-// Vercel, or every canonical will point at a redirect.
+// A canonical must always name the URL that actually returns 200 — a canonical
+// pointing at a redirect fights the server and slows indexing. If the primary
+// domain is ever switched back to www, change PRODUCTION_ORIGIN in
+// lib/app-url.ts (or set NEXT_PUBLIC_SITE_URL, which is read first) IN THE SAME
+// CHANGE as the Vercel flip, never before it.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { getCanonicalAppUrl } from "@/lib/app-url";

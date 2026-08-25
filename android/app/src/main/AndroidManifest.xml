@@ -3,7 +3,7 @@
   Hallnect — Android manifest.
 
   PERMISSIONS: exactly two, both non-dangerous.
-    INTERNET             — the app is a client of https://www.hallnect.com
+    INTERNET             — the app is a client of https://hallnect.com
     ACCESS_NETWORK_STATE — powers the branded offline screen
 
   Deliberately ABSENT:
@@ -69,14 +69,17 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
-            <!-- Android App Links — WWW HOST ONLY, deliberately.
+            <!-- Android App Links — APEX HOST ONLY, deliberately.
                  autoVerify fetches /.well-known/assetlinks.json from every
-                 declared host and does NOT follow redirects; the apex
-                 hallnect.com 301s to www at the edge, so declaring it would
-                 fail verification — and on Android ≤11 one failing host sinks
-                 the whole filter, killing the OAuth-callback round trip.
-                 Everything canonical (including the Supabase callback) lives
-                 on www; apex links open in the browser and redirect there.
+                 declared host and does NOT follow redirects, and on Android
+                 <=11 a single failing host sinks the whole intent filter. So
+                 only the host that actually SERVES may be declared. Since the
+                 2026-08-25 Vercel cut-over that is the apex:
+                   https://hallnect.com/      -> 200 (Production)
+                   https://www.hallnect.com/  -> 301 to the apex
+                 www is therefore NOT declared: it would fail verification.
+                 Links to www still reach the app — Chrome follows the 301 to
+                 the apex, which this filter matches.
                  The web app serves the file from ANDROID_ASSETLINKS_SHA256.
                  Until verified, links open in the browser; nothing breaks. -->
             <intent-filter android:autoVerify="true">
@@ -84,7 +87,7 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="https" />
-                <data android:host="www.hallnect.com" />
+                <data android:host="hallnect.com" />
             </intent-filter>
         </activity>
 

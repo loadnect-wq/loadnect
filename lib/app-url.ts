@@ -31,11 +31,17 @@
 const RETIRED_HOSTS = new Set(["hallnect5.vercel.app"]);
 
 // The production origin used when no (valid, non-retired) env override exists.
-// This is the www host, not the apex: hallnect.com's DNS still points at the
-// registrar's parking page, while www.hallnect.com verifiably serves the app.
-// The Supabase redirect allow-list should carry BOTH /auth/callback variants
-// so a later apex cut-over needs no code change.
-const PRODUCTION_ORIGIN = "https://www.hallnect.com";
+//
+// 2026-08-25: the apex cut-over happened. hallnect.com is now the Production
+// domain in Vercel and www.hallnect.com 301s to it (path-preserving), the
+// reverse of the previous arrangement. Verified live after the change:
+//     https://hallnect.com/halls      -> 200
+//     https://www.hallnect.com/halls  -> 301 https://hallnect.com/halls
+// This constant must name the host that actually SERVES, because it is the
+// canonical every page advertises, the OAuth redirect_to, and the Cashfree
+// return_url. Both /auth/callback variants are in the Supabase redirect
+// allow-list, so this switch does not disturb Google sign-in.
+const PRODUCTION_ORIGIN = "https://hallnect.com";
 
 /** Parses an env value into an http(s) origin; tolerates a missing scheme
  *  (the common deploy typo "hallnect.com", which third parties would otherwise
