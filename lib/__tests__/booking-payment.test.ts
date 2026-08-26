@@ -15,6 +15,7 @@ import {
   advanceFromTotal,
   PLATFORM_FEE_RUPEES,
   DEFAULT_COMMISSION_PERCENT,
+  DEFAULT_ADVANCE_PERCENT,
 } from "@/lib/booking-payment";
 import { commissionPaiseOn, splitFromParts, toPaise } from "@/lib/money";
 import { computeOwnerShare } from "@/lib/owner-payout";
@@ -309,5 +310,45 @@ describe("END TO END — the money actually reaches the right accounts", () => {
     expect(ledger.grossPaise).toBe(pay.paise.advance);
     expect(ledger.grossPaise).not.toBe(pay.paise.customerTotal);
     expect(ledger.commissionPaise + ledger.ownerPaise).toBe(pay.paise.advance);
+  });
+});
+
+describe("advance percentage is admin-configurable", () => {
+  // The setting existed in the admin UI but was read by nothing: the advance
+  // was hardcoded at 25%. It is now a real parameter, so these pin that the
+  // rate actually moves the money AND that the default still matches the
+  // constant — a fallback that disagrees would reprice bookings on a failed
+  // settings read.
+  it("defaults to the compile-time constant when no rate is given", () => {
+    expect(advanceFromTotal(100_000)).toBe(25_000);
+    expect(advanceFromTotal(100_000, DEFAULT_ADVANCE_PERCENT)).toBe(25_000);
+    expect(DEFAULT_ADVANCE_PERCENT).toBe(25);
+  });
+
+  it("honours a different configured rate", () => {
+    expect(advanceFromTotal(100_000, 20)).toBe(20_000);
+    expect(advanceFromTotal(100_000, 50)).toBe(50_000);
+    expect(advanceFromTotal(29_400, 25)).toBe(7_350);
+  });
+
+  it("still never returns less than ₹1", () => {
+    expect(advanceFromTotal(2, 20)).toBe(1);
+  });
+
+  it("rejects a nonsensical rate rather than charging a strange advance", () => {
+    expect(() => advanceFromTotal(100_000, 0)).toThrow();
+    expect(() => advanceFromTotal(100_000, -5)).toThrow();
+    expect(() => advanceFromTotal(100_000, 101)).toThrow();
+  });
+
+  it("commission is still charged on the HALL PRICE when the advance rate moves", () => {
+    // The two rates are independent: dropping the advance to 20% must not
+    // shrink the commission, which is a percentage of the hall price.
+    const b = calculateBookingPayment({
+      hallTotal: 100_000, advancePercent: 20, commissionRate: 2.5,
+    });
+    expect(b.advanceAmount).toBe(20_000);
+    expect(b.commissionAmount).toBe(2_500);
+    expect(b.ownerNetAdvance).toBe(17_500);
   });
 });

@@ -16,6 +16,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Building2, MapPin, Users, Wallet } from "lucide-react";
 import { fetchHalls } from "@/lib/halls";
+import { getAdvancePercent } from "@/lib/platform-settings";
 import { HallCard } from "@/app/halls/_components/HallCard";
 import { AppHeader } from "@/components/app/AppHeader";
 import { buildMetadata } from "@/lib/seo/metadata";
@@ -66,6 +67,7 @@ export default async function CityPage({ params }: Props) {
   // An unknown city is a genuine 404, not an empty page pretending to be one.
   if (!city) notFound();
 
+  const advancePercent = await getAdvancePercent();
   const halls = await fetchHalls({ city, sort: "rating" });
   const priceFrom = halls.length ? Math.min(...halls.map((h) => h.price_per_day)) : null;
   const largest = halls.length ? Math.max(...halls.map((h) => h.capacity_max)) : null;
@@ -166,7 +168,7 @@ export default async function CityPage({ params }: Props) {
             <h2 className="sr-only">Venues in {city}</h2>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {halls.map((hall) => (
-                <HallCard key={hall.id} hall={hall} />
+                <HallCard key={hall.id} hall={hall} advancePercent={advancePercent} />
               ))}
             </div>
           </>

@@ -100,11 +100,13 @@ interface Props {
   availability:         DaySlotAvailability[];
   windowDays:           number;
   onlinePaymentEnabled: boolean;
+  /** Live advance % from platform_settings, so the preview matches the charge. */
+  advancePercent?:      number;
   /** Customer's saved phone (profiles.phone) — prefilled, still editable. */
   initialPhone?:        string | null;
 }
 
-export function BookingFlow({ hall, availability, windowDays, onlinePaymentEnabled, initialPhone }: Props) {
+export function BookingFlow({ hall, availability, windowDays, onlinePaymentEnabled, advancePercent, initialPhone }: Props) {
   const router = useRouter();
   const [step, setStep] = useState<StepIndex>(0);
 
@@ -160,7 +162,7 @@ export function BookingFlow({ hall, availability, windowDays, onlinePaymentEnabl
   // here is exactly the figure Cashfree will charge — a preview that rounds
   // differently from the charge is a support ticket waiting to happen.
   const totalAmount = baseAmount;
-  const advance     = totalAmount > 0 ? advanceFromTotal(totalAmount) : 0;
+  const advance     = totalAmount > 0 ? advanceFromTotal(totalAmount, advancePercent) : 0;
   const payNowTotal = advance > 0 ? advance + DISPLAY_PLATFORM_FEE : 0;
 
   // Everything that determines what is being bought. Any change invalidates a

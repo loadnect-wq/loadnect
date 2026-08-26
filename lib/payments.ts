@@ -132,6 +132,10 @@ export async function startPaymentForBooking(
   const hasBreakdown  =
     booking.advance_amount != null && Number.isFinite(storedAdvance) && storedAdvance > 0;
 
+  // Legacy booking (pre-0031, no stored breakdown): the advance is recomputed
+  // at the COMPILE-TIME constant, deliberately NOT the live admin setting.
+  // Those bookings were created at 25%; re-deriving them at whatever the rate
+  // happens to be today would silently restate money that was already charged.
   const advance = hasBreakdown
     ? storedAdvance
     : advanceFromTotal(Number(booking.total_amount));

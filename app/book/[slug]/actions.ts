@@ -6,8 +6,8 @@ import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import { checkRangeAvailability, type BookingSlot } from "@/lib/availability";
 import { todayInBusinessTz, daysBetweenInclusive } from "@/lib/dates";
 import { startPaymentForBooking } from "@/lib/payments";
-import { isCashfreeConfigured } from "@/lib/cashfree";
-import { getCommissionPercent } from "@/lib/platform-settings";
+import { isOnlinePaymentEnabled } from "@/lib/platform-settings";
+import { getAdvancePercent, getCommissionPercent } from "@/lib/platform-settings";
 import { calculateBookingPayment, advanceFromTotal } from "@/lib/booking-payment";
 import { bookingSchema, paymentSessionSchema, uuidSchema, parseSafe } from "@/lib/validation/schemas";
 import { sanitizeError } from "@/lib/errors";
@@ -164,10 +164,11 @@ export async function createBookingRequest(
   // Every figure is computed by the ONE central calculation and snapshotted
   // onto the booking so later rate changes never touch this booking's money.
   const commissionPercent = await getCommissionPercent();
+  const advancePercent    = await getAdvancePercent();
   const totalAmount       = baseAmount;
   const pay = calculateBookingPayment({
     hallTotal:      totalAmount,
-    advanceAmount:  advanceFromTotal(totalAmount),
+    advanceAmount:  advanceFromTotal(totalAmount, advancePercent),
     commissionRate: commissionPercent,
   });
 
@@ -330,7 +331,7 @@ export async function submitManualBookingRequest(
   // was configured ANY signed-in customer could skip checkout entirely and
   // confirm a real booking for free — blocking the hall's calendar and
   // creating an owner commission against money that was never collected.
-  if (isCashfreeConfigured()) {
+  if (await isOnlinePaymentEnabled()) {
     return { error: "This booking must be paid for online. Please complete the payment to confirm it." };
   }
 
@@ -432,8 +433,8 @@ export async function createPaymentSession(
   // ── Pre-flight — fail cleanly if the gateway isn't configured ───────────────
   // Avoids surfacing internal env/config details to the client and prevents a
   // confusing checkout attempt when keys are absent.
-  if (!isCashfreeConfigured()) {
-    console.error("[createPaymentSession] Cashfree credentials are not configured.");
+  if (!(await isOnlinePaymentEnabled())) {
+    console.error("[createPaymentSession] online payment is unavailable (credentials missing or switched off).");
     return { error: "Online payments are temporarily unavailable. Please try again later." };
   }
 

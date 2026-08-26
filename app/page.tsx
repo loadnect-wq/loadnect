@@ -9,6 +9,7 @@ import { HomeSearchEntry } from "./_components/HomeSearchEntry";
 import { CategoryRow } from "./_components/CategoryRow";
 import { CitiesRow } from "./_components/CitiesRow";
 import { POPULAR_CITIES } from "@/lib/content";
+import { getAdvancePercent } from "@/lib/platform-settings";
 import { AdSlot } from "@/components/ads/AdSlot";
 import { HeroSearch } from "@/components/sections/HeroSearch";
 import { HallCard } from "@/app/halls/_components/HallCard";
@@ -78,6 +79,7 @@ export default async function HomePage() {
   const cities = POPULAR_CITIES.slice(0, 8);
   // Real approved-venue counts, so the city links below point at pages that
   // actually have something on them (lib/seo/cities.ts).
+  const advancePercent = await getAdvancePercent();
   const cityInventory = await fetchCityInventory();
   const citiesWithVenues = cityInventory.filter((c) => c.venueCount > 0);
 
@@ -145,7 +147,7 @@ export default async function HomePage() {
               <div className="flex w-max gap-3 px-4 pb-1 sm:px-6">
                 {featured.map((h) => (
                   <div key={h.id} className="w-64 shrink-0">
-                    <HallCard hall={h} />
+                    <HallCard hall={h} advancePercent={advancePercent} />
                   </div>
                 ))}
               </div>
@@ -248,7 +250,7 @@ export default async function HomePage() {
           ) : (
             <div className="mt-8 grid grid-cols-2 gap-6 xl:grid-cols-3">
               {featured.map((h) => (
-                <HallCard key={h.id} hall={h} />
+                <HallCard key={h.id} hall={h} advancePercent={advancePercent} />
               ))}
             </div>
           )}

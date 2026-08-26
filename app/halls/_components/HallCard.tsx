@@ -7,17 +7,25 @@ import { CARD_GRADIENTS, formatPrice } from "@/lib/mock-data";
 import { advanceFromTotal } from "@/lib/booking-payment";
 import { SaveHeart } from "@/app/_components/SaveHeart";
 
-// Booking advance = 25% of the hall price — the same central calculation the
-// checkout uses (lib/booking-payment.ts). Shown with "≈" because the
-// authoritative amount is always recomputed server-side at booking time.
+// Booking advance — the same central calculation the checkout uses
+// (lib/booking-payment.ts). Shown with "≈" because the authoritative amount is
+// always recomputed server-side at booking time.
 // (The customer additionally pays the flat ₹200 platform fee at checkout,
 // which is disclosed there — a card estimate stays the venue's price.)
-function estimateAdvance(pricePerDay: number): number {
-  return advanceFromTotal(pricePerDay);
+//
+// The percentage is passed IN rather than assumed: it is an admin setting, and
+// a card advertising a different advance from the one checkout charges is the
+// kind of quiet contradiction customers notice at exactly the wrong moment.
+// This component is rendered inside a client component (SavedView) as well as
+// server pages, so it cannot read the setting itself — the page supplies it.
+function estimateAdvance(pricePerDay: number, advancePercent?: number): number {
+  return advanceFromTotal(pricePerDay, advancePercent);
 }
 
 interface HallCardProps {
   hall: HallListing;
+  /** Live advance % from platform_settings. Omitted falls back to the constant. */
+  advancePercent?: number;
 }
 
 // Deterministic gradient fallback when no cover image is available
@@ -27,7 +35,7 @@ function gradientForId(id: string): string {
   return CARD_GRADIENTS[Math.abs(hash) % CARD_GRADIENTS.length];
 }
 
-export function HallCard({ hall }: HallCardProps) {
+export function HallCard({ hall, advancePercent }: HallCardProps) {
   return (
     <Link
       href={`/halls/${hall.slug}`}
@@ -117,7 +125,7 @@ export function HallCard({ hall }: HallCardProps) {
             {/* Advance shown as an estimate — the exact, authoritative amount is
                 recomputed server-side at booking (platform fee % is admin-set). */}
             <span className="mt-0.5 block text-[10px] font-semibold text-gold-600">
-              ≈ {formatPrice(estimateAdvance(hall.price_per_day))} advance
+              ≈ {formatPrice(estimateAdvance(hall.price_per_day, advancePercent))} advance
             </span>
           </span>
         </div>

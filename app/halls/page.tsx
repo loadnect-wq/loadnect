@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Building2 } from "lucide-react";
 import { fetchHalls } from "@/lib/halls";
+import { getAdvancePercent } from "@/lib/platform-settings";
 import { EmptyState } from "@/components/ui/empty-state";
 import { HallCard } from "./_components/HallCard";
 import { SearchControls } from "./_components/SearchControls";
@@ -78,6 +79,7 @@ export default async function HallsPage({
     sort     = "recommended",
   } = sp;
 
+  const advancePercent = await getAdvancePercent();
   const halls = await fetchHalls({
     city, area, capacity, priceMin, priceMax, q, category, amenity, date, sort,
   });
@@ -144,7 +146,7 @@ export default async function HallsPage({
         {halls.length > 0 ? (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {halls.map((hall) => (
-              <HallCard key={hall.id} hall={hall} />
+              <HallCard key={hall.id} hall={hall} advancePercent={advancePercent} />
             ))}
           </div>
         ) : (

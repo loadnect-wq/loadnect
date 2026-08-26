@@ -48,16 +48,33 @@ export const PLATFORM_FEE_PAISE = PLATFORM_FEE_RUPEES * PAISE_PER_RUPEE;
  *  settings row is missing. */
 export const DEFAULT_COMMISSION_PERCENT = 2.5;
 
-/** Advance = this fraction of the hall total. Single source of truth — the
- *  previous code repeated `0.25` in three modules. */
+/** Advance = this fraction of the hall total, when no rate is supplied.
+ *  The LIVE rate is platform_settings.default_advance_percentage; this is the
+ *  fallback used when that cannot be read, and the two must stay equal so a
+ *  failed settings read can never change what a customer is charged. */
 export const ADVANCE_RATE = 0.25;
+export const DEFAULT_ADVANCE_PERCENT = ADVANCE_RATE * 100; // 25
 
-/** Rupee advance for a hall total (integer rupees, minimum ₹1). */
-export function advanceFromTotal(totalRupees: number): number {
+/**
+ * Rupee advance for a hall total (integer rupees, minimum ₹1).
+ *
+ * `ratePercent` is the admin-configurable advance percentage. It is a
+ * PARAMETER rather than a database read so this stays pure and can be shared
+ * by the client preview and the server charge — the two computing the advance
+ * differently is precisely the drift this module exists to prevent. Callers
+ * that have the live setting pass it; the rest get the constant above.
+ */
+export function advanceFromTotal(
+  totalRupees: number,
+  ratePercent: number = DEFAULT_ADVANCE_PERCENT,
+): number {
   if (!Number.isFinite(totalRupees) || totalRupees < 0) {
     throw new RangeError(`advanceFromTotal: invalid total ${totalRupees}`);
   }
-  return Math.max(1, Math.round(totalRupees * ADVANCE_RATE));
+  if (!Number.isFinite(ratePercent) || ratePercent <= 0 || ratePercent > 100) {
+    throw new RangeError(`advanceFromTotal: advance percent ${ratePercent} out of (0,100]`);
+  }
+  return Math.max(1, Math.round((totalRupees * ratePercent) / 100));
 }
 
 export type BookingPaymentBreakdown = {
@@ -107,6 +124,9 @@ export function calculateBookingPayment(input: {
    * captured and must be honoured exactly (verification, webhooks, replays).
    */
   advanceAmount?: number;
+  /** Advance percent from platform_settings; only used when advanceAmount is
+   *  omitted. Defaults to the compile-time constant. */
+  advancePercent?: number;
   /** Commission percent, e.g. 2.5. Callers pass the server-side rate from
    *  platform_settings — NEVER a client-supplied value. */
   commissionRate: number;
@@ -116,7 +136,9 @@ export function calculateBookingPayment(input: {
     throw new RangeError("calculateBookingPayment: hall total must be positive");
   }
 
-  const advancePaise = toPaise(input.advanceAmount ?? advanceFromTotal(input.hallTotal));
+  const advancePaise = toPaise(
+    input.advanceAmount ?? advanceFromTotal(input.hallTotal, input.advancePercent),
+  );
   if (advancePaise <= 0) {
     throw new RangeError("calculateBookingPayment: advance must be positive");
   }

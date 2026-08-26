@@ -4,7 +4,7 @@ import { noindexMetadata } from "@/lib/seo/metadata";
 import { getSession } from "@/lib/auth";
 import { fetchHallBySlug } from "@/lib/halls";
 import { fetchHallAvailabilityWindow } from "@/lib/availability";
-import { isCashfreeConfigured } from "@/lib/cashfree";
+import { isOnlinePaymentEnabled, getAdvancePercent } from "@/lib/platform-settings";
 import { todayInBusinessTz, addDaysToIsoDate } from "@/lib/dates";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { BookingFlow } from "./_components/BookingFlow";
@@ -40,9 +40,12 @@ export default async function BookPage({ params }: Props) {
   // The commission rate is deliberately NOT sent to the browser: it is an
   // internal figure between Hallnect and the venue, never a customer line item.
 
-  // Cashfree is optional. When it's not configured the booking flow runs in
-  // manual "submit booking request" mode instead of online payment.
-  const onlinePaymentEnabled = isCashfreeConfigured();
+  // Cashfree is optional, AND an admin can switch online payment off. When
+  // either is false the booking flow runs in manual "submit booking request"
+  // mode instead of taking money.
+  const onlinePaymentEnabled = await isOnlinePaymentEnabled();
+  // The live advance %, so the figure previewed here is the figure charged.
+  const advancePercent = await getAdvancePercent();
 
   // Prefill the customer's saved phone so they don't retype it (§ don't ask
   // repeatedly). Still editable; the server re-validates whatever is submitted.
@@ -70,6 +73,7 @@ export default async function BookPage({ params }: Props) {
       availability={availability}
       windowDays={BOOKING_WINDOW_DAYS}
       onlinePaymentEnabled={onlinePaymentEnabled}
+      advancePercent={advancePercent}
       initialPhone={initialPhone}
     />
   );

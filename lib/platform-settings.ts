@@ -10,7 +10,9 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { getSupabaseServerClient } from "@/lib/supabase/server";
-import { DEFAULT_COMMISSION_PERCENT } from "@/lib/booking-payment";
+import { isCashfreeConfigured } from "@/lib/cashfree";
+import { DEFAULT_COMMISSION_PERCENT, DEFAULT_ADVANCE_PERCENT } from "@/lib/booking-payment";
+import { cache } from "react";
 
 const FALLBACK = DEFAULT_COMMISSION_PERCENT; // 2.5
 
@@ -57,7 +59,13 @@ const PAYMENT_SETTINGS_FALLBACK: PublicPaymentSettings = {
   hallnectUpiId:                 null,
   hallnectUpiQrUrl:              null,
   commissionDueDays:             7,
-  defaultAdvancePercentage:      20,
+  // MUST equal the compile-time constant. This is what a customer is charged
+  // when the settings read fails, and a fallback that disagrees with the code
+  // would silently reprice every booking during a database blip. It read 20
+  // while the code charged 25.
+  defaultAdvancePercentage:      DEFAULT_ADVANCE_PERCENT,
+  // Fails CLOSED on purpose: if we cannot confirm that online payment is
+  // switched on, take no money and fall back to manual booking requests.
   enableOnlineCustomerPayment:   false,
   enableOwnerUpiPayment:         true,
   enableAutoCommissionAdjustment: false,
@@ -66,8 +74,13 @@ const PAYMENT_SETTINGS_FALLBACK: PublicPaymentSettings = {
 /** Non-sensitive payment settings (UPI id/QR, advance %, feature flags) for the
  *  owner Pay-Now UI and the customer booking flow. Read through the SECURITY
  *  DEFINER RPC `get_public_payment_settings()` so non-admins never touch the
- *  admin-only platform_settings row. Falls back to safe defaults pre-migration. */
-export async function getPublicPaymentSettings(): Promise<PublicPaymentSettings> {
+ *  admin-only platform_settings row. Falls back to safe defaults pre-migration.
+ *
+ *  Wrapped in React cache(): a listing page renders many hall cards and each
+ *  needs the advance percentage, which would otherwise be one RPC per card.
+ *  Deduped per request, not cached across requests, so an admin's change still
+ *  takes effect on the next page load. */
+export const getPublicPaymentSettings = cache(async function getPublicPaymentSettings(): Promise<PublicPaymentSettings> {
   try {
     const supabase = await getSupabaseServerClient();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -88,4 +101,23 @@ export async function getPublicPaymentSettings(): Promise<PublicPaymentSettings>
   } catch {
     return PAYMENT_SETTINGS_FALLBACK;
   }
+});
+
+/** The live advance percentage, for the one thing that needs just that. */
+export async function getAdvancePercent(): Promise<number> {
+  return (await getPublicPaymentSettings()).defaultAdvancePercentage;
+}
+
+/**
+ * Is online card/UPI checkout available right now?
+ *
+ * BOTH must hold: Cashfree credentials must exist, AND an admin must not have
+ * switched online payment off. The admin toggle existed in the settings UI but
+ * was read by nothing, so turning it off did nothing at all. It is now a real
+ * kill switch — flip it off and the site degrades to manual booking requests
+ * rather than failing at the gateway.
+ */
+export async function isOnlinePaymentEnabled(): Promise<boolean> {
+  if (!isCashfreeConfigured()) return false;
+  return (await getPublicPaymentSettings()).enableOnlineCustomerPayment;
 }
