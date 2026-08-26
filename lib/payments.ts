@@ -561,15 +561,25 @@ async function createCommission(db: any, booking: ApplyBooking): Promise<void> {
     // New-model booking: use the exact snapshot.
     advance    = booking.advance_amount;
     rate       = booking.commission_rate ?? DEFAULT_COMMISSION_PERCENT;
+    // The snapshot written at creation is authoritative. The fallback must
+    // pass the HALL TOTAL: the rate applies to the hall price, so deriving it
+    // from the advance would recompute a quarter of the real commission.
     commission = booking.commission_amount
-      ?? calculateBookingPayment({ advanceAmount: advance, commissionRate: rate }).commissionAmount;
+      ?? calculateBookingPayment({
+           hallTotal:      booking.total_amount,
+           advanceAmount:  advance,
+           commissionRate: rate,
+         }).commissionAmount;
   } else {
-    // Legacy booking (pre-0031): platform_fee stored the commission charged on
-    // a 25% advance; derive the historical rate from those stored figures.
+    // Legacy booking (pre-0031): platform_fee stored the commission actually
+    // charged. The stored AMOUNT is preserved untouched — historical financial
+    // records are never recomputed — but the rate is now reported against the
+    // hall total, the base the current model uses, so old and new rows are
+    // read on the same footing.
     advance    = advanceFromTotal(booking.total_amount);
     commission = booking.platform_fee;
-    rate       = advance > 0
-      ? Math.round((commission / advance) * 10000) / 100
+    rate       = booking.total_amount > 0
+      ? Math.round((commission / booking.total_amount) * 10000) / 100
       : DEFAULT_COMMISSION_PERCENT;
   }
 
@@ -585,12 +595,12 @@ async function createCommission(db: any, booking: ApplyBooking): Promise<void> {
         hall_id:             booking.hall_id,
         hall_owner_id:       booking.hall_owner_id,
         customer_id:         booking.customer_id,
-        // The full hall price, for reporting. The commission itself is charged
-        // on the ADVANCE (see commission_amount / advance_amount below).
+        // The full hall price — and, under the current model, the base the
+        // commission rate is applied to.
         booking_amount:      booking.base_amount,
         advance_amount:      advance,
         commission_rate:     rate,
-        // Absorbed inside the advance Hallnect holds — never billed to anyone.
+        // Retained out of the advance Hallnect holds — never billed to anyone.
         commission_amount:   commission,
         // What the owner ends up with across advance + venue balance.
         owner_payout_amount: Math.max(0, Math.round((booking.base_amount - commission) * 100) / 100),

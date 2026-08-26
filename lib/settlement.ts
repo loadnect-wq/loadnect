@@ -19,7 +19,7 @@ import "server-only";
 
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import { isCashfreeConfigured } from "@/lib/cashfree";
-import { computeCommissionSplit, type CommissionSplit } from "@/lib/money";
+import { commissionPaiseOn, splitFromParts, type CommissionSplit } from "@/lib/money";
 
 /** True only when Easy Split is explicitly enabled AND Cashfree is configured.
  *  Never throws — safe as a pre-flight guard. */
@@ -113,28 +113,43 @@ export async function resolveSplitForBooking(bookingId: string): Promise<
   if (error || !booking) return { ok: false, error: "Booking not found." };
 
   let advancePaise: number;
-  let ratePercent: number;
   let platformFeePaise: number;
+
+  // THE COMMISSION IS NEVER RECOMPUTED FROM THE GROSS HERE. Its base is the
+  // HALL PRICE while the gross being split is the ADVANCE, so re-applying the
+  // rate to the advance would understate it fourfold at a 25% advance. The
+  // amount actually charged is read from the booking's snapshot instead.
+  const totalPaise = Math.round(Number(booking.total_amount) * 100);
+  let commissionPaise: number;
 
   if (booking.advance_amount != null && Number(booking.advance_amount) > 0) {
     // New-model booking: the 0031 snapshot is authoritative. The platform fee
     // is a SEPARATE figure — it never enters the split gross, which must keep
     // reconciling commission + owner === advance exactly.
     advancePaise = Math.round(Number(booking.advance_amount) * 100);
-    ratePercent = Number(booking.commission_rate ?? 0);
     platformFeePaise = Math.round(Number(booking.platform_fee_amount ?? 0) * 100);
+    commissionPaise = booking.commission_amount != null
+      ? Math.round(Number(booking.commission_amount) * 100)
+      // Only if the snapshot is missing: recompute against the HALL TOTAL.
+      : commissionPaiseOn(totalPaise, Number(booking.commission_rate ?? 0));
   } else {
-    // Legacy booking: advance = 25% of total; the stored platform_fee was the
-    // commission charged ON THE ADVANCE, so the rate divides by the advance.
-    // (The previous code divided by base_amount — a 4× understatement.)
-    const totalPaise = Math.round(Number(booking.total_amount) * 100);
+    // Legacy booking: advance = 25% of total; platform_fee stored the
+    // commission actually charged. That AMOUNT is preserved verbatim —
+    // historical financial records are never recomputed.
     advancePaise = Math.max(1, Math.round(totalPaise * 0.25));
-    const feePaise = Math.round(Number(booking.platform_fee) * 100);
-    ratePercent = advancePaise > 0 ? Math.round((feePaise / advancePaise) * 10000) / 100 : 0;
+    commissionPaise = Math.round(Number(booking.platform_fee) * 100);
     platformFeePaise = 0; // no customer fee existed under the legacy model
   }
 
-  const split = computeCommissionSplit(advancePaise, Math.min(100, Math.max(0, ratePercent)));
+  // Defensive: a corrupted snapshot must not mint a negative owner payout.
+  commissionPaise = Math.min(Math.max(0, commissionPaise), advancePaise);
+  // Reported against the HALL PRICE, the base the live model uses, so legacy
+  // and current rows are read on the same footing.
+  const ratePercent = totalPaise > 0
+    ? Math.round((commissionPaise / totalPaise) * 10000) / 100
+    : 0;
+
+  const split = splitFromParts(advancePaise, commissionPaise, ratePercent);
   const hall = Array.isArray(booking.halls) ? booking.halls[0] : booking.halls;
 
   return {

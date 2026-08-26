@@ -93,10 +93,10 @@ export function PayoutSetup({
 
           <p className="mt-0.5 text-xs leading-relaxed text-charcoal-600">
             {verified
-              ? "Connected. When you accept a booking, the customer's advance is paid to you automatically — minus Hallnect's platform commission, which is deducted at the same time. You never receive a separate commission bill."
+              ? "Connected. When you accept a booking, the customer's advance is paid to you automatically — minus Hallnect's commission (a percentage of the hall price), which is deducted at the same time. You never receive a separate commission bill."
               : awaitingKyc
                 ? "Your payout account is registered and awaiting verification by Cashfree. Once verified, accepted bookings pay out automatically."
-                : "Connect a payout account so accepted bookings pay you automatically. Hallnect's platform commission is deducted from the advance, so you never get a separate bill."}
+                : "Connect a payout account so accepted bookings pay you automatically. Hallnect's commission (a percentage of the hall price) is deducted from the advance, so you never get a separate bill."}
           </p>
 
           {/* Explicit checklist: what is done and what is not, at a glance. */}

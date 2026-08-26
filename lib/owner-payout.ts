@@ -27,6 +27,7 @@ import "server-only";
 
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import { isEasySplitEnabled, splitOrderToVendor } from "@/lib/easy-split";
+import { notifyOwnerPayoutFailed } from "@/lib/notifications/events";
 
 export type ShareResult =
   | { ok: true; commission: number; ownerAmount: number }
@@ -159,19 +160,28 @@ export async function payOwnerOnAcceptance(bookingId: string): Promise<PayoutOut
         .neq("split_status", "done");
     };
 
+    // A recorded failure nobody reads is still a silent failure: the owner is
+    // simply not paid and Hallnect keeps the whole advance. Alert an admin on
+    // every genuine failure. 'not_applicable' is excluded — that is a deployment
+    // with payouts switched off, not a stuck payment. Never allowed to throw:
+    // the acceptance must survive a broken notification pipeline.
+    const failAndAlert = async (reason: string): Promise<PayoutOutcome> => {
+      await note("failed", reason);
+      await notifyOwnerPayoutFailed({ bookingId, ownerAmount, reason }).catch(() => {});
+      return { state: "failed", reason };
+    };
+
     if (!isEasySplitEnabled()) {
       await note("not_applicable", "Easy Split is not enabled");
       return { state: "skipped", reason: "Easy Split is not enabled" };
     }
     if (!vendorId) {
-      await note("failed", "Owner has not completed Cashfree vendor onboarding");
-      return { state: "failed", reason: "Owner has not completed payout onboarding" };
+      return failAndAlert("Owner has not completed Cashfree vendor onboarding");
     }
     if (!share.ok) {
       // Never fall back to paying out the full advance — that would hand the
       // owner Hallnect's platform fee, and a settled split cannot be reversed.
-      await note("failed", share.reason);
-      return { state: "failed", reason: share.reason };
+      return failAndAlert(share.reason);
     }
 
     // 4. CLAIM the split before calling the gateway. A concurrent Accept sees
@@ -194,8 +204,7 @@ export async function payOwnerOnAcceptance(bookingId: string): Promise<PayoutOut
     });
 
     if (!result.ok) {
-      await note("failed", result.error);
-      return { state: "failed", reason: result.error };
+      return failAndAlert(result.error);
     }
 
     await db.from("payments")

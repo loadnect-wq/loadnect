@@ -324,6 +324,47 @@ function balanceNote(paid: number, total: number): string {
  * Notifies BOTH the admin (who must action it) and the owner (who otherwise
  * has no confirmation that their submission was received). Max 1/day/hall.
  */
+/**
+ * A booking was accepted but the owner's money could not be sent.
+ *
+ * This is the one failure in the whole pipeline that is otherwise SILENT and
+ * costs a real person real money: the booking confirms, the customer is
+ * charged, Hallnect holds the entire advance, and the owner is simply never
+ * paid. `payments.split_status` records it, but nothing reads that column, so
+ * without this alert nobody finds out until an owner complains.
+ *
+ * Deliberately admin-only. The owner is not told their payout failed, because
+ * the fix is always on Hallnect's side (vendor onboarding, KYC, gateway) and a
+ * "your money is stuck" message they cannot act on is worse than a quiet fix.
+ */
+export async function notifyOwnerPayoutFailed(input: {
+  bookingId: string;
+  ownerAmount: number;
+  reason: string;
+}): Promise<void> {
+  try {
+    const adminPhone = await getAdminNotificationPhone();
+    await dispatchAll([
+      adminAlert({
+        adminPhone,
+        // Keyed on the booking, so repeated Accept attempts on the same
+        // booking cannot fan out into a burst of identical alerts.
+        eventKey: `payout.failed:${input.bookingId}`,
+        eventType: "payout.failed",
+        event: "Owner payout FAILED",
+        details: sanitizeNotificationText(
+          `₹${input.ownerAmount} could not be sent to the owner. ${input.reason}`,
+          200,
+        ) ?? "Owner payout failed",
+        reference: `Booking ${input.bookingId.slice(0, 8).toUpperCase()}`,
+        bookingId: input.bookingId,
+      }),
+    ]);
+  } catch (e) {
+    console.error("[notifications] notifyOwnerPayoutFailed failed:", e instanceof Error ? e.message : e);
+  }
+}
+
 export async function notifyHallSubmitted(hallId: string): Promise<void> {
   try {
     const admin = getSupabaseAdminClient();

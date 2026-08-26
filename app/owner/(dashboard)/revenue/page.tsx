@@ -93,9 +93,10 @@ export default async function OwnerRevenuePage() {
         </div>
 
         <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-xs text-blue-800">
-          Hallnect&apos;s commission ({commissionPercent}% of the customer&apos;s advance) is retained
-          from the advance — you are never billed separately, and the customer&apos;s ₹200 platform
-          fee is never deducted from you. The venue balance is collected by you directly.
+          Hallnect&apos;s commission is {commissionPercent}% of the hall price, retained from the
+          customer&apos;s advance when you accept — you are never billed separately, and the
+          customer&apos;s ₹200 platform fee is never deducted from you. The venue balance is
+          collected by you directly.
           {!ownerRow.payout_upi && (
             <> <Link href="/owner/profile" className="font-semibold underline">Add your UPI ID</Link> to receive payments.</>
           )}

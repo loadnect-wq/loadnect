@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Lock } from "lucide-react";
-import { fetchAllPayments } from "@/lib/admin";
+import { Lock, AlertTriangle } from "lucide-react";
+import { fetchAllPayments, fetchStuckPayouts } from "@/lib/admin";
 import { formatPrice } from "@/lib/mock-data";
 import { Badge } from "@/components/ui/Badge";
 import { AdminPageHeader } from "../_components/AdminPageHeader";
@@ -37,7 +37,11 @@ type Props = { searchParams: Promise<{ status?: string }> };
 export default async function AdminPaymentsPage({ searchParams }: Props) {
   const { status } = await searchParams;
   const activeFilter = FILTERS.find((f) => f.key === status) ?? FILTERS[0];
-  const payments = await fetchAllPayments(activeFilter.value);
+  const [payments, stuck] = await Promise.all([
+    fetchAllPayments(activeFilter.value),
+    fetchStuckPayouts(),
+  ]);
+  const stuckTotal = stuck.reduce((sum, r) => sum + r.owner_amount, 0);
 
   return (
     <div>
@@ -49,6 +53,43 @@ export default async function AdminPaymentsPage({ searchParams }: Props) {
           <Lock className="h-3.5 w-3.5 shrink-0" />
           Payment records are write-locked. Webhook updates from Cashfree are the only authorized source of changes.
         </div>
+
+        {/* MONEY OWED BUT NOT SENT. Shown above the ledger because it is the
+            only thing on this page that needs someone to act. */}
+        {stuck.length > 0 && (
+          <div className="rounded-xl border border-red-300 bg-red-50 p-4">
+            <div className="flex items-start gap-2">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-600" aria-hidden />
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-bold text-red-900">
+                  {stuck.length} owner payout{stuck.length === 1 ? "" : "s"} did not go through
+                  {" — "}{formatPrice(stuckTotal)} owed
+                </p>
+                <p className="mt-0.5 text-xs text-red-800">
+                  These bookings are confirmed and the customer was charged, but the owner&apos;s
+                  share is still in Hallnect&apos;s account. The usual cause is an owner who has
+                  not finished payout onboarding in their profile.
+                </p>
+                <ul className="mt-3 space-y-2">
+                  {stuck.map((r) => (
+                    <li key={r.payment_id} className="rounded-lg border border-red-200 bg-white px-3 py-2 text-xs">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="font-semibold text-charcoal-900">{r.hall_name}</span>
+                        <span className="font-bold text-red-700">{formatPrice(r.owner_amount)}</span>
+                      </div>
+                      <p className="mt-0.5 text-charcoal-500">
+                        Booking {r.booking_id.slice(0, 8).toUpperCase()} · {r.split_status} · {fmtDateTime(r.created_at)}
+                      </p>
+                      {r.split_error && (
+                        <p className="mt-0.5 text-red-700">{r.split_error}</p>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          </div>
+        )}
 
         <div className="flex flex-wrap gap-2">
           {FILTERS.map((f) => (

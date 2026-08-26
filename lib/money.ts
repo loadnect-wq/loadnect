@@ -63,16 +63,66 @@ export type CommissionSplit = {
  * Fractional percents are supported without floats by scaling to basis points
  * (rate * 100) and dividing by 10_000 with integer division.
  */
+/**
+ * Commission in paise charged on an arbitrary BASE, at `ratePercent`.
+ *
+ * Extracted so the commission base can differ from the amount being split.
+ * Hallnect charges its percentage on the FULL HALL PRICE but retains it out of
+ * the (smaller) advance, so "what the rate is applied to" and "what the money
+ * comes out of" are two different numbers — see lib/booking-payment.ts.
+ *
+ * Integer arithmetic throughout, floor()ed, so the platform can never round a
+ * fraction of a paisa in its own favour.
+ */
+export function commissionPaiseOn(basePaise: number, ratePercent: number): number {
+  assertIntPaise(basePaise);
+  if (!Number.isFinite(ratePercent) || ratePercent < 0 || ratePercent > 100) {
+    throw new RangeError(`commissionPaiseOn: rate ${ratePercent} out of [0,100]`);
+  }
+  // rate percent → basis points (integer). 10% → 1000 bps; 7.5% → 750 bps.
+  const rateBps = Math.round(ratePercent * 100);
+  // floor(base * bps / 10000) using integer arithmetic.
+  return Math.floor((basePaise * rateBps) / 10_000);
+}
+
+/**
+ * Builds a split from an ALREADY-DECIDED commission, rather than recomputing.
+ *
+ * Needed because the commission base (the hall price) is not the amount being
+ * split (the advance): re-applying the rate to the gross would produce a
+ * different — and much smaller — number than the one actually charged. Callers
+ * holding an authoritative commission snapshot must use this, so the ledger
+ * records what the customer was really charged.
+ *
+ * Enforces the same invariants computeCommissionSplit does, so a corrupted
+ * snapshot cannot write a split that fails to reconcile.
+ */
+export function splitFromParts(
+  grossPaise: number,
+  commissionPaise: number,
+  ratePercent: number,
+): CommissionSplit {
+  assertIntPaise(grossPaise);
+  assertIntPaise(commissionPaise);
+  if (commissionPaise > grossPaise) {
+    throw new RangeError(
+      `splitFromParts: commission ${commissionPaise} exceeds gross ${grossPaise}`,
+    );
+  }
+  const ownerPaise = grossPaise - commissionPaise;
+  if (commissionPaise + ownerPaise !== grossPaise) {
+    throw new RangeError("splitFromParts: split does not reconcile to gross");
+  }
+  return { grossPaise, commissionPaise, ownerPaise, ratePercent };
+}
+
 export function computeCommissionSplit(grossPaise: number, ratePercent: number): CommissionSplit {
   assertIntPaise(grossPaise);
   if (!Number.isFinite(ratePercent) || ratePercent < 0 || ratePercent > 100) {
     throw new RangeError(`computeCommissionSplit: rate ${ratePercent} out of [0,100]`);
   }
 
-  // rate percent → basis points (integer). 10% → 1000 bps; 7.5% → 750 bps.
-  const rateBps = Math.round(ratePercent * 100);
-  // floor(gross * bps / 10000) using integer arithmetic.
-  const commissionPaise = Math.floor((grossPaise * rateBps) / 10_000);
+  const commissionPaise = commissionPaiseOn(grossPaise, ratePercent);
   const ownerPaise = grossPaise - commissionPaise;
 
   // Defensive invariants — should be impossible given the math above.

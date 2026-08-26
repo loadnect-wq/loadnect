@@ -485,6 +485,54 @@ export async function fetchAllPayments(statusFilter?: string): Promise<AdminPaym
   }));
 }
 
+/**
+ * Payouts that were attempted and did NOT reach the owner.
+ *
+ * These are real money stuck in Hallnect's account: the booking is confirmed,
+ * the customer was charged, and the owner's share never left. The column has
+ * always been written; nothing rendered it, so the failure was invisible until
+ * an owner asked where their money was.
+ */
+export type StuckPayoutRow = {
+  payment_id: string;
+  booking_id: string;
+  owner_amount: number;
+  split_status: string;
+  split_error: string | null;
+  hall_name: string;
+  created_at: string;
+};
+
+export async function fetchStuckPayouts(): Promise<StuckPayoutRow[]> {
+  const supabase = await getSupabaseServerClient();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const db = supabase as any;
+
+  const { data, error } = await db
+    .from("payments")
+    .select("id, booking_id, split_owner_amount, split_status, split_error, created_at, bookings(halls(name))")
+    .eq("status", "payment_success")
+    // 'pending' is included deliberately: a split claimed but never completed
+    // is stuck too, and looks identical to the owner.
+    .in("split_status", ["failed", "pending"])
+    .order("created_at", { ascending: false })
+    .limit(100);
+
+  // A missing column (pre-0031 database) must not break the payments page.
+  if (error) { handleError("fetchStuckPayouts", error); return []; }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (data ?? []).map((row: any): StuckPayoutRow => ({
+    payment_id:   row.id,
+    booking_id:   row.booking_id,
+    owner_amount: Number(row.split_owner_amount ?? 0),
+    split_status: row.split_status ?? "unknown",
+    split_error:  row.split_error ?? null,
+    hall_name:    row.bookings?.halls?.name ?? "Hall",
+    created_at:   row.created_at,
+  }));
+}
+
 // ── Commissions ───────────────────────────────────────────────────────────────
 
 export type CommissionFilters = {

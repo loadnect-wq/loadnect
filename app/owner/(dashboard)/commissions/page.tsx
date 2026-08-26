@@ -20,8 +20,9 @@ import { isCashfreeConfigured } from "@/lib/cashfree";
 export const metadata: Metadata = { title: "Commissions" };
 
 const OWNER_TERMS =
-  "For online-paid bookings, Hallnect's commission is retained from the customer's advance " +
-  "automatically — you are never billed for it. A commission is payable separately only for " +
+  "Hallnect's commission is a percentage of the HALL PRICE, not of the advance. For " +
+  "online-paid bookings it is retained from the customer's advance automatically when you " +
+  "accept — you are never billed for it. A commission is payable separately only for " +
   "bookings settled outside the platform; if such a commission stays unpaid after its due " +
   "date, Hallnect may adjust it from your pending settlement as per platform terms.";
 

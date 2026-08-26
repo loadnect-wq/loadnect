@@ -157,8 +157,8 @@ export async function createBookingRequest(
   //   • total_amount = the hall price. The customer pays a 25% ADVANCE of it
   //     now plus a flat ₹200 PLATFORM FEE (disclosed, non-refundable), and the
   //     balance directly at the venue.
-  //   • Hallnect's commission = 2.5% of the ADVANCE (rate from
-  //     platform_settings, never the client), absorbed INSIDE the advance —
+  //   • Hallnect's commission = 2.5% of the FULL HALL PRICE (rate from
+  //     platform_settings, never the client), RETAINED OUT OF the advance —
   //     the owner nets advance − commission at payout (lib/owner-payout.ts).
   //     It is never added on top of what the customer pays.
   // Every figure is computed by the ONE central calculation and snapshotted
@@ -166,6 +166,7 @@ export async function createBookingRequest(
   const commissionPercent = await getCommissionPercent();
   const totalAmount       = baseAmount;
   const pay = calculateBookingPayment({
+    hallTotal:      totalAmount,
     advanceAmount:  advanceFromTotal(totalAmount),
     commissionRate: commissionPercent,
   });
