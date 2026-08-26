@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { Banknote, CheckCircle2, Clock, AlertTriangle, ArrowDown } from "lucide-react";
-import { connectPayoutAccount } from "@/app/owner/(dashboard)/actions";
+import { connectPayoutAccount, refreshPayoutStatus } from "@/app/owner/(dashboard)/actions";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Automatic payout setup.
@@ -69,7 +69,9 @@ export function PayoutSetup({
     if (missing.length > 0) { jumpToDetails(); return; }
     setError(null);
     start(async () => {
-      const result = await connectPayoutAccount();
+      // Already registered → this is a status check, not a re-registration.
+      // Reading a verification status must not resend PAN and bank details.
+      const result = vendorId ? await refreshPayoutStatus() : await connectPayoutAccount();
       if ("error" in result) setError(result.error);
       else setDone(true);
     });
@@ -127,7 +129,9 @@ export function PayoutSetup({
           )}
           {done && !error && (
             <p className="mt-2 text-[11px] font-semibold text-green-700">
-              Submitted — reload to see the latest verification status.
+              {vendorId
+                ? "Status checked — reload to see the latest verification status."
+                : "Submitted — reload to see the latest verification status."}
             </p>
           )}
 

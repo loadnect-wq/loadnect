@@ -24,7 +24,7 @@ import { isCashfreeConfigured } from "@/lib/cashfree";
 import { startCommissionPayment, verifyAndApplyCommissionPayment } from "@/lib/commission-payments";
 import { payOwnerOnAcceptance } from "@/lib/owner-payout";
 import { recordBookingRefund } from "@/lib/refunds";
-import { isEasySplitEnabled, upsertVendor } from "@/lib/easy-split";
+import { isEasySplitEnabled, upsertVendor, getVendorStatus } from "@/lib/easy-split";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 
 type ActionResult = { success: true; id?: string } | { error: string };
@@ -797,6 +797,22 @@ export async function checkCommissionPaymentStatus(
 // vendor. This registers/refreshes that record from the owner's own business
 // details and stores the resulting status so the dashboard can show it honestly.
 
+/**
+ * Is this Cashfree error about the OWNER's own details, or about Hallnect's
+ * account setup?
+ *
+ * It decides what the venue owner is shown. A message about their PAN or bank
+ * account is theirs to act on and must be repeated verbatim. A message about
+ * the Easy Split feature not being enabled is Hallnect's problem — showing an
+ * owner "easy split is not enabled for this merchant" reads as though they
+ * broke something, when in fact there is nothing they can do. The real text is
+ * stored in vendor_last_error either way, so admins never lose it.
+ */
+function isOwnerActionableVendorError(error: string): boolean {
+  const e = error.toLowerCase();
+  return /pan|bank|ifsc|account number|account_number|phone|email|name|vpa|upi|kyc|business_type/.test(e);
+}
+
 export async function connectPayoutAccount(): Promise<ActionResult> {
   const { supabase, user } = await getAuthUser();
   if (!user) return { error: "Not authenticated" };
@@ -850,6 +866,69 @@ export async function connectPayoutAccount(): Promise<ActionResult> {
   revalidatePath("/owner/profile");
   revalidatePath("/owner/revenue");
 
-  if (!result.ok) return { error: result.error };
+  if (!result.ok) {
+    return {
+      error: isOwnerActionableVendorError(result.error)
+        ? result.error
+        : "Hallnect is still completing payout setup with our payment provider. " +
+          "Your details are saved — we will enable automatic payouts as soon as it is ready, " +
+          "and nothing is needed from you.",
+    };
+  }
+  return { success: true };
+}
+
+/**
+ * Re-reads the owner's verification status from Cashfree.
+ *
+ * A vendor is created as PENDING and becomes ACTIVE once Cashfree validates the
+ * bank account, which happens later and without telling us. The refresh used to
+ * go through connectPayoutAccount, which re-submits the owner's PAN and bank
+ * account as a PATCH just to read a status back. This is a GET: checking a
+ * status should not resend identity documents.
+ */
+export async function refreshPayoutStatus(): Promise<ActionResult> {
+  const { supabase, user } = await getAuthUser();
+  if (!user) return { error: "Not authenticated" };
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const db = supabase as any;
+  const { data: owner } = await db
+    .from("hall_owners")
+    .select("id, cashfree_vendor_id")
+    .eq("profile_id", user.id)
+    .maybeSingle();
+
+  if (!owner?.cashfree_vendor_id) {
+    return { error: "No payout account is connected yet." };
+  }
+  if (!isEasySplitEnabled()) {
+    return { error: "Automatic payouts are not switched on yet. Hallnect will contact you when they are." };
+  }
+
+  const status = await getVendorStatus(owner.cashfree_vendor_id);
+
+  const adminDb = getSupabaseAdminClient();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  await (adminDb as any).from("hall_owners").update(
+    status.ok
+      ? {
+          vendor_kyc_status: status.data.settleable ? "VERIFIED" : "PENDING",
+          vendor_synced_at:  new Date().toISOString(),
+          vendor_last_error: null,
+        }
+      : { vendor_synced_at: new Date().toISOString(), vendor_last_error: status.error },
+  ).eq("id", owner.id);
+
+  revalidatePath("/owner/profile");
+  revalidatePath("/owner/revenue");
+
+  if (!status.ok) {
+    return {
+      error: isOwnerActionableVendorError(status.error)
+        ? status.error
+        : "Could not reach our payment provider just now. Your account is unchanged — please try again shortly.",
+    };
+  }
   return { success: true };
 }
