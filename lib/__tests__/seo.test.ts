@@ -15,6 +15,7 @@ import {
   cityCollectionJsonLd, faqJsonLd, jsonLdGraph,
 } from "@/lib/seo/jsonld";
 import { citySlug, cityFromSlug, MIN_VENUES_FOR_INDEX } from "@/lib/seo/cities";
+import { SUPPORT_HOURS } from "@/lib/constants";
 
 describe("canonical URLs", () => {
   // NOTE: under vitest NODE_ENV is not "production" and there is no window, so
@@ -170,6 +171,35 @@ describe("venue structured data", () => {
 describe("organization and website schema", () => {
   it("never claims social profiles Hallnect has not configured", () => {
     expect(organizationJsonLd().sameAs).toBeUndefined();
+  });
+
+  it("publishes support hours as ContactPoint.hoursAvailable", () => {
+    const cp = (organizationJsonLd().contactPoint as Record<string, unknown>[])[0];
+    const h = cp.hoursAvailable as Record<string, unknown>;
+    expect(h["@type"]).toBe("OpeningHoursSpecification");
+    expect(h.opens).toBe("09:00");
+    expect(h.closes).toBe("21:00");
+    expect(h.dayOfWeek).toHaveLength(7);
+  });
+
+  it("never puts openingHoursSpecification on the Organization node", () => {
+    // openingHoursSpecification is a Place/LocalBusiness property. Hallnect is
+    // a service-area business with no storefront, so this node stays a plain
+    // Organization and the hours hang off ContactPoint instead.
+    const org = organizationJsonLd();
+    expect(org["@type"]).toBe("Organization");
+    expect(org.openingHoursSpecification).toBeUndefined();
+  });
+
+  it("keeps the hours in structured data identical to the visible copy", () => {
+    // One constant feeds both. If someone edits the label without the numbers
+    // (or vice versa) this fails rather than shipping a silent contradiction.
+    expect(SUPPORT_HOURS.label).toContain("9 AM");
+    expect(SUPPORT_HOURS.label).toContain("9 PM");
+    expect(SUPPORT_HOURS.opens).toBe("09:00");
+    expect(SUPPORT_HOURS.closes).toBe("21:00");
+    expect(SUPPORT_HOURS.label).toContain("every day");
+    expect(SUPPORT_HOURS.days).toHaveLength(7);
   });
 
   it("points SearchAction at a route that really handles the query", () => {

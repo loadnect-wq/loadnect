@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "@/hooks/use-toast";
-import { APP_NAME, CONTACT } from "@/lib/constants";
+import { APP_NAME, CONTACT, SUPPORT_HOURS } from "@/lib/constants";
 
 const CONTACT_ITEMS = [
   { Icon: Mail,    label: "Email",   value: CONTACT.email,   href: `mailto:${CONTACT.email}` },
@@ -59,7 +59,7 @@ export default function ContactPage() {
             <div>
               <h2 className="font-serif text-2xl font-semibold text-charcoal-900">Contact Info</h2>
               <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-                Our support team is available every day, 9 AM – 9 PM IST.
+                Our support team is available {SUPPORT_HOURS.label}.
               </p>
             </div>
             <ul className="space-y-5">
@@ -82,7 +82,7 @@ export default function ContactPage() {
             <div className="rounded-xl border border-border bg-white p-5 shadow-card">
               <p className="font-serif text-sm font-semibold text-charcoal-900">{APP_NAME} Support</p>
               <p className="mt-1 text-xs text-muted-foreground">
-                We typically respond to all inquiries within 24 hours on business days.
+                We typically respond to all inquiries within 24 hours.
               </p>
             </div>
           </div>

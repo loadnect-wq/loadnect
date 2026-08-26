@@ -12,6 +12,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { SITE_URL, SITE_NAME, BUSINESS, absoluteUrl } from "./config";
+import { SUPPORT_HOURS } from "@/lib/constants";
 
 /** Drops null/undefined/empty values so no hollow properties are published. */
 function compact<T extends Record<string, unknown>>(obj: T): Record<string, unknown> {
@@ -65,6 +66,17 @@ export function organizationJsonLd() {
         telephone: BUSINESS.phone,
         areaServed: "IN",
         availableLanguage: ["en", "ta"],
+        // hoursAvailable belongs to ContactPoint. openingHoursSpecification
+        // does NOT — it is a property of Place/LocalBusiness, and this node is
+        // a plain Organization (Hallnect is a service-area business with no
+        // storefront, so LocalBusiness would be the wrong type to claim).
+        // Same numbers the contact page prints, from the same constant.
+        hoursAvailable: compact({
+          "@type": "OpeningHoursSpecification",
+          dayOfWeek: [...SUPPORT_HOURS.days],
+          opens: SUPPORT_HOURS.opens,
+          closes: SUPPORT_HOURS.closes,
+        }),
       }),
     ],
     // sameAs is deliberately ABSENT: Hallnect has no verified social profiles

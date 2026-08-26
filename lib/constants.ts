@@ -17,6 +17,27 @@ export const CONTACT = {
   address:   "No. 68, Venkateshwara Nagar, Sundar Nagar Extension, Tirunagar, Madurai – 625006, Tamil Nadu, India",
 } as const;
 
+// Support availability. ONE definition, two consumers: app/contact/page.tsx
+// renders `label`, and lib/seo/jsonld.ts builds the machine-readable
+// OpeningHoursSpecification from the same numbers — so the sentence a customer
+// reads and the hours Google parses cannot drift apart.
+//
+// These MUST stay equal to the hours published on the Google Business Profile.
+// Google cross-references a profile against its website, and a customer who
+// reads one closing time on the site and another on Maps is failed either way.
+// Changing hours means changing this constant AND the profile.
+export const SUPPORT_HOURS = {
+  // 24-hour local time (IST). Schema.org reads the timezone from the postal
+  // address, so these stay bare — there is no timezone field to set.
+  opens:  "09:00",
+  closes: "21:00",
+  days: [
+    "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday",
+  ],
+  /** Human-readable form of the same fact, for visible copy. */
+  label: "every day, 9 AM – 9 PM IST",
+} as const;
+
 // NOTE: every href here MUST point to a real, existing route. Marketing stubs
 // (/about, /how-it-works, /careers, /blog, /press, /help, /safety) were removed
 // because no page files exist for them — they were a source of footer/navbar
