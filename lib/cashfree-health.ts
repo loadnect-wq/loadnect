@@ -20,6 +20,7 @@
 import "server-only";
 
 import { getCashfreeConfig } from "@/lib/cashfree";
+import { isEasySplitEnabled } from "@/lib/easy-split";
 import { getCanonicalAppUrl } from "@/lib/app-url";
 
 export type CashfreeHealth = {
@@ -45,6 +46,13 @@ export type CashfreeHealth = {
   publicEnvVarMisleading: boolean;
   /** True when mode and key type disagree — the dangerous combination. */
   modeKeyMismatch: boolean;
+  /**
+   * CASHFREE_EASY_SPLIT_ENABLED. Also write-only in Vercel, and it decides
+   * whether an accepted booking pays the owner at all: with it off, every
+   * payout records 'not_applicable' and the owner's share simply stays in
+   * Hallnect's account. Surfaced here because there is no other way to read it.
+   */
+  easySplitEnabled: boolean;
 };
 
 export async function checkCashfreeHealth(): Promise<CashfreeHealth> {
@@ -70,6 +78,7 @@ export async function checkCashfreeHealth(): Promise<CashfreeHealth> {
       publicEnvVarValue !== "production" &&
       publicEnvVarValue !== "sandbox",
     modeKeyMismatch: false,
+    easySplitEnabled: isEasySplitEnabled(),
   };
 
   let cfg;
@@ -117,8 +126,18 @@ export async function checkCashfreeHealth(): Promise<CashfreeHealth> {
         credentialsError: `Cashfree rejected these credentials for ${cfg.env} (HTTP ${res.status}).`,
       };
     }
-    // Any other status still proves the request was authenticated enough to be
-    // processed; treat as accepted but note the code.
+    // A gateway error proves NOTHING about the credentials — the request never
+    // reached the part of Cashfree that checks them. Reporting "accepted" here
+    // was a false green during a Cashfree outage, which is precisely when an
+    // operator most needs to trust this panel. Unknown is the honest answer.
+    if (res.status >= 500) {
+      return {
+        ...health,
+        credentialsAccepted: null,
+        credentialsError: `Cashfree returned HTTP ${res.status} — its API is having trouble, so the credentials could not be checked.`,
+      };
+    }
+    // Any other status did reach authentication and got past it.
     return { ...health, credentialsAccepted: true, credentialsError: `Unexpected HTTP ${res.status} (treated as reachable).` };
   } catch {
     return { ...health, credentialsAccepted: null, credentialsError: "Could not reach the Cashfree API to verify." };

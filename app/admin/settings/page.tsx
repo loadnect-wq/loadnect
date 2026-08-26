@@ -154,6 +154,26 @@ export default async function AdminSettingsPage() {
                       Set it explicitly if your Cashfree dashboard shows a separate webhook secret.
                     </p>
                   )}
+                  {/* Whether an accepted booking actually pays the owner. Both
+                      halves must be true: the flag on, AND at least one owner
+                      onboarded as a vendor. The flag alone is not readiness. */}
+                  <p className={`mt-2 rounded-lg p-2 text-[11px] ${cashfree.easySplitEnabled ? "bg-white/70 text-charcoal-700" : "bg-amber-100 font-semibold text-amber-900"}`}>
+                    {cashfree.easySplitEnabled ? (
+                      <>
+                        Easy Split is <span className="font-mono">ON</span> — accepting a booking pays the
+                        owner automatically. Owners still need a connected payout account each; any that
+                        fail appear on the{" "}
+                        <Link href="/admin/payments" className="font-semibold underline">Payments</Link> page.
+                      </>
+                    ) : (
+                      <>
+                        Easy Split is <span className="font-mono">OFF</span> (CASHFREE_EASY_SPLIT_ENABLED).
+                        Accepted bookings will NOT pay owners — each payout records
+                        &ldquo;not_applicable&rdquo; and the owner&rsquo;s share stays in Hallnect&rsquo;s
+                        account until it is settled by hand.
+                      </>
+                    )}
+                  </p>
                   {cashfree.publicEnvVarMisleading && (
                     <p className="mt-2 rounded-lg bg-white/70 p-2 text-[11px] text-charcoal-600">
                       NEXT_PUBLIC_CASHFREE_ENV is set to{" "}
