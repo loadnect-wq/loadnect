@@ -59,7 +59,7 @@ export default function ContactPage() {
             <div>
               <h2 className="font-serif text-2xl font-semibold text-charcoal-900">Contact Info</h2>
               <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-                Our support team is available Monday–Saturday, 9 AM – 7 PM IST.
+                Our support team is available every day, 9 AM – 9 PM IST.
               </p>
             </div>
             <ul className="space-y-5">
