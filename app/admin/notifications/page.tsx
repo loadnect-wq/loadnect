@@ -232,7 +232,8 @@ export default async function AdminNotificationsPage({ searchParams }: Props) {
 
   // Only genuinely live when Meta has approved at least one template — a
   // configured-but-unapproved SID fails at send time with error 63016.
-  const live = wa.enabled && wa.configured && templatesApproved > 0;
+  const live =
+    wa.enabled && wa.configured && templatesApproved > 0 && !wa.testModeMisconfigured;
 
   const qs = (over: Record<string, string | undefined>) => {
     const p = new URLSearchParams();
@@ -263,12 +264,18 @@ export default async function AdminNotificationsPage({ searchParams }: Props) {
             <p className="mt-0.5 text-sm font-bold text-charcoal-900">
               {!wa.enabled ? "Disabled"
                 : !wa.configured ? "Enabled, no credentials"
+                // Checked BEFORE the template states: while this is true nothing
+                // sends at all, so reporting a template problem would be a lie
+                // about why messages are not going out.
+                : wa.testModeMisconfigured ? "Blocked — test mode has no recipient"
                 : templatesReady === 0 ? "No templates configured"
                 : templatesApproved === 0 ? "Awaiting Meta approval"
                 : wa.testMode ? "Live — TEST MODE" : "Live"}
             </p>
             <p className="text-[10px] text-charcoal-500">
-              {wa.configured
+              {wa.testModeMisconfigured
+                ? "Set TWILIO_WHATSAPP_TEST_TO, or set TWILIO_WHATSAPP_TEST_MODE=false"
+                : wa.configured
                 ? `SID ${wa.accountSidMasked} · ${wa.sender ?? "no sender"}`
                 : "Set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN and TWILIO_WHATSAPP_FROM"}
             </p>

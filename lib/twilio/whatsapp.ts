@@ -102,6 +102,24 @@ export function isWhatsAppTestMode(): boolean {
   );
 }
 
+/**
+ * TEST MODE ASKED FOR, BUT IMPOSSIBLE TO HONOUR — the flag is on and no test
+ * recipient is configured.
+ *
+ * isWhatsAppTestMode() returns false in this state, which used to mean the
+ * send simply proceeded to the REAL recipient. That is a safety switch failing
+ * OPEN: an operator who sets TWILIO_WHATSAPP_TEST_MODE=true has stated the
+ * intent "do not message real people", and forgetting TWILIO_WHATSAPP_TEST_TO
+ * turned that intent into live sends to actual customers. The send path now
+ * refuses instead, and this predicate lets the admin dashboard say why.
+ */
+export function isTestModeMisconfigured(): boolean {
+  return (
+    process.env.TWILIO_WHATSAPP_TEST_MODE?.trim().toLowerCase() === "true" &&
+    !process.env.TWILIO_WHATSAPP_TEST_TO?.trim()
+  );
+}
+
 function testRecipient(): string | null {
   const raw = process.env.TWILIO_WHATSAPP_TEST_TO?.trim();
   return raw ? toWhatsAppAddress(raw) : null;
@@ -112,6 +130,8 @@ export function getWhatsAppStatus(): {
   enabled: boolean;
   configured: boolean;
   testMode: boolean;
+  /** Test mode requested but unusable — the send path refuses while true. */
+  testModeMisconfigured: boolean;
   accountSidMasked: string | null;
   sender: string | null;
   senderKind: "whatsapp_number" | "messaging_service" | null;
@@ -121,6 +141,7 @@ export function getWhatsAppStatus(): {
     enabled: isWhatsAppEnabled(),
     configured: cfg !== null,
     testMode: isWhatsAppTestMode(),
+    testModeMisconfigured: isTestModeMisconfigured(),
     accountSidMasked: cfg ? `${cfg.accountSid.slice(0, 2)}…${cfg.accountSid.slice(-4)}` : null,
     // The sender is a business number the platform publishes anyway — not a
     // secret. A Messaging Service SID is shown masked all the same.
@@ -260,6 +281,21 @@ export async function sendWhatsAppTemplate(
       errorCode: null,
     };
   }
+  // FAIL CLOSED. Checked before anything is dispatched: the operator asked for
+  // test mode, so delivering to the real recipient would do the exact thing
+  // they were trying to prevent. 'not_configured' is a PERMANENT kind, so this
+  // is recorded once and never retried into a live send.
+  if (isTestModeMisconfigured()) {
+    return {
+      ok: false,
+      kind: "not_configured",
+      detail:
+        "TWILIO_WHATSAPP_TEST_MODE is true but TWILIO_WHATSAPP_TEST_TO is unset — " +
+        "refusing to deliver to the real recipient. Set a test number, or turn test mode off.",
+      errorCode: null,
+    };
+  }
+
   if (!input.contentSid) {
     return {
       ok: false,

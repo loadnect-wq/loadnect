@@ -1,16 +1,40 @@
 # Hallnect — WhatsApp environment values
 
-All 14 Content Templates were created in Twilio and submitted to Meta for
-approval on **2026-08-23**, category **Utility**, language **English (EN)**.
-Every one came back `Received` and moves to `Pending` → `Approved` as Meta
-reviews it (usually under 48 hours).
+All 14 Content Templates were created in Twilio and submitted to Meta on
+**2026-08-23**, language **English (EN)**.
+
+**Approval status — verified template-by-template in the Twilio console on
+2026-08-26: all 14 are `Approved`.** Meta re-categorised two of them, so the
+original "all Utility" claim is no longer true (see below).
 
 **None of the values on this page are secrets.** A Content SID identifies
 approved, public message copy — not a credential. The two actual secrets
 (`TWILIO_AUTH_TOKEN`, `SUPABASE_SERVICE_ROLE_KEY`) are deliberately absent and
 must never be written into this repository.
 
+## Two templates are billed as MARKETING, not Utility
+
+| Template | Meta category |
+|---|---|
+| `owner_hall_approved` | **Marketing** |
+| `owner_account_update` | **Marketing** |
+| the other 12 | Utility |
+
+Meta assigns the category itself and can overrule what was submitted. This
+matters for two reasons, and neither is a bug to fix in code:
+
+* **Cost.** Marketing conversations are priced above utility ones in India.
+* **Opt-out.** A recipient who has opted out of marketing on WhatsApp will not
+  receive them, while utility messages still arrive.
+
+Both are OWNER-facing, so no customer booking or payment message is affected —
+the whole customer set stayed Utility. If the cost of `owner_account_update`
+ever matters, the fix is to rewrite the copy to be strictly transactional and
+resubmit; its current body is generic enough (`subject` + `detail`) that Meta
+reasonably read it as promotional.
+
 ---
+
 
 ## Paste into Vercel → Hallnect → Settings → Environment Variables
 
@@ -53,10 +77,33 @@ TWILIO_TEMPLATE_ADMIN_ALERT=HXc3cd309d961671b67a718ebcd5afeb98
 TWILIO_WHATSAPP_ENABLED=true
 ```
 
-Leave this `false` until Meta has approved the templates. With it off, every
-message is still recorded in the `notifications` table with status `skipped`
-and a precise reason, so the whole pipeline stays observable and nothing
-pretends to have sent.
+Meta approval is complete, so this is now the only thing standing between the
+pipeline and live delivery. With it `false`, every message is still recorded in
+the `notifications` table with status `skipped` and a precise reason, so the
+whole pipeline stays observable and nothing pretends to have sent.
+
+Vercel stores these variables as **Sensitive**, which is write-only: neither
+`vercel env ls` nor `vercel env pull` returns the value. The only ways to read
+the switch in effect are the `/admin/notifications` dashboard, or setting it
+again to a known value.
+
+### Test mode FAILS CLOSED
+
+```
+TWILIO_WHATSAPP_TEST_MODE=true
+TWILIO_WHATSAPP_TEST_TO=+91XXXXXXXXXX   # REQUIRED whenever test mode is on
+```
+
+Test mode redirects every message to `TWILIO_WHATSAPP_TEST_TO` instead of the
+real recipient. Setting the flag **without** a test recipient used to fall
+through to a live send — a safety switch failing open, doing precisely what the
+operator was trying to prevent. Sending is now refused in that state, the
+notification records `not_configured` permanently rather than retrying into a
+live send, and `/admin/notifications` shows **"Blocked — test mode has no
+recipient"**. Pinned by `lib/__tests__/whatsapp.test.ts`.
+
+`TWILIO_WHATSAPP_TEST_TO` is currently set in NO environment, so test mode
+cannot engage in production whatever the flag says.
 
 ---
 
