@@ -280,3 +280,129 @@ export function mapOrderStatusToPaymentStatus(orderStatus: string | undefined): 
     default:           return "pending";
   }
 }
+
+// ── Refunds ────────────────────────────────────────────────────────────────────
+//
+// This is the piece that did not exist. Cancellations computed and recorded what
+// a customer was owed, and nothing moved the money — so a booking could sit
+// marked "refunded" while the customer had received nothing.
+//
+// IDEMPOTENCY IS THE WHOLE GAME HERE. `refund_id` is OUR id and is unique per
+// order at Cashfree: replaying the same refund_id returns the existing refund
+// instead of sending a second one. A double payout cannot be clawed back, so
+// every retry path must reuse the id rather than mint a fresh one.
+
+export type CashfreeRefund = {
+  cf_refund_id?:   number | string;
+  refund_id:       string;
+  refund_status?:  string;   // SUCCESS | PENDING | ONHOLD | CANCELLED | FAILED
+  refund_amount?:  number;
+  refund_note?:    string;
+  refund_arn?:     string;   // bank reference, once settled
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  [key: string]:   any;
+};
+
+/** How the customer's refund is progressing, in terms the UI can act on. */
+export type RefundOutcome =
+  | { state: "completed" }              // money confirmed back
+  | { state: "processing" }             // accepted, bank still moving it
+  | { state: "failed"; reason: string };
+
+/**
+ * Narrows Cashfree's refund_status. PENDING and ONHOLD are NOT failures — the
+ * refund is accepted and in flight, and treating either as failed would invite
+ * an admin to issue a second one.
+ */
+export function classifyRefundStatus(raw: string | undefined): RefundOutcome {
+  switch ((raw ?? "").toUpperCase()) {
+    case "SUCCESS":   return { state: "completed" };
+    case "PENDING":
+    case "ONHOLD":    return { state: "processing" };
+    case "CANCELLED": return { state: "failed", reason: "Cashfree cancelled the refund." };
+    case "FAILED":    return { state: "failed", reason: "Cashfree could not complete the refund." };
+    default:          return { state: "processing" };
+  }
+}
+
+/**
+ * Issues a refund against a paid order.
+ *
+ * `amount` is decided by the caller from SERVER-SIDE figures (the recorded
+ * refund_amount), never from a browser. `refundId` must be stable for a given
+ * booking so a retry is a lookup, not a second payout.
+ */
+export async function createCashfreeRefund(params: {
+  orderId:  string;
+  refundId: string;
+  amount:   number;
+  note?:    string;
+}): Promise<CashfreeResult<CashfreeRefund>> {
+  let cfg: CashfreeConfig;
+  try { cfg = getCashfreeConfig(); } catch (e) { return configError(e); }
+
+  if (!Number.isFinite(params.amount) || params.amount <= 0) {
+    return { ok: false, error: "Refund amount must be greater than zero." };
+  }
+
+  try {
+    const res = await fetch(
+      `${cfg.baseUrl}/orders/${encodeURIComponent(params.orderId)}/refunds`,
+      {
+        method: "POST",
+        headers: authHeaders(cfg),
+        body: JSON.stringify({
+          refund_id:     params.refundId,
+          refund_amount: Number(params.amount.toFixed(2)),
+          refund_note:   (params.note ?? "Hallnect booking cancellation").slice(0, 100),
+          // STANDARD, not INSTANT: instant refunds carry a fee and are not
+          // enabled on every account. A cancellation is not time-critical.
+          refund_speed:  "STANDARD",
+        }),
+        cache: "no-store",
+        signal: AbortSignal.timeout(20_000),
+      },
+    );
+
+    const text = await res.text();
+    let data: CashfreeRefund | { message?: string } = {} as CashfreeRefund;
+    try { data = text ? JSON.parse(text) : {}; } catch { /* non-JSON error page */ }
+
+    if (!res.ok) {
+      const message = (data as { message?: string })?.message ?? `Cashfree returned HTTP ${res.status}`;
+      // Status and message only — a refund response echoes customer details.
+      console.error(`[cashfree] refund failed: HTTP ${res.status}`);
+      return { ok: false, error: message, status: res.status };
+    }
+    return { ok: true, data: data as CashfreeRefund };
+  } catch (e) {
+    console.error("[cashfree] refund request failed:", e instanceof Error ? e.message : e);
+    return { ok: false, error: "Could not reach Cashfree to issue the refund." };
+  }
+}
+
+/** Reads a refund's current status — used to resolve anything left 'processing'. */
+export async function getCashfreeRefund(
+  orderId: string,
+  refundId: string,
+): Promise<CashfreeResult<CashfreeRefund>> {
+  let cfg: CashfreeConfig;
+  try { cfg = getCashfreeConfig(); } catch (e) { return configError(e); }
+
+  try {
+    const res = await fetch(
+      `${cfg.baseUrl}/orders/${encodeURIComponent(orderId)}/refunds/${encodeURIComponent(refundId)}`,
+      { method: "GET", headers: authHeaders(cfg), cache: "no-store", signal: AbortSignal.timeout(15_000) },
+    );
+    const text = await res.text();
+    let data: CashfreeRefund = {} as CashfreeRefund;
+    try { data = text ? JSON.parse(text) : {}; } catch { /* ignore */ }
+
+    if (!res.ok) {
+      return { ok: false, error: `Cashfree returned HTTP ${res.status}`, status: res.status };
+    }
+    return { ok: true, data };
+  } catch {
+    return { ok: false, error: "Could not reach Cashfree to check the refund." };
+  }
+}

@@ -533,6 +533,55 @@ export async function fetchStuckPayouts(): Promise<StuckPayoutRow[]> {
   }));
 }
 
+/**
+ * Refunds the platform OWES or has in flight.
+ *
+ * refund_amount says what a cancellation decided a customer is due;
+ * refund_state says whether it has actually been sent. Before this existed the
+ * two were conflated and a cancelled booking simply read "refunded" while the
+ * money was still sitting in Hallnect's account.
+ */
+export type RefundQueueRow = {
+  payment_id:   string;
+  booking_id:   string;
+  amount:       number;
+  state:        string;
+  error:        string | null;
+  refund_id:    string | null;
+  hall_name:    string;
+  event_date:   string | null;
+  created_at:   string;
+};
+
+export async function fetchRefundQueue(): Promise<RefundQueueRow[]> {
+  const supabase = await getSupabaseServerClient();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const db = supabase as any;
+
+  const { data, error } = await db
+    .from("payments")
+    .select("id, booking_id, refund_amount, refund_state, refund_error, cashfree_refund_id, created_at, bookings(event_date, halls(name))")
+    .in("refund_state", ["owed", "processing", "failed"])
+    .order("created_at", { ascending: false })
+    .limit(100);
+
+  // A missing column (pre-0033 database) must not break the payments page.
+  if (error) { handleError("fetchRefundQueue", error); return []; }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (data ?? []).map((row: any): RefundQueueRow => ({
+    payment_id: row.id,
+    booking_id: row.booking_id,
+    amount:     Number(row.refund_amount ?? 0),
+    state:      row.refund_state ?? "owed",
+    error:      row.refund_error ?? null,
+    refund_id:  row.cashfree_refund_id ?? null,
+    hall_name:  row.bookings?.halls?.name ?? "Hall",
+    event_date: row.bookings?.event_date ?? null,
+    created_at: row.created_at,
+  }));
+}
+
 // ── Commissions ───────────────────────────────────────────────────────────────
 
 export type CommissionFilters = {

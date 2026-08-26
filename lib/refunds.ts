@@ -10,11 +10,14 @@
 //     promise. Nothing here invents a policy; the schedule mirrors the
 //     published table one-for-one and lives in one editable place.
 //
-// WHAT THIS DOES AND DOES NOT DO: it computes the refund and records it on the
-// payment row (refund_amount + status) so dashboards, receipts and messages all
-// state the same figure. Moving the money is a separate, manual step — Hallnect
-// has no Cashfree refund API integration, so claiming an automatic refund here
-// would be a lie to the customer. The recorded figure is what an admin pays out.
+// WHAT THIS DOES AND DOES NOT DO: it computes what is OWED and records it on
+// the payment row as refund_state='owed'. It does not move money. Sending it is
+// issueRefund() in app/admin/actions.ts, which an admin triggers from the
+// dashboard and which calls Cashfree for real.
+//
+// The distinction is the point. This function used to set status='refunded' the
+// moment it ran, while no refund integration existed at all — so a customer who
+// had received nothing was shown as refunded everywhere.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import "server-only";
@@ -122,9 +125,11 @@ export async function recordBookingRefund(
     const update: Record<string, unknown> = {
       refund_amount: breakdown.refundableAmount,
       payment_message: note,
-      // Only flip the payment to 'refunded' when money is actually going back;
-      // a 0% refund leaves the successful payment as it stands.
-      ...(breakdown.refundableAmount > 0 ? { status: "refunded" } : {}),
+      // 'owed', NOT 'refunded'. This function records what the customer is due;
+      // the money is sent later by issueRefund(). Marking the payment refunded
+      // here told every dashboard, receipt and message that a customer had been
+      // paid back when nothing had left the account.
+      ...(breakdown.refundableAmount > 0 ? { refund_state: "owed" } : {}),
     };
 
     let { error } = await db

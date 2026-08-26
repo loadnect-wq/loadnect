@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Lock, AlertTriangle } from "lucide-react";
-import { fetchAllPayments, fetchStuckPayouts } from "@/lib/admin";
+import { Lock, AlertTriangle, Undo2 } from "lucide-react";
+import { fetchAllPayments, fetchStuckPayouts, fetchRefundQueue } from "@/lib/admin";
+import { IssueRefundButton, SyncRefundButton, RetryPayoutButton } from "./_components/MoneyActions";
 import { formatPrice } from "@/lib/mock-data";
 import { Badge } from "@/components/ui/Badge";
 import { AdminPageHeader } from "../_components/AdminPageHeader";
@@ -37,22 +38,88 @@ type Props = { searchParams: Promise<{ status?: string }> };
 export default async function AdminPaymentsPage({ searchParams }: Props) {
   const { status } = await searchParams;
   const activeFilter = FILTERS.find((f) => f.key === status) ?? FILTERS[0];
-  const [payments, stuck] = await Promise.all([
+  const [payments, stuck, refunds] = await Promise.all([
     fetchAllPayments(activeFilter.value),
     fetchStuckPayouts(),
+    fetchRefundQueue(),
   ]);
   const stuckTotal = stuck.reduce((sum, r) => sum + r.owner_amount, 0);
+  const owedTotal = refunds
+    .filter((r) => r.state !== "processing")
+    .reduce((sum, r) => sum + r.amount, 0);
 
   return (
     <div>
-      <AdminPageHeader title="Payments" description="Cashfree payment transactions. Read-only — payment records cannot be edited from the dashboard." />
+      <AdminPageHeader title="Payments" description="Cashfree transactions, refunds owed to customers, and payouts owed to venue owners." />
 
       <div className="px-4 py-4 sm:px-6 lg:px-8 space-y-4">
 
-        <div className="flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800">
-          <Lock className="h-3.5 w-3.5 shrink-0" />
-          Payment records are write-locked. Webhook updates from Cashfree are the only authorized source of changes.
+        <div className="flex items-start gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-800">
+          <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          <span>
+            The transaction ledger below is write-locked — Cashfree webhooks are the only
+            thing that edits it. Refunds and payouts are the exception: those are actions,
+            and every one is recorded in the{" "}
+            <Link href="/admin/audit-logs" className="font-semibold underline">audit log</Link>.
+            No amount can be typed by hand; every figure comes from the booking.
+          </span>
         </div>
+
+        {/* REFUNDS. First, because this is money owed to a customer who has
+            already cancelled and is waiting for it. */}
+        {refunds.length > 0 && (
+          <div className="rounded-xl border-2 border-amber-300 bg-amber-50 p-4">
+            <div className="flex items-start gap-2">
+              <Undo2 className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" aria-hidden />
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-bold text-amber-900">
+                  {refunds.length} refund{refunds.length === 1 ? "" : "s"} to action
+                  {owedTotal > 0 && <> — {formatPrice(owedTotal)} owed</>}
+                </p>
+                <p className="mt-0.5 text-xs text-amber-800">
+                  The amount is fixed by the cancellation policy at the time of
+                  cancellation and cannot be edited here. Sending it moves real money.
+                </p>
+                <ul className="mt-3 space-y-2">
+                  {refunds.map((r) => (
+                    <li key={r.payment_id} className="rounded-lg border border-amber-200 bg-white px-3 py-2.5 text-xs">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="font-semibold text-charcoal-900">{r.hall_name}</span>
+                        <span className="font-bold text-charcoal-900">{formatPrice(r.amount)}</span>
+                      </div>
+                      <p className="mt-0.5 text-charcoal-500">
+                        Booking {r.booking_id.slice(0, 8).toUpperCase()}
+                        {r.event_date && <> · event {r.event_date}</>}
+                        {" · "}
+                        <span className={
+                          r.state === "failed" ? "font-semibold text-red-700"
+                            : r.state === "processing" ? "font-semibold text-blue-700"
+                            : "font-semibold text-amber-700"
+                        }>
+                          {r.state === "owed" ? "not sent yet"
+                            : r.state === "processing" ? "in progress at the bank"
+                            : "failed"}
+                        </span>
+                      </p>
+                      {r.error && <p className="mt-0.5 text-red-700">{r.error}</p>}
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {r.state === "processing" ? (
+                          <SyncRefundButton bookingId={r.booking_id} />
+                        ) : (
+                          <IssueRefundButton
+                            bookingId={r.booking_id}
+                            amountLabel={formatPrice(r.amount)}
+                            state={r.state}
+                          />
+                        )}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* MONEY OWED BUT NOT SENT. Shown above the ledger because it is the
             only thing on this page that needs someone to act. */}
@@ -83,6 +150,12 @@ export default async function AdminPaymentsPage({ searchParams }: Props) {
                       {r.split_error && (
                         <p className="mt-0.5 text-red-700">{r.split_error}</p>
                       )}
+                      <div className="mt-2">
+                        <RetryPayoutButton
+                          bookingId={r.booking_id}
+                          amountLabel={formatPrice(r.owner_amount)}
+                        />
+                      </div>
                     </li>
                   ))}
                 </ul>

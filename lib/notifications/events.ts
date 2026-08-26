@@ -94,7 +94,8 @@ export type BookingEventKind =
   | "booking.cancelled"
   | "payment.success"
   | "payment.failed"
-  | "refund.initiated";
+  | "refund.initiated"
+  | "refund.sent";
 
 type BookingContext = {
   bookingId: string;
@@ -289,10 +290,22 @@ export async function notifyBookingEvent(
         );
         break;
 
+      // A refund has been WORKED OUT and is owed. Admin only, deliberately:
+      // nothing has been sent yet, and the approved customer template says a
+      // refund "has been initiated" and lands in 5-7 working days. Telling a
+      // customer that while the money is still sitting in Hallnect's account
+      // starts a clock that nobody has actually started.
       case "refund.initiated":
         requests.push(
+          toAdmin("Refund due", `Booking cancelled after payment for ${ctx.hallName}. Amount ${paidLabel} owed — action it in the payments dashboard.`),
+        );
+        break;
+
+      // The money has genuinely left, so now the 5-7 day promise is true.
+      case "refund.sent":
+        requests.push(
           toCustomer("CUSTOMER_REFUND_INITIATED", [ctx.customer.name, ref, paidLabel]),
-          toAdmin("Refund due", `Booking cancelled after payment for ${ctx.hallName}. Amount ${paidLabel}.`),
+          toAdmin("Refund sent", `${paidLabel} refunded for ${ctx.hallName}.`),
         );
         break;
     }

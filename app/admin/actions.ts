@@ -18,6 +18,10 @@ import {
 } from "@/lib/validation/schemas";
 import { sanitizeError } from "@/lib/errors";
 import { recordAdminAction } from "@/lib/audit";
+import { createCashfreeRefund, getCashfreeRefund, classifyRefundStatus } from "@/lib/cashfree";
+import { payOwnerOnAcceptance } from "@/lib/owner-payout";
+import { notifyBookingEvent } from "@/lib/notifications/events";
+import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import {
   notifyHallModerated,
   notifyCommissionVerification,
@@ -1153,4 +1157,204 @@ export async function markNotificationRead(notificationId: string): Promise<Acti
   if (error) return { error: sanitizeError(error, "admin") };
   revalidatePath("/admin/notifications");
   return { success: true };
+}
+
+// ── Refunds and payouts — moving real money from the dashboard ───────────────
+//
+// Everything below sends money, so each one holds the same line:
+//   • requireAdminActor + a count check — RLS silently filters a write the
+//     caller may not make to ZERO ROWS WITHOUT AN ERROR, and reporting success
+//     for that would be a lie about a customer's money;
+//   • the AMOUNT is read from the database, never from the caller. No action
+//     here accepts an amount as an argument;
+//   • idempotent by construction, because a double payout cannot be recalled;
+//   • written to the append-only audit log before the money is anywhere.
+
+/** Stable, unique refund id for a booking. Reused on every retry ON PURPOSE:
+ *  Cashfree treats refund_id as the idempotency key, so replaying it returns
+ *  the existing refund instead of issuing a second one. */
+function refundIdFor(bookingId: string): string {
+  return `HNR_${bookingId.replace(/-/g, "").slice(0, 24)}`;
+}
+
+/**
+ * Sends a customer the refund a cancellation already recorded as owed.
+ *
+ * The amount comes from payments.refund_amount, computed at cancellation time
+ * by lib/refunds.ts from the published policy. This action cannot change it.
+ */
+export async function issueRefund(bookingId: string): Promise<ActionResult> {
+  const actor = await requireAdminActor();
+  if (!actor.ok) return { error: actor.error };
+
+  const idErr = requireUuid(bookingId, "booking id");
+  if (idErr) return { error: idErr };
+
+  const admin = getSupabaseAdminClient();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const db = admin as any;
+
+  const { data: payment } = await db
+    .from("payments")
+    .select("id, cashfree_order_id, refund_amount, refund_state, cashfree_refund_id, status")
+    .eq("booking_id", bookingId)
+    .eq("status", "payment_success")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (!payment) return { error: "No successful payment found for this booking." };
+  if (payment.refund_state === "completed") return { error: "This refund has already been paid." };
+  if (payment.refund_state === "processing") {
+    return { error: "A refund is already in progress for this booking." };
+  }
+
+  const amount = Number(payment.refund_amount);
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return { error: "Nothing is owed on this booking under the cancellation policy." };
+  }
+  if (!payment.cashfree_order_id) {
+    return { error: "This booking has no gateway order — it must be refunded outside Hallnect." };
+  }
+
+  const refundId = payment.cashfree_refund_id ?? refundIdFor(bookingId);
+
+  // CLAIM FIRST. A second admin clicking at the same moment matches zero rows
+  // and stops here, rather than both of them calling Cashfree.
+  const { count: claimed } = await db
+    .from("payments")
+    .update(
+      {
+        refund_state:        "processing",
+        cashfree_refund_id:  refundId,
+        refund_initiated_at: new Date().toISOString(),
+        refund_initiated_by: actor.user.id,
+        refund_error:        null,
+      },
+      { count: "exact" },
+    )
+    .eq("id", payment.id)
+    .in("refund_state", ["owed", "failed"]);
+
+  if ((claimed ?? 0) === 0) {
+    return { error: "This refund is already being processed." };
+  }
+
+  await recordAdminAction({
+    action:     "refund_issued",
+    entityType: "payment",
+    entityId:   payment.id,
+    reason:     `Refund of ${amount} sent for booking ${bookingId.slice(0, 8).toUpperCase()}`,
+  });
+
+  const result = await createCashfreeRefund({
+    orderId:  payment.cashfree_order_id,
+    refundId,
+    amount,
+    note:     "Hallnect booking cancellation refund",
+  });
+
+  if (!result.ok) {
+    await db.from("payments").update({
+      refund_state: "failed",
+      refund_error: result.error.slice(0, 500),
+    }).eq("id", payment.id);
+    revalidatePath("/admin/payments");
+    return { error: result.error };
+  }
+
+  const outcome = classifyRefundStatus(result.data.refund_status);
+
+  await db.from("payments").update({
+    refund_state: outcome.state,
+    refund_error: outcome.state === "failed" ? outcome.reason : null,
+    // Only stamp completion when Cashfree actually confirms the money went back.
+    ...(outcome.state === "completed"
+      ? { refund_completed_at: new Date().toISOString(), status: "refunded" }
+      : {}),
+  }).eq("id", payment.id);
+
+  // Tell the customer only now — the approved template promises the money
+  // arrives in 5-7 working days, which is only true once it has actually left.
+  if (outcome.state !== "failed") {
+    await notifyBookingEvent("refund.sent", bookingId, { amount });
+  }
+
+  revalidatePath("/admin/payments");
+  revalidatePath("/admin/bookings");
+  if (outcome.state === "failed") return { error: outcome.reason };
+  return { success: true };
+}
+
+/**
+ * Re-reads a refund left 'processing' and settles its state.
+ *
+ * A STANDARD-speed refund is accepted immediately and confirmed by the bank
+ * later, so without this a refund sits "processing" forever and an admin cannot
+ * tell a slow one from a stuck one.
+ */
+export async function syncRefundStatus(bookingId: string): Promise<ActionResult> {
+  const actor = await requireAdminActor();
+  if (!actor.ok) return { error: actor.error };
+  const idErr = requireUuid(bookingId, "booking id");
+  if (idErr) return { error: idErr };
+
+  const admin = getSupabaseAdminClient();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const db = admin as any;
+
+  const { data: payment } = await db
+    .from("payments")
+    .select("id, cashfree_order_id, cashfree_refund_id, refund_state")
+    .eq("booking_id", bookingId)
+    .not("cashfree_refund_id", "is", null)
+    .limit(1)
+    .maybeSingle();
+
+  if (!payment?.cashfree_refund_id || !payment.cashfree_order_id) {
+    return { error: "No refund has been issued for this booking." };
+  }
+
+  const res = await getCashfreeRefund(payment.cashfree_order_id, payment.cashfree_refund_id);
+  if (!res.ok) return { error: res.error };
+
+  const outcome = classifyRefundStatus(res.data.refund_status);
+  await db.from("payments").update({
+    refund_state: outcome.state,
+    refund_error: outcome.state === "failed" ? outcome.reason : null,
+    ...(outcome.state === "completed"
+      ? { refund_completed_at: new Date().toISOString(), status: "refunded" }
+      : {}),
+  }).eq("id", payment.id);
+
+  revalidatePath("/admin/payments");
+  return { success: true };
+}
+
+/**
+ * Retries an owner payout that failed.
+ *
+ * The split itself is idempotent (a status-guarded claim, plus Cashfree's
+ * disable_split), so this is safe to press repeatedly — it re-runs the same
+ * path the owner's Accept ran, using figures already in the database.
+ */
+export async function retryOwnerPayout(bookingId: string): Promise<ActionResult> {
+  const actor = await requireAdminActor();
+  if (!actor.ok) return { error: actor.error };
+  const idErr = requireUuid(bookingId, "booking id");
+  if (idErr) return { error: idErr };
+
+  await recordAdminAction({
+    action:     "owner_payout_retried",
+    entityType: "booking",
+    entityId:   bookingId,
+    reason:     "Manual payout retry from the admin dashboard",
+  });
+
+  const outcome = await payOwnerOnAcceptance(bookingId);
+  revalidatePath("/admin/payments");
+
+  if (outcome.state === "paid")    return { success: true };
+  if (outcome.state === "skipped") return { error: `Not retried: ${outcome.reason}` };
+  return { error: outcome.reason };
 }
