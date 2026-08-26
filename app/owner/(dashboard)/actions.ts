@@ -286,11 +286,18 @@ export async function createHall(data: {
     return { error: error ? sanitizeError(error, "owner") : "Could not create your hall. Please try again." };
   }
 
-  // Insert amenities junction rows
+  // Insert amenities junction rows. The failure is logged rather than
+  // returned: the hall itself already exists, and failing the whole action
+  // here would tell the owner their listing was not created when it was. It
+  // must not be SILENT though — dropping every amenity without a trace makes a
+  // venue look bare and gives nobody a reason to look.
   if (v.amenityIds.length > 0) {
-    await db.from("hall_amenities").insert(
+    const { error: amenityErr } = await db.from("hall_amenities").insert(
       v.amenityIds.map((amenityId) => ({ hall_id: hall.id, amenity_id: amenityId })),
     );
+    if (amenityErr) {
+      console.error(`[createHall] amenities not saved for hall ${hall.id}:`, amenityErr.message);
+    }
   }
 
   const customParsed = parseSafe(customAmenityListSchema, data.customAmenities ?? []);
@@ -543,11 +550,44 @@ export async function setCoverImage(hallId: string, imageId: string): Promise<Ac
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = supabase as any;
 
-  await db.from("hall_images").update({ is_cover: false }).eq("hall_id", hallId);
-  const { error } = await db.from("hall_images").update({ is_cover: true }).eq("id", imageId);
+  // CONFIRM THE PAIR FIRST, the way deleteHallImage does. The old code matched
+  // the second update on image id ALONE: an id belonging to a different hall
+  // would clear this hall's cover and set the other hall's, and because
+  // uq_hall_images_one_cover permits one cover per hall, that second write
+  // could then fail outright — leaving the owner with a raw duplicate-key
+  // message and a hall whose cover had just been removed.
+  const { data: image, error: readErr } = await db
+    .from("hall_images")
+    .select("id")
+    .eq("id", imageId)
+    .eq("hall_id", hallId)
+    .maybeSingle();
+  if (readErr) return { error: sanitizeError(readErr, "owner") };
+  if (!image) return { error: "Image not found." };
+
+  // Clear the current cover before setting the new one — the unique index
+  // allows only one per hall. Errors are checked: an unchecked failure here is
+  // what turns the next statement into a constraint violation.
+  const { error: clearErr } = await db
+    .from("hall_images")
+    .update({ is_cover: false })
+    .eq("hall_id", hallId)
+    .eq("is_cover", true);
+  if (clearErr) return { error: sanitizeError(clearErr, "owner") };
+
+  // count: RLS filters a write the caller may not make to ZERO ROWS WITHOUT AN
+  // ERROR. Returning success there would tell the owner their cover changed
+  // when nothing did.
+  const { error, count } = await db
+    .from("hall_images")
+    .update({ is_cover: true }, { count: "exact" })
+    .eq("id", imageId)
+    .eq("hall_id", hallId);
   if (error) return { error: sanitizeError(error, "owner") };
+  if ((count ?? 0) === 0) return { error: "Could not set that photo as the cover." };
 
   revalidatePath(`/owner/halls/${hallId}/images`);
+  revalidatePath(`/owner/halls/${hallId}/edit`);
   return { success: true };
 }
 
@@ -562,7 +602,7 @@ export async function deleteHallImage(hallId: string, imageId: string): Promise<
   // restricts this to halls the caller owns; this pins the pair as well).
   const { data: image, error: readErr } = await db
     .from("hall_images")
-    .select("id, hall_id, storage_path")
+    .select("id, hall_id, storage_path, is_cover")
     .eq("id", imageId)
     .eq("hall_id", hallId)
     .maybeSingle();
@@ -572,6 +612,29 @@ export async function deleteHallImage(hallId: string, imageId: string): Promise<
 
   const { error } = await db.from("hall_images").delete().eq("id", imageId);
   if (error) return { error: sanitizeError(error, "owner") };
+
+  // Deleting the COVER used to leave the hall with none, and a hall with no
+  // cover renders as a plain gradient in every listing — the owner's venue
+  // quietly becomes the least appealing card on the page. Promote the next
+  // remaining photo instead. Non-fatal: the delete the owner asked for has
+  // already succeeded.
+  if (image.is_cover) {
+    const { data: next } = await db
+      .from("hall_images")
+      .select("id")
+      .eq("hall_id", hallId)
+      .order("sort_order", { ascending: true })
+      .order("created_at", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    if (next?.id) {
+      const { error: promoteErr } = await db
+        .from("hall_images").update({ is_cover: true }).eq("id", next.id);
+      if (promoteErr) {
+        console.error("[deleteHallImage] could not promote a new cover:", promoteErr.message);
+      }
+    }
+  }
 
   // Remove the underlying storage object so deleting an image doesn't leave an
   // orphaned file in the bucket. Partial failure is deliberately non-fatal: the
