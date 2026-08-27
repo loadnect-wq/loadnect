@@ -11,25 +11,35 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { NextResponse } from "next/server";
-import { timingSafeEqual } from "node:crypto";
 import { getProfile } from "@/lib/auth";
+import { hasValidCronSecret } from "@/lib/cron-auth";
 import { expireOverdueBookingRequests } from "@/lib/booking-expiry";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-function hasValidCronSecret(request: Request): boolean {
-  const secret = process.env.CRON_SECRET;
-  if (!secret || secret.trim() === "") return false;
+/** Runs the sweep and reports it. Shared by both verbs. */
+async function run(via: "cron" | "admin") {
+  try {
+    const summary = await expireOverdueBookingRequests();
+    console.info("[bookings:expire-overdue]", JSON.stringify({ via, ...summary }));
+    return NextResponse.json({ ok: true, summary });
+  } catch (err) {
+    console.error("[bookings:expire-overdue] failed", err);
+    return NextResponse.json({ error: "Expiry sweep failed" }, { status: 500 });
+  }
+}
 
-  const header = request.headers.get("authorization") ?? "";
-  const token = header.startsWith("Bearer ") ? header.slice(7) : "";
-  if (token === "") return false;
-
-  const a = Buffer.from(token);
-  const b = Buffer.from(secret);
-  if (a.length !== b.length) return false;
-  return timingSafeEqual(a, b);
+/**
+ * Vercel Cron. GET is SECRET-ONLY on purpose — see lib/cron-auth.ts. This
+ * endpoint cancels bookings and issues refunds, so accepting a session here
+ * would let any page an admin visits trigger it with an <img> tag.
+ */
+export async function GET(request: Request) {
+  if (!hasValidCronSecret(request)) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  return run("cron");
 }
 
 export async function POST(request: Request) {
@@ -45,15 +55,5 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  try {
-    const summary = await expireOverdueBookingRequests();
-    console.info(
-      "[bookings:expire-overdue]",
-      JSON.stringify({ via: cronAuthorized ? "cron" : "admin", ...summary }),
-    );
-    return NextResponse.json({ ok: true, summary });
-  } catch (err) {
-    console.error("[bookings:expire-overdue] failed", err);
-    return NextResponse.json({ error: "Expiry sweep failed" }, { status: 500 });
-  }
+  return run(cronAuthorized ? "cron" : "admin");
 }

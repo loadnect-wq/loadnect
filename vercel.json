@@ -1,0 +1,13 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "crons": [
+    {
+      "path": "/api/admin/bookings/expire-overdue",
+      "schedule": "30 3 * * *"
+    },
+    {
+      "path": "/api/admin/commissions/run-overdue-check",
+      "schedule": "30 4 * * *"
+    }
+  ]
+}

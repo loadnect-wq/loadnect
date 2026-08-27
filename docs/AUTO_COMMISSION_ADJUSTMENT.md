@@ -42,4 +42,4 @@ remains recorded as paid toward their booking. Unpaid commission is recovered
 - **Admin button:** Admin → Commissions → "Run overdue check"
   (`runOverdueCommissionCheckAction`).
 - **Machine/cron:** `POST /api/admin/commissions/run-overdue-check` with
-  `Authorization: Bearer <CRON_SECRET>`. See `COMMISSION_CRON_SETUP.md`.
+  `Authorization: Bearer <CRON_SECRET>`. See `SCHEDULED_JOBS.md`.
