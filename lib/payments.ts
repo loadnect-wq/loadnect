@@ -95,17 +95,38 @@ function buildOrderId(bookingId: string): string {
 /**
  * The order_expiry_time to hand Cashfree for a booking hold.
  *
- * Cashfree rejects an expiry that is too near (it requires roughly 5+ minutes)
- * or too far out, so this clamps: never less than 5 minutes from now, never
- * more than the booking's own expiry, and falls back to 15 minutes when the
- * booking has no recorded deadline.
+ * CASHFREE'S RULE IS STRICT: "Expiry time should be more than 15 min and less
+ * than 30 days". An order at or under 15 minutes is rejected outright with a
+ * 400, taking the whole checkout down — which is exactly what a 5-minute floor
+ * did here. The booking hold is PENDING_PAYMENT_TIMEOUT_MIN long, so a
+ * customer who reached the payment step even a minute into their hold had
+ * under 15 minutes left and could not pay at all.
+ *
+ * So the floor is 20 minutes, comfortably clear of the boundary rather than
+ * a minute above it: this timestamp is computed here, travels to Cashfree,
+ * and is compared against THEIR clock, so a value that is 15m30s by our clock
+ * can arrive under the line.
+ *
+ * The consequence is deliberate and bounded: for a customer who starts paying
+ * late in their hold, the order outlives the hold by the difference. That is
+ * the lesser evil — the alternative is no expiry at all, which is how orders
+ * used to stay payable indefinitely — and the case is handled: a payment that
+ * lands after the hold expired takes the stale-booking path in
+ * verifyAndApplyPayment, which records refund_state='owed' so the money is
+ * refundable from the admin dashboard.
  */
-function gatewayExpiryFor(bookingExpiresAt: string | null | undefined): string {
-  const MIN_MS = 5 * 60 * 1000;
+const GATEWAY_EXPIRY_FLOOR_MS = 20 * 60 * 1000;   // > Cashfree's 15-minute minimum
+const GATEWAY_EXPIRY_CEILING_MS = 29 * 24 * 60 * 60 * 1000; // < their 30-day maximum
+
+export function gatewayExpiryFor(bookingExpiresAt: string | null | undefined): string {
   const now = Date.now();
   const parsed = bookingExpiresAt ? Date.parse(bookingExpiresAt) : NaN;
-  const target = Number.isFinite(parsed) ? parsed : now + 15 * 60 * 1000;
-  return new Date(Math.max(target, now + MIN_MS)).toISOString();
+  const target = Number.isFinite(parsed) ? parsed : now + GATEWAY_EXPIRY_FLOOR_MS;
+  const clamped = Math.min(
+    Math.max(target, now + GATEWAY_EXPIRY_FLOOR_MS),
+    now + GATEWAY_EXPIRY_CEILING_MS,
+  );
+  return new Date(clamped).toISOString();
 }
 
 export async function startPaymentForBooking(

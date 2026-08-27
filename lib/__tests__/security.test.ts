@@ -123,3 +123,52 @@ describe("48-hour owner response window", () => {
     expect(isOwnerResponseOverdue("not a date")).toBe(false);
   });
 });
+
+describe("Cashfree order expiry — the gateway's own bounds", () => {
+  // Cashfree: "Expiry time should be more than 15 min and less than 30 days".
+  // Breaching either end is a 400 that takes the ENTIRE checkout down, which is
+  // what a 5-minute floor did: the booking hold is 15 minutes, so every
+  // customer who reached the payment step had under 15 minutes left and could
+  // not pay at all. These bounds are the gateway's, not ours to soften.
+  const MIN = 15 * 60 * 1000;
+  const MAX = 30 * 24 * 60 * 60 * 1000;
+
+  async function expiryMs(bookingExpiresAt: string | null | undefined) {
+    const { gatewayExpiryFor } = await import("@/lib/payments");
+    return Date.parse(gatewayExpiryFor(bookingExpiresAt)) - Date.now();
+  }
+
+  it("is always MORE than 15 minutes out, whatever the hold says", async () => {
+    for (const minutesLeft of [0, 1, 5, 14, 15, 16]) {
+      const at = new Date(Date.now() + minutesLeft * 60_000).toISOString();
+      expect(await expiryMs(at), `hold with ${minutesLeft}m left`).toBeGreaterThan(MIN);
+    }
+  });
+
+  it("clears the boundary by a real margin, not a single minute", async () => {
+    // The timestamp is compared against CASHFREE's clock after a network hop,
+    // so 15m30s here can arrive under the line there.
+    expect(await expiryMs(new Date(Date.now() + 60_000).toISOString()))
+      .toBeGreaterThanOrEqual(19 * 60 * 1000);
+  });
+
+  it("honours a longer hold instead of truncating it", async () => {
+    const at = new Date(Date.now() + 45 * 60_000).toISOString();
+    const ms = await expiryMs(at);
+    expect(ms).toBeGreaterThan(44 * 60 * 1000);
+    expect(ms).toBeLessThan(46 * 60 * 1000);
+  });
+
+  it("stays under the 30-day ceiling even for an absurd hold", async () => {
+    const at = new Date(Date.now() + 400 * 24 * 60 * 60 * 1000).toISOString();
+    expect(await expiryMs(at)).toBeLessThan(MAX);
+  });
+
+  it("falls back to a valid window when the booking has no deadline", async () => {
+    for (const bad of [null, undefined, "", "not a date"]) {
+      const ms = await expiryMs(bad);
+      expect(ms).toBeGreaterThan(MIN);
+      expect(ms).toBeLessThan(MAX);
+    }
+  });
+});
