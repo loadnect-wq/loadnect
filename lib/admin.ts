@@ -508,29 +508,55 @@ export async function fetchStuckPayouts(): Promise<StuckPayoutRow[]> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = supabase as any;
 
+  // THE QUESTION IS "WHOSE MONEY IS THIS", NOT "WHAT DOES split_status SAY".
+  //
+  // Filtering on split_status in (failed, pending) got BOTH halves wrong
+  // against real data. It missed the money genuinely owed — a completed
+  // booking whose payout was never even ATTEMPTED sits at split_status='none'
+  // and so was invisible, which is exactly the case that exists today because
+  // Easy Split is not yet enabled. And it showed money that is NOT owed — a
+  // failed payout on a booking that was later cancelled, where the advance
+  // belongs to the customer, not the venue.
+  //
+  // So: any successful payment, not yet paid out, whose BOOKING is still in a
+  // payable state and which has no refund in flight.
   const { data, error } = await db
     .from("payments")
-    .select("id, booking_id, split_owner_amount, split_status, split_error, created_at, bookings(halls(name))")
+    .select("id, booking_id, amount, split_owner_amount, split_status, split_error, refund_state, advance_amount, created_at, bookings(status, halls(name))")
     .eq("status", "payment_success")
-    // 'pending' is included deliberately: a split claimed but never completed
-    // is stuck too, and looks identical to the owner.
-    .in("split_status", ["failed", "pending"])
     .order("created_at", { ascending: false })
-    .limit(100);
+    .limit(200);
 
   // A missing column (pre-0031 database) must not break the payments page.
   if (error) { handleError("fetchStuckPayouts", error); return []; }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return (data ?? []).map((row: any): StuckPayoutRow => ({
-    payment_id:   row.id,
-    booking_id:   row.booking_id,
-    owner_amount: Number(row.split_owner_amount ?? 0),
-    split_status: row.split_status ?? "unknown",
-    split_error:  row.split_error ?? null,
-    hall_name:    row.bookings?.halls?.name ?? "Hall",
-    created_at:   row.created_at,
-  }));
+  const PAYABLE_BOOKING = new Set(["owner_confirmed", "completed"]);
+  const REFUND_IN_FLIGHT = new Set(["owed", "processing", "completed"]);
+
+  return ((data ?? []) as unknown[])
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    .filter((row: any) => {
+      if (String(row.split_status ?? "none") === "done") return false;
+      // not_applicable = Easy Split switched off for the deployment; still owed
+      // to the owner, and still worth showing, so it is NOT excluded here.
+      if (REFUND_IN_FLIGHT.has(String(row.refund_state ?? "none"))) return false;
+      return PAYABLE_BOOKING.has(String(row.bookings?.status ?? ""));
+    })
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    .map((row: any): StuckPayoutRow => ({
+      payment_id:   row.id,
+      booking_id:   row.booking_id,
+      // A payout never ATTEMPTED has no split_owner_amount, and a pre-0031 row
+      // has no advance_amount either — so falling through to 0 would print
+      // "Rs0 owed" over money that is genuinely outstanding. Fall back to the
+      // captured amount, which overstates the owner's share by at most the
+      // Rs200 fee but never understates it to nothing.
+      owner_amount: Number(row.split_owner_amount ?? row.advance_amount ?? row.amount ?? 0),
+      split_status: row.split_status ?? "none",
+      split_error:  row.split_error ?? null,
+      hall_name:    row.bookings?.halls?.name ?? "Hall",
+      created_at:   row.created_at,
+    }));
 }
 
 /**

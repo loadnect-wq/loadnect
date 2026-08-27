@@ -134,8 +134,10 @@ export default async function AdminPaymentsPage({ searchParams }: Props) {
                 </p>
                 <p className="mt-0.5 text-xs text-red-800">
                   These bookings are confirmed and the customer was charged, but the owner&apos;s
-                  share is still in Hallnect&apos;s account. The usual cause is an owner who has
-                  not finished payout onboarding in their profile.
+                  share is still in Hallnect&apos;s account. The usual causes are an owner who has
+                  not finished payout onboarding, or Easy Split not yet being enabled on the
+                  Cashfree account. Where a payout was never attempted the figure shown is the
+                  amount captured, not the owner&apos;s computed share.
                 </p>
                 <ul className="mt-3 space-y-2">
                   {stuck.map((r) => (
