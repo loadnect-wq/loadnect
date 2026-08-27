@@ -38,7 +38,7 @@ How to verify the payment flow end-to-end in **sandbox** before going live. This
 
 ## Test 3 — User-dropped / cancelled
 1. Open checkout, close it without paying.
-2. **Expected:** booking stays `pending_payment` (recoverable until the 15-min expiry), then auto-cancels. No availability block, no commission.
+2. **Expected:** booking stays `pending_payment` (recoverable until the 20-min expiry), then auto-cancels. No availability block, no commission.
 
 ## Test 4 — Webhook signature
 - [ ] Valid signed event (correct `x-webhook-signature` + `x-webhook-timestamp`) → accepted, applied.

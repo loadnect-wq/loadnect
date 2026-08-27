@@ -127,9 +127,10 @@ describe("48-hour owner response window", () => {
 describe("Cashfree order expiry — the gateway's own bounds", () => {
   // Cashfree: "Expiry time should be more than 15 min and less than 30 days".
   // Breaching either end is a 400 that takes the ENTIRE checkout down, which is
-  // what a 5-minute floor did: the booking hold is 15 minutes, so every
-  // customer who reached the payment step had under 15 minutes left and could
-  // not pay at all. These bounds are the gateway's, not ours to soften.
+  // what a 5-minute floor did against the then 15-minute hold: every customer
+  // who reached the payment step had under 15 minutes left and could not pay at
+  // all. The hold is now 20 minutes (PENDING_PAYMENT_TIMEOUT_MIN) so the two
+  // line up, but these bounds are the gateway's and hold regardless.
   const MIN = 15 * 60 * 1000;
   const MAX = 30 * 24 * 60 * 60 * 1000;
 
@@ -170,5 +171,32 @@ describe("Cashfree order expiry — the gateway's own bounds", () => {
       expect(ms).toBeGreaterThan(MIN);
       expect(ms).toBeLessThan(MAX);
     }
+  });
+});
+
+describe("the booking hold and the gateway floor must stay aligned", () => {
+  // These two numbers live in different files and are easy to change apart.
+  // When the hold was 15 and Cashfree's minimum was 15, EVERY gateway order
+  // outlived the booking it was paying for — and once the floor was raised to
+  // clear Cashfree, every order overhung by at least 5 minutes. Keeping the
+  // hold at or above the floor is what makes a prompt payment's order expire
+  // exactly when its hold does.
+  it("holds the slot for longer than Cashfree's 15-minute minimum", async () => {
+    const { PENDING_PAYMENT_TIMEOUT_MIN } = await import("@/lib/booking-payment");
+    expect(PENDING_PAYMENT_TIMEOUT_MIN).toBeGreaterThan(15);
+  });
+
+  it("a fresh booking's order expires with the hold, not after it", async () => {
+    const { PENDING_PAYMENT_TIMEOUT_MIN } = await import("@/lib/booking-payment");
+    const { gatewayExpiryFor } = await import("@/lib/payments");
+
+    // A booking created this instant: its hold and its order should end together.
+    const holdEndsAt = new Date(Date.now() + PENDING_PAYMENT_TIMEOUT_MIN * 60_000);
+    const orderEndsAt = new Date(gatewayExpiryFor(holdEndsAt.toISOString()));
+    const overhangMs = orderEndsAt.getTime() - holdEndsAt.getTime();
+
+    expect(overhangMs).toBeGreaterThanOrEqual(0);
+    // Allow a second of drift between the two Date.now() calls above.
+    expect(overhangMs).toBeLessThan(1_000);
   });
 });

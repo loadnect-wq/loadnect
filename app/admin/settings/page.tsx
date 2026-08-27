@@ -3,6 +3,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { LogOut, Shield, AlertTriangle, Settings as SettingsIcon, Database, Timer, Percent, Sparkles, KeyRound, CheckCircle2, XCircle, CreditCard } from "lucide-react";
 import { requireRole } from "@/lib/auth";
+import { PENDING_PAYMENT_TIMEOUT_MIN } from "@/lib/booking-payment";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { getCommissionPercent, getPublicPaymentSettings } from "@/lib/platform-settings";
 import { fetchPremiumPlans } from "@/lib/premium-plans";
@@ -285,7 +286,7 @@ export default async function AdminSettingsPage() {
 
         {/* Pending booking cleanup */}
         <Section title="Booking Maintenance" icon={<Timer className="h-4 w-4" />}>
-          <ConfigRow label="Pending payment timeout" value="15 minutes" />
+          <ConfigRow label="Pending payment timeout" value={`${PENDING_PAYMENT_TIMEOUT_MIN} minutes`} />
           <p className="mt-2 text-[11px] text-charcoal-500">
             Expired pending bookings are auto-cancelled by{" "}
             <code className="rounded bg-ivory-200 px-1 py-0.5">cleanup_expired_pending_bookings()</code>.

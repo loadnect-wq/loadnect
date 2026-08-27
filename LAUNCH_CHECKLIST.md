@@ -76,7 +76,7 @@
 - Owner availability calendar + `setAvailability` action with Zod batch validation; public read gated to approved halls. Not runtime-tested.
 
 ### 11. Booking — 🟡 Code present
-- Server recomputes price from DB; advance 25%; platform fee from `platform_settings` (default 5%); 15-min pending expiry; double-booking blocked by partial unique index + overlap trigger; past-date rejected (IST). Not runtime-tested (needs auth session + a payment).
+- Server recomputes price from DB; advance 25%; platform fee from `platform_settings` (default 5%); 20-min pending expiry; double-booking blocked by partial unique index + overlap trigger; past-date rejected (IST). Not runtime-tested (needs auth session + a payment).
 
 ### 12. Cashfree sandbox — ⛔ Not tested
 - `lib/cashfree.ts` (create/get order, payments, signature) and `lib/payments.ts` exist and build. **No completed sandbox transaction observed.** Cashfree cannot reach `localhost`, so this needs a tunnel or a deployed env. Must test before launch.

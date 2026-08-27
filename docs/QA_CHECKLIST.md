@@ -168,7 +168,7 @@ Verify `getDashboardPath` for each role via `/auth/redirect`:
 - [ ] Guest count > hall capacity is rejected with a clear message.
 - [ ] Price is recomputed server-side from the DB (client cannot tamper with amount).
 - [ ] Advance = 25% of total; platform fee = current rate from `platform_settings` (default 5%).
-- [ ] Booking is created as `pending_payment` with a 15-minute expiry.
+- [ ] Booking is created as `pending_payment` with a 20-minute expiry.
 - [ ] **Double-booking:** two customers booking the same hall/date/slot — only one succeeds; the other sees "just booked by someone else."
 - [ ] **Full-day vs half-day overlap:** a full_day booking blocks morning & evening for that date and vice-versa.
 - [ ] Expired pending booking is auto-cancelled (cron or admin "cleanup expired" button).

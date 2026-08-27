@@ -151,7 +151,7 @@ export async function createCashfreeOrder(
       ...(params.notifyUrl ? { notify_url: params.notifyUrl } : {}),
     },
     // The order must die with the hold it is paying for. Without an expiry
-    // Cashfree kept accepting payment long after the 15-minute pending sweep
+    // Cashfree kept accepting payment long after the pending sweep
     // cancelled the booking, so a customer whose UPI approval was slow paid
     // for a booking that no longer existed — money captured against nothing.
     ...(params.expiresAt ? { order_expiry_time: params.expiresAt } : {}),

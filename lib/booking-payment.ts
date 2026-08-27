@@ -48,6 +48,20 @@ export const PLATFORM_FEE_PAISE = PLATFORM_FEE_RUPEES * PAISE_PER_RUPEE;
  *  settings row is missing. */
 export const DEFAULT_COMMISSION_PERCENT = 2.5;
 
+/**
+ * How long a booking holds its slot while awaiting payment, in minutes.
+ *
+ * Not an arbitrary number: Cashfree refuses an order_expiry_time that is not
+ * MORE than 15 minutes out, so a hold shorter than that forces the gateway
+ * order to outlive the booking it is paying for. 20 keeps the two aligned —
+ * a customer who pays promptly gets an order that expires exactly when their
+ * hold does.
+ *
+ * The database trigger stamp_pending_expiry (0038) is the backstop for rows
+ * inserted without expires_at and MUST stay equal to this.
+ */
+export const PENDING_PAYMENT_TIMEOUT_MIN = 20;
+
 /** Advance = this fraction of the hall total, when no rate is supplied.
  *  The LIVE rate is platform_settings.default_advance_percentage; this is the
  *  fallback used when that cannot be read, and the two must stay equal so a

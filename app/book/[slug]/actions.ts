@@ -8,7 +8,7 @@ import { todayInBusinessTz, daysBetweenInclusive } from "@/lib/dates";
 import { startPaymentForBooking } from "@/lib/payments";
 import { isOnlinePaymentEnabled, isManualBookingAllowed } from "@/lib/platform-settings";
 import { getAdvancePercent, getCommissionPercent } from "@/lib/platform-settings";
-import { calculateBookingPayment, advanceFromTotal } from "@/lib/booking-payment";
+import { calculateBookingPayment, advanceFromTotal, PENDING_PAYMENT_TIMEOUT_MIN } from "@/lib/booking-payment";
 import { bookingSchema, paymentSessionSchema, uuidSchema, parseSafe } from "@/lib/validation/schemas";
 import { sanitizeError } from "@/lib/errors";
 import { normalizePhoneE164 } from "@/lib/notifications/phone";
@@ -64,7 +64,7 @@ export type CreateBookingResult =
 // Pending bookings auto-cancel after this window (see migration 0011).
 // Mirrored in client UI as a countdown. Backend uses a DB trigger to stamp
 // expires_at so this constant only affects display, not authoritative timing.
-const PENDING_PAYMENT_TIMEOUT_MIN = 15;
+
 
 export async function createBookingRequest(
   input: CreateBookingInput,
