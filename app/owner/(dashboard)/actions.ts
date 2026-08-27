@@ -1058,3 +1058,87 @@ export async function refreshPayoutStatus(): Promise<ActionResult> {
   }
   return { success: true };
 }
+
+// ── Premium / Pro plan purchase via Cashfree ────────────────────────────────
+// The owner buys a listing plan through the same gateway customers use for
+// booking advances. Before this, "upgrade" was a link to the contact form and
+// money was collected out of band.
+//
+// SECURITY: this action passes only a hall id and a plan slug. The price is
+// read server-side from the premium_plans catalogue, hall ownership is verified
+// against the database, and a DB trigger independently rejects any mismatch.
+// Nothing the browser sends can change what is charged or what is granted.
+
+export type StartPlanPurchaseActionResult =
+  | { success: true; paymentSessionId: string; orderId: string; amount: number; mode: "sandbox" | "production" }
+  | { error: string };
+
+export async function startPlanPurchaseAction(
+  hallId: string,
+  planSlug: string,
+): Promise<StartPlanPurchaseActionResult> {
+  const { supabase, user } = await getAuthUser();
+  if (!user) return { error: "Please sign in to buy a plan." };
+  if (!parseSafe(uuidSchema, hallId).ok) return { error: "Invalid hall." };
+  if (planSlug !== "premium" && planSlug !== "pro") return { error: "Invalid plan." };
+
+  if (!isCashfreeConfigured()) {
+    return { error: "Online payments are temporarily unavailable. Please contact Hallnect support." };
+  }
+
+  // Contact details for the gateway receipt come from the authenticated
+  // profile, never from the request.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: profile } = await (supabase as any)
+    .from("profiles")
+    .select("full_name, email, phone")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  const { startPlanPurchase } = await import("@/lib/plan-payments");
+  const result = await startPlanPurchase({
+    hallId,
+    planSlug,
+    ownerProfileId: user.id,
+    ownerName:  profile?.full_name ?? "",
+    ownerEmail: (user.email || profile?.email || "").trim(),
+    ownerPhone: profile?.phone ?? null,
+  });
+
+  if (!result.ok) return { error: result.error };
+
+  return {
+    success: true,
+    paymentSessionId: result.paymentSessionId,
+    orderId: result.orderId,
+    amount: result.amount,
+    mode: result.mode,
+  };
+}
+
+/**
+ * Server-verified status for a plan order. The owner's browser calls this after
+ * returning from Cashfree — the URL's claim of success is never trusted.
+ */
+export async function checkPlanPurchaseStatus(
+  orderId: string,
+): Promise<{ state: "paid" | "pending" | "failed" | "not_found" }> {
+  const { user } = await getAuthUser();
+  if (!user) return { state: "not_found" };
+  if (!orderId || !orderId.startsWith("HNP_")) return { state: "not_found" };
+
+  const { verifyAndApplyPlanPurchase } = await import("@/lib/plan-payments");
+  const result = await verifyAndApplyPlanPurchase(orderId);
+
+  revalidatePath("/owner/premium");
+  revalidatePath("/owner/halls");
+  revalidatePath("/owner/dashboard");
+
+  return {
+    state:
+      result.state === "paid"      ? "paid"
+      : result.state === "failed"    ? "failed"
+      : result.state === "not_found" ? "not_found"
+      : "pending",
+  };
+}

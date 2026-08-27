@@ -60,10 +60,18 @@ export const PLAN_FEATURES: Record<PremiumTier, PlanFeature[]> = {
 };
 
 // Hardcoded fallback used when premium_plans isn't provisioned yet (dev).
+//
+// The prices MUST match the live catalogue. This read Rs999 / Rs2,499 while
+// production charged Rs4,999 / Rs9,999, so a database blip would have quoted an
+// owner a fifth of the real price — and the purchase would then have been
+// rejected by guard_plan_purchase_integrity, which compares what is recorded
+// against premium_plans. The descriptions also promised "basic analytics" and
+// "advanced analytics, priority support"; none of that is built, and it is not
+// sold here any more (see PLAN_FEATURES above).
 const FALLBACK: PremiumPlan[] = [
-  { slug: "free",    name: "Free",    description: "Basic listing with normal search ranking and limited visibility.",        monthly_price: 0,    duration_days: 30, is_purchasable: false, sort_order: 0 },
-  { slug: "premium", name: "Premium", description: "Featured badge, higher search ranking, more visibility, basic analytics.", monthly_price: 999,  duration_days: 30, is_purchasable: true,  sort_order: 1 },
-  { slug: "pro",     name: "Pro",     description: "Homepage promotion, top placement, advanced analytics, priority support.", monthly_price: 2499, duration_days: 30, is_purchasable: true,  sort_order: 2 },
+  { slug: "free",    name: "Free",    description: "Full hall listing with photos, booking request management, and normal search ranking.",     monthly_price: 0,    duration_days: 30, is_purchasable: false, sort_order: 0 },
+  { slug: "premium", name: "Premium", description: "Featured badge on your hall card, higher search ranking, and more visibility across categories.", monthly_price: 4999, duration_days: 30, is_purchasable: true,  sort_order: 1 },
+  { slug: "pro",     name: "Pro",     description: "Everything in Premium, plus homepage promotion and top placement above Premium listings in search.", monthly_price: 9999, duration_days: 30, is_purchasable: true,  sort_order: 2 },
 ];
 
 export async function fetchPremiumPlans(): Promise<PremiumPlan[]> {

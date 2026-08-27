@@ -676,3 +676,52 @@ export function generateSlug(name: string, city: string): string {
     .replace(/\s+/g, "-");
   return raw || "hall";
 }
+
+/**
+ * The owner's halls that a premium plan can actually be bought for: approved,
+ * and therefore visible to customers. Carries the current tier so the plan page
+ * can say what each hall is already on, and offer a renewal rather than a
+ * duplicate purchase.
+ *
+ * Deliberately NOT derived from fetchOwnerHalls: that returns every hall
+ * regardless of status, and selling promotion for a pending or suspended
+ * listing would be selling nothing.
+ */
+export async function fetchOwnerBuyableHalls(
+  ownerId: string,
+): Promise<{ id: string; name: string; tier: string | null }[]> {
+  const supabase = await getSupabaseServerClient();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const db = supabase as any;
+
+  const { data, error } = await db
+    .from("halls")
+    .select("id, name, premium_tier")
+    .eq("owner_id", ownerId)
+    .eq("status", "approved")
+    .order("name", { ascending: true });
+
+  if (error) {
+    // premium_tier arrived in migration 0013; fall back so a pre-migration
+    // database still lists the halls rather than showing none.
+    if (error.code === "42703") {
+      const { data: legacy } = await db
+        .from("halls")
+        .select("id, name")
+        .eq("owner_id", ownerId)
+        .eq("status", "approved")
+        .order("name", { ascending: true });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return (legacy ?? []).map((r: any) => ({ id: r.id, name: r.name, tier: null }));
+    }
+    handleError("fetchOwnerBuyableHalls", error);
+    return [];
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (data ?? []).map((r: any) => ({
+    id:   r.id,
+    name: r.name,
+    tier: r.premium_tier ?? null,
+  }));
+}

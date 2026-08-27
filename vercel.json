@@ -4,6 +4,10 @@
     {
       "path": "/api/admin/bookings/expire-overdue",
       "schedule": "30 3 * * *"
+    },
+    {
+      "path": "/api/admin/premium/expire-listings",
+      "schedule": "15 0 * * *"
     }
   ]
 }

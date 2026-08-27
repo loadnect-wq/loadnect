@@ -78,61 +78,13 @@ export const FAQ_ITEMS = [
   },
 ] as const;
 
-export const PREMIUM_TIERS = [
-  {
-    id: "free",
-    name: "Free",
-    tagline: "Start listing your venue",
-    priceMonthly: 0,
-    durationLabel: "per month",
-    features: [
-      "Basic hall listing",
-      "Up to 5 photos",
-      "Standard search visibility",
-      "Booking request management",
-      "Basic support",
-    ],
-    isPopular: false,
-    ctaLabel: "Get Started",
-    ctaHref: "/owner/register",
-  },
-  {
-    id: "pro",
-    name: "Pro",
-    tagline: "Grow your bookings",
-    priceMonthly: 4999,
-    durationLabel: "per month",
-    features: [
-      "Everything in Free",
-      "Featured badge on listing",
-      "Priority search placement",
-      "Up to 20 photos",
-      "Basic analytics dashboard",
-      "WhatsApp lead notifications (coming soon)",
-    ],
-    isPopular: true,
-    ctaLabel: "Start Pro Plan",
-    ctaHref: "/owner/register",
-  },
-  {
-    id: "elite",
-    name: "Elite",
-    tagline: "Maximum visibility",
-    priceMonthly: 9999,
-    durationLabel: "per month",
-    features: [
-      "Everything in Pro",
-      "Top placement in city search",
-      "Homepage featured placement",
-      "Advanced analytics and lead reports",
-      "Promotional banner visibility",
-      "Priority support",
-    ],
-    isPopular: false,
-    ctaLabel: "Contact Sales",
-    ctaHref: "/contact",
-  },
-] as const;
+// PREMIUM_TIERS was removed. It was a SECOND, hardcoded plan catalogue that
+// disagreed with the real one in premium_plans: it named the Rs4,999 plan
+// "Pro" (its actual name is Premium) and advertised an "Elite" plan at Rs9,999
+// that does not exist - the Rs9,999 plan is Pro. It also sold an analytics
+// dashboard and priority support, neither of which is built. Only the owner
+// dashboard rendered it, and that now reads fetchPremiumPlans() + PLAN_FEATURES
+// like every other plan surface, so there is one catalogue again.
 
 export const WHY_CHOOSE = [
   {

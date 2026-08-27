@@ -33,6 +33,7 @@
 import { NextResponse } from "next/server";
 import { verifyCashfreeWebhookSignature } from "@/lib/cashfree";
 import { verifyAndApplyPayment } from "@/lib/payments";
+import { isPlanOrderId, verifyAndApplyPlanPurchase } from "@/lib/plan-payments";
 
 export const runtime = "nodejs";       // crypto + raw body
 export const dynamic = "force-dynamic"; // never cache a webhook
@@ -89,7 +90,13 @@ export async function POST(request: Request) {
   //    PAYMENT_FAILED and USER_DROPPED (→ payment_failed), because it reads the
   //    authoritative order status rather than trusting the event name.
   try {
-    const result = await verifyAndApplyPayment(orderId);
+    // Two kinds of money arrive at this one endpoint: CUSTOMER booking advances
+    // (HN_…) and OWNER premium/pro plan purchases (HNP_…). The order-id prefix
+    // routes them without an extra database round-trip. Both paths re-verify
+    // against Cashfree and are individually idempotent.
+    const result = isPlanOrderId(orderId)
+      ? await verifyAndApplyPlanPurchase(orderId)
+      : await verifyAndApplyPayment(orderId);
     console.info(`[cashfree-webhook] order=${orderId} applied state=${result.state}`);
 
     // 'error' is NOT a handled outcome — it is verifyAndApplyPayment telling us

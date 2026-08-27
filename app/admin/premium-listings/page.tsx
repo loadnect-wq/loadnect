@@ -7,6 +7,7 @@ import { AdminPageHeader } from "../_components/AdminPageHeader";
 import { ConfirmButton } from "../_components/ConfirmButton";
 import { togglePremiumActive } from "../actions";
 import { CreateListingForm } from "./_components/CreateListingForm";
+import { RunPremiumExpiry } from "./_components/RunPremiumExpiry";
 
 export const metadata: Metadata = { title: "Premium Listings — Admin" };
 
@@ -27,7 +28,7 @@ export default async function AdminPremiumPage() {
 
   return (
     <div>
-      <AdminPageHeader title="Premium Listings" description="Boosted hall placements. Records are written by the server after payment success." />
+      <AdminPageHeader title="Premium Listings" description="Boosted hall placements. Owners buy these themselves through Cashfree; a listing activates the moment payment is verified and retires on its own at the end of its window. Manual grants below are for support cases." />
 
       <div className="px-4 py-4 sm:px-6 lg:px-8 space-y-4">
 
@@ -38,6 +39,8 @@ export default async function AdminPremiumPage() {
           <SummaryCard label="Total listings" value={listings.length.toString()} />
           <SummaryCard label="Premium revenue" value={formatPrice(totalRevenue)} wide />
         </div>
+
+        <RunPremiumExpiry />
 
         {/* Manual activation form */}
         <CreateListingForm halls={halls} />

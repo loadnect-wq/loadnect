@@ -27,6 +27,7 @@ import {
   notifyPremiumChanged,
 } from "@/lib/notifications/events";
 import type { BookingExpirySummary } from "@/lib/booking-expiry";
+import type { PremiumExpirySummary } from "@/lib/premium-expiry";
 import { DEFAULT_ADVANCE_PERCENT } from "@/lib/booking-payment";
 
 function requireUuid(id: string, label = "id"): string | null {
@@ -797,6 +798,47 @@ export async function expireOverdueBookingsAction(): Promise<
     return { success: true, summary };
   } catch {
     return { error: "Expiry sweep failed. Check server logs." };
+  }
+}
+
+/**
+ * Retires premium listings whose paid window has closed and clears any hall
+ * still flagged premium without a live listing behind it.
+ *
+ * Nothing used to do this. recompute_hall_premium() only ran in reaction to a
+ * WRITE on premium_listings, so once end_date passed the hall stayed promoted
+ * in search and on the homepage forever, while this admin table correctly
+ * showed the listing as Expired. Also exposed as GET/POST
+ * /api/admin/premium/expire-listings for the scheduled caller — this button is
+ * for running it now.
+ */
+export async function expirePremiumListingsAction(): Promise<
+  | { success: true; summary: PremiumExpirySummary }
+  | { error: string }
+> {
+  const actor = await requireAdminActor();
+  if (!actor.ok) return { error: actor.error };
+
+  const { expirePremiumListings } = await import("@/lib/premium-expiry");
+  try {
+    const summary = await expirePremiumListings();
+
+    if (summary.deactivated > 0 || summary.hallsRecomputed > 0) {
+      await recordAdminAction({
+        action:     "premium.expire_listings",
+        entityType: "premium_listing",
+        entityId:   null,
+        reason:     `Retired ${summary.deactivated} expired listing(s)`,
+        metadata:   { ...summary },
+      });
+    }
+
+    revalidatePath("/admin/premium-listings");
+    revalidatePath("/owner/premium");
+    revalidatePath("/");
+    return { success: true, summary };
+  } catch {
+    return { error: "Premium expiry sweep failed. Check server logs." };
   }
 }
 

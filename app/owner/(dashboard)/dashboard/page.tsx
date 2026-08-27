@@ -8,7 +8,7 @@ import { requireRole } from "@/lib/auth";
 import { fetchOwnerRow, fetchOwnerHalls, fetchOwnerStats, fetchOwnerCommissions } from "@/lib/owner";
 import { formatPrice } from "@/lib/mock-data";
 import { advanceFromTotal } from "@/lib/booking-payment";
-import { PREMIUM_TIERS } from "@/lib/content";
+import { fetchPremiumPlans, PLAN_FEATURES } from "@/lib/premium-plans";
 import { Badge } from "@/components/ui/Badge";
 import { buttonVariants } from "@/components/ui/Button";
 import { AppHeader } from "@/components/app/AppHeader";
@@ -53,10 +53,12 @@ export default async function OwnerDashboardPage() {
 
   const halls   = await fetchOwnerHalls(ownerRow.id);
   const hallIds = halls.map((h) => h.id);
-  const [stats, commissions] = await Promise.all([
+  const [stats, commissions, plans] = await Promise.all([
     fetchOwnerStats(ownerRow.id, hallIds),
     fetchOwnerCommissions(hallIds),
+    fetchPremiumPlans(),
   ]);
+  const paidPlans = plans.filter((p) => p.monthly_price > 0 && p.is_purchasable);
 
   // Settlement snapshot — all figures derived from server-fetched commission
   // rows (never client-supplied).
@@ -169,17 +171,18 @@ export default async function OwnerDashboardPage() {
             <Sparkles className="h-3.5 w-3.5" /> Grow your bookings
           </p>
           <h2 className="mt-1.5 font-serif text-lg font-bold">Upgrade your listing</h2>
-          {/* Sourced from PREMIUM_TIERS (lib/content) — the same definition the
-              public pricing page renders — so the dashboard can never drift from
-              it. Billing is monthly: the field is priceMonthly and the DB plans
-              carry duration_days = 30. */}
+          {/* The SAME catalogue the plans page sells from (premium_plans +
+              PLAN_FEATURES). This used to render a second hardcoded list that
+              named the Rs4,999 plan "Pro" and advertised a nonexistent
+              "Elite" tier, so an owner saw one set of names here and another
+              when they went to buy. */}
           <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
-            {PREMIUM_TIERS.filter((t) => t.priceMonthly > 0).map((tier) => (
+            {paidPlans.map((plan) => (
               <PlanTile
-                key={tier.id}
-                name={tier.name}
-                price={`${formatPrice(tier.priceMonthly)}/month`}
-                perks={tier.features.slice(1, 3)}
+                key={plan.slug}
+                name={plan.name}
+                price={`${formatPrice(plan.monthly_price)}/${plan.duration_days}d`}
+                perks={PLAN_FEATURES[plan.slug].slice(-2).map((f) => f.label)}
               />
             ))}
           </div>

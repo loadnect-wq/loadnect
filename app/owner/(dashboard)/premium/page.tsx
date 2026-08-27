@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Sparkles } from "lucide-react";
 import { requireRole } from "@/lib/auth";
 import { fetchOwnerRow, fetchOwnerHalls, fetchOwnerPremiumListings } from "@/lib/owner";
+import { PLAN_FEATURES } from "@/lib/premium-plans";
 import { formatPrice } from "@/lib/mock-data";
 import { Badge } from "@/components/ui/Badge";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -74,21 +75,13 @@ export default async function OwnerPremiumPage() {
               <div className="mt-3 rounded-xl bg-white/15 px-3 py-2">
                 <p className="text-xs text-gold-100">Benefits active:</p>
                 <ul className="mt-1 space-y-0.5 text-xs text-white">
-                  {activeListing.plan_slug === "pro" ? (
-                    <>
-                      <li>✓ Homepage promotion</li>
-                      <li>✓ Top placement in search</li>
-                      <li>✓ Advanced analytics</li>
-                      <li>✓ Priority support</li>
-                    </>
-                  ) : (
-                    <>
-                      <li>✓ Featured badge on hall card</li>
-                      <li>✓ Higher search ranking</li>
-                      <li>✓ More visibility</li>
-                      <li>✓ Basic analytics</li>
-                    </>
-                  )}
+                  {/* Read from PLAN_FEATURES so this can never promise
+                      something the plans page does not sell. It used to list
+                      "Advanced analytics", "Basic analytics" and "Priority
+                      support" as ACTIVE benefits; none of the three is built. */}
+                  {PLAN_FEATURES[activeListing.plan_slug === "pro" ? "pro" : "premium"].map((f) => (
+                    <li key={f.label}>✓ {f.label}</li>
+                  ))}
                 </ul>
               </div>
               <Link
@@ -118,16 +111,19 @@ export default async function OwnerPremiumPage() {
         {!activeListing && (
           <div className="rounded-2xl bg-white shadow-card p-5 space-y-3">
             <h3 className="font-serif text-sm font-semibold text-charcoal-900">How to get Premium</h3>
+            {/* This used to say "contact support" and "complete payment via the
+                secure link provided" — there was no link and no payment step
+                anywhere in the product. Owners now buy a plan themselves. */}
             <ol className="space-y-2 text-sm text-charcoal-600">
-              <li className="flex gap-2"><span className="font-bold text-maroon-600">1.</span> Contact Hallnect support to request a premium slot</li>
-              <li className="flex gap-2"><span className="font-bold text-maroon-600">2.</span> Complete payment via the secure link provided</li>
-              <li className="flex gap-2"><span className="font-bold text-maroon-600">3.</span> Your hall is boosted automatically once payment is confirmed</li>
+              <li className="flex gap-2"><span className="font-bold text-maroon-600">1.</span> Pick a plan and the hall you want to promote</li>
+              <li className="flex gap-2"><span className="font-bold text-maroon-600">2.</span> Pay by UPI, card, net banking or wallet</li>
+              <li className="flex gap-2"><span className="font-bold text-maroon-600">3.</span> Your hall is boosted the moment the payment is confirmed</li>
             </ol>
             <Link
-              href="/contact"
+              href="/owner/premium/upgrade"
               className={buttonVariants({ variant: "gold", size: "sm" })}
             >
-              <Sparkles className="h-4 w-4" /> Contact Us
+              <Sparkles className="h-4 w-4" /> See plans
             </Link>
           </div>
         )}
