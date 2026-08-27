@@ -59,20 +59,35 @@ const nextConfig: NextConfig = {
       catch { return "https://*.supabase.co"; }
     })();
 
+    // Every Cashfree host the checkout touches. Kept in one place because the
+    // SDK moves the browser between them and missing any one of them breaks
+    // payment in a way that produces NO server error at all.
+    const cashfree = [
+      "https://sdk.cashfree.com",
+      "https://payments.cashfree.com",
+      "https://payments-test.cashfree.com",
+      "https://api.cashfree.com",
+      "https://sandbox.cashfree.com",
+    ].join(" ");
+
     const csp = [
       "default-src 'self'",
       "base-uri 'self'",
       "object-src 'none'",
       "frame-ancestors 'none'",
-      "form-action 'self'",
-      // Next.js runtime + the Cashfree checkout SDK.
+      // MUST include the Cashfree payment hosts. The v3 SDK completes checkout
+      // by SUBMITTING A FORM to Cashfree's payment domain, and form-action is
+      // not covered by default-src — so `form-action 'self'` silently blocked
+      // every payment, client-side, with nothing in the server logs. No payment
+      // succeeded between this header shipping and this line being added.
+      `form-action 'self' ${cashfree}`,
       "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://sdk.cashfree.com",
       "style-src 'self' 'unsafe-inline'",
       "font-src 'self' data:",
       `img-src 'self' data: blob: ${supabaseOrigin} https://*.supabase.co`,
-      `connect-src 'self' ${supabaseOrigin} https://*.supabase.co wss://*.supabase.co https://sdk.cashfree.com https://api.cashfree.com https://sandbox.cashfree.com`,
+      `connect-src 'self' ${supabaseOrigin} https://*.supabase.co wss://*.supabase.co ${cashfree}`,
       // Cashfree renders its payment step in a frame.
-      "frame-src 'self' https://sdk.cashfree.com https://payments.cashfree.com https://payments-test.cashfree.com",
+      `frame-src 'self' ${cashfree}`,
     ].join("; ");
 
     return [
@@ -83,9 +98,15 @@ const nextConfig: NextConfig = {
           { key: "X-Frame-Options", value: "DENY" },
           { key: "X-Content-Type-Options", value: "nosniff" },
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
-          // Nothing in this app uses these; deny them rather than inherit
-          // whatever a future embedded script decides to ask for.
-          { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=(), payment=()" },
+          // Camera/mic/geolocation are genuinely unused, so stay denied.
+          // `payment` is NOT unused: it gates the Payment Request API, which is
+          // how Cashfree offers Google Pay and other one-tap methods. It was
+          // denied outright here, which quietly removed those options from
+          // checkout. Allowed for this origin and Cashfree's payment frames.
+          {
+            key: "Permissions-Policy",
+            value: 'camera=(), microphone=(), geolocation=(), payment=(self "https://payments.cashfree.com" "https://payments-test.cashfree.com")',
+          },
           {
             key: "Strict-Transport-Security",
             value: "max-age=31536000; includeSubDomains",
