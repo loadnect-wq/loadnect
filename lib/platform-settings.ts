@@ -46,33 +46,23 @@ export async function getCommissionRate(): Promise<number> {
 }
 
 export type PublicPaymentSettings = {
-  hallnectUpiId:                 string | null;
-  hallnectUpiQrUrl:              string | null;
-  commissionDueDays:             number;
-  defaultAdvancePercentage:      number;
-  enableOnlineCustomerPayment:   boolean;
-  enableOwnerUpiPayment:         boolean;
-  enableAutoCommissionAdjustment: boolean;
+  defaultAdvancePercentage:    number;
+  enableOnlineCustomerPayment: boolean;
 };
 
 const PAYMENT_SETTINGS_FALLBACK: PublicPaymentSettings = {
-  hallnectUpiId:                 null,
-  hallnectUpiQrUrl:              null,
-  commissionDueDays:             7,
   // MUST equal the compile-time constant. This is what a customer is charged
   // when the settings read fails, and a fallback that disagrees with the code
   // would silently reprice every booking during a database blip. It read 20
   // while the code charged 25.
-  defaultAdvancePercentage:      DEFAULT_ADVANCE_PERCENT,
+  defaultAdvancePercentage:    DEFAULT_ADVANCE_PERCENT,
   // Fails CLOSED on purpose: if we cannot confirm that online payment is
   // switched on, take no money and fall back to manual booking requests.
-  enableOnlineCustomerPayment:   false,
-  enableOwnerUpiPayment:         true,
-  enableAutoCommissionAdjustment: false,
+  enableOnlineCustomerPayment: false,
 };
 
-/** Non-sensitive payment settings (UPI id/QR, advance %, feature flags) for the
- *  owner Pay-Now UI and the customer booking flow. Read through the SECURITY
+/** Non-sensitive payment settings (advance %, online-payment flag) for the
+ *  customer booking flow. Read through the SECURITY
  *  DEFINER RPC `get_public_payment_settings()` so non-admins never touch the
  *  admin-only platform_settings row. Falls back to safe defaults pre-migration.
  *
@@ -90,13 +80,11 @@ export const getPublicPaymentSettings = cache(async function getPublicPaymentSet
     const row = Array.isArray(data) ? data[0] : data;
     if (!row) return PAYMENT_SETTINGS_FALLBACK;
     return {
-      hallnectUpiId:                 row.hallnect_upi_id ?? null,
-      hallnectUpiQrUrl:              row.hallnect_upi_qr_url ?? null,
-      commissionDueDays:             Number(row.commission_due_days ?? 7),
-      defaultAdvancePercentage:      Number(row.default_advance_percentage ?? 20),
-      enableOnlineCustomerPayment:   Boolean(row.enable_online_customer_payment),
-      enableOwnerUpiPayment:         Boolean(row.enable_owner_upi_payment ?? true),
-      enableAutoCommissionAdjustment: Boolean(row.enable_auto_commission_adjustment),
+      // The null-default MUST be the compile-time constant, not a literal. It
+      // read 20 here while the fallback below and the code both used 25, so a
+      // settings row with a null advance would have repriced every booking.
+      defaultAdvancePercentage:    Number(row.default_advance_percentage ?? DEFAULT_ADVANCE_PERCENT),
+      enableOnlineCustomerPayment: Boolean(row.enable_online_customer_payment),
     };
   } catch {
     return PAYMENT_SETTINGS_FALLBACK;

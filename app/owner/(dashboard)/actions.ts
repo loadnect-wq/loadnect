@@ -22,7 +22,6 @@ import { sanitizeError } from "@/lib/errors";
 import { notifyBookingEvent, notifyHallSubmitted, notifyHallEdited } from "@/lib/notifications/events";
 import { normalizePhoneE164 } from "@/lib/notifications/phone";
 import { isCashfreeConfigured } from "@/lib/cashfree";
-import { startCommissionPayment, verifyAndApplyCommissionPayment } from "@/lib/commission-payments";
 import { payOwnerOnAcceptance } from "@/lib/owner-payout";
 import { recordBookingRefund } from "@/lib/refunds";
 import { releaseAvailabilityForBooking } from "@/lib/availability-release";
@@ -917,76 +916,6 @@ export async function markBookingCompleted(bookingId: string): Promise<ActionRes
   revalidatePath("/owner/bookings");
   revalidatePath("/owner/revenue");
   return { success: true };
-}
-
-// ── Commission settlement via Cashfree ───────────────────────────────────────
-// The owner pays Hallnect's platform commission through the same gateway customers
-// use for booking advances — UPI, cards, net-banking, wallets — instead of a
-// manual UPI transfer that an admin has to verify by eye.
-//
-// SECURITY: this action passes only the commission id. The amount is re-read
-// server-side from commissions.commission_amount, ownership is verified against
-// the database, and a DB trigger independently rejects any mismatch. Nothing
-// the browser sends can change what is charged or who is credited.
-
-export type StartCommissionPaymentActionResult =
-  | { success: true; paymentSessionId: string; orderId: string; amount: number; mode: "sandbox" | "production" }
-  | { error: string };
-
-export async function startCommissionPaymentAction(
-  commissionId: string,
-): Promise<StartCommissionPaymentActionResult> {
-  const { supabase, user } = await getAuthUser();
-  if (!user) return { error: "Please sign in to pay your commission." };
-  if (!parseSafe(uuidSchema, commissionId).ok) return { error: "Invalid commission." };
-
-  if (!isCashfreeConfigured()) {
-    return { error: "Online payments are temporarily unavailable. Please contact Hallnect support." };
-  }
-
-  // Contact details for the gateway receipt come from the authenticated
-  // profile, never from the request.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: profile } = await (supabase as any)
-    .from("profiles")
-    .select("full_name, email, phone")
-    .eq("id", user.id)
-    .maybeSingle();
-
-  const result = await startCommissionPayment({
-    commissionId,
-    ownerProfileId: user.id,
-    ownerName:  profile?.full_name ?? "",
-    ownerEmail: (user.email || profile?.email || "").trim(),
-    ownerPhone: profile?.phone ?? null,
-  });
-
-  if (!result.ok) return { error: result.error };
-
-  return {
-    success: true,
-    paymentSessionId: result.paymentSessionId,
-    orderId: result.orderId,
-    amount: result.amount,
-    mode: result.mode,
-  };
-}
-
-/**
- * Server-verified status for a commission order. The owner's browser calls this
- * after returning from Cashfree — the URL's claim of success is never trusted.
- */
-export async function checkCommissionPaymentStatus(
-  orderId: string,
-): Promise<{ state: "paid" | "pending" | "failed" | "not_found" }> {
-  const { user } = await getAuthUser();
-  if (!user) return { state: "not_found" };
-  if (!orderId || !orderId.startsWith("HNC_")) return { state: "not_found" };
-
-  const result = await verifyAndApplyCommissionPayment(orderId);
-  revalidatePath("/owner/commissions");
-  revalidatePath("/admin/commissions");
-  return { state: result.state === "paid" ? "paid" : result.state === "failed" ? "failed" : result.state === "not_found" ? "not_found" : "pending" };
 }
 
 // ── Cashfree vendor onboarding (required before automatic payouts) ──────────

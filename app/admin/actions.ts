@@ -24,12 +24,10 @@ import { notifyBookingEvent } from "@/lib/notifications/events";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import {
   notifyHallModerated,
-  notifyCommissionVerification,
   notifyPremiumChanged,
 } from "@/lib/notifications/events";
-import type { OverdueRunSummary } from "@/lib/commissions";
 import type { BookingExpirySummary } from "@/lib/booking-expiry";
-import { settledReason } from "@/lib/commission-payments";
+import { DEFAULT_ADVANCE_PERCENT } from "@/lib/booking-payment";
 
 function requireUuid(id: string, label = "id"): string | null {
   return parseSafe(uuidSchema, id).ok ? null : `Invalid ${label}.`;
@@ -763,110 +761,6 @@ export async function updateCommissionPercent(
   return { success: true };
 }
 
-// ── Owner commission UPI payment verification ───────────────────────────────────
-// Admin approves or rejects an owner's manual UPI payment submission. On
-// approval the linked commission is marked paid (this is the ONLY path that
-// marks a manual commission paid — owners can never do it themselves). All
-// writes use the admin SESSION client so is_admin() satisfies RLS + the guard
-// triggers while preserving the auth.uid() audit trail.
-export async function verifyCommissionPayment(
-  paymentId: string,
-  decision: "approve" | "reject",
-  adminNote?: string,
-): Promise<ActionResult> {
-  const actor = await requireAdminActor();
-  if (!actor.ok) return { error: actor.error };
-  const { supabase, user } = { supabase: actor.supabase, user: actor.user };
-  const idErr = requireUuid(paymentId, "payment id");
-  if (idErr) return { error: idErr };
-  if (decision !== "approve" && decision !== "reject") return { error: "Invalid decision." };
-
-  const note = (adminNote ?? "").toString().slice(0, 500).trim() || null;
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const db = supabase as any;
-
-  // Load the submission (admin RLS = full read).
-  const { data: pay, error: pErr } = await db
-    .from("owner_commission_payments")
-    .select("id, commission_id, upi_reference, status")
-    .eq("id", paymentId)
-    .maybeSingle();
-  if (pErr) return { error: sanitizeError(pErr, "admin") };
-  if (!pay) return { error: "Payment submission not found." };
-
-  // Idempotency: don't re-verify an already-resolved submission.
-  if (pay.status === "verified" || pay.status === "rejected") {
-    return { error: `This submission is already ${pay.status}.` };
-  }
-
-  if (decision === "approve") {
-    // The commission must still be genuinely OWNER-BILLED. Approving a payment
-    // against an already-settled commission — above all 'collected', which was
-    // absorbed from the customer's advance — would bank the same commission
-    // twice and leave the owner out of pocket.
-    const { data: linked } = await db
-      .from("commissions").select("status").eq("id", pay.commission_id).maybeSingle();
-    const blocked = settledReason(linked?.status);
-    if (blocked) {
-      return { error: `${blocked} Reject this submission and refund the owner directly.` };
-    }
-
-    const { error: upErr } = await db
-      .from("owner_commission_payments")
-      .update({
-        status:      "verified",
-        verified_at: new Date().toISOString(),
-        verified_by: user.id,
-        admin_note:  note,
-      })
-      .eq("id", paymentId);
-    if (upErr) return { error: sanitizeError(upErr, "admin") };
-
-    // Mark the commission paid — server-authoritative, admin only.
-    const { error: cErr } = await db
-      .from("commissions")
-      .update({
-        status:            "paid",
-        paid_at:           new Date().toISOString(),
-        payment_method:    "upi_manual",
-        payment_reference: pay.upi_reference ?? null,
-        admin_note:        note,
-      })
-      .eq("id", pay.commission_id);
-    if (cErr) return { error: sanitizeError(cErr, "admin") };
-  } else {
-    const { error: upErr } = await db
-      .from("owner_commission_payments")
-      .update({ status: "rejected", verified_by: user.id, admin_note: note })
-      .eq("id", paymentId);
-    if (upErr) return { error: sanitizeError(upErr, "admin") };
-    // Commission stays pending/overdue so the owner can re-submit.
-  }
-
-  await notifyCommissionVerification(paymentId, decision, note);
-
-  await recordAdminAction({
-    action:         decision === "approve" ? "commission.payment.approve" : "commission.payment.reject",
-    entityType:     "commission_payment",
-    entityId:       paymentId,
-    previousStatus: pay.status,
-    newStatus:      decision === "approve" ? "verified" : "rejected",
-    reason:         note,
-    // upi_reference is a payment identifier, not a secret/credential.
-    metadata:       { commission_id: pay.commission_id },
-  });
-
-  revalidatePath("/admin/commissions");
-  revalidatePath("/owner/commissions");
-  revalidatePath("/admin/audit-logs");
-  return { success: true };
-}
-
-// ── Manual overdue-commission sweep (admin button) ──────────────────────────────
-// Verifies admin session server-side, then runs the same idempotent engine the
-// cron route uses. The engine (lib/commissions) uses the service-role client for
-// its system writes; the admin check here is the authorization gate.
 /**
  * Cancels booking requests the owner never answered inside the 48-hour window,
  * refunds the customer and frees the dates.
@@ -906,55 +800,24 @@ export async function expireOverdueBookingsAction(): Promise<
   }
 }
 
-export async function runOverdueCommissionCheckAction(): Promise<
-  | { success: true; summary: OverdueRunSummary }
-  | { error: string }
-> {
-  const { user } = await getAuthUser();
-  if (!user) return { error: "Not authenticated" };
-
-  const supabase = await getSupabaseServerClient();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { data: profile } = await (supabase as any)
-    .from("profiles").select("role").eq("id", user.id).maybeSingle();
-  if (profile?.role !== "admin") return { error: "Admin access required." };
-
-  const { runOverdueCommissionCheck } = await import("@/lib/commissions");
-  try {
-    const summary = await runOverdueCommissionCheck();
-    revalidatePath("/admin/commissions");
-    return { success: true, summary };
-  } catch {
-    return { error: "Overdue check failed. Check server logs." };
-  }
-}
-
-// ── Platform payment settings (UPI, due days, advance %, feature flags) ─────────
+// ── Platform payment settings (advance %, online-payment flag) ───────────────
+// The UPI id/QR, commission due-days and the two owner-billing toggles were
+// removed with the owner-billed commission model: commission is retained from
+// the customer advance and owners are never invoiced, so none of them had any
+// effect any more. Their columns are left in place rather than dropped — this
+// action simply stops writing them.
 export async function updatePlatformPaymentSettings(input: {
-  hallnectUpiId?: string;
-  hallnectUpiQrUrl?: string;
-  commissionDueDays?: number;
   defaultAdvancePercentage?: number;
   enableOnlineCustomerPayment?: boolean;
-  enableOwnerUpiPayment?: boolean;
-  enableAutoCommissionAdjustment?: boolean;
 }): Promise<ActionResult> {
-  const { supabase, user } = await getAuthUser();
-  if (!user) return { error: "Not authenticated" };
+  // This gate used to be a bare 'is someone signed in' check, leaving the
+  // write to be refused by RLS. It sets the advance every customer is charged,
+  // so it is authorized like every other admin mutation here.
+  const actor = await requireAdminActor();
+  if (!actor.ok) return { error: actor.error };
+  const { supabase, user } = { supabase: actor.supabase, user: actor.user };
 
-  // Validate + normalise (never trust the client blindly).
-  const upiId = (input.hallnectUpiId ?? "").trim().slice(0, 120);
-  if (upiId && !/^[\w.\-]{2,64}@[a-zA-Z]{2,64}$/.test(upiId)) {
-    return { error: "Enter a valid UPI ID (e.g. hallnect@okicici)." };
-  }
-  const qr = (input.hallnectUpiQrUrl ?? "").trim().slice(0, 500);
-  if (qr && !/^https?:\/\//i.test(qr)) return { error: "UPI QR must be a valid URL." };
-
-  const dueDays = Number(input.commissionDueDays ?? 7);
-  if (!Number.isInteger(dueDays) || dueDays < 1 || dueDays > 90) {
-    return { error: "Commission due days must be between 1 and 90." };
-  }
-  const advancePct = Number(input.defaultAdvancePercentage ?? 20);
+  const advancePct = Number(input.defaultAdvancePercentage ?? DEFAULT_ADVANCE_PERCENT);
   if (!Number.isFinite(advancePct) || advancePct < 0 || advancePct > 100) {
     return { error: "Default advance percentage must be between 0 and 100." };
   }
@@ -964,13 +827,8 @@ export async function updatePlatformPaymentSettings(input: {
   const { error } = await db.from("platform_settings").upsert(
     {
       id: true,
-      hallnect_upi_id:                 upiId || null,
-      hallnect_upi_qr_url:             qr || null,
-      commission_due_days:             dueDays,
-      default_advance_percentage:      advancePct,
-      enable_online_customer_payment:  Boolean(input.enableOnlineCustomerPayment),
-      enable_owner_upi_payment:        Boolean(input.enableOwnerUpiPayment),
-      enable_auto_commission_adjustment: Boolean(input.enableAutoCommissionAdjustment),
+      default_advance_percentage:     advancePct,
+      enable_online_customer_payment: Boolean(input.enableOnlineCustomerPayment),
       updated_by: user.id,
     },
     { onConflict: "id" },

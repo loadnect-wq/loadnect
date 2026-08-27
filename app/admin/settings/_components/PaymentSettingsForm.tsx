@@ -4,24 +4,20 @@ import { useState, useTransition } from "react";
 import { CheckCircle2, Loader2 } from "lucide-react";
 import { updatePlatformPaymentSettings } from "@/app/admin/actions";
 
+// The UPI id / QR, commission due-days and the two owner-billing toggles were
+// removed with the owner-billed commission model. Commission is now retained
+// from the customer's advance and owners are never invoiced, so there is no due
+// date to configure, no Hallnect UPI address for owners to pay into, and no
+// overdue settlement adjustment to enable.
+
 type Initial = {
-  hallnectUpiId: string | null;
-  hallnectUpiQrUrl: string | null;
-  commissionDueDays: number;
   defaultAdvancePercentage: number;
   enableOnlineCustomerPayment: boolean;
-  enableOwnerUpiPayment: boolean;
-  enableAutoCommissionAdjustment: boolean;
 };
 
 export function PaymentSettingsForm({ initial }: { initial: Initial }) {
-  const [upiId, setUpiId]       = useState(initial.hallnectUpiId ?? "");
-  const [qr, setQr]             = useState(initial.hallnectUpiQrUrl ?? "");
-  const [dueDays, setDueDays]   = useState(String(initial.commissionDueDays));
-  const [advance, setAdvance]   = useState(String(initial.defaultAdvancePercentage));
-  const [onlinePay, setOnlinePay]   = useState(initial.enableOnlineCustomerPayment);
-  const [ownerUpi, setOwnerUpi]     = useState(initial.enableOwnerUpiPayment);
-  const [autoAdjust, setAutoAdjust] = useState(initial.enableAutoCommissionAdjustment);
+  const [advance, setAdvance]     = useState(String(initial.defaultAdvancePercentage));
+  const [onlinePay, setOnlinePay] = useState(initial.enableOnlineCustomerPayment);
 
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
@@ -31,13 +27,8 @@ export function PaymentSettingsForm({ initial }: { initial: Initial }) {
     setError(null); setSaved(false);
     startTransition(async () => {
       const r = await updatePlatformPaymentSettings({
-        hallnectUpiId: upiId,
-        hallnectUpiQrUrl: qr,
-        commissionDueDays: parseInt(dueDays, 10),
         defaultAdvancePercentage: parseFloat(advance),
         enableOnlineCustomerPayment: onlinePay,
-        enableOwnerUpiPayment: ownerUpi,
-        enableAutoCommissionAdjustment: autoAdjust,
       });
       if ("error" in r) setError(r.error);
       else setSaved(true);
@@ -46,28 +37,17 @@ export function PaymentSettingsForm({ initial }: { initial: Initial }) {
 
   return (
     <div className="space-y-3 text-sm">
-      <Field label="Hallnect UPI ID">
-        <input value={upiId} onChange={(e) => setUpiId(e.target.value)} placeholder="hallnect@okicici"
+      <Field label="Default advance (%)">
+        <input type="number" min={0} max={100} value={advance} onChange={(e) => setAdvance(e.target.value)}
           className="w-full rounded-lg border border-border px-2.5 py-1.5" />
       </Field>
-      <Field label="UPI QR image URL (optional)">
-        <input value={qr} onChange={(e) => setQr(e.target.value)} placeholder="https://…"
-          className="w-full rounded-lg border border-border px-2.5 py-1.5" />
-      </Field>
-      <div className="grid grid-cols-2 gap-3">
-        <Field label="Commission due (days)">
-          <input type="number" min={1} max={90} value={dueDays} onChange={(e) => setDueDays(e.target.value)}
-            className="w-full rounded-lg border border-border px-2.5 py-1.5" />
-        </Field>
-        <Field label="Default advance (%)">
-          <input type="number" min={0} max={100} value={advance} onChange={(e) => setAdvance(e.target.value)}
-            className="w-full rounded-lg border border-border px-2.5 py-1.5" />
-        </Field>
-      </div>
 
       <Toggle label="Enable online customer payment (Cashfree)" checked={onlinePay} onChange={setOnlinePay} />
-      <Toggle label="Enable owner UPI commission payment" checked={ownerUpi} onChange={setOwnerUpi} />
-      <Toggle label="Enable auto-adjust of overdue commission from owner settlement" checked={autoAdjust} onChange={setAutoAdjust} />
+
+      <p className="rounded-lg bg-ivory-100 p-2.5 text-[11px] leading-relaxed text-charcoal-600">
+        Commission is fixed at 2.5% of the hall price and is retained from the customer&apos;s
+        advance automatically. Owners are never billed, so there is nothing to configure here.
+      </p>
 
       {error && <p className="text-xs text-red-600">{error}</p>}
       {saved && (

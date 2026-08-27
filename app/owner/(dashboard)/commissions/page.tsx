@@ -1,74 +1,52 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Wallet, AlertTriangle, CheckCircle2, Clock } from "lucide-react";
+import { Wallet, CheckCircle2, Receipt, Info } from "lucide-react";
 import { requireRole } from "@/lib/auth";
 import {
   fetchOwnerRow, fetchOwnerHalls, fetchOwnerCommissions,
   fetchOwnerSettlementAdjustments,
   type OwnerCommissionRow,
 } from "@/lib/owner";
-import { getPublicPaymentSettings } from "@/lib/platform-settings";
 import { formatPrice } from "@/lib/mock-data";
 import { Badge } from "@/components/ui/Badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { buttonVariants } from "@/components/ui/Button";
 import { AppHeader } from "@/components/app/AppHeader";
-import { PayCommission } from "./_components/PayCommission";
-import { PayCommissionOnline } from "./_components/PayCommissionOnline";
-import { isCashfreeConfigured } from "@/lib/cashfree";
+import { DEFAULT_COMMISSION_PERCENT } from "@/lib/booking-payment";
 
 export const metadata: Metadata = { title: "Commissions" };
 
-const OWNER_TERMS =
-  "Hallnect's commission is a percentage of the HALL PRICE, not of the advance. For " +
-  "online-paid bookings it is retained from the customer's advance automatically when you " +
-  "accept — you are never billed for it. A commission is payable separately only for " +
-  "bookings settled outside the platform; if such a commission stays unpaid after its due " +
-  "date, Hallnect may adjust it from your pending settlement as per platform terms.";
+// ─────────────────────────────────────────────────────────────────────────────
+// This page is a STATEMENT, not a bill.
+//
+// Hallnect's commission is retained out of the customer's advance at the moment
+// a booking is paid for. The owner is never invoiced, has no due date, and has
+// nothing to pay here. Everything below is read-only by design — the owner-billed
+// flow (manual UPI submission, gateway self-payment, 7-day due dates, the
+// overdue sweep and its settlement deductions) was removed along with it.
+// ─────────────────────────────────────────────────────────────────────────────
 
-// Buckets for owner-facing display.
-// 'collected' = absorbed from the customer's advance at source — SETTLED, the
-// owner owes nothing on it (it was wrongly listed outstanding before).
-const PAID_STATUSES     = ["paid", "paid_out", "collected"];
-const ADJUSTED_STATUSES = ["adjusted_from_owner_settlement"];
-const OUTSTANDING_STATUSES = ["pending", "overdue", "rejected", "payment_submitted", "payment_under_review"];
+/** Commission is Hallnect's money already — retained at source, or settled at payout. */
+const SETTLED_STATUSES = ["collected", "paid", "paid_out"];
 
 function fmtDate(iso: string | null) {
   if (!iso) return "—";
   return new Date(iso).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
 }
 
-function daysRemaining(due: string | null): number | null {
-  if (!due) return null;
-  const ms = new Date(due).getTime() - Date.now();
-  return Math.ceil(ms / (24 * 60 * 60 * 1000));
-}
-
 type BadgeVar = "success" | "warning" | "secondary" | "destructive" | "default";
 
 function statusBadge(c: OwnerCommissionRow): { label: string; variant: BadgeVar } {
-  if (ADJUSTED_STATUSES.includes(c.status) || c.settlement_adjustment_status === "adjusted")
-    return { label: "Adjusted from settlement", variant: "secondary" };
   if (c.status === "collected") return { label: "Retained from advance", variant: "success" };
-  if (PAID_STATUSES.includes(c.status)) return { label: "Paid", variant: "success" };
-  if (c.status === "waived")   return { label: "Waived", variant: "secondary" };
-  if (c.status === "disputed") return { label: "Disputed", variant: "destructive" };
-  if (c.submission_status === "payment_submitted" || c.submission_status === "payment_under_review" || c.status === "payment_submitted")
-    return { label: "Under review", variant: "warning" };
-  if (c.status === "overdue")  return { label: "Overdue", variant: "destructive" };
-  if (c.submission_status === "rejected") return { label: "Payment rejected — retry", variant: "destructive" };
-  return { label: "Outstanding", variant: "warning" };
-}
-
-function isOutstanding(c: OwnerCommissionRow): boolean {
-  if (PAID_STATUSES.includes(c.status)) return false;
-  if (ADJUSTED_STATUSES.includes(c.status)) return false;
-  if (c.status === "waived") return false;
-  return OUTSTANDING_STATUSES.includes(c.status);
-}
-
-function hasOpenSubmission(c: OwnerCommissionRow): boolean {
-  return c.submission_status === "payment_submitted" || c.submission_status === "payment_under_review";
+  if (c.status === "paid" || c.status === "paid_out") return { label: "Settled", variant: "success" };
+  if (c.status === "waived")   return { label: "Waived by Hallnect", variant: "secondary" };
+  if (c.status === "refunded") return { label: "Refunded — no commission", variant: "secondary" };
+  if (c.status === "disputed") return { label: "Under review", variant: "warning" };
+  if (c.settlement_adjustment_status === "adjusted" || c.status === "adjusted_from_owner_settlement")
+    return { label: "Adjusted from settlement", variant: "secondary" };
+  // Historical rows from the retired owner-billed model. Nothing is owed on
+  // them — Hallnect does not bill owners for commission any more.
+  return { label: "Recorded", variant: "secondary" };
 }
 
 export default async function OwnerCommissionsPage() {
@@ -93,50 +71,58 @@ export default async function OwnerCommissionsPage() {
 
   const halls   = await fetchOwnerHalls(ownerRow.id);
   const hallIds = halls.map((h) => h.id);
-  const [commissions, adjustments, settings] = await Promise.all([
+  const [commissions, adjustments] = await Promise.all([
     fetchOwnerCommissions(hallIds),
     fetchOwnerSettlementAdjustments(ownerRow.id),
-    getPublicPaymentSettings(),
   ]);
 
-  const outstanding = commissions.filter(isOutstanding);
-  const overdue     = commissions.filter((c) => c.status === "overdue" || (statusBadge(c).label === "Overdue"));
-  const paid        = commissions.filter((c) => PAID_STATUSES.includes(c.status));
-
-  const gatewayEnabled = isCashfreeConfigured();
-  const totalOutstanding = outstanding.reduce((s, c) => s + c.commission_amount, 0);
-  const totalOverdue     = overdue.reduce((s, c) => s + c.commission_amount, 0);
-  const totalPaid        = paid.reduce((s, c) => s + c.commission_amount, 0);
-
-  const nextDue = [...outstanding]
-    .filter((c) => c.due_date)
-    .sort((a, b) => new Date(a.due_date!).getTime() - new Date(b.due_date!).getTime())[0];
+  const settled = commissions.filter((c) => SETTLED_STATUSES.includes(c.status));
+  const totalCommission = settled.reduce((s, c) => s + c.commission_amount, 0);
+  const totalPayout     = settled.reduce((s, c) => s + c.owner_payout_amount, 0);
 
   return (
     <div className="min-h-screen bg-ivory-100 pb-10">
       <AppHeader title="Commissions" />
 
       <div className="px-4 py-4 sm:px-6 lg:px-8 space-y-4">
-        {/* Terms */}
-        <p className="rounded-xl border border-border bg-white p-3 text-xs text-charcoal-600 shadow-card">
-          {OWNER_TERMS}
-        </p>
-
-        {/* Summary cards */}
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          <SummaryCard icon={<Wallet className="h-4 w-4 text-maroon-600" />}  label="Outstanding" value={formatPrice(totalOutstanding)} highlight />
-          <SummaryCard icon={<AlertTriangle className="h-4 w-4 text-red-600" />} label="Overdue" value={formatPrice(totalOverdue)} />
-          <SummaryCard icon={<CheckCircle2 className="h-4 w-4 text-green-600" />} label="Paid" value={formatPrice(totalPaid)} />
-          <SummaryCard icon={<Clock className="h-4 w-4 text-charcoal-600" />} label="Next due" value={nextDue ? fmtDate(nextDue.due_date) : "—"} />
+        {/* How the commission works — the whole model, in the owner's words. */}
+        <div className="rounded-2xl border border-green-200 bg-green-50 p-4 shadow-card">
+          <p className="flex items-center gap-2 text-sm font-semibold text-green-900">
+            <CheckCircle2 className="h-4 w-4" />
+            You have nothing to pay here
+          </p>
+          <p className="mt-1.5 text-xs leading-relaxed text-green-900/80">
+            Hallnect&apos;s commission is <strong>{DEFAULT_COMMISSION_PERCENT}% of the hall price</strong>, and it is kept
+            out of the customer&apos;s advance automatically when you accept a booking. You are never
+            invoiced for it, there is no due date, and nothing is ever deducted from a later
+            settlement. The page below is a record of what was deducted, for your books.
+          </p>
         </div>
 
-        {/* Settlement adjustments notice */}
+        {/* Summary */}
+        <div className="grid grid-cols-2 gap-3">
+          <SummaryCard
+            icon={<Receipt className="h-4 w-4 text-maroon-600" />}
+            label="Commission deducted"
+            value={formatPrice(totalCommission)}
+          />
+          <SummaryCard
+            icon={<Wallet className="h-4 w-4 text-green-600" />}
+            label="Your share of these bookings"
+            value={formatPrice(totalPayout)}
+            highlight
+          />
+        </div>
+
+        {/* Settlement adjustments — read-only. Nothing creates these
+            automatically any more; an admin can still record one by hand, and
+            the owner must be able to see it if they do. */}
         {adjustments.length > 0 && (
           <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm shadow-card">
             <p className="font-semibold text-amber-900">Settlement adjustments</p>
             <p className="mt-1 text-xs text-amber-800">
-              Commission was adjusted from owner settlement because payment was not completed within
-              the allowed 7-day period.
+              These amounts were adjusted from your settlement by Hallnect. Contact support if you
+              have a question about any of them.
             </p>
             <ul className="mt-2 space-y-1">
               {adjustments.map((a) => (
@@ -149,83 +135,49 @@ export default async function OwnerCommissionsPage() {
           </div>
         )}
 
-        {/* Commission list */}
+        {/* Statement */}
         {commissions.length === 0 ? (
           <EmptyState
             icon={<Wallet className="h-8 w-8" />}
             title="No commissions yet"
-            description="Commission records appear here once your bookings receive advance payments."
+            description="A record appears here each time one of your bookings is paid for."
           />
         ) : (
           <div className="space-y-3">
             {commissions.map((c) => {
               const badge = statusBadge(c);
-              const dr = daysRemaining(c.due_date);
-              const payable = isOutstanding(c) && !hasOpenSubmission(c) && settings.enableOwnerUpiPayment;
               return (
                 <div key={c.id} className="rounded-2xl bg-white p-4 shadow-card">
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <p className="font-semibold text-charcoal-900">{c.hall_name}</p>
-                      <p className="text-[11px] font-mono text-charcoal-500">Booking #{c.booking_id.slice(0, 8).toUpperCase()}</p>
+                      <p className="text-[11px] font-mono text-charcoal-500">
+                        Booking #{c.booking_id.slice(0, 8).toUpperCase()} · {fmtDate(c.created_at)}
+                      </p>
                     </div>
                     <Badge variant={badge.variant} size="sm">{badge.label}</Badge>
                   </div>
 
                   <div className="mt-3 grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
-                    <Field label="Commission" value={formatPrice(c.commission_amount)} strong />
+                    <Field label="Hall price" value={formatPrice(c.booking_amount)} />
                     <Field label="Rate" value={`${c.commission_rate}%`} />
-                    <Field label="Due date" value={fmtDate(c.due_date)} />
-                    <Field
-                      label="Days left"
-                      value={
-                        PAID_STATUSES.includes(c.status) || ADJUSTED_STATUSES.includes(c.status)
-                          ? "—"
-                          : dr === null ? "—" : dr < 0 ? `${Math.abs(dr)}d overdue` : `${dr}d`
-                      }
-                    />
+                    <Field label="Commission" value={`− ${formatPrice(c.commission_amount)}`} strong />
+                    <Field label="Your share" value={formatPrice(c.owner_payout_amount)} />
                   </div>
-
-                  {/* Preferred: pay through Cashfree — settles instantly, no
-                      admin verification step. The manual UPI + screenshot flow
-                      stays available as a fallback when the gateway is off. */}
-                  {isOutstanding(c) && !hasOpenSubmission(c) && gatewayEnabled && (
-                    <div className="mt-3">
-                      <PayCommissionOnline
-                        commissionId={c.id}
-                        amountLabel={formatPrice(c.commission_amount)}
-                      />
-                    </div>
-                  )}
-
-                  {payable && (
-                    <div className="mt-3">
-                      {gatewayEnabled && (
-                        <p className="mb-2 text-center text-[10px] uppercase tracking-wide text-charcoal-400">
-                          or pay manually
-                        </p>
-                      )}
-                      <PayCommission
-                        commissionId={c.id}
-                        amount={formatPrice(c.commission_amount)}
-                        upiId={settings.hallnectUpiId}
-                        upiQrUrl={settings.hallnectUpiQrUrl}
-                        underReview={hasOpenSubmission(c)}
-                      />
-                    </div>
-                  )}
-
-                  {(ADJUSTED_STATUSES.includes(c.status) || c.settlement_adjustment_status === "adjusted") && (
-                    <p className="mt-3 rounded-lg bg-ivory-100 p-2 text-[11px] text-charcoal-600">
-                      Commission was adjusted from owner settlement because payment was not completed
-                      within the allowed 7-day period.
-                    </p>
-                  )}
                 </div>
               );
             })}
           </div>
         )}
+
+        <p className="flex items-start gap-2 rounded-xl border border-border bg-white p-3 text-[11px] leading-relaxed text-charcoal-600 shadow-card">
+          <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-charcoal-400" />
+          <span>
+            &ldquo;Your share&rdquo; is the hall price less commission, across the advance Hallnect
+            transfers to you and the balance you collect at the venue. The ₹200 booking fee shown to
+            the customer is charged on top of the advance and is not taken from your share.
+          </span>
+        </p>
       </div>
     </div>
   );

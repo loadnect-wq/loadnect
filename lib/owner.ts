@@ -478,20 +478,19 @@ export type OwnerCommissionRow = {
   booking_id:          string;
   hall_id:             string | null;
   hall_name:           string;
+  /** Full hall price — the base the 2.5% commission is charged on. */
   booking_amount:      number;
-  /** Gross advance the customer paid (the base the commission is charged on).
-   *  0 on very old rows written before the column existed. */
+  /** Gross advance the customer paid. 0 on very old rows written before the
+   *  column existed. NOT the commission base: the rate applies to the hall
+   *  price, and the commission is merely RETAINED out of this advance. */
   advance_amount:      number;
   commission_rate:     number;
   commission_amount:   number;
   owner_payout_amount: number;
   status:              string;
   created_at:          string;
-  due_date:            string | null;
   paid_at:             string | null;
   settlement_adjustment_status: string | null;
-  // Present when the owner has a submission awaiting/decided for this commission.
-  submission_status:   string | null;
 };
 
 export async function fetchOwnerCommissions(hallIds: string[]): Promise<OwnerCommissionRow[]> {
@@ -501,10 +500,10 @@ export async function fetchOwnerCommissions(hallIds: string[]): Promise<OwnerCom
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = supabase as any;
 
-  // Newer columns (due_date/paid_at/settlement_adjustment_status) exist after
-  // migration 0017. Fall back gracefully if the migration hasn't run yet.
+  // paid_at / settlement_adjustment_status exist after migration 0017. Fall
+  // back gracefully if the migration has not run yet.
   const fullCols =
-    "id, booking_id, hall_id, booking_amount, advance_amount, commission_rate, commission_amount, owner_payout_amount, status, created_at, due_date, paid_at, settlement_adjustment_status, bookings(halls(name))";
+    "id, booking_id, hall_id, booking_amount, advance_amount, commission_rate, commission_amount, owner_payout_amount, status, created_at, paid_at, settlement_adjustment_status, bookings(halls(name))";
   const baseCols =
     "id, booking_id, hall_id, booking_amount, commission_rate, commission_amount, owner_payout_amount, status, created_at, bookings(halls(name))";
 
@@ -526,21 +525,6 @@ export async function fetchOwnerCommissions(hallIds: string[]): Promise<OwnerCom
 
   if (error) { handleError("fetchOwnerCommissions", error); return []; }
 
-  // Latest submission status per commission (so the UI can show "under review").
-  const commissionIds = (data ?? []).map((r: { id: string }) => r.id);
-  const latestSubmission = new Map<string, string>();
-  if (commissionIds.length > 0) {
-    const { data: subs } = await db
-      .from("owner_commission_payments")
-      .select("commission_id, status, submitted_at")
-      .in("commission_id", commissionIds)
-      .order("submitted_at", { ascending: false });
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    for (const s of (subs ?? []) as any[]) {
-      if (!latestSubmission.has(s.commission_id)) latestSubmission.set(s.commission_id, s.status);
-    }
-  }
-
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return (data ?? []).map((row: any): OwnerCommissionRow => ({
     id:                  row.id,
@@ -554,10 +538,8 @@ export async function fetchOwnerCommissions(hallIds: string[]): Promise<OwnerCom
     owner_payout_amount: Number(row.owner_payout_amount),
     status:              row.status,
     created_at:          row.created_at,
-    due_date:            row.due_date ?? null,
     paid_at:             row.paid_at ?? null,
     settlement_adjustment_status: row.settlement_adjustment_status ?? null,
-    submission_status:   latestSubmission.get(row.id) ?? null,
   }));
 }
 

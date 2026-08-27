@@ -55,14 +55,14 @@ export default async function OwnerRevenuePage() {
   const completedCount     = bookings.filter((b) => b.status === "completed").length;
   const confirmedCount     = bookings.filter((b) => b.status === "owner_confirmed").length;
 
-  // Commission summary for the owner's own halls only.
-  // Only the SETTLED buckets count towards "paid" — this summed every
-  // commission row regardless of status, so an owner with unpaid or overdue
-  // commissions was shown them as already paid, and would reasonably conclude
-  // they owed nothing. Mirrors PAID_STATUSES on the commissions page.
-  const PAID_STATUSES = ["paid", "paid_out", "collected"];
-  const totalCommissionPaid = commissions
-    .filter((c) => PAID_STATUSES.includes(c.status))
+  // Commission summary for the owner's own halls only. A row counts once the
+  // commission is genuinely Hallnect's — retained from the advance at
+  // settlement, or settled at payout. Rows in any other state (waived,
+  // refunded, or a historical owner-billed row) are excluded so the figure
+  // never overstates what was actually deducted.
+  const SETTLED_STATUSES = ["paid", "paid_out", "collected"];
+  const totalCommissionDeducted = commissions
+    .filter((c) => SETTLED_STATUSES.includes(c.status))
     .reduce((s, c) => s + c.commission_amount, 0);
 
   return (
@@ -84,10 +84,10 @@ export default async function OwnerRevenuePage() {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-[11px] font-semibold uppercase tracking-wide text-charcoal-500">
-                Platform commission paid
+                Platform commission deducted
               </p>
               <p className="mt-0.5 text-xl font-bold text-maroon-700">
-                {totalCommissionPaid > 0 ? formatPrice(totalCommissionPaid) : "—"}
+                {totalCommissionDeducted > 0 ? formatPrice(totalCommissionDeducted) : "—"}
               </p>
             </div>
             <span className="rounded-full bg-maroon-50 px-2.5 py-1 text-[11px] font-semibold text-maroon-700">
@@ -95,7 +95,8 @@ export default async function OwnerRevenuePage() {
             </span>
           </div>
           <p className="mt-2 text-[11px] text-charcoal-500">
-            Commission is recorded on successful payment, per booking. You only see your own halls.
+            Retained from the customer&apos;s advance on successful payment, per booking — never billed
+            to you. You only see your own halls.
           </p>
         </div>
 
