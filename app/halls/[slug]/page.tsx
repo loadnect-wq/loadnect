@@ -20,6 +20,18 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   // route title-less. An owner/admin previewing an UNAPPROVED hall reaches this
   // page legitimately, so it must be explicitly noindex — a draft venue must
   // never enter the index.
+  //
+  // ON THE 200 STATUS (checked against the Next 16 docs, do not re-litigate):
+  // a missing hall serves the 404 UI under HTTP 200 — a soft 404. That is
+  // documented behaviour, not a defect here: "Next.js will return a 200 HTTP
+  // status code for streamed responses, and 404 for non-streamed responses",
+  // and this route streams because it awaits a cookie-aware database read.
+  // Moving the notFound() earlier does NOT change it; the status is committed
+  // when streaming starts. The documented mitigation is the noindex tag, which
+  // is exactly what this line provides and which keeps the URL out of search
+  // results. A genuine 404 status would require checking the slug in `proxy`
+  // before the response streams — a database lookup on every request to buy a
+  // status code on a page crawlers already ignore.
   if (!hall) return noindexMetadata("Venue not found");
   if (hall.status !== "approved") return noindexMetadata(`${hall.name} (preview)`);
 

@@ -431,6 +431,48 @@ export async function notifyHallSubmitted(hallId: string): Promise<void> {
 }
 
 /** Owner alert after an admin moderates their hall. */
+/**
+ * An APPROVED hall's material details changed.
+ *
+ * Admin approval is a one-time gate: once a hall is live, an owner can edit its
+ * name, address, capacity or pricing and the change publishes instantly with
+ * nobody reviewing it. On a marketplace that is the shape of a bait-and-switch
+ * — approved as one venue, live as another.
+ *
+ * This deliberately does NOT un-publish the hall. Sending an approved listing
+ * back to pending for a typo fix would take a working venue off the site and
+ * punish exactly the owners who keep their details current. Visibility for the
+ * admin is the proportionate answer; if a listing turns out to have changed
+ * into something else, suspending it is one click away.
+ */
+export async function notifyHallEdited(hallId: string, changed: string[]): Promise<void> {
+  try {
+    const adminPhone = await getAdminNotificationPhone();
+    const admin = getSupabaseAdminClient();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data: hall } = await (admin as any)
+      .from("halls").select("name").eq("id", hallId).maybeSingle();
+
+    await dispatchAll([
+      adminAlert({
+        adminPhone,
+        // Keyed to the hour so a burst of edits in one sitting is one alert,
+        // not one per keystroke-save.
+        eventKey: `hall.edited:${hallId}:${new Date().toISOString().slice(0, 13)}`,
+        eventType: "hall.edited",
+        event: "Live hall edited",
+        details: sanitizeNotificationText(
+          `${hall?.name ?? "A hall"} changed: ${changed.join(", ")}`, 180,
+        ) ?? "A live hall was edited",
+        reference: `Hall ${hallId.slice(0, 8).toUpperCase()}`,
+        hallId,
+      }),
+    ]);
+  } catch (e) {
+    console.error("[notifications] notifyHallEdited failed:", e instanceof Error ? e.message : e);
+  }
+}
+
 export async function notifyHallModerated(
   hallId: string,
   action: "approved" | "rejected" | "suspended" | "unsuspended",

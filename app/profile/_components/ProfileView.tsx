@@ -5,13 +5,19 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Bell, ChevronRight, CreditCard, FileText, HelpCircle,
-  LayoutDashboard, LogIn, LogOut, MapPin, Settings, ShieldCheck, User,
+  LayoutDashboard, LogIn, LogOut, MapPin, Phone, Settings, ShieldCheck, User,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { getDashboardPath } from "@/lib/constants";
 
-type ProfileState = { fullName: string | null; email: string | null; role: string } | null;
+type ProfileState = {
+  fullName: string | null;
+  email: string | null;
+  role: string;
+  phone: string | null;
+  phoneVerified: boolean;
+} | null;
 
 export function ProfileView() {
   const router = useRouter();
@@ -27,12 +33,18 @@ export function ProfileView() {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { data } = await supabase
         .from("profiles" as any)
-        .select("full_name, email, role")
+        .select("full_name, email, role, phone, phone_verified")
         .eq("id", user.id)
         .single();
       if (data) {
-        const d = data as { full_name: string | null; email: string | null; role: string };
-        setProfile({ fullName: d.full_name, email: d.email, role: d.role });
+        const d = data as {
+          full_name: string | null; email: string | null; role: string;
+          phone: string | null; phone_verified: boolean | null;
+        };
+        setProfile({
+          fullName: d.full_name, email: d.email, role: d.role,
+          phone: d.phone, phoneVerified: Boolean(d.phone_verified),
+        });
       }
       setLoading(false);
     }
@@ -95,10 +107,24 @@ export function ProfileView() {
 
       {/* Quick links */}
       <SettingsGroup title="Account">
+        {/* /verify-phone existed but nothing anywhere linked to it, so the
+            whole OTP flow was unreachable. It is the number booking updates
+            are sent to, which is worth telling people about. */}
+        {profile && (
+          <SettingsRow
+            icon={<Phone className="h-4 w-4" />}
+            label={profile.phoneVerified ? "Phone verified" : "Verify your phone"}
+            href={profile.phoneVerified ? undefined : "/verify-phone"}
+            badge={profile.phoneVerified ? "Verified" : undefined}
+          />
+        )}
+        {/* Notifications is a real page — it was labelled "Soon" while working. */}
+        {profile && (
+          <SettingsRow icon={<Bell className="h-4 w-4" />} label="Notifications" href="/customer/notifications" />
+        )}
         <SettingsRow icon={<User className="h-4 w-4" />} label="Edit profile" comingSoon />
         <SettingsRow icon={<MapPin className="h-4 w-4" />} label="Saved addresses" comingSoon />
         <SettingsRow icon={<CreditCard className="h-4 w-4" />} label="Payment methods" comingSoon />
-        <SettingsRow icon={<Bell className="h-4 w-4" />} label="Notifications" comingSoon />
       </SettingsGroup>
 
       <SettingsGroup title="Support">
@@ -137,12 +163,14 @@ function SettingsGroup({ title, children }: { title: string; children: React.Rea
 }
 
 function SettingsRow({
-  icon, label, href, comingSoon,
+  icon, label, href, comingSoon, badge,
 }: {
   icon: React.ReactNode;
   label: string;
   href?: string;
   comingSoon?: boolean;
+  /** A completed state, e.g. "Verified" — distinct from the "Soon" pill. */
+  badge?: string;
 }) {
   const inner = (
     <>
@@ -153,6 +181,10 @@ function SettingsRow({
       {comingSoon ? (
         <span className="rounded-full bg-ivory-200 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-charcoal-500">
           Soon
+        </span>
+      ) : badge ? (
+        <span className="rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-green-700">
+          {badge}
         </span>
       ) : (
         <ChevronRight className="h-4 w-4 text-charcoal-400" />

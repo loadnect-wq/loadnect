@@ -19,7 +19,7 @@ import {
   customAmenityListSchema,
 } from "@/lib/validation/schemas";
 import { sanitizeError } from "@/lib/errors";
-import { notifyBookingEvent, notifyHallSubmitted } from "@/lib/notifications/events";
+import { notifyBookingEvent, notifyHallSubmitted, notifyHallEdited } from "@/lib/notifications/events";
 import { normalizePhoneE164 } from "@/lib/notifications/phone";
 import { isCashfreeConfigured } from "@/lib/cashfree";
 import { startCommissionPayment, verifyAndApplyCommissionPayment } from "@/lib/commission-payments";
@@ -31,6 +31,10 @@ import { isEasySplitEnabled, upsertVendor, getVendorStatus } from "@/lib/easy-sp
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 
 type ActionResult = { success: true; id?: string } | { error: string };
+
+/** Photos one hall may hold. Generous for a real venue, bounded against abuse
+ *  and against a gallery nobody can scroll. */
+const MAX_IMAGES_PER_HALL = 30;
 
 /** Short random slug suffix used to break (possibly RLS-invisible) collisions. */
 function randomSuffix(): string {
@@ -355,7 +359,16 @@ export async function updateHall(hallId: string, data: {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = supabase as any;
 
-  const { error } = await db
+  // Snapshot BEFORE the write, so a material change to an already-approved
+  // listing can be reported. Approval is a one-time gate: without this, a hall
+  // approved as one venue could go on serving customers as another.
+  const { data: before } = await db
+    .from("halls")
+    .select("status, name, city, address, capacity_max, price_per_day, venue_types")
+    .eq("id", hallId)
+    .maybeSingle();
+
+  const { error, count } = await db
     .from("halls")
     .update({
       name:         v.name,
@@ -370,10 +383,15 @@ export async function updateHall(hallId: string, data: {
       price_morning:  v.priceMorning ?? null,
       price_evening:  v.priceEvening ?? null,
       venue_types:    v.venueTypes,
-    })
+    }, { count: "exact" })
     .eq("id", hallId);
 
   if (error) return { error: sanitizeError(error, "owner") };
+  // RLS filters a hall that is not this owner's to zero rows without raising,
+  // so an unguarded version reported a successful save that never happened.
+  if ((count ?? 0) === 0) {
+    return { error: "This hall could not be updated (it may not be yours)." };
+  }
 
   // Sync amenities: delete existing, re-insert selected
   // DELETE-THEN-INSERT, with both halves checked. Neither error was inspected
@@ -401,6 +419,21 @@ export async function updateHall(hallId: string, data: {
   if (!customParsed.ok) return { error: customParsed.error };
   const customErr = await syncCustomAmenities(db, hallId, customParsed.data);
   if (customErr) return { error: customErr };
+
+  // Tell the admin when a LIVE listing's material details move. Fired after the
+  // write succeeded, so a rejected edit never raises a false alarm.
+  if (before?.status === "approved") {
+    const changed: string[] = [];
+    if (before.name !== v.name) changed.push("name");
+    if (before.city !== v.city) changed.push("city");
+    if ((before.address ?? null) !== (v.address || null)) changed.push("address");
+    if (Number(before.capacity_max) !== Number(v.capacityMax)) changed.push("capacity");
+    if (Number(before.price_per_day) !== Number(v.pricePerDay)) changed.push("price");
+    const beforeTypes = [...(before.venue_types ?? [])].sort().join(",");
+    if (beforeTypes !== [...v.venueTypes].sort().join(",")) changed.push("venue types");
+
+    if (changed.length > 0) await notifyHallEdited(hallId, changed);
+  }
 
   revalidatePath(`/owner/halls/${hallId}/edit`);
   revalidatePath("/owner/halls");
@@ -542,6 +575,21 @@ export async function addHallImage(data: {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = supabase as any;
+
+  // PER-HALL CAP. There was none: an owner (or a script with their session)
+  // could attach unbounded images to one hall, filling the storage bucket,
+  // slowing every listing query that joins hall_images, and making the gallery
+  // unusable. Counted server-side because the client cannot be trusted to.
+  const { count: existingImages, error: countErr } = await db
+    .from("hall_images")
+    .select("id", { count: "exact", head: true })
+    .eq("hall_id", v.hallId);
+  if (countErr) return { error: sanitizeError(countErr, "owner") };
+  if ((existingImages ?? 0) >= MAX_IMAGES_PER_HALL) {
+    return {
+      error: `A hall can have up to ${MAX_IMAGES_PER_HALL} photos. Delete one before adding another.`,
+    };
+  }
 
   if (v.isCover) {
     await db
