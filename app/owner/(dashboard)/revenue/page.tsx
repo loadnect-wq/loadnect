@@ -60,6 +60,12 @@ export default async function OwnerRevenuePage() {
   // settlement, or settled at payout. Rows in any other state (waived,
   // refunded, or a historical owner-billed row) are excluded so the figure
   // never overstates what was actually deducted.
+  // A payout needs a bank account, an IFSC and a PAN — the same three the
+  // payout card asks for.
+  const payoutReady = Boolean(
+    ownerRow.payout_account_number && ownerRow.payout_ifsc && ownerRow.pan_number,
+  );
+
   const SETTLED_STATUSES = ["paid", "paid_out", "collected"];
   const totalCommissionDeducted = commissions
     .filter((c) => SETTLED_STATUSES.includes(c.status))
@@ -105,8 +111,12 @@ export default async function OwnerRevenuePage() {
           customer&apos;s advance when you accept — you are never billed separately, and the
           customer&apos;s ₹200 platform fee is never deducted from you. The venue balance is
           collected by you directly.
-          {!ownerRow.payout_upi && (
-            <> <Link href="/owner/profile" className="font-semibold underline">Add your UPI ID</Link> to receive payments.</>
+          {/* Keyed on what a payout ACTUALLY needs. This used to check
+              payout_upi, which no payout uses: Cashfree settles owner payouts
+              to a bank account, so an owner with a UPI id and no bank details
+              saw no prompt at all and could not be paid. */}
+          {!payoutReady && (
+            <> <Link href="/owner/profile" className="font-semibold underline">Set up your payout account</Link> so accepted bookings pay out to you.</>
           )}
         </div>
 

@@ -147,49 +147,57 @@ export const ownerRegisterSchema = signupSchema; // same shape — role differs 
 
 // ── Owner business profile ───────────────────────────────────────────────────
 
+// Business identity only. The four payout fields (bank account, IFSC, PAN and
+// the business phone Cashfree verifies) moved to payoutDetailsSchema below —
+// they are required there, and were optional here, which is how an owner could
+// save a business profile that could never be paid.
 export const ownerBusinessSchema = z.object({
   businessName:  trimmed(160).pipe(z.string().min(2, "Business name is required.")),
   businessEmail: z.string().trim().optional()
     .refine((v) => !v || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v), "Enter a valid email."),
-  // Cashfree requires a 10-digit Indian mobile for vendor payouts. The generic
-  // 7-15 digit rule let a 9-digit number through, which fails at onboarding.
-  businessPhone: optionalTrimmed(20)
-    .refine((v) => {
-      if (!v) return true;
-      const d = v.replace(/\D/g, "");
-      // Accept 10 digits, or 12 with the 91 country code.
-      return (d.length === 10 && /^[6-9]/.test(d)) || (d.length === 12 && d.startsWith("91") && /^[6-9]/.test(d.slice(2)));
-    }, "Enter a valid 10-digit Indian mobile number."),
   gstNumber:     optionalTrimmed(20),
-  // PAN must be the real Indian format (5 letters, 4 digits, 1 letter).
-  // Previously any 20 characters were accepted, so values like "1234566777"
-  // were stored and then rejected by Cashfree at vendor onboarding — with the
-  // failure only surfacing much later, at payout setup.
-  // VALIDATED BEFORE SANITISING, on purpose. sanitizeText() truncates to the
-  // limit, so validating afterwards would silently shorten an over-long value
-  // into a different, still-valid one — "ABCDE1234FX" would be accepted as
-  // "ABCDE1234F". For a field that identifies a person, and two below that
-  // route money, a wrong-but-valid value is worse than a rejection.
-  panNumber: z.string().optional()
-    .refine((v) => !v || /^[A-Z]{5}[0-9]{4}[A-Z]$/.test(v.trim().toUpperCase()),
-      "Enter a valid PAN (e.g. ABCDE1234F).")
-    .transform((s) => (s ? sanitizeText(s, 10) : "")),
   address:       optionalTrimmed(500),
   city:          optionalTrimmed(80),
   state:         optionalTrimmed(80),
-  payoutUpi:     optionalTrimmed(60),
-  // Cashfree settles owner payouts to a BANK account (this merchant has UPI
-  // settlements disabled), so these are the fields that actually enable a
-  // payout. Validated to the same shape the database CHECKs enforce.
-  payoutAccountNumber: z.string().optional()
-    .refine((v) => !v || /^[0-9]{6,20}$/.test(v.trim()), "Account number must be 6-20 digits.")
-    .transform((s) => (s ? sanitizeText(s, 20) : "")),
-  payoutIfsc: z.string().optional()
-    .refine((v) => !v || /^[A-Z]{4}0[A-Z0-9]{6}$/.test(v.trim().toUpperCase()),
-      "Enter a valid 11-character IFSC (e.g. HDFC0000001).")
-    .transform((s) => (s ? sanitizeText(s, 11) : "")),
 });
 export type OwnerBusinessInput = z.input<typeof ownerBusinessSchema>;
+
+// ── Owner payout details ─────────────────────────────────────────────────────
+//
+// The four fields Cashfree actually needs to pay a venue owner, in one place.
+//
+// They used to live inside ownerBusinessSchema as OPTIONAL fields on the
+// Business Details form — below the Connect button, behind a different submit,
+// mixed in with GST and address. An owner had to save one form, scroll back up
+// and press a button in another. Here they are required, because a payout
+// account with three of the four is not a payout account.
+//
+// Same rules as the business schema enforced, and the same reasoning: validated
+// BEFORE sanitising, since sanitizeText() truncates and would turn an over-long
+// value into a different, still-valid one. For fields that identify a person
+// and route money, a wrong-but-valid value is worse than a rejection.
+export const payoutDetailsSchema = z.object({
+  accountNumber: z.string()
+    .refine((v) => /^[0-9]{6,20}$/.test(v.trim()), "Account number must be 6-20 digits.")
+    .transform((s) => sanitizeText(s, 20)),
+  ifsc: z.string()
+    .refine((v) => /^[A-Z]{4}0[A-Z0-9]{6}$/.test(v.trim().toUpperCase()),
+      "Enter a valid 11-character IFSC (e.g. HDFC0000001).")
+    .transform((s) => sanitizeText(s, 11).toUpperCase()),
+  pan: z.string()
+    .refine((v) => /^[A-Z]{5}[0-9]{4}[A-Z]$/.test(v.trim().toUpperCase()),
+      "Enter a valid PAN (e.g. ABCDE1234F).")
+    .transform((s) => sanitizeText(s, 10).toUpperCase()),
+  // Cashfree requires a 10-digit Indian mobile for vendor payouts.
+  phone: z.string()
+    .refine((v) => {
+      const d = v.replace(/\D/g, "");
+      return (d.length === 10 && /^[6-9]/.test(d))
+          || (d.length === 12 && d.startsWith("91") && /^[6-9]/.test(d.slice(2)));
+    }, "Enter a valid 10-digit Indian mobile number.")
+    .transform((s) => sanitizeText(s, 20)),
+});
+export type PayoutDetailsInput = z.input<typeof payoutDetailsSchema>;
 
 export const profileUpdateSchema = z.object({
   fullName: optionalTrimmed(120),

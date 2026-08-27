@@ -42,9 +42,6 @@ export function OwnerProfileForm({ ownerRow, fullName, email, phone, initialNoti
   const [address,  setAddress]  = useState(ownerRow?.address         ?? "");
   const [city,     setCity]     = useState(ownerRow?.city            ?? "");
   const [state,    setState]    = useState(ownerRow?.state           ?? "");
-  const [upi,      setUpi]      = useState(ownerRow?.payout_upi      ?? "");
-  const [acctNo,   setAcctNo]   = useState(ownerRow?.payout_account_number ?? "");
-  const [ifsc,     setIfsc]     = useState(ownerRow?.payout_ifsc      ?? "");
 
   function handleProfileSave(e: React.FormEvent) {
     e.preventDefault();
@@ -63,15 +60,10 @@ export function OwnerProfileForm({ ownerRow, fullName, email, phone, initialNoti
       const r = await upsertOwnerRow({
         businessName:  bizName,
         businessEmail: bizEmail,
-        businessPhone: bizPhone,
         gstNumber:     gst,
-        panNumber:     pan,
         address,
         city,
         state,
-        payoutUpi:     upi,
-        payoutAccountNumber: acctNo,
-        payoutIfsc:          ifsc,
       });
       "error" in r ? setErr2(r.error) : setOk2(true);
     });
@@ -158,16 +150,8 @@ export function OwnerProfileForm({ ownerRow, fullName, email, phone, initialNoti
           <Field label="Business Email">
             <Input type="email" value={bizEmail} onChange={(e) => setBizEmail(e.target.value)} placeholder="biz@example.com" />
           </Field>
-          <Field label="Business Phone">
-            <Input type="tel" value={bizPhone} onChange={(e) => setBizPhone(e.target.value)} placeholder="+91 …" />
-          </Field>
-        </div>
-        <div className="grid grid-cols-2 gap-3">
           <Field label="GST Number">
             <Input value={gst} onChange={(e) => setGst(e.target.value)} placeholder="22AAAAA0000A1Z5" maxLength={15} />
-          </Field>
-          <Field label="PAN Number">
-            <Input value={pan} onChange={(e) => setPan(e.target.value)} placeholder="AAAAA1234A" maxLength={10} />
           </Field>
         </div>
         <Field label="Business Address">
@@ -194,33 +178,11 @@ export function OwnerProfileForm({ ownerRow, fullName, email, phone, initialNoti
             </select>
           </Field>
         </div>
-        {/* Bank account is what Cashfree actually settles payouts to — UPI
-            settlement is not enabled on this merchant account. */}
-        <Field label="Payout Bank Account Number">
-          <Input
-            value={acctNo}
-            onChange={(e) => setAcctNo(e.target.value.replace(/\D/g, "").slice(0, 20))}
-            placeholder="e.g. 50100123456789"
-            inputMode="numeric"
-          />
-          <p className="mt-1 text-[11px] text-charcoal-500">
-            Booking payouts are sent here. Digits only.
-          </p>
-        </Field>
-
-        <Field label="Payout IFSC">
-          <Input
-            value={ifsc}
-            onChange={(e) => setIfsc(e.target.value.toUpperCase().slice(0, 11))}
-            placeholder="e.g. HDFC0000001"
-            maxLength={11}
-          />
-        </Field>
-
-        <Field label="UPI ID (optional)">
-          <Input value={upi} onChange={(e) => setUpi(e.target.value)} placeholder="yourname@upi" />
-          <p className="text-[11px] text-charcoal-500 mt-1">Payouts are sent here after each completed booking.</p>
-        </Field>
+        {/* Bank account, IFSC, PAN and the business phone are NOT here any
+            more. They moved to the payout card at the top of this page, which
+            saves them and registers the payout account in one action. Leaving
+            them here as well would mean two places could write the same money
+            fields, and saving this form would blank whatever the card stored. */}
 
         <Button type="submit" variant="gold" size="sm" isLoading={pending2} disabled={pending2}>
           Save Business Profile

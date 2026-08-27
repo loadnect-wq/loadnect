@@ -51,15 +51,20 @@ export default async function OwnerProfilePage() {
           </div>
         </div>
 
-        {/* Automatic payout status — shown above the forms because the fields
-            it depends on (UPI, PAN, phone) live in Business Details below. */}
+        {/* Payout setup, first: it is the one thing an owner must do before
+            they can be paid, and it now carries its own fields rather than
+            depending on a second form further down the page. */}
         <PayoutSetup
           vendorId={ownerRow?.cashfree_vendor_id ?? null}
           kycStatus={ownerRow?.vendor_kyc_status ?? null}
           lastError={ownerRow?.vendor_last_error ?? null}
-          hasBank={!!(ownerRow?.payout_account_number && ownerRow?.payout_ifsc)}
-          hasPan={!!ownerRow?.pan_number}
-          hasPhone={!!ownerRow?.business_phone}
+          hasBusinessName={!!ownerRow?.business_name}
+          saved={{
+            accountNumber: ownerRow?.payout_account_number ?? null,
+            ifsc:          ownerRow?.payout_ifsc           ?? null,
+            pan:           ownerRow?.pan_number            ?? null,
+            phone:         ownerRow?.business_phone        ?? null,
+          }}
         />
 
         <OwnerProfileForm

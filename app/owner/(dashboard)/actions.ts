@@ -6,6 +6,7 @@ import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { generateSlug } from "@/lib/owner";
 import {
   ownerBusinessSchema,
+  payoutDetailsSchema,
   profileUpdateSchema,
   hallCreateSchema,
   hallSchema,
@@ -57,15 +58,10 @@ async function getAuthUser() {
 export async function upsertOwnerRow(data: {
   businessName:  string;
   businessEmail: string;
-  businessPhone: string;
   gstNumber:     string;
-  panNumber:     string;
   address:       string;
   city:          string;
   state:         string;
-  payoutUpi:     string;
-  payoutAccountNumber?: string;
-  payoutIfsc?:          string;
 }): Promise<ActionResult> {
   const { supabase, user } = await getAuthUser();
   if (!user) return { error: "Not authenticated" };
@@ -88,17 +84,16 @@ export async function upsertOwnerRow(data: {
     profile_id:     user.id,
     business_name:  v.businessName,
     business_email: v.businessEmail || null,
-    business_phone: v.businessPhone || null,
     gst_number:     v.gstNumber     || null,
-    pan_number:     v.panNumber ? v.panNumber.toUpperCase() : null,
     address:        v.address       || null,
     city:           v.city          || null,
     state:          v.state         || null,
-    payout_upi:     v.payoutUpi     || null,
-    payout_account_number: v.payoutAccountNumber || null,
-    // IFSC is case-insensitive on input but stored uppercase to satisfy the
-    // DB CHECK and to match what Cashfree expects.
-    payout_ifsc:    v.payoutIfsc ? v.payoutIfsc.toUpperCase() : null,
+    // business_phone, pan_number, payout_account_number, payout_ifsc and
+    // payout_upi are DELIBERATELY ABSENT. They belong to savePayoutDetails
+    // now. They were written here as "value || null", so once the Business
+    // Details form stopped rendering them, saving this form would have wiped a
+    // payout account the owner had already set up — silently, and only
+    // noticeable when a booking failed to pay out.
   };
 
   if (existing) {
@@ -939,77 +934,12 @@ function isOwnerActionableVendorError(error: string): boolean {
   return /pan|bank|ifsc|account number|account_number|phone|email|name|vpa|upi|kyc|business_type/.test(e);
 }
 
-export async function connectPayoutAccount(): Promise<ActionResult> {
-  const { supabase, user } = await getAuthUser();
-  if (!user) return { error: "Not authenticated" };
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const db = supabase as any;
-  const { data: owner } = await db
-    .from("hall_owners")
-    .select("id, business_name, business_email, business_phone, payout_upi, pan_number, payout_account_number, payout_ifsc")
-    .eq("profile_id", user.id)
-    .maybeSingle();
-
-  if (!owner) return { error: "Complete your business profile first." };
-  if (!owner.payout_account_number || !owner.payout_ifsc) {
-    return { error: "Add your payout bank account number and IFSC in Business Details first — Cashfree settles owner payouts to a bank account." };
-  }
-  if (!owner.pan_number) return { error: "Add your PAN in Business Details first — Cashfree requires it for payouts." };
-  if (!owner.business_phone) return { error: "Add your business phone in Business Details first." };
-
-  if (!isEasySplitEnabled()) {
-    return { error: "Automatic payouts are not switched on yet. Hallnect will contact you when they are." };
-  }
-
-  const result = await upsertVendor({
-    vendorId: owner.id,
-    name:  owner.business_name ?? "Hallnect Venue Owner",
-    email: (owner.business_email || user.email || "").trim(),
-    phone: (owner.business_phone ?? "").replace(/\D/g, "").slice(-10),
-    bankAccountNumber: owner.payout_account_number,
-    bankIfsc:          owner.payout_ifsc,
-    upiVpa:            owner.payout_upi,
-    pan:               owner.pan_number,
-  });
-
-  // Record the outcome either way — a failed onboarding must be visible, not
-  // silently retried forever. The service-role client is used because
-  // hall_owners' vendor columns are trusted-backend state, not owner-editable.
-  const adminDb = getSupabaseAdminClient();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  await (adminDb as any).from("hall_owners").update(
-    result.ok
-      ? {
-          cashfree_vendor_id: result.data.vendorId,
-          vendor_kyc_status:  result.data.settleable ? "VERIFIED" : "PENDING",
-          vendor_synced_at:   new Date().toISOString(),
-          vendor_last_error:  null,
-        }
-      : { vendor_synced_at: new Date().toISOString(), vendor_last_error: result.error },
-  ).eq("id", owner.id);
-
-  revalidatePath("/owner/profile");
-  revalidatePath("/owner/revenue");
-
-  if (!result.ok) {
-    return {
-      error: isOwnerActionableVendorError(result.error)
-        ? result.error
-        : "Hallnect is still completing payout setup with our payment provider. " +
-          "Your details are saved — we will enable automatic payouts as soon as it is ready, " +
-          "and nothing is needed from you.",
-    };
-  }
-  return { success: true };
-}
-
 /**
  * Re-reads the owner's verification status from Cashfree.
  *
  * A vendor is created as PENDING and becomes ACTIVE once Cashfree validates the
  * bank account, which happens later and without telling us. The refresh used to
- * go through connectPayoutAccount, which re-submits the owner's PAN and bank
+ * go through the onboarding call, which re-submits the owner's PAN and bank
  * account as a PATCH just to read a status back. This is a GET: checking a
  * status should not resend identity documents.
  */
@@ -1141,4 +1071,132 @@ export async function checkPlanPurchaseStatus(
       : result.state === "not_found" ? "not_found"
       : "pending",
   };
+}
+
+// ── Payout setup, in ONE step ───────────────────────────────────────────────
+// Saves the four details Cashfree needs and registers the vendor in the same
+// action.
+//
+// It used to take two, in opposite directions: the fields lived in the Business
+// Details form BELOW the payout card, behind their own submit button, and the
+// card's own button did not save anything — it scrolled down and focused the
+// first input it found, which was always Business Name, never the missing
+// field. An owner had to fill one form, save it, scroll back up, and press a
+// different button.
+//
+// The details are saved BEFORE onboarding is attempted and are kept whatever
+// happens next. The old connect action returned early when Easy Split was off,
+// writing nothing at all, so the card looked identical no matter how many times
+// it was pressed.
+
+export type PayoutSetupResult =
+  | { state: "verified" }
+  | { state: "pending_kyc" }
+  /** Saved, but Hallnect's own gateway onboarding is not finished yet. Nothing
+   *  is required from the owner — this is our side, not theirs. */
+  | { state: "saved_not_live" }
+  | { state: "error"; error: string };
+
+export async function savePayoutDetails(data: {
+  accountNumber: string;
+  ifsc:          string;
+  pan:           string;
+  phone:         string;
+}): Promise<PayoutSetupResult> {
+  const { supabase, user } = await getAuthUser();
+  if (!user) return { state: "error", error: "Not authenticated" };
+
+  const parsed = parseSafe(payoutDetailsSchema, data);
+  if (!parsed.ok) return { state: "error", error: parsed.error };
+  const v = parsed.data;
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const db = supabase as any;
+
+  const { data: owner } = await db
+    .from("hall_owners")
+    .select("id, business_name, business_email")
+    .eq("profile_id", user.id)
+    .maybeSingle();
+
+  if (!owner) {
+    return {
+      state: "error",
+      error: "Add your business name in Business Details first — Cashfree registers the payout account against your business.",
+    };
+  }
+
+  // 1. Save. Count-checked: RLS filtering this to zero rows must not report a
+  //    successful save that never happened.
+  const { error: saveErr, count } = await db
+    .from("hall_owners")
+    .update(
+      {
+        payout_account_number: v.accountNumber,
+        payout_ifsc:           v.ifsc,
+        pan_number:            v.pan,
+        business_phone:        v.phone,
+      },
+      { count: "exact" },
+    )
+    .eq("id", owner.id);
+
+  if (saveErr) return { state: "error", error: sanitizeError(saveErr, "owner") };
+  if (!count)  return { state: "error", error: "Could not save your payout details. Please sign in again and retry." };
+
+  revalidatePath("/owner/profile");
+  revalidatePath("/owner/revenue");
+
+  // 2. Register with the gateway. The details are already stored, so an owner
+  //    who gets this far never has to type them again.
+  if (!isEasySplitEnabled()) return { state: "saved_not_live" };
+
+  const result = await upsertVendor({
+    vendorId: owner.id,
+    name:  owner.business_name ?? "Hallnect Venue Owner",
+    email: (owner.business_email || user.email || "").trim(),
+    phone: v.phone.replace(/\D/g, "").slice(-10),
+    bankAccountNumber: v.accountNumber,
+    bankIfsc:          v.ifsc,
+    upiVpa:            null,
+    pan:               v.pan,
+  });
+
+  // Record the outcome either way — a failed onboarding must be visible, not
+  // silently retried forever. The service-role client is used because
+  // hall_owners' vendor columns are trusted-backend state, not owner-editable.
+  //
+  // Wrapped: this throws when SUPABASE_SERVICE_ROLE_KEY is missing, and by this
+  // point the vendor may already exist at Cashfree. An unhandled throw here
+  // rejected the caller's transition and left the button looking inert, with
+  // the owner unable to tell that their details were in fact saved.
+  try {
+    const adminDb = getSupabaseAdminClient();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (adminDb as any).from("hall_owners").update(
+      result.ok
+        ? {
+            cashfree_vendor_id: result.data.vendorId,
+            vendor_kyc_status:  result.data.settleable ? "VERIFIED" : "PENDING",
+            vendor_synced_at:   new Date().toISOString(),
+            vendor_last_error:  null,
+          }
+        : { vendor_synced_at: new Date().toISOString(), vendor_last_error: result.error },
+    ).eq("id", owner.id);
+  } catch (e) {
+    console.error("[payout-setup] could not record vendor state:", e instanceof Error ? e.message : e);
+  }
+
+  revalidatePath("/owner/profile");
+  revalidatePath("/owner/revenue");
+
+  if (!result.ok) {
+    return isOwnerActionableVendorError(result.error)
+      ? { state: "error", error: result.error }
+      // Not the owner's problem, and their details are saved. Saying "we will
+      // enable this" is honest; asking them to fix something would not be.
+      : { state: "saved_not_live" };
+  }
+
+  return result.data.settleable ? { state: "verified" } : { state: "pending_kyc" };
 }

@@ -6,48 +6,77 @@
 // are still on the form, instead of hours later at payout setup.
 
 import { describe, it, expect } from "vitest";
-import { ownerBusinessSchema } from "@/lib/validation/schemas";
+import { ownerBusinessSchema, payoutDetailsSchema } from "@/lib/validation/schemas";
 import { toVendorId, isEasySplitEnabled } from "@/lib/easy-split";
 
-/** A complete, valid set of business details. */
+/** A complete, valid set of payout details. */
 const VALID = {
-  businessName: "Grand Lotus Mahal",
-  businessEmail: "owner@example.com",
-  businessPhone: "9344040013",
-  panNumber: "ABCDE1234F",
-  payoutAccountNumber: "123456789012",
-  payoutIfsc: "HDFC0000001",
+  accountNumber: "123456789012",
+  ifsc:  "HDFC0000001",
+  pan:   "ABCDE1234F",
+  phone: "9344040013",
 };
 
-describe("business details accepted by Cashfree", () => {
+describe("payout details accepted by Cashfree", () => {
   it("accepts a complete, well-formed set", () => {
-    expect(ownerBusinessSchema.safeParse(VALID).success).toBe(true);
+    expect(payoutDetailsSchema.safeParse(VALID).success).toBe(true);
   });
 
   it("rejects a PAN that is not the Indian format", () => {
     // The exact class of value that was stored and then rejected at onboarding.
     for (const pan of ["1234566777", "ABCDE1234", "ABCD01234F", "abcde1234"]) {
-      expect(ownerBusinessSchema.safeParse({ ...VALID, panNumber: pan }).success).toBe(false);
+      expect(payoutDetailsSchema.safeParse({ ...VALID, pan }).success).toBe(false);
     }
-    expect(ownerBusinessSchema.safeParse({ ...VALID, panNumber: "abcde1234f" }).success).toBe(true);
+    expect(payoutDetailsSchema.safeParse({ ...VALID, pan: "abcde1234f" }).success).toBe(true);
   });
 
   it("rejects an IFSC that is not 11 chars with a 0 in position 5", () => {
     for (const ifsc of ["HDFC000001", "HDFC1000001", "HD0FC000001", "HDFC00000012"]) {
-      expect(ownerBusinessSchema.safeParse({ ...VALID, payoutIfsc: ifsc }).success).toBe(false);
+      expect(payoutDetailsSchema.safeParse({ ...VALID, ifsc }).success).toBe(false);
     }
   });
 
   it("rejects an account number that is not 6-20 digits", () => {
-    for (const acc of ["12345", "1234-5678", "abcdefgh", "1".repeat(21)]) {
-      expect(ownerBusinessSchema.safeParse({ ...VALID, payoutAccountNumber: acc }).success).toBe(false);
+    for (const accountNumber of ["12345", "1234-5678", "abcdefgh", "1".repeat(21)]) {
+      expect(payoutDetailsSchema.safeParse({ ...VALID, accountNumber }).success).toBe(false);
     }
   });
 
   it("rejects a 9-digit phone — Cashfree requires a real 10-digit Indian mobile", () => {
-    expect(ownerBusinessSchema.safeParse({ ...VALID, businessPhone: "934404001" }).success).toBe(false);
-    expect(ownerBusinessSchema.safeParse({ ...VALID, businessPhone: "1344040013" }).success).toBe(false);
-    expect(ownerBusinessSchema.safeParse({ ...VALID, businessPhone: "919344040013" }).success).toBe(true);
+    expect(payoutDetailsSchema.safeParse({ ...VALID, phone: "934404001" }).success).toBe(false);
+    expect(payoutDetailsSchema.safeParse({ ...VALID, phone: "1344040013" }).success).toBe(false);
+    expect(payoutDetailsSchema.safeParse({ ...VALID, phone: "919344040013" }).success).toBe(true);
+  });
+
+  it("requires every field — three out of four is not a payout account", () => {
+    // These were OPTIONAL on the business form, so an owner could save a
+    // profile that looked complete and could never be paid.
+    for (const key of ["accountNumber", "ifsc", "pan", "phone"] as const) {
+      const partial = { ...VALID, [key]: "" };
+      expect(payoutDetailsSchema.safeParse(partial).success).toBe(false);
+    }
+  });
+
+  it("normalises the case Cashfree and the DB CHECKs expect", () => {
+    const out = payoutDetailsSchema.parse({ ...VALID, ifsc: "hdfc0000001", pan: "abcde1234f" });
+    expect(out.ifsc).toBe("HDFC0000001");
+    expect(out.pan).toBe("ABCDE1234F");
+  });
+});
+
+describe("business details no longer carry payout fields", () => {
+  it("saves without them, so the business form cannot blank a payout account", () => {
+    // upsertOwnerRow wrote these as 'value || null'. While they lived on this
+    // schema, saving Business Details after setting up payouts would have
+    // wiped the bank account — silently, and only visible when a booking
+    // failed to pay out.
+    const parsed = ownerBusinessSchema.safeParse({
+      businessName: "Grand Lotus Mahal",
+      businessEmail: "owner@example.com",
+    });
+    expect(parsed.success).toBe(true);
+    expect(parsed.success && parsed.data).not.toHaveProperty("payoutAccountNumber");
+    expect(parsed.success && parsed.data).not.toHaveProperty("panNumber");
   });
 });
 
