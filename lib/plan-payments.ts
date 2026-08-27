@@ -57,6 +57,12 @@ function normalisePhone(raw: string | null | undefined): string {
  *  generous — the only cost of an abandoned order is a stale 'created' row. */
 const PLAN_ORDER_TTL_MIN = 30;
 
+/** How long an existing checkout session may be handed back instead of minting
+ *  a new one. Deliberately shorter than the order's own TTL: the ORDER stays
+ *  ACTIVE far longer than its payment_session_id stays usable, and a stale
+ *  session fails silently at the gateway. */
+const SESSION_REUSE_WINDOW_MIN = 10;
+
 function planOrderExpiry(): string {
   return new Date(Date.now() + PLAN_ORDER_TTL_MIN * 60_000).toISOString();
 }
@@ -183,7 +189,7 @@ export async function startPlanPurchase(input: {
   //    hall and plan — a double-click must not create two payable orders.
   const { data: existing } = await db
     .from("plan_purchases")
-    .select("id, cashfree_order_id, payment_session_id")
+    .select("id, cashfree_order_id, payment_session_id, created_at")
     .eq("hall_id", input.hallId)
     .eq("plan_slug", input.planSlug)
     .eq("status", "created")
@@ -193,11 +199,22 @@ export async function startPlanPurchase(input: {
     .maybeSingle();
 
   if (existing?.cashfree_order_id && existing.payment_session_id) {
+    const ageMs = Date.now() - Date.parse(existing.created_at);
+    const fresh = Number.isFinite(ageMs) && ageMs < SESSION_REUSE_WINDOW_MIN * 60_000;
+
     const live = await getCashfreeOrder(existing.cashfree_order_id);
 
-    // ACTIVE — still payable. Hand back the same session rather than opening a
-    // second one.
-    if (live.ok && live.data.order_status === "ACTIVE") {
+    // ACTIVE *and* recent — hand back the same session rather than opening a
+    // second payable order.
+    //
+    // THE FRESHNESS CHECK IS LOAD-BEARING. A payment_session_id goes stale long
+    // before its order leaves ACTIVE, and handing a stale one to the SDK is
+    // indistinguishable from a broken button: checkout navigates to Cashfree,
+    // which answers `payment_session_id_invalid`, and nothing is logged on our
+    // side at all. Reusing unconditionally meant an owner who abandoned a
+    // checkout could never start another one — every later attempt replayed the
+    // dead session.
+    if (live.ok && live.data.order_status === "ACTIVE" && fresh) {
       return {
         ok: true,
         paymentSessionId: existing.payment_session_id,
@@ -219,10 +236,17 @@ export async function startPlanPurchase(input: {
       };
     }
 
-    // COULD NOT READ THE STATUS. We do not know whether that order was paid, so
-    // we must not create another payable one. Failing closed costs a retry;
-    // failing open can cost the owner ₹9,999 twice.
-    if (!live.ok) {
+    // COULD NOT READ THE STATUS on a RECENT order. We do not know whether it
+    // was paid, so we must not create another payable one. Failing closed costs
+    // a retry; failing open can cost the owner ₹9,999 twice.
+    //
+    // Bounded by freshness on purpose. Refusing on every unreadable order,
+    // regardless of age, was a permanent dead end: one unreadable row and that
+    // owner could never buy that plan again, with a message telling them to try
+    // again in a moment that would never come true. An order older than its own
+    // expiry cannot still be payable, so past that point there is nothing left
+    // to protect and we move on.
+    if (!live.ok && fresh) {
       console.error("[plan-payments] could not read in-flight order:", live.error);
       return {
         ok: false,
@@ -230,10 +254,11 @@ export async function startPlanPurchase(input: {
       };
     }
 
-    // Anything else (EXPIRED, TERMINATED) is genuinely finished. Mark it so it
-    // stops being reconsidered, and fall through to a new order.
+    // Everything else — EXPIRED, TERMINATED, ACTIVE but too stale to reuse, or
+    // unreadable and long past its expiry. Retire the row so it stops being
+    // reconsidered, and fall through to a fresh order.
     await db.from("plan_purchases")
-      .update({ status: "failed", raw_response: live.data })
+      .update({ status: "failed", raw_response: live.ok ? live.data : { error: live.error } })
       .eq("id", existing.id)
       .eq("status", "created");
   }
