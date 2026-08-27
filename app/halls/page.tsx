@@ -94,7 +94,9 @@ export default async function HallsPage({
     date: effectiveDate, sort,
   });
 
-  const hasFilters = !!(city || area || capacity || priceMin || priceMax || q || category || amenity || date);
+  // effectiveDate, not date — an "Available Today" visit with no matches must
+  // read as a filter that found nothing, not as "no halls are listed yet".
+  const hasFilters = !!(city || area || capacity || priceMin || priceMax || q || category || amenity || effectiveDate);
 
   return (
     <div className="min-h-screen bg-ivory-100">

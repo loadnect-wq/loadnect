@@ -25,6 +25,14 @@ interface Props {
   hall?:      OwnerHallDetail; // present in edit mode
 }
 
+/** Must match the CHECK constraint in migration 0037 and VENUE_TYPE_CATEGORIES. */
+const VENUE_TYPE_OPTIONS = [
+  { value: "wedding",   label: "Wedding"   },
+  { value: "reception", label: "Reception" },
+  { value: "party",     label: "Party"     },
+  { value: "banquet",   label: "Banquet"   },
+] as const;
+
 // Tamil Nadu cities/areas only — Hallnect's current service area.
 const CITIES = [
   "Madurai", "Chennai", "Coimbatore", "Tiruchirappalli", "Salem",
@@ -50,6 +58,10 @@ export function HallForm({ ownerId, amenities, hall }: Props) {
   const [priceEven,    setPriceEven]    = useState(String(hall?.price_evening ?? ""));
   const [description,  setDescription]  = useState(hall?.description   ?? "");
   const [selectedAms,  setSelectedAms]  = useState<Set<string>>(new Set(hall?.amenity_ids ?? []));
+  // Which event types this venue serves. Drives the homepage category tiles
+  // and the search chips — a hall with none set appears in no typed view, so
+  // the form requires at least one.
+  const [venueTypes,   setVenueTypes]   = useState<Set<string>>(new Set(hall?.venue_types ?? []));
   // Custom amenities live in form state and are saved with the hall, so they
   // follow the normal approval flow rather than publishing on their own.
   const [customAms,    setCustomAms]    = useState<string[]>(hall?.custom_amenities ?? []);
@@ -165,6 +177,7 @@ export function HallForm({ ownerId, amenities, hall }: Props) {
       priceEvening: priceEven,
       description,
       amenityIds: [...selectedAms],
+      venueTypes: [...venueTypes],
       customAmenities: customAms,
     };
     startTransition(async () => {
@@ -289,6 +302,48 @@ export function HallForm({ ownerId, amenities, hall }: Props) {
           Advance payment (25%) is collected automatically at booking.
           Platform fee (5%) applies on top of these prices.
         </p>
+      </FormSection>
+
+      {/* Venue types — what this hall is FOR. Not cosmetic: these are the
+          homepage category tiles and the search chips, and they filter for
+          real, so a hall with none ticked is absent from all of them. */}
+      <FormSection title="What events does this venue host?">
+        <p className="-mt-1 text-xs text-charcoal-500">
+          Pick every type that applies. Couples filter by these, so choosing accurately is
+          how the right customers find your hall.
+        </p>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          {VENUE_TYPE_OPTIONS.map((opt) => {
+            const on = venueTypes.has(opt.value);
+            return (
+              <button
+                key={opt.value}
+                type="button"
+                aria-pressed={on}
+                onClick={() =>
+                  setVenueTypes((prev) => {
+                    const next = new Set(prev);
+                    if (next.has(opt.value)) next.delete(opt.value);
+                    else next.add(opt.value);
+                    return next;
+                  })
+                }
+                className={`min-h-[44px] rounded-xl border px-3 text-sm font-medium transition-colors ${
+                  on
+                    ? "border-maroon-500 bg-maroon-50 text-maroon-800"
+                    : "border-border bg-white text-charcoal-700 hover:border-maroon-300"
+                }`}
+              >
+                {opt.label}
+              </button>
+            );
+          })}
+        </div>
+        {venueTypes.size === 0 && (
+          <p className="text-xs font-medium text-amber-700">
+            Choose at least one — otherwise your hall will not appear under any category.
+          </p>
+        )}
       </FormSection>
 
       {/* Amenities */}

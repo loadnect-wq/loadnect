@@ -26,6 +26,7 @@ import { startCommissionPayment, verifyAndApplyCommissionPayment } from "@/lib/c
 import { payOwnerOnAcceptance } from "@/lib/owner-payout";
 import { recordBookingRefund } from "@/lib/refunds";
 import { releaseAvailabilityForBooking } from "@/lib/availability-release";
+import { isOwnerResponseOverdue } from "@/lib/booking-expiry";
 import { isEasySplitEnabled, upsertVendor, getVendorStatus } from "@/lib/easy-split";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 
@@ -198,6 +199,7 @@ export async function createHall(data: {
   priceEvening: string;
   description:  string;
   amenityIds:   string[];
+  venueTypes:   string[];
   customAmenities?: string[];
 }): Promise<ActionResult> {
   const { supabase, user } = await getAuthUser();
@@ -268,6 +270,7 @@ export async function createHall(data: {
     price_per_day:  v.pricePerDay,
     price_morning:  v.priceMorning ?? null,
     price_evening:  v.priceEvening ?? null,
+    venue_types:    v.venueTypes,
     status: "pending_approval",
   });
 
@@ -336,6 +339,7 @@ export async function updateHall(hallId: string, data: {
   priceEvening: string;
   description:  string;
   amenityIds:   string[];
+  venueTypes:   string[];
   customAmenities?: string[];
 }): Promise<ActionResult> {
   const { supabase, user } = await getAuthUser();
@@ -365,6 +369,7 @@ export async function updateHall(hallId: string, data: {
       price_per_day:  v.pricePerDay,
       price_morning:  v.priceMorning ?? null,
       price_evening:  v.priceEvening ?? null,
+      venue_types:    v.venueTypes,
     })
     .eq("id", hallId);
 
@@ -753,6 +758,24 @@ export async function acceptBooking(bookingId: string): Promise<ActionResult> {
   if (!parseSafe(uuidSchema, bookingId).ok) return { error: "Invalid booking id." };
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = supabase as any;
+
+  // THE 48-HOUR WINDOW IS REAL, so it has to close. The deadline was stamped
+  // by a trigger and counted down on this very page, but nothing enforced it:
+  // an owner could accept a request days late — one the customer had been told
+  // would auto-expire, and whose refund may already be owed and paid.
+  const { data: pending } = await db
+    .from("bookings")
+    .select("owner_response_due_at")
+    .eq("id", bookingId)
+    .maybeSingle();
+
+  if (isOwnerResponseOverdue(pending?.owner_response_due_at)) {
+    return {
+      error:
+        "The 48-hour window to respond to this booking has passed, so it can no longer be accepted. " +
+        "The customer is being refunded and the dates have been released.",
+    };
+  }
 
   const { error, count } = await db
     .from("bookings")

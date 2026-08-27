@@ -28,6 +28,7 @@ import {
   notifyPremiumChanged,
 } from "@/lib/notifications/events";
 import type { OverdueRunSummary } from "@/lib/commissions";
+import type { BookingExpirySummary } from "@/lib/booking-expiry";
 import { settledReason } from "@/lib/commission-payments";
 
 function requireUuid(id: string, label = "id"): string | null {
@@ -866,6 +867,45 @@ export async function verifyCommissionPayment(
 // Verifies admin session server-side, then runs the same idempotent engine the
 // cron route uses. The engine (lib/commissions) uses the service-role client for
 // its system writes; the admin check here is the authorization gate.
+/**
+ * Cancels booking requests the owner never answered inside the 48-hour window,
+ * refunds the customer and frees the dates.
+ *
+ * The deadline has always been stamped and displayed; nothing acted on it, so
+ * an ignored request held the customer's money and blocked the calendar
+ * indefinitely. Also exposed as POST /api/admin/bookings/expire-overdue for a
+ * scheduled caller — this button is for running it now.
+ */
+export async function expireOverdueBookingsAction(): Promise<
+  | { success: true; summary: BookingExpirySummary }
+  | { error: string }
+> {
+  const actor = await requireAdminActor();
+  if (!actor.ok) return { error: actor.error };
+
+  const { expireOverdueBookingRequests } = await import("@/lib/booking-expiry");
+  try {
+    const summary = await expireOverdueBookingRequests();
+
+    if (summary.expired > 0) {
+      await recordAdminAction({
+        action:     "bookings.expire_overdue",
+        entityType: "booking",
+        entityId:   null,
+        reason:     `Expired ${summary.expired} unanswered booking request(s)`,
+        metadata:   { found: summary.found, refundsRecorded: summary.refundsRecorded },
+      });
+    }
+
+    revalidatePath("/admin/bookings");
+    revalidatePath("/admin/payments");
+    revalidatePath("/admin/dashboard");
+    return { success: true, summary };
+  } catch {
+    return { error: "Expiry sweep failed. Check server logs." };
+  }
+}
+
 export async function runOverdueCommissionCheckAction(): Promise<
   | { success: true; summary: OverdueRunSummary }
   | { error: string }

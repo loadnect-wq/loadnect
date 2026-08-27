@@ -212,6 +212,13 @@ export const hallSchema = z
     priceEvening: optionalMoneySchema,
     description:  optionalTrimmed(4000),
     amenityIds:   z.array(uuidSchema).max(50, "Too many amenities."),
+    // At least one is REQUIRED. The homepage and search offer these as
+    // filters, so a hall with none declared is invisible in every typed view —
+    // which is a worse outcome for the owner than being asked to tick a box.
+    // The vocabulary is pinned by a CHECK constraint in migration 0037.
+    venueTypes:   z.array(z.enum(["wedding", "reception", "party", "banquet"]))
+      .min(1, "Choose at least one type of event your venue hosts.")
+      .max(4),
   })
   .refine(
     (d) => d.capacityMin == null || d.capacityMin <= d.capacityMax,

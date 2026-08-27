@@ -22,6 +22,10 @@ export type HallListing = {
   amenities:      string[];
 };
 
+/** Event types a venue can serve — pinned by a CHECK constraint in 0037. */
+export const VENUE_TYPE_CATEGORIES = ["wedding", "reception", "party", "banquet"] as const;
+export type VenueType = (typeof VENUE_TYPE_CATEGORIES)[number];
+
 export type HallsFilters = {
   q?:         string; // free-text: name, city, address
   city?:      string; // exact city
@@ -192,6 +196,15 @@ export async function fetchHalls(filters: HallsFilters): Promise<HallListing[]> 
       q = q.eq("premium_tier", "pro");
     }
     if (filters.category === "budget") q = q.lte("price_per_day", 100000);
+
+    // Venue-type categories (0037). These four tiles used to filter NOTHING:
+    // the category was read and then never applied, so "Party Halls" returned
+    // every hall on the platform. `overlaps` matches a hall that declares this
+    // type among the several it may serve. A hall with no types declared is
+    // deliberately absent here rather than assumed into every category.
+    if (VENUE_TYPE_CATEGORIES.includes(filters.category as VenueType)) {
+      q = q.overlaps("venue_types", [filters.category]);
+    }
 
     if (filters.ids && filters.ids.length > 0) {
       q = q.in("id", filters.ids);

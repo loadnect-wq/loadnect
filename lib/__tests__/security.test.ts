@@ -73,3 +73,53 @@ describe("availability — an owner may not rewrite booking-owned dates", () => 
     expect(r.ok).toBe(false);
   });
 });
+
+describe("venue types — the category tiles now filter for real", () => {
+  it("names exactly the vocabulary the database CHECK allows", async () => {
+    const { VENUE_TYPE_CATEGORIES } = await import("@/lib/halls");
+    expect([...VENUE_TYPE_CATEGORIES].sort()).toEqual(["banquet", "party", "reception", "wedding"]);
+  });
+
+  it("requires an owner to declare at least one", async () => {
+    const { hallSchema, parseSafe } = await import("@/lib/validation/schemas");
+    const base = {
+      name: "Grand Lotus Mahal", city: "Madurai", state: "Tamil Nadu",
+      address: "12 Main Road", pincode: "625001",
+      capacityMin: "100", capacityMax: "800", pricePerDay: "100000",
+      priceMorning: "", priceEvening: "", description: "A hall.",
+      amenityIds: [],
+    };
+    // A hall with no types is invisible in every typed view, so the form
+    // refuses it rather than quietly creating an unfindable listing.
+    expect(parseSafe(hallSchema, { ...base, venueTypes: [] }).ok).toBe(false);
+    expect(parseSafe(hallSchema, { ...base, venueTypes: ["wedding"] }).ok).toBe(true);
+    expect(parseSafe(hallSchema, { ...base, venueTypes: ["wedding", "banquet"] }).ok).toBe(true);
+  });
+
+  it("rejects a type outside the vocabulary, matching the DB constraint", async () => {
+    const { hallSchema, parseSafe } = await import("@/lib/validation/schemas");
+    const base = {
+      name: "Grand Lotus Mahal", city: "Madurai", state: "", address: "", pincode: "",
+      capacityMin: "", capacityMax: "800", pricePerDay: "100000",
+      priceMorning: "", priceEvening: "", description: "", amenityIds: [],
+    };
+    expect(parseSafe(hallSchema, { ...base, venueTypes: ["nightclub"] }).ok).toBe(false);
+  });
+});
+
+describe("48-hour owner response window", () => {
+  it("treats a passed deadline as overdue and a future one as live", async () => {
+    const { isOwnerResponseOverdue } = await import("@/lib/booking-expiry");
+    expect(isOwnerResponseOverdue(new Date(Date.now() - 60_000).toISOString())).toBe(true);
+    expect(isOwnerResponseOverdue(new Date(Date.now() + 60_000).toISOString())).toBe(false);
+  });
+
+  it("never blocks a booking that has no deadline recorded", async () => {
+    // Pre-0027 rows carry no deadline. Treating null as overdue would make
+    // every historical request permanently unacceptable.
+    const { isOwnerResponseOverdue } = await import("@/lib/booking-expiry");
+    expect(isOwnerResponseOverdue(null)).toBe(false);
+    expect(isOwnerResponseOverdue(undefined)).toBe(false);
+    expect(isOwnerResponseOverdue("not a date")).toBe(false);
+  });
+});

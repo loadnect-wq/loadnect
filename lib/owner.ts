@@ -58,6 +58,8 @@ export type OwnerHallDetail = OwnerHall & {
   price_morning: number | null;
   price_evening: number | null;
   amenity_ids:   string[];
+  /** Event types this venue serves (0037). Drives the category filters. */
+  venue_types:   string[];
   custom_amenities: string[];
 };
 
@@ -247,7 +249,7 @@ export async function fetchOwnerHall(hallId: string): Promise<OwnerHallDetail | 
 
   const { data, error } = await db
     .from("halls")
-    .select("id, slug, name, city, state, address, pincode, latitude, longitude, capacity_min, capacity_max, price_per_day, price_morning, price_evening, description, status, is_premium, rating_average, rating_count, created_at, rejection_reason, hall_images(url, is_cover), hall_amenities(amenity_id), hall_custom_amenities(name, sort_order)")
+    .select("id, slug, name, city, state, address, pincode, latitude, longitude, capacity_min, capacity_max, price_per_day, price_morning, price_evening, description, status, is_premium, rating_average, rating_count, created_at, rejection_reason, venue_types, hall_images(url, is_cover), hall_amenities(amenity_id), hall_custom_amenities(name, sort_order)")
     .eq("id", hallId)
     .eq("owner_id", ownerRow.id)   // ← ownership, not just visibility
     .maybeSingle();
@@ -290,6 +292,7 @@ export async function fetchOwnerHall(hallId: string): Promise<OwnerHallDetail | 
     created_at:     data.created_at,
     rejection_reason: data.rejection_reason ?? null,
     amenity_ids:    amenityIds,
+    venue_types:    Array.isArray(data.venue_types) ? data.venue_types : [],
   };
 }
 
