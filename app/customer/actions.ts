@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
+import { releaseAvailabilityForBooking } from "@/lib/availability-release";
 import { CANCELLABLE_STATUSES } from "@/lib/customer";
 import {
   reviewSchema,
@@ -68,6 +69,10 @@ export async function cancelBooking(
   // that never happened.
   if (count === 0) return { error: "This booking could not be cancelled." };
 
+  // Give the dates back. Without this the calendar stayed blocked forever and
+  // the venue silently lost those days for good.
+  await releaseAvailabilityForBooking(bookingId);
+
   // §cancellation-flow: customer + owner + admin are all informed.
   await notifyBookingEvent("booking.cancelled", bookingId, { reason: cleanReason || null });
 
@@ -115,6 +120,25 @@ export async function submitReview(data: {
   const parsed = parseSafe(reviewSchema, data);
   if (!parsed.ok) return { error: parsed.error };
   const v = parsed.data;
+
+  // THE BOOKING MUST BE THE CALLER'S OWN, COMPLETED, AND FOR THIS HALL.
+  // reviews has a UNIQUE(booking_id), so an unverified booking_id let a
+  // customer burn someone else's one-review slot — insert a review against a
+  // stranger's booking id and that booking can never be reviewed by the person
+  // who actually stayed there. It also let a review be attached to a hall the
+  // reviewer never booked.
+  const { data: ownBooking } = await db
+    .from("bookings")
+    .select("id, status, hall_id")
+    .eq("id", v.bookingId)
+    .eq("customer_id", user.id)
+    .maybeSingle();
+
+  if (!ownBooking) return { error: "That booking is not yours." };
+  if (ownBooking.hall_id !== v.hallId) return { error: "That booking is for a different venue." };
+  if (String(ownBooking.status) !== "completed") {
+    return { error: "You can review a venue once your booking is completed." };
+  }
 
   const row: Record<string, unknown> = {
     hall_id:     v.hallId,

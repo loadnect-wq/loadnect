@@ -582,6 +582,32 @@ export async function fetchRefundQueue(): Promise<RefundQueueRow[]> {
   }));
 }
 
+/** Messages from the public /contact form. Reads via the session client, so
+ *  RLS (is_admin) is the gate — a non-admin calling this gets an empty list. */
+export type ContactMessageRow = {
+  id: string;
+  name: string;
+  email: string;
+  subject: string;
+  message: string;
+  is_read: boolean;
+  created_at: string;
+};
+
+export async function fetchContactMessages(limit = 100): Promise<ContactMessageRow[]> {
+  const supabase = await getSupabaseServerClient();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const db = supabase as any;
+  const { data, error } = await db
+    .from("contact_messages")
+    .select("id, name, email, subject, message, is_read, created_at")
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  if (error) { handleError("fetchContactMessages", error); return []; }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (data ?? []) as ContactMessageRow[];
+}
+
 // ── Commissions ───────────────────────────────────────────────────────────────
 
 export type CommissionFilters = {

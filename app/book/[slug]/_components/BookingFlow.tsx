@@ -471,7 +471,7 @@ export function BookingFlow({ hall, availability, windowDays, onlinePaymentEnabl
             {step === 1 && (
               <StepWrap
                 title="Select a slot"
-                subtitle={date ? `For ${new Date(date).toLocaleDateString("en-IN", { weekday: "long", month: "long", day: "numeric" })}` : ""}
+                subtitle={date ? `For ${isoDateToLabelDate(date).toLocaleDateString("en-IN", { weekday: "long", month: "long", day: "numeric", timeZone: "UTC" })}` : ""}
               >
                 <div className="space-y-2.5">
                   {SLOTS.map((s) => {
@@ -714,7 +714,7 @@ export function BookingFlow({ hall, availability, windowDays, onlinePaymentEnabl
                   </div>
                   <p className="mt-4 font-serif text-lg font-bold text-charcoal-900">All set!</p>
                   <p className="mt-1 text-sm text-charcoal-600">
-                    {hall.name} for {new Date(date).toLocaleDateString("en-IN", { weekday: "long", month: "long", day: "numeric" })}
+                    {hall.name} for {isoDateToLabelDate(date).toLocaleDateString("en-IN", { weekday: "long", month: "long", day: "numeric", timeZone: "UTC" })}
                   </p>
                   {bookingId && (
                     <p className="mt-2 font-mono text-[11px] text-charcoal-500">

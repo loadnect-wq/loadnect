@@ -5,7 +5,7 @@ import { CheckCircle2, Zap } from "lucide-react";
 import { buttonVariants } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { SectionHeader } from "@/components/sections/SectionHeader";
-import { PREMIUM_TIERS } from "@/lib/content";
+import { fetchPremiumPlans, PLAN_FEATURES, type PremiumTier } from "@/lib/premium-plans";
 import { cn } from "@/lib/utils";
 
 export const metadata: Metadata = buildMetadata({
@@ -19,7 +19,14 @@ function formatPrice(n: number) {
   return `₹${n.toLocaleString("en-IN")}`;
 }
 
-export default function PremiumPage() {
+// Server Component: the plan catalogue comes from premium_plans, the same rows
+// the owner dashboard and the upgrade flow read. This page previously rendered
+// a hardcoded list that had drifted badly out of step with it — the page
+// advertised "Pro Rs4,999" and "Elite Rs9,999" while the database sold
+// "Premium Rs4,999" and "Pro Rs9,999". An owner comparing the pricing page to
+// their dashboard saw different products at different prices.
+export default async function PremiumPage() {
+  const plans = await fetchPremiumPlans();
   return (
     <div className="min-h-screen bg-ivory-100">
 
@@ -41,64 +48,65 @@ export default function PremiumPage() {
       <section className="container-page py-20">
         <SectionHeader
           title="Choose Your Plan"
-          description="Flexible monthly plans. No lock-in. Cancel anytime."
+          description="Monthly plans, billed per hall. Stop whenever you like — a plan simply lapses at the end of the month it was paid for."
           className="mb-12"
         />
 
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-          {PREMIUM_TIERS.map((tier) => (
-            <div
-              key={tier.id}
-              className={cn(
-                "relative flex flex-col rounded-2xl border p-8 shadow-card transition-shadow hover:shadow-card-hover",
-                tier.isPopular
-                  ? "border-gold-400 bg-white ring-2 ring-gold-400"
-                  : "border-border bg-white",
-              )}
-            >
-              {tier.isPopular && (
-                <div className="absolute -top-3.5 left-1/2 -translate-x-1/2">
-                  <Badge variant="gold" size="md">
-                    <Zap className="h-3.5 w-3.5" aria-hidden /> Most Popular
-                  </Badge>
-                </div>
-              )}
-
-              <div>
-                <p className="font-serif text-2xl font-bold text-charcoal-900">{tier.name}</p>
-                <p className="mt-1 text-sm text-muted-foreground">{tier.tagline}</p>
-              </div>
-
-              <div className="my-6">
-                <span className="font-serif text-4xl font-bold text-maroon-700">
-                  {formatPrice(tier.priceMonthly)}
-                </span>
-                <span className="ml-1 text-sm text-muted-foreground">{tier.durationLabel}</span>
-              </div>
-
-              <ul className="flex-1 space-y-3">
-                {tier.features.map((f) => (
-                  <li key={f} className="flex items-start gap-2.5 text-sm text-charcoal-700">
-                    <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-maroon-500" aria-hidden />
-                    {f}
-                  </li>
-                ))}
-              </ul>
-
-              <Link
-                href={tier.ctaHref}
+          {plans.map((plan) => {
+            const features = PLAN_FEATURES[plan.slug as PremiumTier] ?? [];
+            const isPopular = plan.slug === "premium";
+            return (
+              <div
+                key={plan.slug}
                 className={cn(
-                  buttonVariants({
-                    variant: tier.isPopular ? "gold" : "outline",
-                    size: "lg",
-                  }),
-                  "mt-8 w-full justify-center",
+                  "relative flex flex-col rounded-2xl border p-8 shadow-card transition-shadow hover:shadow-card-hover",
+                  isPopular ? "border-gold-400 bg-white ring-2 ring-gold-400" : "border-border bg-white",
                 )}
               >
-                {tier.ctaLabel}
-              </Link>
-            </div>
-          ))}
+                {isPopular && (
+                  <div className="absolute -top-3.5 left-1/2 -translate-x-1/2">
+                    <Badge variant="gold" size="md">
+                      <Zap className="h-3.5 w-3.5" aria-hidden /> Most Popular
+                    </Badge>
+                  </div>
+                )}
+
+                <div>
+                  <p className="font-serif text-2xl font-bold text-charcoal-900">{plan.name}</p>
+                  <p className="mt-1 text-sm text-muted-foreground">{plan.description}</p>
+                </div>
+
+                <div className="my-6">
+                  <span className="font-serif text-4xl font-bold text-maroon-700">
+                    {formatPrice(Number(plan.monthly_price))}
+                  </span>
+                  <span className="ml-1 text-sm text-muted-foreground">
+                    {Number(plan.monthly_price) === 0 ? "always" : "per month"}
+                  </span>
+                </div>
+
+                <ul className="flex-1 space-y-3">
+                  {features.map((f) => (
+                    <li key={f.label} className="flex items-start gap-2.5 text-sm text-charcoal-700">
+                      <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-maroon-500" aria-hidden />
+                      {f.label}
+                    </li>
+                  ))}
+                </ul>
+
+                <Link
+                  href="/owner/register"
+                  className={cn(
+                    buttonVariants({ variant: isPopular ? "gold" : "outline", size: "lg" }),
+                    "mt-8 w-full justify-center",
+                  )}
+                >
+                  {plan.is_purchasable ? `Choose ${plan.name}` : "Get started free"}
+                </Link>
+              </div>
+            );
+          })}
         </div>
 
         <p className="mt-8 text-center text-sm text-muted-foreground">

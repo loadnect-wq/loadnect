@@ -54,14 +54,17 @@ export function AppHeader({ title, showBack, rightSlot, transparent }: AppHeader
         </div>
 
         <div className="flex items-center gap-2">
+          {/* A real link, not an ornament. This was a <button> with no handler
+              on every mobile page: it looked like the way to reach your
+              notifications and did nothing when tapped. */}
           {rightSlot ?? (
-            <button
-              type="button"
+            <Link
+              href="/customer/notifications"
               aria-label="Notifications"
-              className="flex h-9 w-9 items-center justify-center rounded-full bg-ivory-200 text-charcoal-700"
+              className="flex h-9 w-9 items-center justify-center rounded-full bg-ivory-200 text-charcoal-700 transition-colors hover:bg-ivory-300"
             >
               <Bell className="h-4 w-4" />
-            </button>
+            </Link>
           )}
         </div>
       </div>

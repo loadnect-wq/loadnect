@@ -285,8 +285,45 @@ export async function verifyAndApplyCommissionPayment(orderId: string): Promise<
     .eq("id", settlement.id)
     .neq("status", "verified");
 
-  // Mark the commission paid. Guarded on NOT already paid so a redelivery is a
-  // no-op rather than restamping paid_at.
+  // MARK THE COMMISSION PAID — but only if it is still genuinely owed.
+  //
+  // The old guard was `.neq("status","paid")`, which let a late gateway
+  // payment overwrite any OTHER terminal state. The real sequence that breaks:
+  // an owner opens a commission payment on day 6; on day 7 the overdue sweep
+  // deducts the same commission from their settlement
+  // (status='adjusted_from_owner_settlement'); on day 8 the owner pays the
+  // still-open order. The commission flipped to 'paid', the settlement
+  // deduction stayed, and Hallnect collected the same commission twice with
+  // nothing recording it.
+  const { data: current } = await db
+    .from("commissions").select("status, payment_reference").eq("id", settlement.commission_id).maybeSingle();
+  const currentStatus = String(current?.status ?? "");
+
+  // An idempotent redelivery of THIS order's own payment: already done.
+  if (currentStatus === "paid" && current?.payment_reference === orderId) {
+    return { state: "paid", commissionId: settlement.commission_id };
+  }
+
+  if (!isOwnerBillable(currentStatus)) {
+    // Settled some other way while this order was open. The owner has now
+    // paid money they no longer owed — that needs a human and a refund, not a
+    // silent second collection.
+    await db.from("owner_commission_payments")
+      .update({
+        status: "payment_under_review",
+        admin_note:
+          `Owner paid ${orderId} but the commission was already settled as '${currentStatus}'. ` +
+          `Refund the owner or reverse the settlement adjustment.`,
+      })
+      .eq("id", settlement.id);
+    console.error(`[commission-payments] double collection averted: commission ${settlement.commission_id} was ${currentStatus} when ${orderId} paid`);
+    return {
+      state: "pending",
+      commissionId: settlement.commission_id,
+      message: "This commission was already settled. Your payment is under review and will be refunded if it was not owed.",
+    };
+  }
+
   await db.from("commissions")
     .update({
       status: "paid",

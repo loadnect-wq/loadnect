@@ -119,6 +119,28 @@ export async function payOwnerOnAcceptance(bookingId: string): Promise<PayoutOut
       return { state: "skipped", reason: "Already paid out" };
     }
 
+    // A REFUND IN FLIGHT MEANS THIS MONEY IS THE CUSTOMER'S. Nothing here used
+    // to look at the refund columns, so the admin's "Retry payout" button
+    // would happily dispatch the owner's share for a booking that had been
+    // cancelled and whose refund was already being paid — both sides of the
+    // same capture going out at once.
+    if (["owed", "processing", "completed"].includes(String(payment.refund_state ?? ""))) {
+      return { state: "skipped", reason: "A refund is owed or in progress on this booking — the advance belongs to the customer" };
+    }
+
+    // Likewise the BOOKING has to still exist in a payable state. The payment
+    // row stays payment_success after a cancellation, so it alone can never
+    // tell us the booking was called off.
+    const { data: bookingState } = await db
+      .from("bookings").select("status").eq("id", bookingId).maybeSingle();
+    const bStatus = String(bookingState?.status ?? "");
+    if (!["owner_confirmed", "completed"].includes(bStatus)) {
+      return {
+        state: "skipped",
+        reason: `Booking is ${bStatus || "missing"} — only a confirmed or completed booking pays out`,
+      };
+    }
+
     // 2. Commission owed on this booking — authoritative, from the DB.
     const { data: commission } = await db
       .from("commissions")

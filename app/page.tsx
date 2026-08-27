@@ -29,7 +29,6 @@ const CATEGORIES = [
   { key: "banquet",   label: "Banquet Halls",   icon: "building",   href: "/halls?category=banquet"   },
   { key: "budget",    label: "Budget Halls",    icon: "wallet",     href: "/halls?category=budget"    },
   { key: "premium",   label: "Premium Halls",   icon: "crown",      href: "/halls?category=premium"   },
-  { key: "near",      label: "Near Me",         icon: "pin",        href: "/halls?near=1"             },
   { key: "today",     label: "Available Today", icon: "zap",        href: "/halls?available=today"    },
 ] as const;
 
@@ -75,7 +74,11 @@ export default async function HomePage() {
   // Featured = real APPROVED halls from Supabase (RLS-filtered), top-rated first.
   // No fake/demo halls — empty list renders a proper empty state, so cards can
   // never link to a slug that 404s.
-  const featured: HallListing[] = (await fetchHalls({ sort: "rating" })).slice(0, 6);
+  // Default sort, NOT sort:"rating". fetchHalls's default orders pro →
+  // premium → rest before rating, which is the "Homepage promotion" the Pro
+  // plan is sold on. Sorting by rating alone quietly ignored premium tier, so
+  // owners paid Rs9,999/month for placement the homepage never gave them.
+  const featured: HallListing[] = (await fetchHalls({})).slice(0, 6);
   const cities = POPULAR_CITIES.slice(0, 8);
   // Real approved-venue counts, so the city links below point at pages that
   // actually have something on them (lib/seo/cities.ts).
@@ -129,7 +132,6 @@ export default async function HomePage() {
           <div className="grid grid-cols-3 gap-2">
             <QuickAction href="/halls" label="Browse" Icon={Search} />
             <QuickAction href="/halls?category=premium" label="Premium" Icon={Crown} />
-            <QuickAction href="/halls?near=1" label="Near Me" Icon={MapPin} />
           </div>
         </section>
 

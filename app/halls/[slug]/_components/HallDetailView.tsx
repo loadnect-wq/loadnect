@@ -14,6 +14,7 @@ import { motion } from "framer-motion";
 import { type HallDetail, type HallListing, type AvailabilityRow } from "@/lib/halls";
 import { CARD_GRADIENTS, formatPrice } from "@/lib/mock-data";
 import { todayInBusinessTz, addDaysToIsoDate, isoDateToLabelDate } from "@/lib/dates";
+import { advanceFromTotal, DEFAULT_ADVANCE_PERCENT } from "@/lib/booking-payment";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { SaveHeart } from "@/app/_components/SaveHeart";
@@ -77,6 +78,8 @@ function gradientForId(id: string): string {
 // ── Props ─────────────────────────────────────────────────────────────────────
 
 interface Props {
+  /** Live advance % from platform_settings; falls back to the constant. */
+  advancePercent?: number;
   hall:        HallDetail;
   similar:     HallListing[];
   isPreview:   boolean;
@@ -85,12 +88,17 @@ interface Props {
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export function HallDetailView({ hall, similar, isPreview, sidebarAd }: Props) {
+export function HallDetailView({ hall, similar, isPreview, sidebarAd, advancePercent }: Props) {
   const router = useRouter();
 
   useEffect(() => { recordRecentlyViewed(hall.id); }, [hall.id]);
 
-  const advanceAmount = hall.price_per_day * 0.25;
+  // The live advance percentage, not a hardcoded 0.25. Checkout charges the
+  // configurable rate, so a page that always said "25%" would quote a figure
+  // the customer is not actually asked for the moment an admin changes it.
+  const advancePct    = advancePercent ?? DEFAULT_ADVANCE_PERCENT;
+  const advanceAmount = advanceFromTotal(hall.price_per_day, advancePct);
+  const balancePct    = Math.round((100 - advancePct) * 100) / 100;
   const mapsHref = hall.latitude && hall.longitude
     ? `https://maps.google.com/?q=${hall.latitude},${hall.longitude}`
     : `https://maps.google.com/?q=${encodeURIComponent(`${hall.address ?? hall.name}, ${hall.city}`)}`;
@@ -220,7 +228,7 @@ export function HallDetailView({ hall, similar, isPreview, sidebarAd }: Props) {
                 Icon={Sparkles}
                 label="Advance"
                 value={formatPrice(advanceAmount)}
-                sub="25% upfront"
+                sub={`${advancePct}% upfront`}
               />
             </div>
 
@@ -327,7 +335,7 @@ export function HallDetailView({ hall, similar, isPreview, sidebarAd }: Props) {
                 <div className="border-t border-border px-4 py-3 bg-maroon-50">
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-sm font-semibold text-maroon-800">Advance (25%)</p>
+                      <p className="text-sm font-semibold text-maroon-800">Advance ({advancePct}%)</p>
                       <p className="text-[11px] text-charcoal-500">Pay now to confirm booking</p>
                     </div>
                     <p className="text-base font-bold text-maroon-700">{formatPrice(advanceAmount)}</p>
@@ -336,7 +344,7 @@ export function HallDetailView({ hall, similar, isPreview, sidebarAd }: Props) {
                 <div className="px-4 py-2.5 flex items-start gap-2 border-t border-border">
                   <Info className="h-3.5 w-3.5 shrink-0 mt-0.5 text-charcoal-400" />
                   <p className="text-[11px] text-charcoal-500">
-                    Remaining 75% is paid directly to the venue on the event day. A flat ₹200
+                    Remaining {balancePct}% is paid directly to the venue on the event day. A flat ₹200
                     platform fee is added at checkout.
                   </p>
                 </div>
@@ -567,7 +575,7 @@ export function HallDetailView({ hall, similar, isPreview, sidebarAd }: Props) {
                 )}
                 <div className="border-t border-border pt-2">
                   <PriceLineDesktop
-                    label="Advance (25%)"
+                    label={`Advance (${advancePct}%)`}
                     price={advanceAmount}
                     bold
                   />

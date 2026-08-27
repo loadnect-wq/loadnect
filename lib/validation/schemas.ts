@@ -314,7 +314,20 @@ export const addHallImageSchema = z.object({
 // ── Availability ─────────────────────────────────────────────────────────────
 
 const ALLOWED_SLOTS = ["morning", "evening", "full_day"] as const;
-const ALLOWED_AVAIL_STATUSES = ["available", "blocked", "booked"] as const;
+
+// The FULL availability_status enum. The calendar posts back every row it
+// loaded, including the booked statuses the payment flow writes
+// (full_day_booked / morning_booked / evening_booked), so a narrower list here
+// rejected the whole batch — meaning an owner could never save their calendar
+// again once the hall had taken a single booking.
+const ALLOWED_AVAIL_STATUSES = [
+  "available", "blocked", "booked", "partially_booked",
+  "morning_booked", "evening_booked", "full_day_booked", "maintenance",
+] as const;
+
+/** The only statuses an OWNER may actually set. Everything else is written by
+ *  the booking flow and is not theirs to change — see setAvailability. */
+export const OWNER_EDITABLE_AVAIL_STATUSES = ["available", "blocked", "maintenance"] as const;
 
 export const availabilityEntrySchema = z.object({
   date:   dateStringSchema,

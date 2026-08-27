@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "@/hooks/use-toast";
 import { APP_NAME, CONTACT, SUPPORT_HOURS } from "@/lib/constants";
+import { submitContactMessage } from "./actions";
 
 const CONTACT_ITEMS = [
   { Icon: Mail,    label: "Email",   value: CONTACT.email,   href: `mailto:${CONTACT.email}` },
@@ -19,18 +20,28 @@ export default function ContactPage() {
   const [email,   setEmail]   = useState("");
   const [subject, setSubject] = useState("");
   const [message, setMessage] = useState("");
+  // Honeypot: invisible to humans, filled by bots. Submissions with it set are
+  // silently dropped server-side.
+  const [company, setCompany] = useState("");
   const [loading, setLoading] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
-    await new Promise((r) => setTimeout(r, 800));
-    toast({
-      title: "Message sent!",
-      description: "We'll get back to you within 24 hours.",
-      variant: "success",
-    });
-    setName(""); setEmail(""); setSubject(""); setMessage("");
+    // The real send. This form previously faked success with a timer while
+    // discarding the message — never reintroduce that: a support form that
+    // lies is worse than no form.
+    const result = await submitContactMessage({ name, email, subject, message, company });
+    if ("error" in result) {
+      toast({ title: "Could not send your message", description: result.error, variant: "destructive" });
+    } else {
+      toast({
+        title: "Message sent!",
+        description: "We'll get back to you within 24 hours.",
+        variant: "success",
+      });
+      setName(""); setEmail(""); setSubject(""); setMessage(""); setCompany("");
+    }
     setLoading(false);
   }
 
@@ -92,6 +103,11 @@ export default function ContactPage() {
             <div className="rounded-2xl bg-white p-8 shadow-card">
               <h2 className="font-serif text-2xl font-semibold text-charcoal-900">Send a Message</h2>
               <form onSubmit={handleSubmit} className="mt-6 space-y-5">
+                <div className="absolute -left-[9999px] top-auto" aria-hidden="true">
+                  <label htmlFor="company">Company</label>
+                  <input id="company" type="text" tabIndex={-1} autoComplete="off"
+                    value={company} onChange={(e) => setCompany(e.target.value)} />
+                </div>
                 <div className="grid gap-5 sm:grid-cols-2">
                   <div className="space-y-1.5">
                     <Label htmlFor="name">Your name</Label>

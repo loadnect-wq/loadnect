@@ -26,8 +26,9 @@ export default function GlobalError({ error, reset }: Props) {
         Something went wrong
       </h1>
       <p className="mt-3 max-w-md text-sm leading-relaxed text-charcoal-500">
-        We hit an unexpected error. The team has been notified. You can try the
-        page again, or head back to the home page.
+        We hit an unexpected error. You can try the page again, or head back to
+        the home page — and if it keeps happening, send us the reference below
+        and we will look into it.
       </p>
       {error.digest && (
         <p className="mt-2 text-[11px] text-charcoal-400">

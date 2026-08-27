@@ -23,6 +23,7 @@
 import "server-only";
 
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
+import { releaseAvailabilityForBooking } from "@/lib/availability-release";
 import { isoDateRange } from "@/lib/dates";
 import {
   createCashfreeOrder,
@@ -90,6 +91,22 @@ function buildOrderId(bookingId: string): string {
 }
 
 // ── Create payment + Cashfree order for a pending booking ──────────────────────
+
+/**
+ * The order_expiry_time to hand Cashfree for a booking hold.
+ *
+ * Cashfree rejects an expiry that is too near (it requires roughly 5+ minutes)
+ * or too far out, so this clamps: never less than 5 minutes from now, never
+ * more than the booking's own expiry, and falls back to 15 minutes when the
+ * booking has no recorded deadline.
+ */
+function gatewayExpiryFor(bookingExpiresAt: string | null | undefined): string {
+  const MIN_MS = 5 * 60 * 1000;
+  const now = Date.now();
+  const parsed = bookingExpiresAt ? Date.parse(bookingExpiresAt) : NaN;
+  const target = Number.isFinite(parsed) ? parsed : now + 15 * 60 * 1000;
+  return new Date(Math.max(target, now + MIN_MS)).toISOString();
+}
 
 export async function startPaymentForBooking(
   input: StartPaymentInput,
@@ -180,6 +197,10 @@ export async function startPaymentForBooking(
     customerPhone: phone,
     returnUrl,
     notifyUrl,
+    // Die with the hold. Cashfree requires the expiry to be at least a few
+    // minutes out, so a booking already near its deadline gets a short floor
+    // rather than an order the gateway would reject outright.
+    expiresAt:     gatewayExpiryFor(booking.expires_at),
     note:          `Advance + platform fee for booking ${input.bookingId}`,
   });
 
@@ -373,19 +394,30 @@ export async function verifyAndApplyPayment(orderId: string): Promise<ApplyPayme
           .update({ status: "cancelled", cancel_reason: "Slot already booked — refund due" })
           .eq("id", payment.booking_id)
           .eq("status", "pending_payment");
+        await releaseAvailabilityForBooking(payment.booking_id);
         // PLATFORM-CAUSED failure: the customer received nothing, so the FULL
         // captured amount — platform fee included — is refunded. The fee's
         // non-refundability applies to customer cancellations, not to our own
         // slot race (see calculateRefund's refundPlatformFee flag).
+        // status stays payment_success and refund_state becomes 'owed'.
+        // Writing status='refunded' here (as this did) put the row OUTSIDE
+        // both the admin refund queue and issueRefund — which require
+        // payment_success + refund_state in (owed, failed) — so the customer
+        // was told "refund initiated" for money the product had no way to
+        // send. 'refunded' is set by issueRefund once Cashfree confirms.
         const refundUpdate: Record<string, unknown> = {
-          status: "refunded",
-          payment_message: "Slot conflict — full refund (incl. platform fee) initiated",
+          refund_state: "owed",
+          payment_message: "Slot conflict — full refund (incl. platform fee) owed",
           refund_amount: Number(payment.amount),
         };
         let { error: refErr } = await db.from("payments").update(refundUpdate).eq("id", payment.id);
         if (refErr && (refErr.code === "42703" || refErr.code === "PGRST204")) {
-          const { refund_amount: _r, ...legacyUpdate } = refundUpdate;
-          void _r;
+          // Pre-0033 database: no refund columns. Fall back to the legacy
+          // marker so the row is still visibly not-a-clean-success.
+          const legacyUpdate = {
+            status: "refunded",
+            payment_message: refundUpdate.payment_message,
+          };
           ({ error: refErr } = await db.from("payments").update(legacyUpdate).eq("id", payment.id));
         }
         if (refErr) logSideEffectError("slotConflictRefund", refErr);
@@ -408,35 +440,58 @@ export async function verifyAndApplyPayment(orderId: string): Promise<ApplyPayme
     // Surface it instead so the admin can refund; never run the paid side
     // effects against a booking we did not actually transition.
     if ((movedRows ?? 0) === 0) {
-      // PLATFORM-CAUSED again: the customer paid for a booking we could not
-      // honour, so the FULL captured amount (platform fee included) goes back.
-      // Record the figure — "our team will arrange a refund" must be backed by
-      // a number on the row, and everyone involved has to be told.
-      const staleUpdate: Record<string, unknown> = {
-        status: "refunded",
-        payment_message: "Paid, but the booking was no longer awaiting payment — full refund (incl. platform fee) required",
-        refund_amount: Number(payment.amount),
-      };
-      let { error: staleErr } = await db.from("payments").update(staleUpdate).eq("id", payment.id);
-      if (staleErr && (staleErr.code === "42703" || staleErr.code === "PGRST204")) {
-        const { refund_amount: _r, ...legacyStale } = staleUpdate;
-        void _r;
-        ({ error: staleErr } = await db.from("payments").update(legacyStale).eq("id", payment.id));
+      // ZERO ROWS HAS TWO VERY DIFFERENT CAUSES — and treating them alike
+      // destroyed good payments. This function runs from BOTH the Cashfree
+      // webhook and the customer's return page, routinely within the same
+      // second. Whichever loses that race sees 0 rows even though the booking
+      // was just confirmed by the winner. The old code declared it orphaned,
+      // stamped the row 'refunded' with the full capture and messaged the
+      // customer about a refund — on a live, confirmed booking. Worse, the
+      // write carried no status guard, so it overwrote the winner's
+      // payment_success and left payOwnerOnAcceptance (which requires that
+      // status) unable to ever pay the owner.
+      //
+      // So re-read the booking and let its ACTUAL state decide.
+      const { data: fresh } = await db
+        .from("bookings").select("status").eq("id", payment.booking_id).maybeSingle();
+      const freshStatus = String(fresh?.status ?? "");
+
+      // (a) A concurrent verify already moved it. This is an idempotent
+      //     repeat, not a failure: the side effects below are themselves
+      //     idempotent, so fall through and let them no-op.
+      if (["booking_requested", "owner_confirmed", "completed"].includes(freshStatus)) {
+        // deliberately NOT returning — continue to the (idempotent) paid path
+      } else {
+        // (b) Genuinely orphaned: cancelled or expired before payment landed.
+        //     The customer paid for something we cannot honour, so the FULL
+        //     capture (platform fee included) is owed back. Recorded as
+        //     refund_state='owed' with status left at payment_success, which
+        //     is what puts it in the admin refund queue at all.
+        const staleUpdate: Record<string, unknown> = {
+          refund_state: "owed",
+          payment_message: "Paid, but the booking was no longer awaiting payment — full refund (incl. platform fee) owed",
+          refund_amount: Number(payment.amount),
+        };
+        let { error: staleErr } = await db.from("payments").update(staleUpdate).eq("id", payment.id);
+        if (staleErr && (staleErr.code === "42703" || staleErr.code === "PGRST204")) {
+          const legacyStale = { status: "refunded", payment_message: staleUpdate.payment_message };
+          ({ error: staleErr } = await db.from("payments").update(legacyStale).eq("id", payment.id));
+        }
+        if (staleErr) logSideEffectError("bookingNotPendingRefund", staleErr);
+        logSideEffectError("bookingNotPending", {
+          code: "booking_not_pending",
+          message: `order ${orderId} paid but booking ${payment.booking_id} was ${freshStatus || "missing"}`,
+        });
+        await notifyBookingEvent("refund.initiated", payment.booking_id, {
+          amount: Number(payment.amount),
+          keySuffix: orderId,
+        });
+        return {
+          state:     "slot_conflict",
+          bookingId: payment.booking_id,
+          message:   "Payment succeeded but this booking was no longer awaiting payment. Our team will arrange a refund.",
+        };
       }
-      if (staleErr) logSideEffectError("bookingNotPendingRefund", staleErr);
-      logSideEffectError("bookingNotPending", {
-        code: "booking_not_pending",
-        message: `order ${orderId} paid but booking ${payment.booking_id} was not pending_payment`,
-      });
-      await notifyBookingEvent("refund.initiated", payment.booking_id, {
-        amount: Number(payment.amount),
-        keySuffix: orderId,
-      });
-      return {
-        state:     "slot_conflict",
-        bookingId: payment.booking_id,
-        message:   "Payment succeeded but this booking was no longer awaiting payment. Our team will arrange a refund.",
-      };
     }
 
     // c) Block availability + record commission (both idempotent).

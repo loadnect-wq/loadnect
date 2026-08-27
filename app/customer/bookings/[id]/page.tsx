@@ -284,10 +284,19 @@ export default async function BookingDetailPage({ params }: Props) {
                 value={`${formatPrice(booking.payment.advance_amount)} advance + ${formatPrice(booking.payment.platform_fee_amount)} platform fee`}
               />
             )}
+            {/* "Refunded" only when the money has ACTUALLY been sent.
+                refund_amount is written the moment a cancellation records what
+                is OWED, so labelling it "Refunded" told customers their money
+                was already back while it was still sitting in Hallnect's
+                account — the complaint that writes itself. */}
             {booking.payment.refund_amount != null && booking.payment.refund_amount > 0 && (
               <BookingRow
                 icon={<CreditCard className="h-4 w-4" />}
-                label="Refunded"
+                label={
+                  booking.payment.refund_state === "completed" ? "Refunded"
+                    : booking.payment.refund_state === "processing" ? "Refund in progress"
+                    : "Refund due"
+                }
                 value={formatPrice(booking.payment.refund_amount)}
               />
             )}

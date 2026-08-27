@@ -244,19 +244,26 @@ export async function rejectOwner(profileId: string): Promise<ActionResult> {
 }
 
 export async function verifyOwnerRow(ownerRowId: string): Promise<ActionResult> {
-  const { supabase, user } = await getAuthUser();
-  if (!user) return { error: "Not authenticated" };
+  // Admin-gated and count-checked, like every other privileged write here.
+  // With only getAuthUser() any signed-in user could invoke this directly;
+  // RLS filtered their update to zero rows WITHOUT raising, so they got
+  // {success:true} for a verification that never happened — and an audit entry
+  // was attempted for it.
+  const actor = await requireAdminActor();
+  if (!actor.ok) return { error: actor.error };
+  const user = actor.user;
   const idErr = requireUuid(ownerRowId, "owner row id");
   if (idErr) return { error: idErr };
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const db = supabase as any;
+  const db = actor.supabase as any;
 
-  const { error } = await db
+  const { error, count } = await db
     .from("hall_owners")
-    .update({ is_verified: true, verified_at: new Date().toISOString(), verified_by: user.id })
+    .update({ is_verified: true, verified_at: new Date().toISOString(), verified_by: user.id }, { count: "exact" })
     .eq("id", ownerRowId);
 
   if (error) return { error: sanitizeError(error, "admin") };
+  if ((count ?? 0) === 0) return { error: "Owner not found, or you do not have permission to verify them." };
 
   await recordAdminAction({
     action:     "owner.verify",
@@ -326,12 +333,19 @@ export async function toggleUserActive(
 // ── Review moderation ────────────────────────────────────────────────────────
 
 export async function toggleReviewVisible(reviewId: string, visible: boolean): Promise<ActionResult> {
-  const { supabase, user } = await getAuthUser();
-  if (!user) return { error: "Not authenticated" };
+  // requireAdminActor, NOT getAuthUser. getAuthUser proves only that SOMEONE is
+  // signed in, and reviews_update RLS is `customer_id = auth.uid() or
+  // is_admin()` with no column restriction — so an author could call this
+  // server action directly (they are directly invocable) and flip is_visible
+  // back to true on their own moderated review. RLS matched their row, the
+  // count was 1, and the action reported success: moderation undone, and the
+  // audit insert silently dropped because they are not an admin.
+  const actor = await requireAdminActor();
+  if (!actor.ok) return { error: actor.error };
   const idErr = requireUuid(reviewId, "review id");
   if (idErr) return { error: idErr };
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const db = supabase as any;
+  const db = actor.supabase as any;
 
   const { error, count } = await db
     .from("reviews")
@@ -355,12 +369,13 @@ export async function toggleReviewVisible(reviewId: string, visible: boolean): P
 }
 
 export async function deleteReview(reviewId: string): Promise<ActionResult> {
-  const { supabase, user } = await getAuthUser();
-  if (!user) return { error: "Not authenticated" };
+  // Admin-only, for the same reason as toggleReviewVisible above.
+  const actor = await requireAdminActor();
+  if (!actor.ok) return { error: actor.error };
   const idErr = requireUuid(reviewId, "review id");
   if (idErr) return { error: idErr };
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const db = supabase as any;
+  const db = actor.supabase as any;
 
   // Snapshot first: once the row is gone the audit entry is the only record
   // that it ever existed, so capture the identifying details up front.
@@ -507,8 +522,8 @@ export async function updateAdvertisement(
   adId: string,
   input: AdInput,
 ): Promise<ActionResult> {
-  const { supabase, user } = await getAuthUser();
-  if (!user) return { error: "Not authenticated" };
+  const actor = await requireAdminActor();
+  if (!actor.ok) return { error: actor.error };
   const idErr = requireUuid(adId, "ad id");
   if (idErr) return { error: idErr };
 
@@ -516,13 +531,14 @@ export async function updateAdvertisement(
   if ("error" in norm) return { error: norm.error };
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const db = supabase as any;
-  const { error } = await db
+  const db = actor.supabase as any;
+  const { error, count } = await db
     .from("advertisements")
-    .update(norm.row)
+    .update(norm.row, { count: "exact" })
     .eq("id", adId);
 
   if (error) return { error: sanitizeError(error, "admin") };
+  if ((count ?? 0) === 0) return { error: "Advertisement not found, or you do not have permission to edit it." };
   revalidatePath("/admin/advertisements");
   revalidatePath("/");
   return { success: true };
@@ -928,12 +944,33 @@ export async function updatePlatformPaymentSettings(input: {
 
 // ── Support tickets ───────────────────────────────────────────────────────────
 
+/** Marks a public contact-form message as read. Count-checked: RLS filtering a
+ *  non-admin to zero rows must not report success. */
+export async function markContactMessageRead(messageId: string): Promise<ActionResult> {
+  const actor = await requireAdminActor();
+  if (!actor.ok) return { error: actor.error };
+  if (!parseSafe(uuidSchema, messageId).ok) return { error: "Invalid message id." };
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const db = actor.supabase as any;
+  const { error, count } = await db
+    .from("contact_messages")
+    .update({ is_read: true }, { count: "exact" })
+    .eq("id", messageId);
+  if (error) return { error: sanitizeError(error, "admin") };
+  if ((count ?? 0) === 0) return { error: "Message not found." };
+
+  revalidatePath("/admin/support-tickets");
+  return { success: true };
+}
+
 export async function respondToTicket(
   ticketId: string,
   data: { status: string; adminResponse?: string; internalNotes?: string },
 ): Promise<ActionResult> {
-  const { supabase, user } = await getAuthUser();
-  if (!user) return { error: "Not authenticated" };
+  const actor = await requireAdminActor();
+  if (!actor.ok) return { error: actor.error };
+  const user = actor.user;
   const idErr = requireUuid(ticketId, "ticket id");
   if (idErr) return { error: idErr };
 
@@ -942,7 +979,7 @@ export async function respondToTicket(
   const v = parsed.data;
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const db = supabase as any;
+  const db = actor.supabase as any;
 
   const update: Record<string, unknown> = {
     status: v.status,
@@ -951,16 +988,21 @@ export async function respondToTicket(
   if (v.adminResponse)              update.admin_response = v.adminResponse;
   if (data.internalNotes !== undefined) update.internal_notes = v.internalNotes || null;
 
-  let { error } = await db.from("support_tickets").update(update).eq("id", ticketId);
+  let { error, count } = await db
+    .from("support_tickets").update(update, { count: "exact" }).eq("id", ticketId);
 
   // 42703 = internal_notes column not yet provisioned (pre-migration 0016) — retry without it.
   if (error?.code === "42703" && "internal_notes" in update) {
     const { internal_notes: _drop, ...rest } = update;
     void _drop;
-    ({ error } = await db.from("support_tickets").update(rest).eq("id", ticketId));
+    ({ error, count } = await db
+      .from("support_tickets").update(rest, { count: "exact" }).eq("id", ticketId));
   }
 
   if (error) return { error: sanitizeError(error, "admin") };
+  // A reply that reached no row must not report success — the customer would
+  // never see it and the admin would believe it was sent.
+  if ((count ?? 0) === 0) return { error: "Ticket not found, or you do not have permission to respond to it." };
   revalidatePath("/admin/support-tickets");
   revalidatePath("/admin/dashboard");
   return { success: true };
@@ -1196,7 +1238,7 @@ export async function issueRefund(bookingId: string): Promise<ActionResult> {
 
   const { data: payment } = await db
     .from("payments")
-    .select("id, cashfree_order_id, refund_amount, refund_state, cashfree_refund_id, status")
+    .select("id, cashfree_order_id, refund_amount, refund_state, cashfree_refund_id, status, split_status, split_owner_amount")
     .eq("booking_id", bookingId)
     .eq("status", "payment_success")
     .order("created_at", { ascending: false })
@@ -1205,6 +1247,21 @@ export async function issueRefund(bookingId: string): Promise<ActionResult> {
 
   if (!payment) return { error: "No successful payment found for this booking." };
   if (payment.refund_state === "completed") return { error: "This refund has already been paid." };
+
+  // THE OWNER'S SHARE MAY ALREADY BE GONE. A settled Easy Split cannot be
+  // clawed back, so refunding the customer in full on top of it pays out the
+  // same capture twice: on a Rs1,00,000 booking that is Rs22,500 to the owner
+  // plus Rs25,000 to the customer against a Rs25,200 capture. Refuse and make
+  // the recovery a deliberate, human decision rather than a silent loss.
+  if (payment.split_status === "done") {
+    const owner = Number(payment.split_owner_amount);
+    return {
+      error:
+        `The owner has already been paid ${Number.isFinite(owner) ? `Rs${owner.toLocaleString("en-IN")}` : "their share"} ` +
+        `for this booking, and a settled Cashfree split cannot be reversed. ` +
+        `Recover that amount from the owner's next settlement first, then refund from the Cashfree dashboard.`,
+    };
+  }
   if (payment.refund_state === "processing") {
     return { error: "A refund is already in progress for this booking." };
   }

@@ -6,7 +6,7 @@ import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import { checkRangeAvailability, type BookingSlot } from "@/lib/availability";
 import { todayInBusinessTz, daysBetweenInclusive } from "@/lib/dates";
 import { startPaymentForBooking } from "@/lib/payments";
-import { isOnlinePaymentEnabled } from "@/lib/platform-settings";
+import { isOnlinePaymentEnabled, isManualBookingAllowed } from "@/lib/platform-settings";
 import { getAdvancePercent, getCommissionPercent } from "@/lib/platform-settings";
 import { calculateBookingPayment, advanceFromTotal } from "@/lib/booking-payment";
 import { bookingSchema, paymentSessionSchema, uuidSchema, parseSafe } from "@/lib/validation/schemas";
@@ -331,7 +331,11 @@ export async function submitManualBookingRequest(
   // was configured ANY signed-in customer could skip checkout entirely and
   // confirm a real booking for free — blocking the hall's calendar and
   // creating an owner commission against money that was never collected.
-  if (await isOnlinePaymentEnabled()) {
+  // Positive evidence required — see isManualBookingAllowed. Asking
+  // isOnlinePaymentEnabled() here read the answer backwards: that helper
+  // fails CLOSED (refuse to charge when unsure), which made "unsure" mean
+  // "free booking allowed" at this gate.
+  if (!(await isManualBookingAllowed())) {
     return { error: "This booking must be paid for online. Please complete the payment to confirm it." };
   }
 

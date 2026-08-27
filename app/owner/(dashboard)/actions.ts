@@ -11,6 +11,7 @@ import {
   hallSchema,
   addHallImageSchema,
   availabilityBatchSchema,
+  OWNER_EDITABLE_AVAIL_STATUSES,
   uuidSchema,
   parseSafe,
   normalizeAmenityName,
@@ -24,6 +25,7 @@ import { isCashfreeConfigured } from "@/lib/cashfree";
 import { startCommissionPayment, verifyAndApplyCommissionPayment } from "@/lib/commission-payments";
 import { payOwnerOnAcceptance } from "@/lib/owner-payout";
 import { recordBookingRefund } from "@/lib/refunds";
+import { releaseAvailabilityForBooking } from "@/lib/availability-release";
 import { isEasySplitEnabled, upsertVendor, getVendorStatus } from "@/lib/easy-split";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 
@@ -369,11 +371,25 @@ export async function updateHall(hallId: string, data: {
   if (error) return { error: sanitizeError(error, "owner") };
 
   // Sync amenities: delete existing, re-insert selected
-  await db.from("hall_amenities").delete().eq("hall_id", hallId);
+  // DELETE-THEN-INSERT, with both halves checked. Neither error was inspected
+  // before: if the re-insert failed the owner's entire amenity list was wiped
+  // and the action still reported success, so the venue silently lost every
+  // feature couples filter on. There is no transaction available through
+  // PostgREST, so the recovery is to report the loss loudly rather than
+  // pretend the edit worked.
+  const { error: delErr } = await db.from("hall_amenities").delete().eq("hall_id", hallId);
+  if (delErr) return { error: sanitizeError(delErr, "owner") };
+
   if (v.amenityIds.length > 0) {
-    await db.from("hall_amenities").insert(
+    const { error: insErr } = await db.from("hall_amenities").insert(
       v.amenityIds.map((amenityId) => ({ hall_id: hallId, amenity_id: amenityId })),
     );
+    if (insErr) {
+      console.error(`[updateHall] amenities lost for hall ${hallId}:`, insErr.message);
+      return {
+        error: "Your details were saved, but the amenities could not be updated — please set them again.",
+      };
+    }
   }
 
   const customParsed = parseSafe(customAmenityListSchema, data.customAmenities ?? []);
@@ -673,12 +689,47 @@ export async function setAvailability(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = supabase as any;
 
-  const rows = v.entries.map((e) => ({
-    hall_id: v.hallId,
-    date:    e.date,
-    slot:    e.slot,
-    status:  e.status,
-  }));
+  // BOOKING-OWNED ROWS ARE NOT THE OWNER'S TO CHANGE.
+  //
+  // The calendar posts back every row it loaded, so the batch legitimately
+  // contains statuses the payment flow wrote. Upserting them verbatim was two
+  // problems in one: a client could send status='available' for a date held by
+  // a CONFIRMED booking and free it for someone else to book, and an owner
+  // could silently overwrite the record of their own bookings.
+  //
+  // So: read what the booking flow currently owns, and drop those cells from
+  // the write. What remains is filtered to the owner-editable statuses.
+  const OWNER_EDITABLE = new Set<string>(OWNER_EDITABLE_AVAIL_STATUSES);
+  const BOOKING_OWNED = new Set([
+    "booked", "partially_booked", "morning_booked", "evening_booked", "full_day_booked",
+  ]);
+
+  const { data: existing } = await db
+    .from("availability")
+    .select("date, slot, status")
+    .eq("hall_id", v.hallId)
+    .in("date", Array.from(new Set(v.entries.map((e) => e.date))));
+
+  const lockedCells = new Set(
+    ((existing ?? []) as { date: string; slot: string; status: string }[])
+      .filter((r) => BOOKING_OWNED.has(String(r.status)))
+      .map((r) => `${r.date}::${r.slot}`),
+  );
+
+  const rows = v.entries
+    .filter((e) => !lockedCells.has(`${e.date}::${e.slot}`))
+    .filter((e) => OWNER_EDITABLE.has(e.status))
+    .map((e) => ({
+      hall_id: v.hallId,
+      date:    e.date,
+      slot:    e.slot,
+      status:  e.status,
+    }));
+
+  if (rows.length === 0) {
+    revalidatePath(`/owner/halls/${hallId}/availability`);
+    return { success: true };
+  }
 
   const { error } = await db
     .from("availability")
@@ -752,6 +803,9 @@ export async function rejectBooking(bookingId: string, reason?: string): Promise
   if (error) return { error: sanitizeError(error, "owner") };
   if (count === 0) return { error: "This booking cannot be declined (it may have changed state)." };
 
+  // Declining frees the dates for someone else.
+  await releaseAvailabilityForBooking(bookingId);
+
   await notifyBookingEvent("booking.rejected", bookingId, { reason: cleanReason || null });
 
   // The venue declined, so the customer gets EVERYTHING back — advance and the
@@ -774,12 +828,21 @@ export async function markBookingCompleted(bookingId: string): Promise<ActionRes
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = supabase as any;
 
-  const { error } = await db
+  // Scoped to the legal source state AND count-checked. RLS filters a booking
+  // that is not this owner's to zero rows without raising, so the unguarded
+  // version reported success for a booking the caller never touched — and the
+  // .eq on status stops a cancelled or still-pending booking being marked
+  // completed, which would make it look payable.
+  const { error, count } = await db
     .from("bookings")
-    .update({ status: "completed" })
-    .eq("id", bookingId);
+    .update({ status: "completed" }, { count: "exact" })
+    .eq("id", bookingId)
+    .eq("status", "owner_confirmed");
 
   if (error) return { error: sanitizeError(error, "owner") };
+  if ((count ?? 0) === 0) {
+    return { error: "This booking cannot be marked completed (it may not be confirmed, or not be yours)." };
+  }
   revalidatePath("/owner/bookings");
   revalidatePath("/owner/revenue");
   return { success: true };

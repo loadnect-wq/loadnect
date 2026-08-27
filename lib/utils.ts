@@ -51,3 +51,26 @@ export function slugify(text: string): string {
     .replace(/[\s_-]+/g, "-")
     .replace(/^-+|-+$/g, "");
 }
+
+/**
+ * Returns a URL only if it is a plain http(s) link, otherwise null.
+ *
+ * For any URL that came from a USER and ends up in an href. `javascript:`,
+ * `data:` and `vbscript:` hrefs execute on click, so a stored value like
+ * `javascript:fetch('/admin/...')` becomes stored XSS the moment a privileged
+ * user clicks it. Callers render nothing when this returns null.
+ *
+ * This is the render-side half of a two-layer defence; the authoritative half
+ * is a DB CHECK constraint, because RLS insert policies do not constrain
+ * columns and PostgREST is directly reachable.
+ */
+export function safeHttpUrl(raw: string | null | undefined): string | null {
+  const v = (raw ?? "").trim();
+  if (!v) return null;
+  try {
+    const u = new URL(v);
+    return u.protocol === "http:" || u.protocol === "https:" ? u.toString() : null;
+  } catch {
+    return null;
+  }
+}

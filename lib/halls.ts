@@ -33,6 +33,10 @@ export type HallsFilters = {
   category?:  string; // premium | budget | wedding | banquet | party
   date?:      string; // YYYY-MM-DD — exclude fully-blocked halls
   sort?:      string; // recommended | price-asc | price-desc | rating | capacity
+  /** Restrict to these hall ids (validated UUIDs). Used by the saved-halls
+   *  view, which stores ids client-side. RLS + the status filter still apply,
+   *  so an id for a non-approved hall simply returns nothing. */
+  ids?:       string[];
 };
 
 // Availability statuses that make a hall fully unavailable for the day
@@ -189,6 +193,9 @@ export async function fetchHalls(filters: HallsFilters): Promise<HallListing[]> 
     }
     if (filters.category === "budget") q = q.lte("price_per_day", 100000);
 
+    if (filters.ids && filters.ids.length > 0) {
+      q = q.in("id", filters.ids);
+    }
     if (unavailableIds.length > 0) {
       q = q.not("id", "in", `(${unavailableIds.join(",")})`);
     }

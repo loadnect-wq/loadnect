@@ -56,7 +56,14 @@ export default async function OwnerRevenuePage() {
   const confirmedCount     = bookings.filter((b) => b.status === "owner_confirmed").length;
 
   // Commission summary for the owner's own halls only.
-  const totalCommissionPaid = commissions.reduce((s, c) => s + c.commission_amount, 0);
+  // Only the SETTLED buckets count towards "paid" — this summed every
+  // commission row regardless of status, so an owner with unpaid or overdue
+  // commissions was shown them as already paid, and would reasonably conclude
+  // they owed nothing. Mirrors PAID_STATUSES on the commissions page.
+  const PAID_STATUSES = ["paid", "paid_out", "collected"];
+  const totalCommissionPaid = commissions
+    .filter((c) => PAID_STATUSES.includes(c.status))
+    .reduce((s, c) => s + c.commission_amount, 0);
 
   return (
     <div className="min-h-screen bg-ivory-100">

@@ -8,7 +8,9 @@ import { cn } from "@/lib/utils";
 const TABS = [
   { href: "/",         label: "Home",     Icon: Home,          match: (p: string) => p === "/" },
   { href: "/halls",    label: "Search",   Icon: Search,        match: (p: string) => p.startsWith("/halls") },
-  { href: "/bookings", label: "Bookings", Icon: CalendarCheck, match: (p: string) => p.startsWith("/bookings") },
+  // Points straight at the real list. /bookings still redirects here for any
+  // bookmarked or already-shared link.
+  { href: "/customer/bookings", label: "Bookings", Icon: CalendarCheck, match: (p: string) => p.startsWith("/bookings") || p.startsWith("/customer/bookings") },
   { href: "/saved",    label: "Saved",    Icon: Heart,         match: (p: string) => p.startsWith("/saved") },
   { href: "/profile",  label: "Profile",  Icon: User,          match: (p: string) => p.startsWith("/profile") },
 ] as const;

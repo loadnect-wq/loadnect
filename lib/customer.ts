@@ -19,6 +19,9 @@ export type CustomerPayment = {
   advance_amount:      number | null;
   platform_fee_amount: number | null;
   refund_amount:       number | null;
+  /** none | owed | processing | completed | failed — decides whether the
+   *  customer may truthfully be told the money has been SENT. */
+  refund_state:        string | null;
 };
 
 export type CustomerBooking = {
@@ -160,6 +163,7 @@ function mapBooking(row: any): CustomerBooking {
       advance_amount:      payment.advance_amount      == null ? null : Number(payment.advance_amount),
       platform_fee_amount: payment.platform_fee_amount == null ? null : Number(payment.platform_fee_amount),
       refund_amount:       payment.refund_amount       == null ? null : Number(payment.refund_amount),
+      refund_state:        payment.refund_state ?? null,
     } : null,
   };
 }

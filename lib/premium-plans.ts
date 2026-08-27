@@ -27,23 +27,35 @@ export type PremiumPlan = {
 export type PlanFeature = { label: string };
 
 // Code-driven feature lists per tier. Edited via deploy, not the admin UI.
+/**
+ * What each plan ACTUALLY delivers, and nothing else.
+ *
+ * "Basic analytics" / "Advanced analytics" and "Priority support" were listed
+ * here and sold at Rs4,999 and Rs9,999 a month. Neither exists: there is no
+ * owner analytics surface beyond /owner/revenue (which every owner has,
+ * gated by nothing), and no support routing by tier. Selling a venue owner a
+ * dashboard that does not exist is the fastest way to lose the few owners this
+ * marketplace has. Re-add each line when the feature ships, not before.
+ *
+ * Everything left is real and tier-gated: the badge renders from
+ * premium_tier, and both ranking claims come from fetchHalls's default sort
+ * (pro → premium → rest), which the homepage now uses too.
+ */
 export const PLAN_FEATURES: Record<PremiumTier, PlanFeature[]> = {
   free: [
-    { label: "Basic listing" },
+    { label: "Full hall listing with photos" },
+    { label: "Booking request management" },
     { label: "Normal search ranking" },
-    { label: "Limited visibility" },
   ],
   premium: [
-    { label: "Featured badge on hall card" },
+    { label: "Featured badge on your hall card" },
     { label: "Higher search ranking" },
     { label: "More visibility across categories" },
-    { label: "Basic analytics" },
   ],
   pro: [
+    { label: "Everything in Premium" },
     { label: "Homepage promotion" },
     { label: "Top placement in search" },
-    { label: "Advanced analytics" },
-    { label: "Priority support" },
   ],
 };
 

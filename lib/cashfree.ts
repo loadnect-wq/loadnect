@@ -91,6 +91,9 @@ export type CreateOrderParams = {
   customerPhone: string;
   returnUrl:     string;        // browser is redirected here after checkout
   notifyUrl?:    string;        // server webhook (notify_url)
+  /** ISO-8601 instant after which Cashfree must refuse payment. Set to the
+   *  booking's own hold expiry so the order cannot outlive the reservation. */
+  expiresAt?:    string;
   note?:         string;
 };
 
@@ -147,6 +150,11 @@ export async function createCashfreeOrder(
       return_url: params.returnUrl,
       ...(params.notifyUrl ? { notify_url: params.notifyUrl } : {}),
     },
+    // The order must die with the hold it is paying for. Without an expiry
+    // Cashfree kept accepting payment long after the 15-minute pending sweep
+    // cancelled the booking, so a customer whose UPI approval was slow paid
+    // for a booking that no longer existed — money captured against nothing.
+    ...(params.expiresAt ? { order_expiry_time: params.expiresAt } : {}),
     ...(params.note ? { order_note: params.note } : {}),
   };
 

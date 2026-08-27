@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { fetchHallBySlug, fetchSimilarHalls } from "@/lib/halls";
+import { getAdvancePercent } from "@/lib/platform-settings";
 import { HallDetailView } from "./_components/HallDetailView";
 import { AdSlot } from "@/components/ads/AdSlot";
 import { buildMetadata, noindexMetadata } from "@/lib/seo/metadata";
@@ -47,6 +48,7 @@ export default async function HallDetailPage({ params }: Props) {
   if (!hall) notFound();
 
   const similar = await fetchSimilarHalls(hall.id, hall.city);
+  const advancePercent = await getAdvancePercent();
 
   // isPreview is true only when an owner/admin fetched a non-approved hall.
   // Public users can never reach this point with a non-approved hall (RLS → 404).
@@ -91,6 +93,7 @@ export default async function HallDetailPage({ params }: Props) {
       )}
       <HallDetailView
       hall={hall}
+      advancePercent={advancePercent}
       similar={similar}
       isPreview={isPreview}
         sidebarAd={<AdSlot placement="hall_detail_sidebar" limit={1} variant="card" />}

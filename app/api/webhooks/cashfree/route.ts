@@ -98,8 +98,18 @@ export async function POST(request: Request) {
       ? await verifyAndApplyCommissionPayment(orderId)
       : await verifyAndApplyPayment(orderId);
     console.info(`[cashfree-webhook] order=${orderId} applied state=${result.state}`);
-    // Always 200 on a handled event — even "pending"/"failed" are successfully
-    // processed outcomes and should not trigger Cashfree retries.
+
+    // 'error' is NOT a handled outcome — it is verifyAndApplyPayment telling us
+    // it could not finish (booking row missing, order fetch failed, an
+    // unexpected update error). Answering 200 told Cashfree the event was
+    // processed and permanently cancelled its retries, so a transient blip
+    // during a real payment meant the booking was never confirmed and nobody
+    // ever found out. 5xx puts it back on Cashfree's retry schedule.
+    // 'pending' and 'failed' ARE terminal, handled outcomes and stay 200.
+    if (result.state === "error") {
+      console.error(`[cashfree-webhook] order=${orderId} not applied — asking Cashfree to retry`);
+      return NextResponse.json({ ok: false, state: result.state }, { status: 503 });
+    }
     return NextResponse.json({ ok: true, state: result.state });
   } catch (e) {
     console.error("[cashfree-webhook] apply failed:", e instanceof Error ? e.message : e);

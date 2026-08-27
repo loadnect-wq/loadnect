@@ -1,41 +1,47 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Heart } from "lucide-react";
 import { useSavedHalls } from "@/lib/hooks/useSavedHalls";
-import { MOCK_HALLS } from "@/lib/mock-data";
 import { type HallListing } from "@/lib/halls";
 import { HallCard } from "@/app/halls/_components/HallCard";
 import { EmptyState } from "@/components/ui/empty-state";
 import { buttonVariants } from "@/components/ui/Button";
+import { fetchSavedHalls } from "../actions";
 
-// Saved halls are stored as IDs in localStorage. Until the saved-list moves
-// to Supabase, we re-shape the mock data so it fits the HallCard contract.
-function toListing(m: typeof MOCK_HALLS[number]): HallListing {
-  return {
-    id:             m.id,
-    slug:           m.slug,
-    name:           m.name,
-    city:           m.city,
-    address:        null,
-    capacity_max:   m.capacity,
-    price_per_day:  m.pricePerDay,
-    is_premium:     m.isPremium,
-    premium_tier:   m.isPremium ? "premium" : null,
-    rating_average: m.rating,
-    rating_count:   m.reviewCount,
-    cover_url:      null,
-    amenities:      m.amenities,
-  };
-}
-
+// Saved hall ids live in localStorage (saving needs no account); the listings
+// themselves are fetched fresh from the server, so a saved hall that was since
+// suspended or delisted simply drops out instead of rendering stale data.
+// (This view previously mapped ids over MOCK_HALLS — an intentionally empty
+// array — so nothing a visitor saved could ever appear here.)
 export function SavedView() {
   const { ids } = useSavedHalls();
-  const halls = MOCK_HALLS.filter((h) => ids.includes(h.id)).map(toListing);
+  const [halls, setHalls] = useState<HallListing[] | null>(null); // null = loading
+  const [advancePercent, setAdvancePercent] = useState<number | undefined>(undefined);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (ids.length === 0) { setHalls([]); return; }
+    fetchSavedHalls(ids)
+      .then((r) => {
+        if (cancelled) return;
+        setHalls(r.halls);
+        setAdvancePercent(r.advancePercent);
+      })
+      .catch(() => { if (!cancelled) setHalls([]); });
+    return () => { cancelled = true; };
+  }, [ids]);
 
   return (
     <section className="container-app py-5 lg:max-w-7xl">
-      {halls.length === 0 ? (
+      {halls === null ? (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {Array.from({ length: Math.min(ids.length, 6) || 3 }).map((_, i) => (
+            <div key={i} className="h-72 animate-pulse rounded-2xl bg-charcoal-100" />
+          ))}
+        </div>
+      ) : halls.length === 0 ? (
         <EmptyState
           icon={<Heart className="h-8 w-8" />}
           title="No saved halls yet"
@@ -48,7 +54,9 @@ export function SavedView() {
         />
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {halls.map((h) => <HallCard key={h.id} hall={h} />)}
+          {halls.map((h) => (
+            <HallCard key={h.id} hall={h} advancePercent={advancePercent} />
+          ))}
         </div>
       )}
     </section>

@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { MessageSquare } from "lucide-react";
-import { fetchAllTickets } from "@/lib/admin";
+import { MessageSquare, Mail } from "lucide-react";
+import { fetchAllTickets, fetchContactMessages } from "@/lib/admin";
 import { Badge } from "@/components/ui/Badge";
 import { AdminPageHeader } from "../_components/AdminPageHeader";
 import { TicketReplyForm } from "./_components/TicketReplyForm";
+import { MarkContactReadButton } from "./_components/MarkContactReadButton";
 
 export const metadata: Metadata = { title: "Support Tickets — Admin" };
 
@@ -42,11 +43,52 @@ type Props = { searchParams: Promise<{ status?: string }> };
 export default async function AdminTicketsPage({ searchParams }: Props) {
   const { status } = await searchParams;
   const activeFilter = FILTERS.find((f) => f.key === status) ?? FILTERS[0];
-  const tickets = await fetchAllTickets(activeFilter.value);
+  const [tickets, contactMessages] = await Promise.all([
+    fetchAllTickets(activeFilter.value),
+    fetchContactMessages(),
+  ]);
+  const unreadContact = contactMessages.filter((m) => !m.is_read);
 
   return (
     <div>
       <AdminPageHeader title="Support Tickets" description="Help requests from users. Reply and update status to close out tickets." />
+
+      {/* Public contact-form messages. Shown here because the WhatsApp alert
+          for each one points at this page. Senders may be signed out, so these
+          cannot be tickets — replies go out by email/phone, by hand. */}
+      {contactMessages.length > 0 && (
+        <div className="px-4 pt-4 sm:px-6 lg:px-8">
+          <div className="rounded-2xl border border-border bg-white p-4">
+            <div className="flex items-center gap-2">
+              <Mail className="h-4 w-4 text-maroon-600" aria-hidden />
+              <h2 className="font-serif text-sm font-semibold text-charcoal-900">
+                Contact form messages
+              </h2>
+              {unreadContact.length > 0 && (
+                <span className="rounded-full bg-maroon-100 px-2 py-0.5 text-[11px] font-bold text-maroon-800">
+                  {unreadContact.length} new
+                </span>
+              )}
+            </div>
+            <ul className="mt-3 space-y-2">
+              {contactMessages.slice(0, 25).map((m) => (
+                <li key={m.id} className={`rounded-xl border p-3 ${m.is_read ? "border-border bg-ivory-50" : "border-maroon-200 bg-maroon-50"}`}>
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-charcoal-900">{m.subject}</p>
+                      <p className="mt-0.5 text-xs text-charcoal-600">
+                        {m.name} · <a className="underline" href={`mailto:${m.email}`}>{m.email}</a> · {fmtDateTime(m.created_at)}
+                      </p>
+                    </div>
+                    {!m.is_read && <MarkContactReadButton messageId={m.id} />}
+                  </div>
+                  <p className="mt-2 whitespace-pre-wrap text-xs leading-relaxed text-charcoal-700">{m.message}</p>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      )}
 
       <div className="px-4 py-4 sm:px-6 lg:px-8 space-y-4">
 

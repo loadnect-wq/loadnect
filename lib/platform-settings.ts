@@ -121,3 +121,35 @@ export async function isOnlinePaymentEnabled(): Promise<boolean> {
   if (!isCashfreeConfigured()) return false;
   return (await getPublicPaymentSettings()).enableOnlineCustomerPayment;
 }
+
+/**
+ * May a booking be confirmed WITHOUT payment?
+ *
+ * This is the mirror of isOnlinePaymentEnabled and it must fail in the OTHER
+ * direction. isOnlinePaymentEnabled fails closed — if the settings row cannot
+ * be read we refuse to take money. Reusing that answer here inverted its
+ * meaning: a transient database error made "online payment is off" look true,
+ * and this gate then handed out FREE bookings on a gateway-configured
+ * deployment.
+ *
+ * So manual mode requires positive evidence:
+ *   • no Cashfree credentials at all (a deployment fact, cannot fail), OR
+ *   • the settings row was genuinely READ and says online payment is off.
+ * A failed read yields false — no free bookings on a maybe.
+ */
+export async function isManualBookingAllowed(): Promise<boolean> {
+  if (!isCashfreeConfigured()) return true;
+
+  try {
+    const supabase = await getSupabaseServerClient();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const db = supabase as any;
+    const { data, error } = await db.rpc("get_public_payment_settings");
+    if (error || !data) return false;               // could not read → refuse
+    const row = Array.isArray(data) ? data[0] : data;
+    if (!row) return false;
+    return Boolean(row.enable_online_customer_payment) === false;
+  } catch {
+    return false;
+  }
+}

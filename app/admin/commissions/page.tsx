@@ -6,6 +6,7 @@ import {
   fetchCommissionPaymentSubmissions, fetchSettlementAdjustments,
 } from "@/lib/admin";
 import { formatPrice } from "@/lib/mock-data";
+import { safeHttpUrl } from "@/lib/utils";
 import { Badge } from "@/components/ui/Badge";
 import { AdminPageHeader } from "../_components/AdminPageHeader";
 import { CommissionFilterBar } from "./_components/CommissionFilterBar";
@@ -150,8 +151,12 @@ export default async function AdminCommissionsPage({ searchParams }: Props) {
                         {" · "}UTR <span className="font-mono">{s.upi_reference ?? "—"}</span>
                         {" · "}{fmtDate(s.submitted_at)}
                       </p>
-                      {s.screenshot_url && (
-                        <a href={s.screenshot_url} target="_blank" rel="noopener noreferrer"
+                      {/* Owner-supplied URL in an admin-clicked href: pass it
+                          through the http(s) allow-list, never straight into
+                          the DOM. A javascript: value here would run with
+                          admin privileges. */}
+                      {safeHttpUrl(s.screenshot_url) && (
+                        <a href={safeHttpUrl(s.screenshot_url) as string} target="_blank" rel="noopener noreferrer"
                            className="mt-0.5 inline-block text-xs text-maroon-700 hover:underline">
                           View screenshot
                         </a>

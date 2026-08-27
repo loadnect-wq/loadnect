@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Building2 } from "lucide-react";
 import { fetchHalls } from "@/lib/halls";
+import { todayInBusinessTz } from "@/lib/dates";
 import { getAdvancePercent } from "@/lib/platform-settings";
 import { EmptyState } from "@/components/ui/empty-state";
 import { HallCard } from "./_components/HallCard";
@@ -36,6 +37,8 @@ type SearchParams = Promise<{
   amenity?:  string;
   date?:     string;
   sort?:     string;
+  /** "today" from the homepage tile; mapped onto `date`. */
+  available?: string;
 }>;
 
 export async function generateMetadata({
@@ -79,9 +82,16 @@ export default async function HallsPage({
     sort     = "recommended",
   } = sp;
 
+  // "Available Today" linked here with ?available=today and nothing read it,
+  // so the tile showed the unfiltered list — every hall, including ones booked
+  // solid. It maps onto the date filter, which already excludes halls blocked
+  // for a given day. An explicit ?date= always wins.
+  const effectiveDate = date || (sp.available === "today" ? todayInBusinessTz() : "");
+
   const advancePercent = await getAdvancePercent();
   const halls = await fetchHalls({
-    city, area, capacity, priceMin, priceMax, q, category, amenity, date, sort,
+    city, area, capacity, priceMin, priceMax, q, category, amenity,
+    date: effectiveDate, sort,
   });
 
   const hasFilters = !!(city || area || capacity || priceMin || priceMax || q || category || amenity || date);

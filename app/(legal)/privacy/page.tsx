@@ -27,11 +27,16 @@ export default function PrivacyPage() {
       </Section>
 
       <Section title="4. Payment Data">
-        Payment processing is handled by Cashfree Payments. Hallnect does not store your card number, CVV, or banking credentials. We only retain a transaction reference number for booking records.
+        <p>
+          Payment processing is handled by Cashfree Payments. Hallnect does not store your card number, CVV, UPI PIN or net-banking credentials. For a customer booking we retain only the transaction reference and the amounts involved.
+        </p>
+        <p className="mt-3">
+          <strong>Venue owners.</strong> To pay you for bookings we collect and store your PAN, and the payout destination you provide — bank account number and IFSC, or UPI ID — together with your business name, email and phone. These are shared with Cashfree Payments to create your payout account, and are used for no other purpose. They are visible to you in your owner profile and to Hallnect staff who administer payouts. You can change them at any time; ask us and we will delete them, though we cannot pay you automatically without them.
+        </p>
       </Section>
 
       <Section title="5. Data Sharing">
-        We share your information only with: (a) venue owners to fulfil your confirmed booking — your name and contact details are shared so the owner can prepare for your event; (b) Cashfree Payments for transaction processing; (c) cloud infrastructure and email delivery service providers under strict confidentiality agreements; and (d) law enforcement when required by a valid legal order. Venue owners may not use customer contact details for any purpose other than fulfilling the specific booking.
+        We share your information only with: (a) venue owners to fulfil your confirmed booking — your name and contact details are shared so the owner can prepare for your event; (b) Cashfree Payments for transaction processing, and for venue owners the payout and identity details listed in section 4 so that settlements can be made; (b-i) Twilio and WhatsApp, to deliver booking notifications to the phone number you gave us; (c) cloud infrastructure and email delivery service providers under strict confidentiality agreements; and (d) law enforcement when required by a valid legal order. Venue owners may not use customer contact details for any purpose other than fulfilling the specific booking.
       </Section>
 
       <Section title="6. Cookies">

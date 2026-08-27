@@ -69,7 +69,7 @@ export default function TermsPage() {
       </Section>
 
       <Section title="14. Governing Law">
-        These Terms are governed by the laws of India. Any disputes shall be subject to the exclusive jurisdiction of the courts of <strong>Madurai, Tamil Nadu</strong> (placeholder — confirm with legal counsel).
+        These Terms are governed by the laws of India. Any disputes shall be subject to the exclusive jurisdiction of the courts of <strong>Madurai, Tamil Nadu</strong>.
       </Section>
 
       <Section title="15. Contact">
