@@ -106,7 +106,11 @@ export async function POST(request: Request) {
     // during a real payment meant the booking was never confirmed and nobody
     // ever found out. 5xx puts it back on Cashfree's retry schedule.
     // 'pending' and 'failed' ARE terminal, handled outcomes and stay 200.
-    if (result.state === "error") {
+    // 'unactivated' is a PLAN order whose money was captured but whose listing
+    // could not be created. The owner has paid and has nothing; a 200 here
+    // would permanently cancel Cashfree's retries and strand them. Retrying is
+    // safe — activation is exactly-once via premium_listings.plan_purchase_id.
+    if (result.state === "error" || result.state === "unactivated") {
       console.error(`[cashfree-webhook] order=${orderId} not applied — asking Cashfree to retry`);
       return NextResponse.json({ ok: false, state: result.state }, { status: 503 });
     }

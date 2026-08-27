@@ -1160,3 +1160,55 @@ export async function fetchNotificationStats(): Promise<NotificationStats> {
     return empty;
   }
 }
+
+export type StuckPlanPurchaseRow = {
+  id:            string;
+  hall_name:     string;
+  owner_business: string | null;
+  plan_slug:     string;
+  amount:        number;
+  paid_at:       string | null;
+  order_id:      string | null;
+};
+
+/**
+ * Plan purchases where the OWNER PAID BUT NO LISTING EXISTS.
+ *
+ * Activation retries itself on every webhook redelivery and every visit to the
+ * return page, so a row only lingers here if it keeps failing. When one does,
+ * somebody has to know: an owner has been charged ₹4,999 or ₹9,999 and has
+ * nothing to show for it, and until this panel existed the only trace was a
+ * single server log line.
+ *
+ * Keyed on the LISTING being absent, not on premium_listing_id being null —
+ * the link-back write is best-effort and its failure does not mean the listing
+ * is missing.
+ */
+export async function fetchStuckPlanPurchases(): Promise<StuckPlanPurchaseRow[]> {
+  const supabase = await getSupabaseServerClient();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const db = supabase as any;
+
+  const { data, error } = await db
+    .from("plan_purchases")
+    .select("id, plan_slug, amount, paid_at, cashfree_order_id, halls(name), hall_owners(business_name), premium_listings(id)")
+    .eq("status", "paid")
+    .order("paid_at", { ascending: false })
+    .limit(100);
+
+  if (error) { handleError("fetchStuckPlanPurchases", error); return []; }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (data ?? [])
+    .filter((row: any) => !row.premium_listings || row.premium_listings.length === 0)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    .map((row: any): StuckPlanPurchaseRow => ({
+      id:             row.id,
+      hall_name:      row.halls?.name ?? "Hall",
+      owner_business: row.hall_owners?.business_name ?? null,
+      plan_slug:      row.plan_slug,
+      amount:         Number(row.amount),
+      paid_at:        row.paid_at ?? null,
+      order_id:       row.cashfree_order_id ?? null,
+    }));
+}

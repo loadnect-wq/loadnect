@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { CheckCircle2, Clock, XCircle } from "lucide-react";
+import { CheckCircle2, Clock, XCircle, AlertTriangle } from "lucide-react";
 import { requireRole } from "@/lib/auth";
 import { verifyAndApplyPlanPurchase } from "@/lib/plan-payments";
 import { AppHeader } from "@/components/app/AppHeader";
@@ -60,14 +60,22 @@ export default async function PlanPaymentStatusPage({ searchParams }: Props) {
       title: "Payment not found",
       body: "We could not find this payment. If you were charged, contact Hallnect support with the time of payment.",
     },
-    // verifyAndApplyPlanPurchase could not finish (gateway unreachable, or the
-    // payment landed but the listing insert failed). Never claim either
-    // outcome — the server log carries the detail for support.
+    // verifyAndApplyPlanPurchase could not finish (gateway unreachable). Never
+    // claim either outcome — the server log carries the detail for support.
     error: {
       icon: <Clock className="h-10 w-10 text-amber-500" />,
       tone: "border-amber-200 bg-amber-50",
       title: "We could not confirm this yet",
       body: "Your payment may still have gone through. Please check your premium page in a few minutes, and contact Hallnect support if it has not appeared — do not pay again.",
+    },
+    // MONEY TAKEN, LISTING NOT GRANTED. This must never render as success: the
+    // whole point of the state is that the owner paid and did not get what they
+    // paid for. Reloading re-runs activation, so it usually resolves itself.
+    unactivated: {
+      icon: <AlertTriangle className="h-10 w-10 text-red-600" />,
+      tone: "border-red-200 bg-red-50",
+      title: "Payment received — we are still activating your plan",
+      body: "Your payment went through, but we could not switch the boost on just yet. Reload this page in a minute and it should complete. If it still has not, contact Hallnect support quoting this payment — you will not be charged again.",
     },
   }[result.state];
 

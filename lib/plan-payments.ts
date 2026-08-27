@@ -15,8 +15,16 @@
 //     hall_owners row of the AUTHENTICATED caller.
 //   • Payment is confirmed by re-reading the order from Cashfree. The return
 //     URL's claim of success is never trusted.
-//   • cashfree_order_id is UNIQUE, and activation is status-guarded, so a
-//     redelivered webhook cannot grant a second listing.
+//   • cashfree_order_id is UNIQUE, so a redelivered webhook cannot create a
+//     second purchase; and premium_listings.plan_purchase_id is UNIQUE, so one
+//     purchase can never grant two listings however often activation is retried.
+//
+// MONEY AND DELIVERY ARE SEPARATE STEPS, deliberately. Capturing the payment
+// and granting the listing cannot be one transaction across two systems, so the
+// capture is recorded first and the listing is granted by a step that RE-RUNS
+// on every call until it succeeds. A purchase that is paid but not yet
+// activated reports 'unactivated' — never success — so the webhook keeps
+// retrying and the owner is never told a plan is live when it is not.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import "server-only";
@@ -53,6 +61,11 @@ function planOrderExpiry(): string {
   return new Date(Date.now() + PLAN_ORDER_TTL_MIN * 60_000).toISOString();
 }
 
+/** Which Cashfree environment the browser SDK should open against. */
+function gatewayMode(): "sandbox" | "production" {
+  return process.env.CASHFREE_ENV === "production" ? "production" : "sandbox";
+}
+
 /** YYYY-MM-DD for a Date, in UTC. premium_listings.start/end_date are DATEs. */
 function isoDay(d: Date): string {
   return d.toISOString().slice(0, 10);
@@ -71,23 +84,38 @@ function addDays(isoDate: string, days: number): string {
  * owner actually receives for their money, and it is easy to get wrong by one
  * day in either direction.
  *
- * EXTEND: renewing a plan that is still running pushes its end_date out by the
- * full duration, so none of the days already paid for are lost.
- * NEW: anything else starts today and runs for the duration. 'today' is
- * inclusive, so a 30-day plan bought on the 1st covers the 1st and ends on the
- * 31st — 30 days of promotion, not 31.
+ * ALWAYS A NEW ROW, NEVER A MUTATION. Renewing used to push the live listing's
+ * end_date out in place. That is not safe to retry: if the write that linked
+ * the purchase to the listing then failed, a second attempt would extend the
+ * same row again and hand out a free duration. Queuing a fresh row instead
+ * makes activation a pure INSERT, which the UNIQUE index on plan_purchase_id
+ * (migration 0043) turns into an exactly-once operation.
+ *
+ * QUEUED: renewing the SAME plan while it is still running starts the new
+ * window the day after the current one ends. The owner keeps every day they
+ * already paid for — the coverage is continuous and the total is identical to
+ * extending in place.
+ * IMMEDIATE: a DIFFERENT plan starts today, so an owner on Premium who buys Pro
+ * is promoted at once rather than waiting for Premium to lapse.
+ * recompute_hall_premium takes the highest tier among live windows, so both
+ * plans simply co-exist and the better one wins.
+ *
+ * 'start' is inclusive, so a 30-day plan starting on the 1st ends on the 30th —
+ * 30 days of promotion, not 31.
  */
 export function planWindow(input: {
   today: string;
-  activeEndDate: string | null;
+  /** end_date of a live listing for the SAME plan, if there is one. */
+  sameplanEndDate: string | null;
   durationDays: number;
-}): { startDate: string; endDate: string; mode: "extend" | "new" } {
-  const { today, activeEndDate, durationDays } = input;
+}): { startDate: string; endDate: string; mode: "queued" | "immediate" } {
+  const { today, sameplanEndDate, durationDays } = input;
 
-  if (activeEndDate && activeEndDate >= today) {
-    return { startDate: today, endDate: addDays(activeEndDate, durationDays), mode: "extend" };
+  if (sameplanEndDate && sameplanEndDate >= today) {
+    const startDate = addDays(sameplanEndDate, 1);
+    return { startDate, endDate: addDays(startDate, durationDays - 1), mode: "queued" };
   }
-  return { startDate: today, endDate: addDays(today, durationDays - 1), mode: "new" };
+  return { startDate: today, endDate: addDays(today, durationDays - 1), mode: "immediate" };
 }
 
 export type StartPlanPurchaseResult =
@@ -166,15 +194,48 @@ export async function startPlanPurchase(input: {
 
   if (existing?.cashfree_order_id && existing.payment_session_id) {
     const live = await getCashfreeOrder(existing.cashfree_order_id);
+
+    // ACTIVE — still payable. Hand back the same session rather than opening a
+    // second one.
     if (live.ok && live.data.order_status === "ACTIVE") {
       return {
         ok: true,
         paymentSessionId: existing.payment_session_id,
         orderId:          existing.cashfree_order_id,
         amount,
-        mode: process.env.CASHFREE_ENV === "production" ? "production" : "sandbox",
+        mode: gatewayMode(),
       };
     }
+
+    // ALREADY PAID. The webhook has not landed yet, so our row still says
+    // 'created' — but the owner's money is gone. Opening a fresh order here
+    // would let them pay a second time for the same plan. Apply the payment
+    // instead and tell them it is done.
+    if (live.ok && live.data.order_status === "PAID") {
+      await verifyAndApplyPlanPurchase(existing.cashfree_order_id);
+      return {
+        ok: false,
+        error: "You have already paid for this plan — we are activating it now. Refresh your premium page in a moment.",
+      };
+    }
+
+    // COULD NOT READ THE STATUS. We do not know whether that order was paid, so
+    // we must not create another payable one. Failing closed costs a retry;
+    // failing open can cost the owner ₹9,999 twice.
+    if (!live.ok) {
+      console.error("[plan-payments] could not read in-flight order:", live.error);
+      return {
+        ok: false,
+        error: "We could not check your previous payment attempt just now. Please try again in a moment — this is to make sure you are not charged twice.",
+      };
+    }
+
+    // Anything else (EXPIRED, TERMINATED) is genuinely finished. Mark it so it
+    // stops being reconsidered, and fall through to a new order.
+    await db.from("plan_purchases")
+      .update({ status: "failed", raw_response: live.data })
+      .eq("id", existing.id)
+      .eq("status", "created");
   }
 
   // 4. Record the purchase FIRST, so the order id we hand Cashfree already has
@@ -226,26 +287,54 @@ export async function startPlanPurchase(input: {
     return { ok: false, error: "Cashfree did not return a payment session. Please retry." };
   }
 
-  await db.from("plan_purchases")
-    .update({
-      cashfree_order_id:  orderId,
-      payment_session_id: order.data.payment_session_id,
-    })
+  // THIS WRITE IS LOAD-BEARING and was previously neither error- nor
+  // count-checked. cashfree_order_id is the ONLY way a payment finds its way
+  // back to this row: verifyAndApplyPlanPurchase looks the purchase up by it.
+  // If it silently failed, the owner would pay and no webhook, return page or
+  // retry could ever match the money to anything — a charge with no record.
+  // Better to refuse checkout than to take money we cannot reconcile.
+  const { error: linkErr, count: linked } = await db
+    .from("plan_purchases")
+    .update(
+      {
+        cashfree_order_id:  orderId,
+        payment_session_id: order.data.payment_session_id,
+      },
+      { count: "exact" },
+    )
     .eq("id", purchase.id);
+
+  if (linkErr || !linked) {
+    console.error(
+      `[plan-payments] could not record order ${orderId} on purchase ${purchase.id}:`,
+      linkErr?.message ?? "0 rows updated",
+    );
+    return {
+      ok: false,
+      error: "We could not start this payment safely. Nothing has been charged — please try again.",
+    };
+  }
 
   return {
     ok: true,
     paymentSessionId: order.data.payment_session_id,
     orderId,
     amount,
-    mode: process.env.CASHFREE_ENV === "production" ? "production" : "sandbox",
+    mode: gatewayMode(),
   };
 }
 
 export type ApplyPlanPaymentResult = {
-  state: "paid" | "pending" | "failed" | "not_found" | "error";
+  /** paid        — money captured AND the listing is live.
+   *  pending     — still payable, nothing captured.
+   *  failed      — terminal, nothing captured.
+   *  unactivated — MONEY CAPTURED BUT NO LISTING. Never reported as success.
+   *  not_found   — no purchase matches this order id.
+   *  error       — could not determine; the caller must retry. */
+  state: "paid" | "pending" | "failed" | "unactivated" | "not_found" | "error";
   hallId?: string;
   planSlug?: string;
+  startDate?: string;
   endDate?: string;
 };
 
@@ -253,6 +342,15 @@ export type ApplyPlanPaymentResult = {
  * Re-verifies a plan order against Cashfree and, on success, activates the
  * listing. Idempotent: safe to call from the webhook and the return page, in
  * any order, any number of times.
+ *
+ * ACTIVATION IS RETRIED, NOT ASSUMED. An earlier version used the status claim
+ * ('created' to 'paid') as the only gate and activated once, inline. If that
+ * activation failed, the row was stranded paid-with-no-listing: every later
+ * call found the claim already taken, returned "paid", and never tried again —
+ * so an owner could be charged Rs9,999, receive nothing, and be told it worked.
+ * Now the claim records only the MONEY; the listing is granted by a separate
+ * step that runs on every call until it succeeds, and is exactly-once because
+ * premium_listings.plan_purchase_id is UNIQUE (migration 0043).
  */
 export async function verifyAndApplyPlanPurchase(orderId: string): Promise<ApplyPlanPaymentResult> {
   const admin = getSupabaseAdminClient();
@@ -271,10 +369,10 @@ export async function verifyAndApplyPlanPurchase(orderId: string): Promise<Apply
   }
   if (!purchase) return { state: "not_found" };
 
-  // Already applied — nothing to do. Report the outcome so the return page can
-  // render the receipt without re-running anything.
-  if (purchase.status === "paid" && purchase.premium_listing_id) {
-    return { state: "paid", hallId: purchase.hall_id, planSlug: purchase.plan_slug };
+  // Already captured. Do NOT return success on the strength of that alone — the
+  // listing is what the owner bought. If it is missing, finish the job.
+  if (purchase.status === "paid") {
+    return finishActivation(db, purchase);
   }
 
   const order = await getCashfreeOrder(orderId);
@@ -298,16 +396,17 @@ export async function verifyAndApplyPlanPurchase(orderId: string): Promise<Apply
 
   // Cashfree says PAID. Confirm the amount is the one we recorded — a mismatch
   // means the order was not the one we created and must never grant a listing.
-  const paid = Number(order.data.order_amount ?? 0);
+  const paidAmount = Number(order.data.order_amount ?? 0);
   const owed = Number(purchase.amount);
-  if (Math.abs(paid - owed) > 0.5) {
-    console.error(`[plan-payments] amount mismatch on ${orderId}: paid ${paid}, expected ${owed}`);
+  if (Math.abs(paidAmount - owed) > 0.5) {
+    console.error(`[plan-payments] amount mismatch on ${orderId}: paid ${paidAmount}, expected ${owed}`);
     return { state: "error" };
   }
 
-  // ── Claim the purchase. Status-guarded, count-checked: exactly one caller
-  //    wins, so a webhook and the return page racing cannot both activate.
-  const { count: claimed, error: claimErr } = await db
+  // Record the MONEY. Status-guarded so exactly one caller writes it; whoever
+  // loses simply proceeds to activation below, which is itself safe to run
+  // concurrently.
+  const { error: claimErr } = await db
     .from("plan_purchases")
     .update(
       {
@@ -326,45 +425,49 @@ export async function verifyAndApplyPlanPurchase(orderId: string): Promise<Apply
     return { state: "error" };
   }
 
-  if (!claimed) {
-    // Someone else claimed it first. Re-read to report their outcome rather
-    // than activating a second listing.
-    const { data: after } = await db
-      .from("plan_purchases")
-      .select("status, hall_id, plan_slug")
-      .eq("id", purchase.id)
-      .maybeSingle();
-    return after?.status === "paid"
-      ? { state: "paid", hallId: after.hall_id, planSlug: after.plan_slug }
-      : { state: "error" };
-  }
-
-  const endDate = await activateListing(db, purchase);
-  return { state: "paid", hallId: purchase.hall_id, planSlug: purchase.plan_slug, endDate };
+  return finishActivation(db, { ...purchase, status: "paid" });
 }
 
 /**
- * Grants (or extends) the premium listing this purchase paid for.
+ * Grants the listing this purchase paid for, if it does not have one yet.
  *
- * Stacking rule: buying the SAME plan again while it is still running EXTENDS
- * the existing window rather than opening a parallel one, so a renewal never
- * loses the days already paid for. Buying a DIFFERENT plan opens its own
- * window — recompute_hall_premium takes the highest active tier, so an owner
- * on Premium who buys Pro is upgraded immediately and their remaining Premium
- * days are not thrown away.
+ * Safe to call repeatedly and concurrently: it first looks for a listing
+ * already carrying this purchase id, and the INSERT is protected by a UNIQUE
+ * index on that column, so a lost race surfaces as 23505 and is resolved by
+ * re-reading rather than by granting a second listing.
  */
-async function activateListing(
+async function finishActivation(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   db: any,
-  purchase: { id: string; hall_id: string; plan_slug: string; amount: number; duration_days: number },
-): Promise<string | undefined> {
-  const days  = Number(purchase.duration_days);
-  const today = isoDay(new Date());
+  purchase: {
+    id: string; hall_id: string; plan_slug: string;
+    amount: number; duration_days: number; premium_listing_id: string | null;
+  },
+): Promise<ApplyPlanPaymentResult> {
+  const base = { hallId: purchase.hall_id, planSlug: purchase.plan_slug };
 
   try {
-    const { data: live } = await db
+    // 1. Has this purchase already produced a listing? Keyed on the purchase,
+    //    NOT on plan_purchases.premium_listing_id — that link-back write can
+    //    itself fail, which is exactly how the old code lost track.
+    const { data: mine, error: mineErr } = await db
       .from("premium_listings")
-      .select("id, end_date")
+      .select("id, start_date, end_date")
+      .eq("plan_purchase_id", purchase.id)
+      .maybeSingle();
+    if (mineErr) throw mineErr;
+
+    if (mine) {
+      await linkBack(db, purchase, mine.id);
+      return { state: "paid", ...base, startDate: mine.start_date, endDate: mine.end_date };
+    }
+
+    // 2. Work out the window. A live listing for the SAME plan means this is a
+    //    renewal, so the new window queues after it instead of overlapping.
+    const today = isoDay(new Date());
+    const { data: live, error: liveErr } = await db
+      .from("premium_listings")
+      .select("end_date")
       .eq("hall_id", purchase.hall_id)
       .eq("plan_slug", purchase.plan_slug)
       .eq("is_active", true)
@@ -372,57 +475,73 @@ async function activateListing(
       .order("end_date", { ascending: false })
       .limit(1)
       .maybeSingle();
+    if (liveErr) throw liveErr;
 
     const window = planWindow({
       today,
-      activeEndDate: live?.end_date ?? null,
-      durationDays:  days,
+      sameplanEndDate: live?.end_date ?? null,
+      durationDays:    Number(purchase.duration_days),
     });
 
-    let listingId: string | undefined;
+    const { data: created, error: insErr } = await db
+      .from("premium_listings")
+      .insert({
+        hall_id:          purchase.hall_id,
+        plan_slug:        purchase.plan_slug,
+        plan_purchase_id: purchase.id,
+        start_date:       window.startDate,
+        end_date:         window.endDate,
+        amount:           purchase.amount,
+        is_active:        true,
+      })
+      .select("id, start_date, end_date")
+      .maybeSingle();
 
-    if (window.mode === "extend" && live?.id) {
-      const { error } = await db
+    if (insErr) {
+      // 23505 = another caller won the race and created it. Not an error.
+      if (insErr.code !== "23505") throw insErr;
+      const { data: theirs } = await db
         .from("premium_listings")
-        .update({ end_date: window.endDate })
-        .eq("id", live.id);
-      if (error) throw error;
-      listingId = live.id;
-    } else {
-      const { data: created, error } = await db
-        .from("premium_listings")
-        .insert({
-          hall_id:    purchase.hall_id,
-          plan_slug:  purchase.plan_slug,
-          start_date: window.startDate,
-          end_date:   window.endDate,
-          amount:     purchase.amount,
-          is_active:  true,
-        })
-        .select("id")
+        .select("id, start_date, end_date")
+        .eq("plan_purchase_id", purchase.id)
         .maybeSingle();
-      if (error) throw error;
-      listingId = created?.id;
+      if (!theirs) throw insErr;
+      await linkBack(db, purchase, theirs.id);
+      return { state: "paid", ...base, startDate: theirs.start_date, endDate: theirs.end_date };
     }
 
-    if (listingId) {
-      await db.from("plan_purchases")
-        .update({ premium_listing_id: listingId })
-        .eq("id", purchase.id);
-    }
+    if (created?.id) await linkBack(db, purchase, created.id);
 
     // The AFTER trigger on premium_listings recomputes halls.premium_tier, so
-    // the boost is live the moment this returns.
-    return window.endDate;
+    // an immediate window is live the moment this returns.
+    return { state: "paid", ...base, startDate: created?.start_date, endDate: created?.end_date };
   } catch (e) {
-    // The money is taken and the purchase is marked paid. Do NOT unwind that —
-    // the owner paid and is owed the listing. Surface it loudly so an admin can
-    // grant it by hand from /admin/premium-listings.
+    // The money is captured and the purchase stays 'paid' — the owner paid and
+    // is owed the listing, so that record must not be unwound. But this is NOT
+    // reported as success: the caller returns 'unactivated', the webhook asks
+    // Cashfree to retry, and the status page says we could not confirm it
+    // rather than "your plan is active".
     console.error(
       `[plan-payments] PAID BUT NOT ACTIVATED purchase=${purchase.id} hall=${purchase.hall_id} ` +
       `plan=${purchase.plan_slug}:`,
       e instanceof Error ? e.message : e,
     );
-    return undefined;
+    return { state: "unactivated", ...base };
   }
+}
+
+/** Best-effort link from the purchase back to its listing. Purely for
+ *  reporting — activation no longer depends on it, which is the point. */
+async function linkBack(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  db: any,
+  purchase: { id: string; premium_listing_id: string | null },
+  listingId: string,
+): Promise<void> {
+  if (purchase.premium_listing_id === listingId) return;
+  const { error } = await db
+    .from("plan_purchases")
+    .update({ premium_listing_id: listingId })
+    .eq("id", purchase.id);
+  if (error) console.error("[plan-payments] link-back failed (the listing IS granted):", error.message);
 }

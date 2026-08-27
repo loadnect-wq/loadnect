@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { Sparkles } from "lucide-react";
-import { fetchAllPremium, fetchHallOptionsForPremium } from "@/lib/admin";
+import { fetchAllPremium, fetchHallOptionsForPremium, fetchStuckPlanPurchases } from "@/lib/admin";
 import { formatPrice } from "@/lib/mock-data";
 import { Badge } from "@/components/ui/Badge";
 import { AdminPageHeader } from "../_components/AdminPageHeader";
@@ -21,7 +21,9 @@ function isInWindow(start: string, end: string): boolean {
 }
 
 export default async function AdminPremiumPage() {
-  const [listings, halls] = await Promise.all([fetchAllPremium(), fetchHallOptionsForPremium()]);
+  const [listings, halls, stuck] = await Promise.all([
+    fetchAllPremium(), fetchHallOptionsForPremium(), fetchStuckPlanPurchases(),
+  ]);
   const totalRevenue = listings.reduce((s, l) => s + l.amount, 0);
   const activeCount  = listings.filter((l) => l.is_active && isInWindow(l.start_date, l.end_date)).length;
   const proCount     = listings.filter((l) => l.plan_slug === "pro" && l.is_active && isInWindow(l.start_date, l.end_date)).length;
@@ -39,6 +41,35 @@ export default async function AdminPremiumPage() {
           <SummaryCard label="Total listings" value={listings.length.toString()} />
           <SummaryCard label="Premium revenue" value={formatPrice(totalRevenue)} wide />
         </div>
+
+        {/* PAID BUT NOT ACTIVATED. Activation retries itself on every webhook
+            redelivery and every visit to the return page, so anything that
+            lingers here is genuinely stuck — an owner has been charged and has
+            nothing. Grant the listing by hand below, then it disappears. */}
+        {stuck.length > 0 && (
+          <div className="rounded-2xl border-2 border-red-200 bg-red-50 p-4 shadow-card">
+            <p className="text-sm font-bold text-red-900">
+              Paid but not activated ({stuck.length})
+            </p>
+            <p className="mt-0.5 text-xs text-red-800">
+              These owners have paid and have no live listing. Grant the plan manually below,
+              matching the dates to what they bought.
+            </p>
+            <ul className="mt-2 space-y-1">
+              {stuck.map((p) => (
+                <li key={p.id} className="flex flex-wrap items-baseline justify-between gap-2 text-xs text-red-900">
+                  <span>
+                    <strong>{p.hall_name}</strong>
+                    {p.owner_business ? ` · ${p.owner_business}` : ""}
+                    {" · "}{p.plan_slug}
+                    {p.paid_at ? ` · paid ${fmtDate(p.paid_at)}` : ""}
+                  </span>
+                  <span className="font-mono text-[11px]">{p.order_id ?? "—"} · {formatPrice(p.amount)}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         <RunPremiumExpiry />
 
