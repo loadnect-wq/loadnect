@@ -1,10 +1,12 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { Check, Sparkles, Star } from "lucide-react";
 import { requireRole } from "@/lib/auth";
 import { fetchPremiumPlans, PLAN_FEATURES, type PremiumPlan, type PremiumTier } from "@/lib/premium-plans";
+import { fetchOwnerRow, fetchOwnerBuyableHalls } from "@/lib/owner";
+import { isCashfreeConfigured } from "@/lib/cashfree";
 import { AppHeader } from "@/components/app/AppHeader";
 import { Badge } from "@/components/ui/Badge";
+import { BuyPlan } from "../_components/BuyPlan";
 
 export const metadata: Metadata = { title: "Premium Upgrade" };
 
@@ -21,7 +23,15 @@ const TIER_VISUAL: Record<PremiumTier, { ring: string; pill: string; icon: React
 export default async function OwnerPremiumUpgradePage() {
   await requireRole(["owner_approved"]);
 
-  const plans = await fetchPremiumPlans();
+  const ownerRow = await fetchOwnerRow();
+  const [plans, halls] = await Promise.all([
+    fetchPremiumPlans(),
+    ownerRow ? fetchOwnerBuyableHalls(ownerRow.id) : Promise.resolve([]),
+  ]);
+  // Nothing to sell against if the gateway is not configured — say so rather
+  // than rendering a button that can only fail.
+  const gatewayReady = isCashfreeConfigured();
+
   // Render free first, then paid, regardless of sort_order quirks.
   const ordered: PremiumPlan[] = ["free", "premium", "pro"]
     .map((s) => plans.find((p) => p.slug === s))
@@ -96,17 +106,17 @@ export default async function OwnerPremiumUpgradePage() {
                     <span className="block rounded-lg bg-charcoal-100 px-3 py-2 text-center text-xs font-semibold text-charcoal-500">
                       Coming soon
                     </span>
+                  ) : !gatewayReady ? (
+                    <span className="block rounded-lg bg-charcoal-100 px-3 py-2 text-center text-xs font-semibold text-charcoal-500">
+                      Payments temporarily unavailable
+                    </span>
                   ) : (
-                    <Link
-                      href={`/contact?plan=${plan.slug}`}
-                      className={`block rounded-lg px-3 py-2 text-center text-xs font-bold ${
-                        plan.slug === "pro"
-                          ? "bg-maroon-600 text-white hover:bg-maroon-700"
-                          : "bg-gold-600 text-white hover:bg-gold-700"
-                      }`}
-                    >
-                      Contact us to activate
-                    </Link>
+                    <BuyPlan
+                      planSlug={plan.slug as "premium" | "pro"}
+                      amountLabel={formatPrice(plan.monthly_price)}
+                      halls={halls}
+                      accent={plan.slug === "pro" ? "maroon" : "gold"}
+                    />
                   )}
                 </div>
               </div>
@@ -117,12 +127,16 @@ export default async function OwnerPremiumUpgradePage() {
         <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4 text-xs text-blue-800">
           <p className="font-semibold">How activation works</p>
           <ol className="mt-1.5 space-y-1 list-decimal list-inside">
-            <li>Request a plan via Contact us.</li>
-            <li>Complete payment via the secure link our team sends.</li>
-            <li>Your hall is boosted automatically once payment is confirmed; admin manual activation is also available during MVP.</li>
+            <li>Pick the hall you want to promote and pay by UPI, card, net banking or wallet.</li>
+            <li>Your listing is boosted the moment the payment is confirmed — no waiting for approval.</li>
+            <li>
+              The plan runs for {ordered[0]?.duration_days ?? 30} days and then stops on its own.
+              Renewing early adds to the days you already have.
+            </li>
           </ol>
           <p className="mt-2 text-[11px] text-blue-700">
-            Owners cannot activate premium themselves — every paid plan goes through payment verification or admin approval.
+            Payment is handled by Cashfree; Hallnect never sees your card or UPI details. A plan can
+            only be bought for a hall that is already approved and live.
           </p>
         </div>
       </div>
