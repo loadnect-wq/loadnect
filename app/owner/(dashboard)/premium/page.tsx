@@ -59,7 +59,20 @@ export default async function OwnerPremiumPage() {
     .from("plan_subscriptions")
     .select("id, plan_slug, amount, status, next_charge_at")
     .eq("owner_id", ownerRow.id)
-    .in("status", ["created", "active", "on_hold", "paused"])
+    .in("status", ["active", "on_hold", "paused"])
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  // A 'created' row is NOT a subscription — it is an abandoned attempt at the
+  // mandate screen, with nothing authorised and nothing charged. It is kept
+  // separate so this page can never describe it as a live monthly plan.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: unfinished } = await (supabase as any)
+    .from("plan_subscriptions")
+    .select("id, plan_slug")
+    .eq("owner_id", ownerRow.id)
+    .eq("status", "created")
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
@@ -108,7 +121,7 @@ export default async function OwnerPremiumPage() {
                   <p className="text-[11px] text-gold-100">
                     {subscription.status === "active"
                       ? `Renews automatically — ${formatPrice(Number(subscription.amount))}/month`
-                      : "Waiting for your bank to confirm the monthly auto-pay."}
+                      : "Your monthly auto-pay is paused. We will not charge you until it resumes."}
                     {subscription.next_charge_at
                       ? ` Next payment ${fmtDate(subscription.next_charge_at)}.`
                       : ""}
@@ -119,6 +132,12 @@ export default async function OwnerPremiumPage() {
                     paidUntil={activeListing?.end_date ?? null}
                   />
                 </div>
+              ) : unfinished ? (
+                <p className="mt-3 text-[11px] text-gold-100">
+                  You started setting up monthly billing but did not finish approving it, so
+                  <strong> nothing has been charged and nothing renews yet</strong>. This boost ends
+                  on {fmtDate(activeListing.end_date)}.
+                </p>
               ) : (
                 <p className="mt-3 text-[11px] text-gold-100">
                   This was a one-off plan — it ends on {fmtDate(activeListing.end_date)} and will not

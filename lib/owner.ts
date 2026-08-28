@@ -689,7 +689,15 @@ export function generateSlug(name: string, city: string): string {
  */
 export async function fetchOwnerBuyableHalls(
   ownerId: string,
-): Promise<{ id: string; name: string; tier: string | null; subscribedTo: string | null }[]> {
+): Promise<{
+  id: string;
+  name: string;
+  tier: string | null;
+  /** A LIVE monthly mandate — the owner is actually being billed for this plan. */
+  subscribedTo: string | null;
+  /** A subscription that was STARTED but never authorised. Not a subscription. */
+  pendingPlan: string | null;
+}[]> {
   const supabase = await getSupabaseServerClient();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = supabase as any;
@@ -712,7 +720,9 @@ export async function fetchOwnerBuyableHalls(
         .eq("status", "approved")
         .order("name", { ascending: true });
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      return (legacy ?? []).map((r: any) => ({ id: r.id, name: r.name, tier: null, subscribedTo: null }));
+      return (legacy ?? []).map((r: any) => ({
+        id: r.id, name: r.name, tier: null, subscribedTo: null, pendingPlan: null,
+      }));
     }
     handleError("fetchOwnerBuyableHalls", error);
     return [];
@@ -724,19 +734,29 @@ export async function fetchOwnerBuyableHalls(
   // dead end.
   const { data: subs } = await db
     .from("plan_subscriptions")
-    .select("hall_id, plan_slug")
+    .select("hall_id, plan_slug, status")
     .eq("owner_id", ownerId)
     .in("status", ["created", "active", "on_hold", "paused"]);
 
-  const subscribed = new Map<string, string>();
+  // 'created' IS NOT SUBSCRIBED. It means the owner pressed Subscribe and a
+  // mandate was opened at Cashfree — nothing has been authorised and nothing
+  // has been charged. Treating it as a subscription told an owner "Subscribed —
+  // renews monthly" the instant they clicked, and then hid the button, so they
+  // could not even finish paying. The two facts are kept apart deliberately.
+  const live    = new Map<string, string>();
+  const pending = new Map<string, string>();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  for (const row of (subs ?? []) as any[]) subscribed.set(row.hall_id, row.plan_slug);
+  for (const row of (subs ?? []) as any[]) {
+    if (row.status === "created") pending.set(row.hall_id, row.plan_slug);
+    else                          live.set(row.hall_id, row.plan_slug);
+  }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return (data ?? []).map((r: any) => ({
     id:   r.id,
     name: r.name,
     tier: r.premium_tier ?? null,
-    subscribedTo: subscribed.get(r.id) ?? null,
+    subscribedTo: live.get(r.id)    ?? null,
+    pendingPlan:  pending.get(r.id) ?? null,
   }));
 }

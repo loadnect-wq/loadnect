@@ -47,8 +47,10 @@ export type BuyableHall = {
   id: string;
   name: string;
   tier: string | null;
-  /** Slug of a plan this hall is already subscribed to, if any. */
+  /** A LIVE mandate — the owner is genuinely being billed for this plan. */
   subscribedTo?: string | null;
+  /** Started but NEVER AUTHORISED. Nothing charged; not a subscription. */
+  pendingPlan?: string | null;
 };
 
 export function BuyPlan({
@@ -77,7 +79,10 @@ export function BuyPlan({
   }
 
   const selected = halls.find((h) => h.id === hallId);
+  // ONLY a live mandate counts. A 'created' subscription means the owner opened
+  // the mandate screen and did not finish — they must still be able to.
   const alreadyOnThisPlan = selected?.subscribedTo === planSlug;
+  const halfFinished      = selected?.pendingPlan  === planSlug;
 
   function subscribe() {
     setError(null);
@@ -120,6 +125,7 @@ export function BuyPlan({
   const label =
     stage === "creating" ? "Preparing…"
     : stage === "opening" ? "Opening checkout…"
+    : halfFinished ? "Finish setting up"
     : `Subscribe — ${amountLabel}/month`;
 
   return (
@@ -159,10 +165,17 @@ export function BuyPlan({
         {label}
       </button>
 
-      <p className="text-center text-[10px] text-charcoal-500">
-        Renews automatically every month. Cancel any time — you keep the month
-        you have paid for.
-      </p>
+      {halfFinished ? (
+        <p className="text-center text-[10px] text-amber-700">
+          You started this but did not finish approving the monthly payment.
+          Nothing has been charged.
+        </p>
+      ) : (
+        <p className="text-center text-[10px] text-charcoal-500">
+          Renews automatically every month. Cancel any time — you keep the month
+          you have paid for.
+        </p>
+      )}
       {error && <p className="text-center text-[11px] text-red-600">{error}</p>}
     </div>
   );

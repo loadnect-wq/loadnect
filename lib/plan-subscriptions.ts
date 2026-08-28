@@ -51,6 +51,12 @@ function normalisePhone(raw: string | null | undefined): string {
   return (raw ?? "").replace(/\D/g, "").slice(-12);
 }
 
+/** How long a half-finished mandate may be resumed rather than reopened.
+ *  Same lesson as the one-off flow: a gateway session goes stale well before
+ *  the record around it does, and replaying a dead one looks exactly like a
+ *  broken button. Past this, the attempt is retired and a fresh one opened. */
+const MANDATE_RESUME_WINDOW_MIN = 15;
+
 function gatewayMode(): "sandbox" | "production" {
   return process.env.CASHFREE_ENV === "production" ? "production" : "sandbox";
 }
@@ -116,7 +122,7 @@ export async function startPlanSubscription(input: {
   //    worse than a duplicate one-off charge.
   const { data: existing } = await db
     .from("plan_subscriptions")
-    .select("id, cf_subscription_id, status")
+    .select("id, cf_subscription_id, status, created_at")
     .eq("hall_id", input.hallId)
     .eq("plan_slug", input.planSlug)
     .in("status", ["created", "active", "on_hold", "paused"])
@@ -133,9 +139,12 @@ export async function startPlanSubscription(input: {
         return { ok: false, error: "This hall is already on this plan — it renews automatically each month." };
       }
 
-      // Still awaiting authorisation and the session is still usable: resume it
-      // rather than opening a second mandate.
-      if (mapped === "created" && live.data.subscription_session_id) {
+      // Still awaiting authorisation. Resume it rather than opening a second
+      // mandate — but ONLY while the session is fresh enough to still work.
+      const ageMs = Date.now() - Date.parse(existing.created_at);
+      const fresh = Number.isFinite(ageMs) && ageMs < MANDATE_RESUME_WINDOW_MIN * 60_000;
+
+      if (mapped === "created" && live.data.subscription_session_id && fresh) {
         return {
           ok: true,
           subsSessionId:  live.data.subscription_session_id,
@@ -143,6 +152,20 @@ export async function startPlanSubscription(input: {
           amount,
           mode: gatewayMode(),
         };
+      }
+
+      // A stale unauthorised attempt. Cancel it at Cashfree so it cannot be
+      // authorised later behind our back, retire our row, and open a fresh one
+      // below. Nothing was ever charged for it.
+      if (mapped === "created") {
+        await cancelCashfreeSubscription(existing.cf_subscription_id);
+        await db.from("plan_subscriptions")
+          .update({
+            status:         "cancelled",
+            cancelled_at:   new Date().toISOString(),
+            last_synced_at: new Date().toISOString(),
+          })
+          .eq("id", existing.id);
       }
 
       // Terminal at Cashfree — retire our row and start fresh below.
