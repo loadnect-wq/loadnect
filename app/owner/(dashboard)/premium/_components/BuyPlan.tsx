@@ -172,8 +172,9 @@ export function BuyPlan({
         </p>
       ) : (
         <p className="text-center text-[10px] text-charcoal-500">
-          Renews automatically every month. Cancel any time — you keep the month
-          you have paid for.
+          You pay {amountLabel} today and your hall is boosted straight away.
+          It renews automatically each month — cancel any time, and you keep the
+          month you have paid for.
         </p>
       )}
       {error && <p className="text-center text-[11px] text-red-600">{error}</p>}

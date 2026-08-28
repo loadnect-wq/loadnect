@@ -114,11 +114,20 @@ export type CreateSubscriptionParams = {
   customerPhone:  string;
   returnUrl:      string;
   /**
-   * Charged once to prove the mandate works, then refunded. Rs1 rather than the
-   * full monthly amount: the owner should not be charged a month up front just
-   * to authorise, and refunding Rs1 costs nothing if they abandon.
+   * THE FIRST MONTH, charged at sign-up and NOT refunded.
+   *
+   * This was Rs1-and-refunded, on the reasoning that an owner should not pay a
+   * month merely to authorise. That was wrong in practice: Cashfree schedules
+   * the first real debit one full interval later (observed in production —
+   * mandate authorised 28 Aug, next_schedule_date 28 Sep), so the owner paid
+   * Rs1, had it refunded, and would have waited a MONTH with no boost at all
+   * while believing they had subscribed.
+   *
+   * Charging the real amount up front makes sign-up and the first month the
+   * same event: money moves immediately, the listing activates immediately, and
+   * the mandate covers every month after.
    */
-  authorizationAmount?: number;
+  authorizationAmount: number;
   expiryTime?:    string;
   note?:          string;
 };
@@ -137,8 +146,9 @@ export async function createCashfreeSubscription(
       },
       plan_details: { plan_id: params.planId },
       authorization_details: {
-        authorization_amount:        params.authorizationAmount ?? 1,
-        authorization_amount_refund: true,
+        authorization_amount:        params.authorizationAmount,
+        // NOT refunded — this debit IS the first month, not a probe.
+        authorization_amount_refund: false,
         // eNACH is deliberately omitted: it needs bank-account details from the
         // owner and takes days to register. UPI AutoPay and card mandates are
         // both instant.
@@ -189,13 +199,29 @@ export function mapSubscriptionStatus(
 ): "created" | "active" | "cancelled" | "failed" | "completed" | "on_hold" | "paused" {
   switch ((cf ?? "").toUpperCase()) {
     case "ACTIVE":      return "active";
-    case "INITIALIZED": return "created";
-    case "BANK_APPROVAL_PENDING":
-    case "PENDING":     return "created";
+
+    case "INITIALIZED":
+    case "PENDING":
+    case "BANK_APPROVAL_PENDING":  return "created";
+
     case "ON_HOLD":     return "on_hold";
     case "PAUSED":      return "paused";
-    case "CANCELLED":   return "cancelled";
+
+    // Every way a mandate can END deliberately. CUSTOMER_CANCELLED was missing
+    // and fell through to "failed", which is not the same thing: a cancelled
+    // subscription is a normal, chosen outcome, while "failed" reads to the
+    // owner as something going wrong. Seen in production as CUSTOMER_CANCELLED.
+    case "CANCELLED":
+    case "CUSTOMER_CANCELLED":
+    case "MERCHANT_CANCELLED":     return "cancelled";
+
     case "COMPLETED":   return "completed";
-    default:            return "failed";
+
+    // Fail CLOSED: anything unrecognised must never grant promotion. It is
+    // logged so a new status shows up here rather than silently becoming
+    // "failed" forever.
+    default:
+      if (cf) console.warn(`[cashfree-subs] unmapped subscription_status: ${cf}`);
+      return "failed";
   }
 }

@@ -127,8 +127,8 @@ export default async function OwnerPremiumUpgradePage() {
         <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4 text-xs text-blue-800">
           <p className="font-semibold">How activation works</p>
           <ol className="mt-1.5 space-y-1 list-decimal list-inside">
-            <li>Pick the hall you want to promote and approve a monthly auto-pay with UPI or card.</li>
-            <li>Your listing is boosted the moment the first payment clears — no waiting for approval.</li>
+            <li>Pick the hall you want to promote and approve monthly auto-pay with UPI or card.</li>
+            <li>The first month is charged straight away and your listing is boosted at once — no waiting for approval, and no waiting for a billing date.</li>
             <li>
               It renews by itself every month. Cancel any time from your premium page — the month
               you have already paid for still runs to its end date.

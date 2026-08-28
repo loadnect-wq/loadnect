@@ -103,3 +103,24 @@ describe("a started-but-unpaid subscription is not a subscription", () => {
     expect(classify(mapSubscriptionStatus("ACTIVE"))).toBe("live");
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Statuses seen in PRODUCTION that the first version did not handle.
+// CUSTOMER_CANCELLED was stored as 'failed', which is not the same thing: a
+// cancelled mandate is a normal chosen outcome, while "failed" reads to the
+// owner as something having gone wrong — and, because 'failed' is terminal in
+// classify(), the difference is only cosmetic here but matters in the UI.
+// ─────────────────────────────────────────────────────────────────────────────
+describe("real Cashfree statuses observed in production", () => {
+  it("CUSTOMER_CANCELLED is a cancellation, not a failure", () => {
+    expect(mapSubscriptionStatus("CUSTOMER_CANCELLED")).toBe("cancelled");
+  });
+
+  it("MERCHANT_CANCELLED is a cancellation too", () => {
+    expect(mapSubscriptionStatus("MERCHANT_CANCELLED")).toBe("cancelled");
+  });
+
+  it("still fails closed on anything genuinely unknown", () => {
+    expect(mapSubscriptionStatus("SOME_FUTURE_STATE")).toBe("failed");
+  });
+});

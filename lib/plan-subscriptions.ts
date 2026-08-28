@@ -212,6 +212,8 @@ export async function startPlanSubscription(input: {
     customerEmail: input.ownerEmail,
     customerPhone: normalisePhone(input.ownerPhone),
     returnUrl:     `${origin}/owner/premium/status?subscription_id=${subscriptionId}`,
+    // The first month, charged now. Not a Rs1 probe — see CreateSubscriptionParams.
+    authorizationAmount: amount,
     note:          `${plan.name} monthly for ${hall.name}`,
   });
 
@@ -324,7 +326,7 @@ export async function syncSubscription(cfSubscriptionId: string): Promise<Subscr
 
   // Whatever the status, reconcile the CHARGES. A cancelled subscription may
   // still have paid months that must be honoured.
-  const applied = await applySubscriptionCharges(db, sub);
+  const applied = await applySubscriptionCharges(db, sub, live.data.authorization_details);
 
   // Is there a live listing behind this subscription right now? This, not the
   // mandate status, is what decides whether the owner is actually promoted.
@@ -374,6 +376,8 @@ async function applySubscriptionCharges(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   db: any,
   sub: { id: string; owner_id: string; hall_id: string; plan_slug: string; amount: number; cf_subscription_id: string },
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  auth?: any,
 ): Promise<{ count: number; unactivated: boolean }> {
   const payments = await getCashfreeSubscriptionPayments(sub.cf_subscription_id);
   if (!payments.ok) return { count: 0, unactivated: false };
@@ -381,6 +385,29 @@ async function applySubscriptionCharges(
   const successful = payments.data.filter(
     (p) => String(p.payment_status ?? "").toUpperCase() === "SUCCESS",
   );
+
+  // THE SIGN-UP DEBIT IS THE FIRST MONTH and may not appear in /payments — it
+  // lives on the subscription's authorization_details. Without this, an owner
+  // who paid at sign-up would sit unboosted until the second month, which is
+  // the exact failure this change exists to remove. Keyed on the same payment
+  // id, so if it DOES also appear in /payments it is recorded once, not twice.
+  if (auth
+      && auth.authorization_amount_refund === false
+      && String(auth.authorization_status ?? "").toUpperCase() === "ACTIVE"
+      && auth.payment_id) {
+    const already = successful.some(
+      (p) => String(p.cf_payment_id ?? p.payment_id ?? "") === String(auth.payment_id),
+    );
+    if (!already) {
+      successful.push({
+        cf_payment_id:  auth.payment_id,
+        payment_status: "SUCCESS",
+        payment_amount: Number(auth.authorization_amount),
+        payment_time:   auth.authorization_time ?? undefined,
+        cycle:          1,
+      });
+    }
+  }
 
   const { data: plan } = await db
     .from("premium_plans")
