@@ -30,7 +30,7 @@ export default async function OwnerDashboardPage() {
   if (!ownerRow) {
     return (
       <div className="min-h-screen bg-ivory-100">
-        <AppHeader title="Owner Dashboard" />
+        <AppHeader title="Owner Dashboard" notificationsHref="/owner/notifications" />
         <div className="px-4 py-8 sm:px-6 lg:px-8 max-w-2xl">
           <div className="rounded-2xl border-2 border-amber-200 bg-amber-50 p-6 space-y-3">
             <div className="flex items-start gap-3">
@@ -82,7 +82,7 @@ export default async function OwnerDashboardPage() {
 
   return (
     <div className="min-h-screen bg-ivory-100">
-      <AppHeader title="Dashboard" />
+      <AppHeader title="Dashboard" notificationsHref="/owner/notifications" />
 
       <div className="px-4 py-5 sm:px-6 lg:px-8 space-y-6">
 

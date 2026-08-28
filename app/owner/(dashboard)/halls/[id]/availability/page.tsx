@@ -40,7 +40,7 @@ export default async function AvailabilityPage({ params }: Props) {
 
   return (
     <div className="min-h-screen bg-ivory-100">
-      <AppHeader title="Availability" />
+      <AppHeader title="Availability" notificationsHref="/owner/notifications" />
 
       <div className="px-4 py-5 sm:px-6 lg:px-8 max-w-3xl space-y-4">
         <div>

@@ -122,9 +122,11 @@ export function ProfileView() {
         {profile && (
           <SettingsRow icon={<Bell className="h-4 w-4" />} label="Notifications" href="/customer/notifications" />
         )}
-        <SettingsRow icon={<User className="h-4 w-4" />} label="Edit profile" comingSoon />
-        <SettingsRow icon={<MapPin className="h-4 w-4" />} label="Saved addresses" comingSoon />
-        <SettingsRow icon={<CreditCard className="h-4 w-4" />} label="Payment methods" comingSoon />
+        {/* "Edit profile" was marked Soon while /profile/edit was already
+            built and shipped. "Saved addresses" and "Payment methods" do not
+            exist at all — three permanently greyed rows advertising nothing.
+            Removed rather than left as furniture; they come back when they are
+            real. */}
       </SettingsGroup>
 
       <SettingsGroup title="Support">

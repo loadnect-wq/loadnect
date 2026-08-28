@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { requireRole } from "@/lib/auth";
 import { OwnerSidebarNav } from "./_components/OwnerSidebarNav";
+import { OwnerBottomNav } from "./_components/OwnerBottomNav";
 
 // SEO: this whole subtree is private. Declaring robots ONCE on the layout means
 // every nested page inherits noindex — a new page added under here cannot leak
@@ -42,9 +43,14 @@ export default async function OwnerDashboardLayout({
           </div>
         </aside>
 
-        {/* Page content */}
-        <div className="min-w-0 flex-1">{children}</div>
+        {/* Page content. Bottom padding on mobile only, so the tab bar never
+            covers the last row of a list or a submit button. */}
+        <div className="min-w-0 flex-1 pb-20 lg:pb-0">{children}</div>
       </div>
+
+      {/* Phone navigation. The sidebar above is lg-only, so without this an
+          owner on a phone had no way to move around their own dashboard. */}
+      <OwnerBottomNav />
     </div>
   );
 }

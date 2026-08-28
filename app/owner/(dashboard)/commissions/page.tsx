@@ -56,7 +56,7 @@ export default async function OwnerCommissionsPage() {
   if (!ownerRow) {
     return (
       <div className="min-h-screen bg-ivory-100">
-        <AppHeader title="Commissions" />
+        <AppHeader title="Commissions" notificationsHref="/owner/notifications" />
         <div className="px-4 py-8">
           <EmptyState
             icon={<Wallet className="h-8 w-8" />}
@@ -82,7 +82,7 @@ export default async function OwnerCommissionsPage() {
 
   return (
     <div className="min-h-screen bg-ivory-100 pb-10">
-      <AppHeader title="Commissions" />
+      <AppHeader title="Commissions" notificationsHref="/owner/notifications" />
 
       <div className="px-4 py-4 sm:px-6 lg:px-8 space-y-4">
         {/* How the commission works — the whole model, in the owner's words. */}

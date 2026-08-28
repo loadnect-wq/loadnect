@@ -33,7 +33,7 @@ export default async function HallImagesPage({ params, searchParams }: Props) {
 
   return (
     <div className="min-h-screen bg-ivory-100">
-      <AppHeader title="Hall Images" />
+      <AppHeader title="Hall Images" notificationsHref="/owner/notifications" />
 
       <div className="px-4 py-5 sm:px-6 lg:px-8 max-w-2xl space-y-4">
 

@@ -13,10 +13,14 @@ interface AppHeaderProps {
   title?: string;
   showBack?: boolean;
   rightSlot?: React.ReactNode;
+  /** Where the bell goes. Owner pages pass their own route. */
+  notificationsHref?: string;
   transparent?: boolean;
 }
 
-export function AppHeader({ title, showBack, rightSlot, transparent }: AppHeaderProps) {
+export function AppHeader({
+  title, showBack, rightSlot, transparent, notificationsHref,
+}: AppHeaderProps) {
   const pathname = usePathname() ?? "/";
   const router = useRouter();
 
@@ -57,9 +61,13 @@ export function AppHeader({ title, showBack, rightSlot, transparent }: AppHeader
           {/* A real link, not an ornament. This was a <button> with no handler
               on every mobile page: it looked like the way to reach your
               notifications and did nothing when tapped. */}
+          {/* Owners have their own notifications page. This was hardcoded to
+              the customer route, which requireRole refuses for an owner — so
+              the bell on every owner page bounced them back to their dashboard.
+              `notificationsHref` lets an owner surface point at its own. */}
           {rightSlot ?? (
             <Link
-              href="/customer/notifications"
+              href={notificationsHref ?? "/customer/notifications"}
               aria-label="Notifications"
               className="flex h-9 w-9 items-center justify-center rounded-full bg-ivory-200 text-charcoal-700 transition-colors hover:bg-ivory-300"
             >

@@ -40,7 +40,7 @@ export function CancelButton({ bookingId }: { bookingId: string }) {
         <p className="text-sm font-semibold text-red-800">Cancel this booking?</p>
         <p className="mt-1 text-xs text-red-700 leading-relaxed">
           This action cannot be undone. Refunds, if applicable, are processed per
-          our cancellation policy (usually 5–7 business days).
+          our cancellation policy, and reaches you within 7–10 business days.
         </p>
       </div>
       {error && (

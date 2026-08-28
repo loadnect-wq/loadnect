@@ -11,7 +11,7 @@ export const metadata: Metadata = buildMetadata({
 export default function CancellationPolicyPage() {
   return (
     <article>
-      <LegalHeader title="Cancellation Policy" updated="June 2025" />
+      <LegalHeader title="Cancellation Policy" updated="August 2026" />
 
       <Section title="1. General">
         This Cancellation Policy applies to all bookings made through Hallnect. By confirming a booking and paying the advance, you agree to these cancellation terms. Specific cancellation conditions may vary by venue and are displayed on the booking checkout page before payment. This policy sets the minimum standard that applies to all bookings.
@@ -31,20 +31,27 @@ export default function CancellationPolicyPage() {
       </Section>
 
       <Section title="5. Booking Statuses Eligible for Cancellation">
-        Cancellations are available for bookings in the following statuses: Pending Payment, Payment Received, Booking Requested, and Owner Confirmed. Once a booking is marked Completed, it cannot be cancelled.
+        Cancellations are available for bookings in the following statuses: Payment Received,
+        Booking Requested, and Owner Confirmed. A booking still at <strong>Pending Payment</strong>{" "}
+        has not been paid for and simply expires on its own — there is nothing to cancel. Once a
+        booking is marked Completed, it cannot be cancelled.
       </Section>
 
       <Section title="6. Venue Verification Before Cancellation">
         Before cancelling, we recommend first contacting the venue owner directly to resolve any concerns about the venue, as cancellations may incur a financial penalty. Customers are advised to visit and verify venue details well before the event date.
       </Section>
 
-      <Section title="7. Non-Cancellable Bookings">
-        Bookings within 24 hours of the event start time cannot be cancelled through the platform. If you have an emergency, contact our support team immediately at{" "}
-        <a href="mailto:hallnect@gmail.com" className="text-maroon-600 hover:underline">hallnect@gmail.com</a>.
+      <Section title="7. Cancelling Close to the Event">
+        A cancellation made less than 7 days before the event does not qualify for a refund — see
+        the schedule in our{" "}
+        <a href="/refund-policy" className="text-maroon-600 hover:underline">Refund Policy</a>. If
+        you have an emergency, contact our support team at{" "}
+        <a href="mailto:hallnect@gmail.com" className="text-maroon-600 hover:underline">hallnect@gmail.com</a>{" "}
+        and we will do what we can with the venue.
       </Section>
 
       <Section title="8. How to Cancel">
-        <strong className="font-semibold text-charcoal-800">Customers:</strong> Log in → My Bookings → select booking → Cancel Booking. You will see the refund amount before confirming.
+        <strong className="font-semibold text-charcoal-800">Customers:</strong> Log in → My Bookings → select booking → Cancel Booking. The refund due is calculated from the schedule in our Refund Policy and confirmed to you by email.
         <br /><br />
         <strong className="font-semibold text-charcoal-800">Owners:</strong> Log in → My Dashboard → Bookings → select booking → Cancel. A reason must be provided.
       </Section>

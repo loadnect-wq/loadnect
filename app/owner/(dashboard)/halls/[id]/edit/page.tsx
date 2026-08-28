@@ -38,7 +38,7 @@ export default async function EditHallPage({ params }: Props) {
 
   return (
     <div className="min-h-screen bg-ivory-100">
-      <AppHeader title="Edit Hall" />
+      <AppHeader title="Edit Hall" notificationsHref="/owner/notifications" />
 
       <div className="px-4 py-5 sm:px-6 lg:px-8 max-w-2xl space-y-4">
         {/* Hall meta header */}

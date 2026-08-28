@@ -38,7 +38,11 @@ const AMENITY_ICONS: Record<string, React.ReactNode> = {
   "wheelchair-access": <Accessibility className="h-5 w-5" />,
 };
 
-// ── Standard rules (no DB column — shown as static policy) ───────────────────
+// ── Hallnect's standard rules ────────────────────────────────────────────────
+// These are PLATFORM rules, identical for every venue — there is no per-hall
+// rules column. They were headed "Hallnect Standard Venue Rules", which read as though
+// each owner had written them, so a customer could believe they had checked a
+// specific venue's terms when they had not. The heading now says whose they are.
 
 const VENUE_RULES = [
   "Venue must be vacated by the end of the booked slot",
@@ -501,7 +505,7 @@ export function HallDetailView({ hall, similar, isPreview, sidebarAd, advancePer
 
             {/* Venue rules */}
             <section className="mt-6">
-              <h2 className="font-serif text-base font-semibold text-charcoal-900">Venue Rules & Policies</h2>
+              <h2 className="font-serif text-base font-semibold text-charcoal-900">Hallnect Standard Venue Rules</h2>
               <ul className="mt-3 space-y-2 rounded-2xl bg-white p-4 shadow-card">
                 {VENUE_RULES.map((rule) => (
                   <li key={rule} className="flex items-start gap-2 text-xs text-charcoal-600">

@@ -15,7 +15,11 @@ const TABS = [
   { href: "/profile",  label: "Profile",  Icon: User,          match: (p: string) => p.startsWith("/profile") },
 ] as const;
 
-const HIDDEN_PREFIXES = ["/login", "/signup", "/owner/register", "/auth/", "/approval-pending", "/admin", "/book/"];
+// "/owner" covers the whole owner subtree. Without it, a venue owner on a
+// phone saw the CUSTOMER tabs on top of their own dashboard, and "Bookings"
+// took them to /customer/bookings — a route their role is refused, which
+// bounced them straight back. Owners get OwnerBottomNav instead.
+const HIDDEN_PREFIXES = ["/login", "/signup", "/owner", "/auth/", "/approval-pending", "/admin", "/book/"];
 
 export function BottomNav() {
   const pathname = usePathname() ?? "/";

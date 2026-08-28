@@ -88,11 +88,12 @@ export function HallCard({ hall, advancePercent }: HallCardProps) {
           </div>
         )}
 
-        {/* Bottom-right: availability pill */}
-        <div className="absolute bottom-3 right-3 flex items-center gap-1 rounded-full bg-white/95 px-2 py-0.5 text-[11px] font-semibold text-green-700">
-          <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
-          Available
-        </div>
+        {/* The green "Available" pill that used to sit here was unconditional
+            markup — every hall showed it, including ones booked solid for the
+            next month. The card was contradicting the detail page's real
+            calendar, on the one attribute customers shop by. There is no
+            per-hall availability in this query, so rather than decorate the
+            card with a guess it says nothing and the calendar answers. */}
       </div>
 
       {/* ── Card body ── */}

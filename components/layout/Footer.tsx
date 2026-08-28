@@ -2,12 +2,11 @@ import Link from "next/link";
 import { Camera, Globe, MessageCircle, PlayCircle, Mail, Phone, MapPin } from "lucide-react";
 import { APP_NAME, FOOTER_LINKS, CONTACT } from "@/lib/constants";
 
-const SOCIAL_LINKS = [
-  { Icon: Camera,      href: "#", label: "Instagram"  },
-  { Icon: Globe,       href: "#", label: "Facebook"   },
-  { Icon: MessageCircle, href: "#", label: "X (Twitter)" },
-  { Icon: PlayCircle,  href: "#", label: "YouTube"    },
-] as const;
+// Hallnect has no social accounts yet. These were four icons all pointing at
+// "#", on every page of the site — a visitor tapping one stayed exactly where
+// they were. An empty list renders nothing; add real URLs here when the
+// accounts exist and the row comes back on its own.
+const SOCIAL_LINKS: { Icon: typeof Camera; href: string; label: string }[] = [];
 
 export function Footer() {
   return (

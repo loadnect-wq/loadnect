@@ -51,7 +51,7 @@ const HOW_IT_WORKS = [
 
 const FAQ_ITEMS = [
   { q: "How do I book a venue?",
-    a: "Pick a hall, choose your date and slot, then pay the 25% advance plus the Rs 200 platform fee through Cashfree. Your booking is confirmed once the venue owner accepts it." },
+    a: "Pick a hall, choose your date and slot, then pay the advance plus the Rs 200 platform fee through Cashfree. The exact advance is shown before you pay. Your booking is confirmed once the venue owner accepts it." },
   { q: "Is the advance payment refundable?",
     a: "It depends when you cancel: the full advance is refundable more than 30 days before the event, and partially up to 7 days before. The Rs 200 platform fee is non-refundable on customer cancellations." },
   { q: "Can I see the venue before booking?",
@@ -195,8 +195,8 @@ export default async function HomePage() {
                 </span>
               </p>
               <p className="mx-auto mt-5 max-w-xl text-base text-ivory-300/90">
-                Discover, compare, and book verified wedding halls across India.
-                Transparent pricing, real photos, instant confirmation.
+                Discover, compare, and book verified wedding halls across Tamil Nadu.
+                Transparent pricing, real photos, and a clear answer from the venue.
               </p>
             </div>
 
@@ -243,9 +243,9 @@ export default async function HomePage() {
           <DesktopSectionHeader
             eyebrow="Hand-picked"
             title="Featured Venues"
-            blurb="Premium halls with verified photography, transparent pricing, and instant availability."
+            blurb="Promoted halls with verified photography and transparent pricing."
             linkLabel="Browse all venues →"
-            linkHref="/halls?category=premium"
+            linkHref="/halls"
           />
           {featured.length === 0 ? (
             <div className="mt-8"><EmptyVenues /></div>

@@ -17,13 +17,13 @@ export default function LegalLayout({ children }: LegalLayoutProps) {
         </div>
       </div>
 
-      {/* ── MVP draft notice ─────────────────────────────────────── */}
-      <div className="border-b border-amber-200 bg-amber-50 px-4 py-3 text-center">
-        <p className="text-xs text-amber-800">
-          <strong>Notice:</strong> These policies are drafts prepared for the Hallnect MVP.
-          They should be reviewed by a qualified legal professional before public launch.
-        </p>
-      </div>
+      {/* The banner that used to sit here told every visitor these policies
+          were "drafts prepared for the Hallnect MVP" that "should be reviewed
+          by a qualified legal professional before public launch". It rendered
+          on all five legal pages — each linked from the footer sitewide, each
+          indexed, and Terms linked from the booking checkout's mandatory
+          acceptance checkbox. A customer about to pay a real advance was being
+          told in writing that the binding terms were unfinished. */}
 
       {/* ── Content ─────────────────────────────────────────────── */}
       <div className="container-page max-w-3xl py-14">

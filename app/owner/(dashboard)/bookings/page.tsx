@@ -53,7 +53,7 @@ export default async function OwnerBookingsPage({ searchParams }: Props) {
   if (!ownerRow) {
     return (
       <div className="min-h-screen bg-ivory-100">
-        <AppHeader title="Bookings" />
+        <AppHeader title="Bookings" notificationsHref="/owner/notifications" />
         <div className="px-4 py-8">
           <EmptyState
             icon={<CalendarDays className="h-8 w-8" />}
@@ -102,7 +102,7 @@ export default async function OwnerBookingsPage({ searchParams }: Props) {
 
   return (
     <div className="min-h-screen bg-ivory-100">
-      <AppHeader title="Bookings" />
+      <AppHeader title="Bookings" notificationsHref="/owner/notifications" />
 
       <div className="px-4 py-4 sm:px-6 lg:px-8">
         {/* Tabs */}

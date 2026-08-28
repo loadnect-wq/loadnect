@@ -11,7 +11,7 @@ export const metadata: Metadata = buildMetadata({
 export default function RefundPolicyPage() {
   return (
     <article>
-      <LegalHeader title="Refund Policy" updated="June 2025" />
+      <LegalHeader title="Refund Policy" updated="August 2026" />
 
       <Section title="1. Overview">
         Hallnect is a marketplace connecting customers with venue owners. All bookings require an{" "}
@@ -54,19 +54,29 @@ export default function RefundPolicyPage() {
           </tbody>
         </table>
         <p className="px-4 py-3 text-[11px] text-charcoal-400 border-t border-border">
-          Actual refund amounts may vary by venue. The owner&apos;s policy is shown at checkout before payment.
+          This schedule applies to every booking on Hallnect. Venues do not set their own
+          cancellation terms.
         </p>
       </div>
 
       <Section title="4. Platform Fee">
-        Hallnect charges a flat <strong>₹200 platform fee</strong> on each booking, collected together with the advance and disclosed at checkout before payment is confirmed. This fee is <strong>non-refundable for customer-initiated cancellations</strong> — the refund schedule above applies to the advance only. For owner-initiated cancellations (see section 5), the platform fee is refunded in full.
+        Hallnect charges a flat <strong>₹200 platform fee</strong> on each booking, collected together with the advance and disclosed at checkout before payment is confirmed. This fee is <strong>non-refundable for customer-initiated cancellations</strong> — the refund schedule above applies to the advance only. For owner-initiated cancellations (see section 6), the platform fee is refunded in full.
       </Section>
 
-      <Section title="5. Owner-Initiated Cancellations">
+      <Section title="5. Venue Owner Subscriptions">
+        Premium and Pro listing plans are <strong>recurring monthly subscriptions</strong> for venue
+        owners and are <strong>separate from booking refunds</strong>. The first month is charged
+        when you subscribe. You may cancel at any time from Owner Dashboard &rarr; Premium, which
+        stops all future charges immediately. <strong>Months already paid for are not refunded</strong>{" "}
+        — your listing stays promoted until the end of the paid period and then stops. Part-months
+        are not refunded. If we charge you in error, contact us and we will refund it in full.
+      </Section>
+
+      <Section title="6. Owner-Initiated Cancellations">
         If a hall owner cancels a confirmed booking, you are entitled to a full refund of the advance payment including the platform fee. Refunds in this case are processed within 7–10 business days. Repeated owner cancellations may result in suspension of the venue from the platform.
       </Section>
 
-      <Section title="6. How to Request a Refund">
+      <Section title="7. How to Request a Refund">
         Log in to your Hallnect account and go to My Bookings. Select the booking and use the Cancel Booking option (if within the cancellation window). Alternatively, email{" "}
         <a href="mailto:hallnect@gmail.com" className="text-maroon-600 hover:underline">hallnect@gmail.com</a> with your booking reference number. We will confirm the eligible refund amount based on the venue&apos;s policy and the timing of your request.
       </Section>

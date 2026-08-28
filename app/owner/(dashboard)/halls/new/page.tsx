@@ -21,7 +21,7 @@ export default async function NewHallPage() {
 
   return (
     <div className="min-h-screen bg-ivory-100">
-      <AppHeader title="Add Hall" />
+      <AppHeader title="Add Hall" notificationsHref="/owner/notifications" />
 
       <div className="px-4 py-5 sm:px-6 lg:px-8 max-w-2xl space-y-4">
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 flex items-start gap-2">

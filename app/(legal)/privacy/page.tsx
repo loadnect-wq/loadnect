@@ -11,7 +11,7 @@ export const metadata: Metadata = buildMetadata({
 export default function PrivacyPage() {
   return (
     <article>
-      <LegalHeader title="Privacy Policy" updated="June 2025" />
+      <LegalHeader title="Privacy Policy" updated="August 2026" />
 
       <Section title="1. Who We Are">
         Hallnect is operated by <strong>HALLNECT LLP</strong>, an Indian company. We act as the data controller for personal information collected through this platform. For privacy concerns, contact us at{" "}

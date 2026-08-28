@@ -30,7 +30,7 @@ export default async function OwnerPremiumPage() {
   if (!ownerRow) {
     return (
       <div className="min-h-screen bg-ivory-100">
-        <AppHeader title="Premium" />
+        <AppHeader title="Premium" notificationsHref="/owner/notifications" />
         <div className="px-4 py-8">
           <EmptyState
             icon={<Sparkles className="h-8 w-8" />}
@@ -79,7 +79,7 @@ export default async function OwnerPremiumPage() {
 
   return (
     <div className="min-h-screen bg-ivory-100">
-      <AppHeader title="Premium Listings" />
+      <AppHeader title="Premium Listings" notificationsHref="/owner/notifications" />
 
       <div className="px-4 py-5 sm:px-6 lg:px-8 space-y-5">
 

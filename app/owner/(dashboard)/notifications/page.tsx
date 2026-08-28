@@ -13,7 +13,7 @@ export default async function OwnerNotificationsPage() {
 
   return (
     <div className="min-h-screen bg-ivory-100">
-      <AppHeader title="Notifications" />
+      <AppHeader title="Notifications" notificationsHref="/owner/notifications" />
       <div className="px-4 py-4 sm:px-6 lg:px-8">
         <div className="mb-4 hidden items-center gap-2 lg:flex">
           <Bell className="h-5 w-5 text-maroon-600" />

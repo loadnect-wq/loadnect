@@ -39,7 +39,7 @@ export default async function OwnerPremiumUpgradePage() {
 
   return (
     <div className="min-h-screen bg-ivory-100">
-      <AppHeader title="Premium Plans" showBack />
+      <AppHeader title="Premium Plans" showBack notificationsHref="/owner/notifications" />
 
       <div className="px-4 py-5 sm:px-6 lg:px-8 space-y-5">
 

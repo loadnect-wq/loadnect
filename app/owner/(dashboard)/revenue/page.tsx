@@ -29,7 +29,7 @@ export default async function OwnerRevenuePage() {
   if (!ownerRow) {
     return (
       <div className="min-h-screen bg-ivory-100">
-        <AppHeader title="Revenue" />
+        <AppHeader title="Revenue" notificationsHref="/owner/notifications" />
         <div className="px-4 py-8">
           <EmptyState
             icon={<IndianRupee className="h-8 w-8" />}
@@ -73,7 +73,7 @@ export default async function OwnerRevenuePage() {
 
   return (
     <div className="min-h-screen bg-ivory-100">
-      <AppHeader title="Revenue" />
+      <AppHeader title="Revenue" notificationsHref="/owner/notifications" />
 
       <div className="px-4 py-5 sm:px-6 lg:px-8 space-y-5">
 

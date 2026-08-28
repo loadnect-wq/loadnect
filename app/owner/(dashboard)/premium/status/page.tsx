@@ -130,7 +130,7 @@ export default async function PlanPaymentStatusPage({ searchParams }: Props) {
 
   return (
     <div className="min-h-screen bg-ivory-100">
-      <AppHeader title="Plan payment" />
+      <AppHeader title="Plan payment" notificationsHref="/owner/notifications" />
       <div className="mx-auto max-w-md px-4 py-8">
         <div className={`rounded-2xl border-2 p-6 text-center ${view.tone}`}>
           <div className="flex justify-center">{view.icon}</div>
