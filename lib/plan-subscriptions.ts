@@ -257,8 +257,20 @@ export type SubscriptionSyncResult = {
   /** Months successfully charged and turned into boost. */
   chargesApplied?: number;
   nextChargeAt?: string | null;
+  /** end_date of the live listing, when there is one. */
+  endDate?: string;
   /** A charge was taken but could not be turned into a listing. */
   unactivated?: boolean;
+  /**
+   * Whether the hall is ACTUALLY boosted right now.
+   *
+   * Deliberately separate from `state`. An authorised mandate is not the same
+   * thing as a paid month: Cashfree can report ACTIVE before the first debit
+   * settles, and until money has actually moved there is no listing and no
+   * promotion. Reporting "your plan is active" off the mandate alone is the
+   * same lie as calling an unauthorised attempt a subscription.
+   */
+  boosted?: boolean;
 };
 
 /**
@@ -314,7 +326,27 @@ export async function syncSubscription(cfSubscriptionId: string): Promise<Subscr
   // still have paid months that must be honoured.
   const applied = await applySubscriptionCharges(db, sub);
 
-  const base = { planSlug: sub.plan_slug, hallId: sub.hall_id, nextChargeAt: nextCharge };
+  // Is there a live listing behind this subscription right now? This, not the
+  // mandate status, is what decides whether the owner is actually promoted.
+  const today = new Date().toISOString().slice(0, 10);
+  const { data: liveListing } = await db
+    .from("premium_listings")
+    .select("end_date")
+    .eq("hall_id", sub.hall_id)
+    .eq("plan_slug", sub.plan_slug)
+    .eq("is_active", true)
+    .lte("start_date", today)
+    .gte("end_date", today)
+    .limit(1)
+    .maybeSingle();
+
+  const base = {
+    planSlug: sub.plan_slug,
+    hallId: sub.hall_id,
+    nextChargeAt: nextCharge,
+    boosted: Boolean(liveListing),
+    endDate: liveListing?.end_date ?? undefined,
+  };
 
   if (applied.unactivated) {
     return { state: "active", ...base, chargesApplied: applied.count, unactivated: true };

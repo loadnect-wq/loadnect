@@ -26,10 +26,17 @@ type Props = { searchParams: Promise<{ order_id?: string; subscription_id?: stri
  * be told that worked.
  */
 function mapSubscription(r: Awaited<ReturnType<typeof syncSubscription>>):
-  { state: "paid" | "pending" | "failed" | "unactivated" | "not_found" | "error" | "cancelled"; endDate?: string } {
+  { state: "paid" | "pending" | "failed" | "unactivated" | "not_found" | "error" | "cancelled" | "awaiting_charge"; endDate?: string } {
   if (r.unactivated) return { state: "unactivated" };
   switch (r.state) {
-    case "active":    return { state: "paid" };
+    // AN AUTHORISED MANDATE IS NOT A PAID MONTH. Cashfree can report ACTIVE
+    // before the first debit settles, and until money has moved there is no
+    // listing and no promotion. Saying "your plan is active" on the strength of
+    // the mandate alone is the same lie as calling an unauthorised attempt a
+    // subscription — so the boost itself is what decides this.
+    case "active":    return r.boosted
+                        ? { state: "paid", endDate: r.endDate }
+                        : { state: "awaiting_charge" };
     case "pending":   return { state: "pending" };
     case "cancelled": return { state: "cancelled" };
     case "failed":    return { state: "failed" };
@@ -94,6 +101,14 @@ export default async function PlanPaymentStatusPage({ searchParams }: Props) {
       tone: "border-amber-200 bg-amber-50",
       title: "We could not confirm this yet",
       body: "Your payment may still have gone through. Please check your premium page in a few minutes, and contact Hallnect support if it has not appeared — do not pay again.",
+    },
+    // Mandate approved, first payment not settled yet. Honest middle state:
+    // they have done their part, and the boost is not on until money moves.
+    awaiting_charge: {
+      icon: <Clock className="h-10 w-10 text-amber-500" />,
+      tone: "border-amber-200 bg-amber-50",
+      title: "Monthly billing is set up",
+      body: "Thank you — your auto-pay is approved. Your hall is boosted as soon as the first payment settles, usually within a few minutes. Nothing more is needed from you.",
     },
     // The mandate was stopped (by the owner, or by Cashfree completing it).
     cancelled: {
