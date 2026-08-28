@@ -48,7 +48,7 @@ export default async function PremiumPage() {
       <section className="container-page py-20">
         <SectionHeader
           title="Choose Your Plan"
-          description="Monthly plans, billed per hall. Stop whenever you like — a plan simply lapses at the end of the month it was paid for."
+          description="Monthly plans, billed per hall, renewing automatically. Cancel whenever you like — you keep the month you have already paid for."
           className="mb-12"
         />
 

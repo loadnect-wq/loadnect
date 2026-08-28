@@ -461,7 +461,7 @@ export async function verifyAndApplyPlanPurchase(orderId: string): Promise<Apply
  * index on that column, so a lost race surfaces as 23505 and is resolved by
  * re-reading rather than by granting a second listing.
  */
-async function finishActivation(
+export async function finishActivation(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   db: any,
   purchase: {
@@ -553,6 +553,20 @@ async function finishActivation(
     );
     return { state: "unactivated", ...base };
   }
+}
+
+/**
+ * Public alias. Subscription renewals grant their month through exactly this
+ * function, so a monthly charge and a one-off purchase share one activation
+ * path — and therefore one set of guarantees.
+ */
+export async function activatePurchase(
+  purchase: {
+    id: string; hall_id: string; plan_slug: string;
+    amount: number; duration_days: number; premium_listing_id: string | null;
+  },
+): Promise<ApplyPlanPaymentResult> {
+  return finishActivation(getSupabaseAdminClient(), purchase);
 }
 
 /** Best-effort link from the purchase back to its listing. Purely for

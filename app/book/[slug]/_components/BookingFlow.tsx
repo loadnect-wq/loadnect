@@ -24,13 +24,6 @@ type StepIndex = number;
 
 // ── Cashfree v3 web SDK ─────────────────────────────────────────────────────────
 // Loaded on demand from Cashfree's CDN. Exposes a global `Cashfree` factory.
-type CashfreeCheckoutOptions = { paymentSessionId: string; redirectTarget?: string };
-type CashfreeInstance = { checkout: (o: CashfreeCheckoutOptions) => Promise<unknown> | void };
-declare global {
-  interface Window {
-    Cashfree?: (opts: { mode: "sandbox" | "production" }) => CashfreeInstance;
-  }
-}
 
 const CASHFREE_SDK_SRC = "https://sdk.cashfree.com/js/v3/cashfree.js";
 

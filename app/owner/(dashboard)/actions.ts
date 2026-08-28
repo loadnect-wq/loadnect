@@ -1200,3 +1200,100 @@ export async function savePayoutDetails(data: {
 
   return result.data.settleable ? { state: "verified" } : { state: "pending_kyc" };
 }
+
+// ── Monthly subscription: start, check, cancel ───────────────────────────────
+// Premium and Pro are auto-renewing monthly subscriptions. The owner authorises
+// a mandate once; Cashfree debits them each month and each debit buys another
+// month of boost.
+//
+// SECURITY, unchanged from the one-off flow: only a hall id and a plan slug
+// cross the wire. Price, Cashfree plan id and hall ownership are all resolved
+// server-side.
+
+export type StartSubscriptionActionResult =
+  | { success: true; subsSessionId: string; subscriptionId: string; amount: number; mode: "sandbox" | "production" }
+  | { error: string };
+
+export async function startPlanSubscriptionAction(
+  hallId: string,
+  planSlug: string,
+): Promise<StartSubscriptionActionResult> {
+  const { supabase, user } = await getAuthUser();
+  if (!user) return { error: "Please sign in to subscribe." };
+  if (!parseSafe(uuidSchema, hallId).ok) return { error: "Invalid hall." };
+  if (planSlug !== "premium" && planSlug !== "pro") return { error: "Invalid plan." };
+
+  if (!isCashfreeConfigured()) {
+    return { error: "Online payments are temporarily unavailable. Please contact Hallnect support." };
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: profile } = await (supabase as any)
+    .from("profiles").select("full_name, email, phone").eq("id", user.id).maybeSingle();
+
+  const { startPlanSubscription } = await import("@/lib/plan-subscriptions");
+  const result = await startPlanSubscription({
+    hallId,
+    planSlug,
+    ownerProfileId: user.id,
+    ownerName:  profile?.full_name ?? "",
+    ownerEmail: (user.email || profile?.email || "").trim(),
+    ownerPhone: profile?.phone ?? null,
+  });
+
+  if (!result.ok) return { error: result.error };
+
+  return {
+    success: true,
+    subsSessionId:  result.subsSessionId,
+    subscriptionId: result.subscriptionId,
+    amount:         result.amount,
+    mode:           result.mode,
+  };
+}
+
+/** Server-verified subscription state after the owner returns from the mandate
+ *  screen. The URL's claim is never trusted. */
+export async function checkPlanSubscriptionStatus(
+  subscriptionId: string,
+): Promise<{ state: "active" | "pending" | "cancelled" | "failed" | "not_found" }> {
+  const { user } = await getAuthUser();
+  if (!user) return { state: "not_found" };
+  if (!subscriptionId || !subscriptionId.startsWith("HNS_")) return { state: "not_found" };
+
+  const { syncSubscription } = await import("@/lib/plan-subscriptions");
+  const result = await syncSubscription(subscriptionId);
+
+  revalidatePath("/owner/premium");
+  revalidatePath("/owner/dashboard");
+
+  return {
+    state:
+      result.state === "active"     ? "active"
+      : result.state === "cancelled"  ? "cancelled"
+      : result.state === "failed"     ? "failed"
+      : result.state === "not_found"  ? "not_found"
+      : "pending",
+  };
+}
+
+/** Stops future monthly billing. Months already paid for are NOT taken back. */
+export async function cancelPlanSubscriptionAction(
+  subscriptionRowId: string,
+): Promise<{ success: true; until: string | null } | { error: string }> {
+  const { user } = await getAuthUser();
+  if (!user) return { error: "Please sign in." };
+  if (!parseSafe(uuidSchema, subscriptionRowId).ok) return { error: "Invalid subscription." };
+
+  const { cancelPlanSubscription } = await import("@/lib/plan-subscriptions");
+  const result = await cancelPlanSubscription({
+    subscriptionRowId,
+    ownerProfileId: user.id,
+  });
+
+  if (!result.ok) return { error: result.error };
+
+  revalidatePath("/owner/premium");
+  revalidatePath("/owner/premium/upgrade");
+  return { success: true, until: result.until };
+}

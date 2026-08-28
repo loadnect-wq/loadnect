@@ -9,6 +9,8 @@ import { Badge } from "@/components/ui/Badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { buttonVariants } from "@/components/ui/Button";
 import { AppHeader } from "@/components/app/AppHeader";
+import { getSupabaseServerClient } from "@/lib/supabase/server";
+import { CancelSubscription } from "./_components/CancelSubscription";
 
 export const metadata: Metadata = { title: "Premium Listings" };
 
@@ -49,6 +51,19 @@ export default async function OwnerPremiumPage() {
     (l) => l.is_active && isActive(l.start_date, l.end_date),
   );
 
+  // The standing monthly agreement behind that listing, if there is one. Read
+  // through the session client so RLS confirms it is really this owner's.
+  const supabase = await getSupabaseServerClient();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: subscription } = await (supabase as any)
+    .from("plan_subscriptions")
+    .select("id, plan_slug, amount, status, next_charge_at")
+    .eq("owner_id", ownerRow.id)
+    .in("status", ["created", "active", "on_hold", "paused"])
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
   return (
     <div className="min-h-screen bg-ivory-100">
       <AppHeader title="Premium Listings" />
@@ -84,6 +99,33 @@ export default async function OwnerPremiumPage() {
                   ))}
                 </ul>
               </div>
+              {/* What the owner is actually signed up to, and how to stop it.
+                  A recurring charge with no visible way to cancel is the single
+                  most common complaint about subscriptions — and, for UPI
+                  AutoPay, a compliance expectation. */}
+              {subscription ? (
+                <div className="mt-3 space-y-2">
+                  <p className="text-[11px] text-gold-100">
+                    {subscription.status === "active"
+                      ? `Renews automatically — ${formatPrice(Number(subscription.amount))}/month`
+                      : "Waiting for your bank to confirm the monthly auto-pay."}
+                    {subscription.next_charge_at
+                      ? ` Next payment ${fmtDate(subscription.next_charge_at)}.`
+                      : ""}
+                  </p>
+                  <CancelSubscription
+                    subscriptionId={subscription.id}
+                    planName={subscription.plan_slug === "pro" ? "Pro" : "Premium"}
+                    paidUntil={activeListing?.end_date ?? null}
+                  />
+                </div>
+              ) : (
+                <p className="mt-3 text-[11px] text-gold-100">
+                  This was a one-off plan — it ends on {fmtDate(activeListing.end_date)} and will not
+                  renew. Subscribe monthly to keep it running automatically.
+                </p>
+              )}
+
               <Link
                 href="/owner/premium/upgrade"
                 className="mt-3 inline-flex items-center gap-1 rounded-full bg-white/20 px-3 py-1 text-[11px] font-semibold text-white hover:bg-white/30"
@@ -116,8 +158,8 @@ export default async function OwnerPremiumPage() {
                 anywhere in the product. Owners now buy a plan themselves. */}
             <ol className="space-y-2 text-sm text-charcoal-600">
               <li className="flex gap-2"><span className="font-bold text-maroon-600">1.</span> Pick a plan and the hall you want to promote</li>
-              <li className="flex gap-2"><span className="font-bold text-maroon-600">2.</span> Pay by UPI, card, net banking or wallet</li>
-              <li className="flex gap-2"><span className="font-bold text-maroon-600">3.</span> Your hall is boosted the moment the payment is confirmed</li>
+              <li className="flex gap-2"><span className="font-bold text-maroon-600">2.</span> Approve a monthly auto-pay with UPI or card</li>
+              <li className="flex gap-2"><span className="font-bold text-maroon-600">3.</span> Your hall is boosted as soon as it clears, and renews each month</li>
             </ol>
             <Link
               href="/owner/premium/upgrade"

@@ -47,7 +47,7 @@ export default async function OwnerPremiumUpgradePage() {
           <h1 className="font-serif text-2xl font-bold text-charcoal-900">Boost your hall&apos;s visibility</h1>
           <p className="mt-1 text-sm text-charcoal-600">
             Pick a plan that fits your venue. Premium and Pro listings appear higher in search.
-            All plans run for {ordered[0]?.duration_days ?? 30} days from activation.
+            Billed monthly and renews on its own — cancel whenever you like.
           </p>
         </div>
 
@@ -72,7 +72,7 @@ export default async function OwnerPremiumUpgradePage() {
                     {v.icon}
                     <h2 className="font-serif text-lg font-bold text-charcoal-900">{plan.name}</h2>
                   </div>
-                  <Badge size="sm" variant="secondary">{plan.duration_days}d</Badge>
+                  <Badge size="sm" variant="secondary">monthly</Badge>
                 </div>
 
                 <div className="mt-3">
@@ -80,7 +80,7 @@ export default async function OwnerPremiumUpgradePage() {
                     {plan.monthly_price === 0 ? "Free" : formatPrice(plan.monthly_price)}
                   </span>
                   {plan.monthly_price > 0 && (
-                    <span className="ml-1 text-xs text-charcoal-500">/ {plan.duration_days}d</span>
+                    <span className="ml-1 text-xs text-charcoal-500">/ month</span>
                   )}
                 </div>
 
@@ -127,16 +127,17 @@ export default async function OwnerPremiumUpgradePage() {
         <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4 text-xs text-blue-800">
           <p className="font-semibold">How activation works</p>
           <ol className="mt-1.5 space-y-1 list-decimal list-inside">
-            <li>Pick the hall you want to promote and pay by UPI, card, net banking or wallet.</li>
-            <li>Your listing is boosted the moment the payment is confirmed — no waiting for approval.</li>
+            <li>Pick the hall you want to promote and approve a monthly auto-pay with UPI or card.</li>
+            <li>Your listing is boosted the moment the first payment clears — no waiting for approval.</li>
             <li>
-              The plan runs for {ordered[0]?.duration_days ?? 30} days and then stops on its own.
-              Renewing early adds to the days you already have.
+              It renews by itself every month. Cancel any time from your premium page — the month
+              you have already paid for still runs to its end date.
             </li>
           </ol>
           <p className="mt-2 text-[11px] text-blue-700">
-            Payment is handled by Cashfree; Hallnect never sees your card or UPI details. A plan can
-            only be bought for a hall that is already approved and live.
+            Billing is handled by Cashfree; Hallnect never sees your card or UPI details, and cannot
+            charge you more than the plan amount you approve. A plan can only be bought for a hall
+            that is already approved and live.
           </p>
         </div>
       </div>

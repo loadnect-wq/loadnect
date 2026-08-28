@@ -3,6 +3,7 @@ import Link from "next/link";
 import { CheckCircle2, Clock, XCircle, AlertTriangle } from "lucide-react";
 import { requireRole } from "@/lib/auth";
 import { verifyAndApplyPlanPurchase } from "@/lib/plan-payments";
+import { syncSubscription } from "@/lib/plan-subscriptions";
 import { AppHeader } from "@/components/app/AppHeader";
 import { buttonVariants } from "@/components/ui/Button";
 
@@ -14,7 +15,28 @@ export const metadata: Metadata = { title: "Plan payment" };
 // cached page can never show a stale "active".
 export const dynamic = "force-dynamic";
 
-type Props = { searchParams: Promise<{ order_id?: string }> };
+type Props = { searchParams: Promise<{ order_id?: string; subscription_id?: string }> };
+
+/**
+ * Collapses a subscription sync onto the same small set of states this page
+ * already renders, so both journeys share one set of messages.
+ *
+ * 'unactivated' is preserved rather than flattened into success: it means a
+ * charge WAS taken and the boost could not be granted, and the owner must never
+ * be told that worked.
+ */
+function mapSubscription(r: Awaited<ReturnType<typeof syncSubscription>>):
+  { state: "paid" | "pending" | "failed" | "unactivated" | "not_found" | "error" | "cancelled"; endDate?: string } {
+  if (r.unactivated) return { state: "unactivated" };
+  switch (r.state) {
+    case "active":    return { state: "paid" };
+    case "pending":   return { state: "pending" };
+    case "cancelled": return { state: "cancelled" };
+    case "failed":    return { state: "failed" };
+    case "not_found": return { state: "not_found" };
+    default:          return { state: "error" };
+  }
+}
 
 function fmtDate(iso: string | undefined) {
   if (!iso) return null;
@@ -25,11 +47,16 @@ function fmtDate(iso: string | undefined) {
 
 export default async function PlanPaymentStatusPage({ searchParams }: Props) {
   await requireRole(["owner_approved"]);
-  const { order_id: orderId } = await searchParams;
+  const { order_id: orderId, subscription_id: subscriptionId } = await searchParams;
 
-  const result = orderId
-    ? await verifyAndApplyPlanPurchase(orderId)
-    : ({ state: "not_found" } as const);
+  // Two ways an owner lands here: back from a MANDATE screen (subscription), or
+  // back from a one-off order (the pre-subscription flow, kept so an old link
+  // still resolves rather than 404-ing).
+  const result = subscriptionId
+    ? mapSubscription(await syncSubscription(subscriptionId))
+    : orderId
+      ? await verifyAndApplyPlanPurchase(orderId)
+      : ({ state: "not_found" } as const);
 
   const until = fmtDate("endDate" in result ? result.endDate : undefined);
 
@@ -39,20 +66,20 @@ export default async function PlanPaymentStatusPage({ searchParams }: Props) {
       tone: "border-green-200 bg-green-50",
       title: "Your plan is active",
       body: until
-        ? `Your hall is boosted straight away and stays boosted until ${until}.`
-        : "Payment received. Your hall is boosted straight away — see your premium page for the exact dates.",
+        ? `Your hall is boosted straight away, and renews automatically each month. Paid up to ${until}.`
+        : "Your hall is boosted straight away and renews automatically each month. See your premium page for the exact dates.",
     },
     pending: {
       icon: <Clock className="h-10 w-10 text-amber-500" />,
       tone: "border-amber-200 bg-amber-50",
-      title: "Payment is being verified",
-      body: "Your bank has not confirmed this payment yet. Your plan activates automatically the moment it clears — if money left your account, do not pay again.",
+      title: "We are waiting on your bank",
+      body: "Your mandate has not been confirmed yet. Some banks take a few minutes to approve an auto-pay instruction. Your plan starts by itself the moment it clears — do not set it up again.",
     },
     failed: {
       icon: <XCircle className="h-10 w-10 text-red-600" />,
       tone: "border-red-200 bg-red-50",
-      title: "Payment did not complete",
-      body: "No money was taken and no plan was activated. You can try again from the plans page.",
+      title: "That did not go through",
+      body: "The mandate was not set up and nothing has been charged. You can try again from the plans page.",
     },
     not_found: {
       icon: <XCircle className="h-10 w-10 text-charcoal-400" />,
@@ -67,6 +94,13 @@ export default async function PlanPaymentStatusPage({ searchParams }: Props) {
       tone: "border-amber-200 bg-amber-50",
       title: "We could not confirm this yet",
       body: "Your payment may still have gone through. Please check your premium page in a few minutes, and contact Hallnect support if it has not appeared — do not pay again.",
+    },
+    // The mandate was stopped (by the owner, or by Cashfree completing it).
+    cancelled: {
+      icon: <XCircle className="h-10 w-10 text-charcoal-400" />,
+      tone: "border-border bg-white",
+      title: "This subscription has ended",
+      body: "No further monthly payments will be taken. Any month you have already paid for still runs to its end date.",
     },
     // MONEY TAKEN, LISTING NOT GRANTED. This must never render as success: the
     // whole point of the state is that the owner paid and did not get what they

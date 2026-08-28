@@ -1,25 +1,22 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { CreditCard } from "lucide-react";
-import { startPlanPurchaseAction } from "@/app/owner/(dashboard)/actions";
+import { CreditCard, RefreshCw } from "lucide-react";
+import { startPlanSubscriptionAction } from "@/app/owner/(dashboard)/actions";
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Buys a Premium/Pro listing plan through Cashfree — the same gateway (and the
-// same SDK) customers use for booking advances.
+// Subscribes a hall to a monthly Premium/Pro plan through Cashfree.
 //
-// The button sends ONLY a hall id and a plan slug. The price is read on the
-// server from the premium_plans catalogue, so the figure rendered here is
-// display-only and cannot influence what is charged.
+// This used to be a one-off purchase: pay ₹4,999, get 30 days, and the boost
+// went dark unless the owner remembered to buy again. It is now a MANDATE —
+// authorised once, debited monthly by Cashfree — so the listing renews on its
+// own and the owner can stop it whenever they like.
+//
+// The button sends ONLY a hall id and a plan slug. Price and the Cashfree plan
+// id are resolved on the server, so the figure rendered here is display-only
+// and cannot influence what is charged.
 // ─────────────────────────────────────────────────────────────────────────────
 
-type CashfreeCheckoutOptions = { paymentSessionId: string; redirectTarget?: string };
-type CashfreeInstance = { checkout: (o: CashfreeCheckoutOptions) => Promise<unknown> | void };
-declare global {
-  interface Window {
-    Cashfree?: (opts: { mode: "sandbox" | "production" }) => CashfreeInstance;
-  }
-}
 
 const SDK_SRC = "https://sdk.cashfree.com/js/v3/cashfree.js";
 
@@ -46,7 +43,13 @@ function loadSdk(): Promise<NonNullable<Window["Cashfree"]>> {
   });
 }
 
-export type BuyableHall = { id: string; name: string; tier: string | null };
+export type BuyableHall = {
+  id: string;
+  name: string;
+  tier: string | null;
+  /** Slug of a plan this hall is already subscribed to, if any. */
+  subscribedTo?: string | null;
+};
 
 export function BuyPlan({
   planSlug,
@@ -74,13 +77,13 @@ export function BuyPlan({
   }
 
   const selected = halls.find((h) => h.id === hallId);
-  const alreadyOnThisPlan = selected?.tier === planSlug;
+  const alreadyOnThisPlan = selected?.subscribedTo === planSlug;
 
-  function pay() {
+  function subscribe() {
     setError(null);
     setStage("creating");
     start(async () => {
-      const result = await startPlanPurchaseAction(hallId, planSlug);
+      const result = await startPlanSubscriptionAction(hallId, planSlug);
 
       if ("error" in result) {
         setError(result.error);
@@ -91,11 +94,12 @@ export function BuyPlan({
       setStage("opening");
       try {
         const Cashfree = await loadSdk();
-        // redirectTarget "_self" sends the browser to our own status page after
-        // checkout, where the payment is verified SERVER-SIDE before the plan is
-        // shown as active.
-        Cashfree({ mode: result.mode }).checkout({
-          paymentSessionId: result.paymentSessionId,
+        // subscriptionsCheckout collects the MANDATE (UPI AutoPay or card), not
+        // a one-off payment. redirectTarget "_self" brings the owner back to our
+        // status page, where the subscription is verified server-side before it
+        // is shown as active.
+        Cashfree({ mode: result.mode }).subscriptionsCheckout({
+          subsSessionId: result.subsSessionId,
           redirectTarget: "_self",
         });
       } catch {
@@ -105,11 +109,18 @@ export function BuyPlan({
     });
   }
 
+  if (alreadyOnThisPlan) {
+    return (
+      <p className="rounded-lg bg-green-50 px-3 py-2 text-center text-xs font-semibold text-green-800">
+        Subscribed — renews monthly
+      </p>
+    );
+  }
+
   const label =
-    stage === "creating" ? "Preparing payment…"
+    stage === "creating" ? "Preparing…"
     : stage === "opening" ? "Opening checkout…"
-    : alreadyOnThisPlan ? `Renew — ${amountLabel}`
-    : `Pay ${amountLabel}`;
+    : `Subscribe — ${amountLabel}/month`;
 
   return (
     <div className="flex flex-col gap-2">
@@ -125,7 +136,7 @@ export function BuyPlan({
           >
             {halls.map((h) => (
               <option key={h.id} value={h.id}>
-                {h.name}{h.tier ? ` — currently ${h.tier}` : ""}
+                {h.name}{h.subscribedTo ? ` — on ${h.subscribedTo}` : ""}
               </option>
             ))}
           </select>
@@ -134,7 +145,7 @@ export function BuyPlan({
 
       <button
         type="button"
-        onClick={pay}
+        onClick={subscribe}
         disabled={pending || stage !== "idle" || !hallId}
         className={[
           "inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl px-4 text-sm font-semibold text-white",
@@ -144,17 +155,13 @@ export function BuyPlan({
             : "bg-gold-600 hover:bg-gold-700",
         ].join(" ")}
       >
-        <CreditCard className="h-4 w-4" />
+        {stage === "idle" ? <RefreshCw className="h-4 w-4" /> : <CreditCard className="h-4 w-4" />}
         {label}
       </button>
 
-      {alreadyOnThisPlan && (
-        <p className="text-center text-[10px] text-charcoal-500">
-          Renewing adds to the days you already have — you lose nothing.
-        </p>
-      )}
       <p className="text-center text-[10px] text-charcoal-500">
-        UPI · Card · Net banking · Wallet — secured by Cashfree
+        Renews automatically every month. Cancel any time — you keep the month
+        you have paid for.
       </p>
       {error && <p className="text-center text-[11px] text-red-600">{error}</p>}
     </div>

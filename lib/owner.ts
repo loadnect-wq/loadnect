@@ -689,7 +689,7 @@ export function generateSlug(name: string, city: string): string {
  */
 export async function fetchOwnerBuyableHalls(
   ownerId: string,
-): Promise<{ id: string; name: string; tier: string | null }[]> {
+): Promise<{ id: string; name: string; tier: string | null; subscribedTo: string | null }[]> {
   const supabase = await getSupabaseServerClient();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = supabase as any;
@@ -712,16 +712,31 @@ export async function fetchOwnerBuyableHalls(
         .eq("status", "approved")
         .order("name", { ascending: true });
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      return (legacy ?? []).map((r: any) => ({ id: r.id, name: r.name, tier: null }));
+      return (legacy ?? []).map((r: any) => ({ id: r.id, name: r.name, tier: null, subscribedTo: null }));
     }
     handleError("fetchOwnerBuyableHalls", error);
     return [];
   }
+
+  // Which halls already have a LIVE monthly subscription. Without this the
+  // plans page would offer "Subscribe" for a plan the owner is already paying
+  // for every month, and the server would (correctly) refuse — an avoidable
+  // dead end.
+  const { data: subs } = await db
+    .from("plan_subscriptions")
+    .select("hall_id, plan_slug")
+    .eq("owner_id", ownerId)
+    .in("status", ["created", "active", "on_hold", "paused"]);
+
+  const subscribed = new Map<string, string>();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  for (const row of (subs ?? []) as any[]) subscribed.set(row.hall_id, row.plan_slug);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return (data ?? []).map((r: any) => ({
     id:   r.id,
     name: r.name,
     tier: r.premium_tier ?? null,
+    subscribedTo: subscribed.get(r.id) ?? null,
   }));
 }
