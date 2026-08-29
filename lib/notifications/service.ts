@@ -36,9 +36,9 @@ import {
 } from "@/lib/twilio/whatsapp";
 import {
   contentSidFor,
+  resolveTemplate,
   hasMalformedSid,
   renderTemplate,
-  coerceVariables,
   WHATSAPP_TEMPLATES,
   type WhatsAppTemplateKey,
 } from "@/lib/notifications/whatsapp-templates";
@@ -163,9 +163,21 @@ export async function dispatchNotification(req: NotificationRequest): Promise<vo
     // Content is derived from the template registry, never from a caller's
     // free-text string — so the stored message is exactly what the approved
     // template renders.
-    const variables = coerceVariables(req.templateKey, req.templateVariables);
-    const message = renderTemplate(req.templateKey, variables);
-    const contentSid = contentSidFor(req.templateKey);
+    // The EFFECTIVE template, not the requested one: resolveTemplate may fall
+    // back to a superseded template whose SID is configured, and it reshapes
+    // the values to that template's positional contract when it does. Storing
+    // the effective key/sid/variables together is what keeps the send path, the
+    // stored message and the admin dashboard describing the same message.
+    const resolved = resolveTemplate(req.templateKey, req.templateVariables);
+    const variables = resolved.variables;
+    const message = renderTemplate(resolved.key, variables);
+    const contentSid = resolved.sid;
+    if (resolved.usedFallback) {
+      console.warn(
+        `[notifications] ${req.templateKey} is not configured — sent via ${resolved.key} instead. ` +
+        `Set ${WHATSAPP_TEMPLATES[req.templateKey].envVar} once Meta approves it.`,
+      );
+    }
 
     // Preference gate — non-critical only. Recorded (not silently dropped) so
     // the admin center shows WHY nothing was sent.
@@ -182,7 +194,7 @@ export async function dispatchNotification(req: NotificationRequest): Promise<vo
       message: message.slice(0, 800),
       channel: "whatsapp",
       provider: "twilio",
-      template_key: req.templateKey,
+      template_key: resolved.key,
       template_sid: contentSid,
       template_variables: variables,
     };

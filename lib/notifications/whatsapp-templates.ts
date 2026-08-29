@@ -61,14 +61,23 @@ export type WhatsAppTemplateDef = {
   /** Renders the message from ordered values. The single source of the copy. */
   body: (v: readonly string[]) => string;
   /**
-   * A superseded template to fall back to while this one's SID is unset.
+   * A superseded template to fall back to while this one's SID is unset or its
+   * Meta approval has not landed yet.
    *
-   * Only set on the Utility replacements below. Without it, a deploy that ships
-   * the new code before the new SID reaches the environment would record every
-   * affected notification as 'skipped' — no message at all, which is strictly
-   * worse than the throttled Marketing one it replaces.
+   * Only set on the Utility replacements below. Without it, shipping the new
+   * code before the new SID reaches the environment records every affected
+   * notification as 'skipped' — no message at all, which is strictly worse than
+   * the throttled Marketing one it replaces.
+   *
+   * `toVariables` re-shapes this template's values into the older template's
+   * positional contract. It is REQUIRED rather than optional because the two
+   * rarely have the same arity, and positional variables are a contract: a
+   * fallback that just forwarded the values would silently reindex them.
    */
-  legacyKey?: WhatsAppTemplateKey;
+  legacy?: {
+    key: WhatsAppTemplateKey;
+    toVariables: (v: readonly string[]) => string[];
+  };
 };
 
 /** `${key}` → `TWILIO_TEMPLATE_${key}`. Kept mechanical so it cannot drift. */
@@ -82,9 +91,9 @@ function def(
   purpose: string,
   variables: readonly string[],
   body: (v: readonly string[]) => string,
-  legacyKey?: WhatsAppTemplateKey,
+  legacy?: WhatsAppTemplateDef["legacy"],
 ): WhatsAppTemplateDef {
-  return { key, envVar: envVarFor(key), audience, purpose, variables, body, legacyKey };
+  return { key, envVar: envVarFor(key), audience, purpose, variables, body, legacy };
 }
 
 // Every message opens with the brand so the recipient knows who is writing,
@@ -308,7 +317,7 @@ export const WHATSAPP_TEMPLATES: Record<WhatsAppTemplateKey, WhatsAppTemplateDef
       `Manage availability and booking requests from your owner dashboard.
 
 ${SIGNOFF}`,
-    "OWNER_HALL_APPROVED",
+    { key: "OWNER_HALL_APPROVED", toVariables: (v) => [v[0]] },
   ),
 
   OWNER_ACCOUNT_STATUS: def(
@@ -332,10 +341,12 @@ ${SIGNOFF}`,
       `Sign in to your owner dashboard to review it.
 
 ${SIGNOFF}`,
-    // No legacy fallback ON PURPOSE. OWNER_ACCOUNT_UPDATE takes two variables
-    // and this takes three, so falling back would land "Details" in a
-    // placeholder that does not exist and drop it. A skipped notification is
-    // recoverable; a garbled one sent to an owner is not.
+    // 3 -> 2. The old template opened with one free-text subject line, which is
+    // exactly "<item> — <status>" said less precisely.
+    {
+      key: "OWNER_ACCOUNT_UPDATE",
+      toVariables: (v) => [`${v[0]} — ${v[1]}.`, v[2]],
+    },
   ),
 
   OWNER_PAYMENT_RECEIPT: def(
@@ -360,8 +371,16 @@ ${SIGNOFF}`,
       `Manage or cancel billing from Premium in your owner dashboard.
 
 ${SIGNOFF}`,
-    // No legacy fallback — four variables against the old template's two.
-    // See OWNER_ACCOUNT_STATUS above.
+    // 4 -> 2, reconstructing the sentence the old template used to send. It
+    // reads worse than the receipt, which is the point of having replaced it.
+    {
+      key: "OWNER_ACCOUNT_UPDATE",
+      toVariables: (v) => [
+        `${v[0]} received for ${v[1]} on ${v[2]}.`,
+        `This is your monthly ${v[1]} payment. Your boost runs until ${v[3]}. ` +
+          `It renews automatically — you can stop it any time from Premium in your dashboard.`,
+      ],
+    },
   ),
 
   // ── Admin ──────────────────────────────────────────────────────────────────
@@ -435,26 +454,68 @@ export function coerceVariables(
  * Returns null when unset — the caller records the notification as 'skipped'
  * with a clear reason rather than attempting a send that Twilio would reject.
  */
+/** A Content SID is always HX + 32 hex characters. */
+const SID_SHAPE = /^HX[0-9a-fA-F]{32}$/;
+
 export function contentSidFor(key: WhatsAppTemplateKey): string | null {
+  const raw = process.env[WHATSAPP_TEMPLATES[key].envVar]?.trim();
+  if (!raw) return null;
+  // Validating the shape here turns a copy-paste mistake into an actionable
+  // dashboard message instead of a Twilio 400 at send time.
+  return SID_SHAPE.test(raw) ? raw : null;
+}
+
+export type ResolvedTemplate = {
+  /** The template actually used — the legacy one when a fallback was taken. */
+  key: WhatsAppTemplateKey;
+  sid: string | null;
+  /** Values in the EFFECTIVE template's positional order. */
+  variables: string[];
+  /** True when the requested template was unavailable and legacy was used. */
+  usedFallback: boolean;
+};
+
+/**
+ * Picks the template to actually send with, and shapes the values to match it.
+ *
+ * SID AND VARIABLES MUST BE CHOSEN TOGETHER. Resolving them separately is how a
+ * fallback corrupts a message: the caller supplies four values for a receipt,
+ * the SID quietly resolves to a two-variable template, and Twilio fills {{1}}
+ * and {{2}} with the amount and the plan while the hall and the date vanish.
+ *
+ * Falling back at all is deliberate. A replacement template is unusable between
+ * the deploy that references it and Meta approving it — minutes usually, longer
+ * if Meta queues it, forever if Meta rejects. Sending the superseded template
+ * through that window costs the worse Marketing category; sending nothing costs
+ * the owner a payment receipt, or notice that they are locked out. Silence is
+ * the worse failure.
+ */
+export function resolveTemplate(
+  key: WhatsAppTemplateKey,
+  values: readonly (string | number | null | undefined)[],
+): ResolvedTemplate {
   const t = WHATSAPP_TEMPLATES[key];
-  const raw = process.env[t.envVar]?.trim();
-  // A Content SID is always HX + 32 hex characters. Validating the shape here
-  // turns a copy-paste mistake into an actionable dashboard message instead of
-  // a Twilio 400 at send time.
-  if (raw && /^HX[0-9a-fA-F]{32}$/.test(raw)) return raw;
-  // Unset (or malformed) and this template supersedes an older one: fall back
-  // rather than skip. The legacy template is approved and sends; it is only in
-  // the worse Marketing category. Silence is the worse failure of the two.
-  if (t.legacyKey) {
-    const fallback = WHATSAPP_TEMPLATES[t.legacyKey];
-    // Positional variables are the contract. Falling back across a different
-    // arity would silently reindex every value, so refuse rather than guess.
-    if (fallback.variables.length === t.variables.length) {
-      const legacy = process.env[fallback.envVar]?.trim();
-      if (legacy && /^HX[0-9a-fA-F]{32}$/.test(legacy)) return legacy;
+  const own = process.env[t.envVar]?.trim();
+  if (own && SID_SHAPE.test(own)) {
+    return { key, sid: own, variables: coerceVariables(key, values), usedFallback: false };
+  }
+
+  if (t.legacy) {
+    const legacySid = process.env[WHATSAPP_TEMPLATES[t.legacy.key].envVar]?.trim();
+    if (legacySid && SID_SHAPE.test(legacySid)) {
+      // Coerce to THIS template's arity first, so the mapper always receives a
+      // full-length array and can never read undefined off the end.
+      const mapped = t.legacy.toVariables(coerceVariables(key, values));
+      return {
+        key: t.legacy.key,
+        sid: legacySid,
+        variables: coerceVariables(t.legacy.key, mapped),
+        usedFallback: true,
+      };
     }
   }
-  return null;
+
+  return { key, sid: null, variables: coerceVariables(key, values), usedFallback: false };
 }
 
 /** True when the env value is present but is not a well-formed Content SID. */
