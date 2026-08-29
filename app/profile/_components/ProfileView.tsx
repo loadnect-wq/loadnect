@@ -19,7 +19,13 @@ type ProfileState = {
   phoneVerified: boolean;
 } | null;
 
-export function ProfileView() {
+export function ProfileView({
+  phoneVerificationAvailable = false,
+}: {
+  /** False when TWILIO_VERIFY_SERVICE_SID is unset — the OTP service cannot
+   *  send a code, so the row is hidden rather than leading to a dead end. */
+  phoneVerificationAvailable?: boolean;
+}) {
   const router = useRouter();
   const [profile, setProfile] = useState<ProfileState>(null);
   const [loading, setLoading] = useState(true);
@@ -111,12 +117,14 @@ export function ProfileView() {
             whole OTP flow was unreachable. It is the number booking updates
             are sent to, which is worth telling people about. */}
         {profile && (
-          <SettingsRow
-            icon={<Phone className="h-4 w-4" />}
-            label={profile.phoneVerified ? "Phone verified" : "Verify your phone"}
-            href={profile.phoneVerified ? undefined : "/verify-phone"}
-            badge={profile.phoneVerified ? "Verified" : undefined}
-          />
+          (profile.phoneVerified || phoneVerificationAvailable) && (
+            <SettingsRow
+              icon={<Phone className="h-4 w-4" />}
+              label={profile.phoneVerified ? "Phone verified" : "Verify your phone"}
+              href={profile.phoneVerified ? undefined : "/verify-phone"}
+              badge={profile.phoneVerified ? "Verified" : undefined}
+            />
+          )
         )}
         {/* Notifications is a real page — it was labelled "Soon" while working. */}
         {profile && (
