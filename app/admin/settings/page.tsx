@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { LogOut, Shield, AlertTriangle, Settings as SettingsIcon, Database, Timer, Percent, Sparkles, KeyRound, CheckCircle2, XCircle, CreditCard } from "lucide-react";
+import { LogOut, Shield, AlertTriangle, Settings as SettingsIcon, Database, Timer, Percent, Sparkles, KeyRound, CheckCircle2, XCircle, CreditCard, ShieldCheck } from "lucide-react";
 import { requireRole } from "@/lib/auth";
 import { PENDING_PAYMENT_TIMEOUT_MIN } from "@/lib/booking-payment";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
@@ -9,6 +9,7 @@ import { getCommissionPercent, getPublicPaymentSettings } from "@/lib/platform-s
 import { fetchPremiumPlans } from "@/lib/premium-plans";
 import { checkAuthRedirectHealth } from "@/lib/auth-health";
 import { checkCashfreeHealth } from "@/lib/cashfree-health";
+import { isTwilioConfigured, verifyChannel } from "@/lib/twilio";
 import { Badge } from "@/components/ui/Badge";
 import { AdminPageHeader } from "../_components/AdminPageHeader";
 import { CleanupButton } from "./_components/CleanupButton";
@@ -30,6 +31,10 @@ export default async function AdminSettingsPage() {
     checkAuthRedirectHealth(),
     checkCashfreeHealth(),
   ]);
+
+  // Cheap, synchronous env reads — no network call, unlike the probes above.
+  const otpConfigured = isTwilioConfigured();
+  const otpChannel    = verifyChannel();
 
   return (
     <div>
@@ -184,6 +189,42 @@ export default async function AdminSettingsPage() {
                     </p>
                   )}
                 </>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Phone verification (Twilio Verify).
+            Its env vars are write-only in Vercel, so "which channel does
+            production actually use?" was unanswerable — and the answer mattered:
+            the verify screen promised WhatsApp while production sent SMS. Same
+            reasoning as the Cashfree readout above: surface it, because there is
+            no other way to see it. */}
+        <div className={`rounded-2xl border-2 p-5 ${otpConfigured ? "border-green-200 bg-green-50" : "border-amber-200 bg-amber-50"}`}>
+          <div className="flex items-start gap-3">
+            <ShieldCheck className={`mt-0.5 h-5 w-5 shrink-0 ${otpConfigured ? "text-green-600" : "text-amber-600"}`} />
+            <div className="min-w-0 flex-1">
+              <h3 className="font-serif text-sm font-semibold text-charcoal-900">Phone verification</h3>
+              {otpConfigured ? (
+                <>
+                  <p className="mt-0.5 text-xs text-charcoal-700">
+                    Twilio Verify is configured. One-time codes are sent{" "}
+                    <span className="font-bold uppercase">
+                      {otpChannel === "whatsapp" ? "on WhatsApp" : "by SMS"}
+                    </span>.
+                  </p>
+                  <p className="mt-2 rounded-lg bg-white/70 p-2 text-[11px] text-charcoal-600">
+                    The channel comes from TWILIO_VERIFY_CHANNEL and there is no fallback — one
+                    channel is chosen and nothing silently retries on the other. The wording on the
+                    verify screen follows this same value, so the two cannot disagree.
+                  </p>
+                </>
+              ) : (
+                <p className="mt-0.5 text-xs text-amber-900">
+                  Not configured — TWILIO_VERIFY_SERVICE_SID, TWILIO_ACCOUNT_SID and
+                  TWILIO_AUTH_TOKEN must all be set. Until then the &ldquo;Verify your phone&rdquo; row
+                  is hidden from profiles rather than leading to a dead end.
+                </p>
               )}
             </div>
           </div>

@@ -9,9 +9,17 @@ const OTP_LENGTH = 6;
 interface Props {
   initialPhone: string | null;
   configured:   boolean;
+  /**
+   * The channel the code is ACTUALLY sent on, read server-side from
+   * TWILIO_VERIFY_CHANNEL. This used to be hardcoded as "WhatsApp" in the copy
+   * while production was configured for SMS, so the screen promised a WhatsApp
+   * message and a text message arrived. Driving the wording from the same value
+   * the API call uses means the two cannot drift apart again.
+   */
+  channel:      "whatsapp" | "sms";
 }
 
-export function OtpForm({ initialPhone, configured }: Props) {
+export function OtpForm({ initialPhone, configured, channel }: Props) {
   const [step, setStep]         = useState<"phone" | "code" | "done">("phone");
   const [phone, setPhone]       = useState(initialPhone ?? "");
   const [digits, setDigits]     = useState<string[]>(Array(OTP_LENGTH).fill(""));
@@ -131,7 +139,8 @@ export function OtpForm({ initialPhone, configured }: Props) {
             </button>
           </div>
           <p className="mt-2 text-[11px] text-charcoal-500">
-            We&apos;ll send a one-time code on WhatsApp to confirm this number.
+            We&apos;ll send a one-time code {channel === "whatsapp" ? "on WhatsApp" : "by SMS"} to
+            confirm this number.
           </p>
         </>
       )}
@@ -139,7 +148,8 @@ export function OtpForm({ initialPhone, configured }: Props) {
       {step === "code" && (
         <>
           <p className="text-sm text-charcoal-700">
-            Enter the code sent to <strong className="text-charcoal-900">{phone}</strong>
+            Enter the code sent {channel === "whatsapp" ? "on WhatsApp" : "by SMS"} to{" "}
+            <strong className="text-charcoal-900">{phone}</strong>
           </p>
           <div className="mt-3 flex justify-between gap-2" role="group" aria-label="One-time code">
             {digits.map((d, i) => (

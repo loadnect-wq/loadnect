@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { ShieldCheck } from "lucide-react";
 import { getProfile } from "@/lib/auth";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
-import { isTwilioConfigured } from "@/lib/twilio";
+import { isTwilioConfigured, verifyChannel } from "@/lib/twilio";
 import { AppHeader } from "@/components/app/AppHeader";
 import { OtpForm } from "./_components/OtpForm";
 
@@ -60,7 +60,7 @@ export default async function VerifyPhonePage() {
             <p className="mt-1">{phone} is linked to your account.</p>
           </div>
         ) : (
-          <OtpForm initialPhone={phone} configured={isTwilioConfigured()} />
+          <OtpForm initialPhone={phone} configured={isTwilioConfigured()} channel={verifyChannel()} />
         )}
       </div>
     </div>
