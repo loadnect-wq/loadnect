@@ -31,7 +31,8 @@ import {
   getCashfreeOrderPayments,
 } from "@/lib/cashfree";
 import { getAppUrl } from "@/lib/env";
-import { notifyBookingEvent } from "@/lib/notifications/events";
+import { formatAmount } from "@/lib/notifications/templates";
+import { notifyBookingEvent, notifyAdminOperational } from "@/lib/notifications/events";
 import {
   calculateBookingPayment,
   advanceFromTotal,
@@ -356,6 +357,20 @@ export async function verifyAndApplyPayment(orderId: string): Promise<ApplyPayme
         code: "amount_mismatch",
         message: `order ${orderId}: gateway ₹${gatewayAmount} != expected ₹${Number(payment.amount)}`,
       });
+      // Money is captured, the booking is NOT confirmed, and no refund is
+      // recorded — this state needs a human decision. It only ever reached a
+      // console.error, and returning 'error' makes the webhook 503 so Cashfree
+      // retries into the same silence until it gives up.
+      await notifyAdminOperational({
+        key:       `payment.amount_mismatch:${orderId}`,
+        eventType: "payment.amount_mismatch",
+        event:     "Payment amount MISMATCH — manual review",
+        details:
+          `Gateway captured ${formatAmount(gatewayAmount)} but ${formatAmount(Number(payment.amount))} was expected. ` +
+          `The money is held and the booking is NOT confirmed. Decide whether to confirm or refund.`,
+        reference: `order ${orderId}`,
+        bookingId: payment.booking_id,
+      });
       return {
         state:     "error",
         bookingId: payment.booking_id,
@@ -444,6 +459,16 @@ export async function verifyAndApplyPayment(orderId: string): Promise<ApplyPayme
         if (refErr) logSideEffectError("slotConflictRefund", refErr);
         // Pass the captured amount — the refund message states it, and
         // omitting it told the customer their refund was ₹0.
+        // TELL THE CUSTOMER THEIR BOOKING IS GONE. refund.initiated is
+        // admin-only on purpose (the approved refund template promises money in
+        // 5-7 days, which is not true while it still sits with Hallnect) — but
+        // that left the customer charged, without a venue, and messaged about
+        // NOTHING. booking.cancelled is true right now and says our team will
+        // be in touch about anything outstanding, without starting a clock.
+        await notifyBookingEvent("booking.cancelled", payment.booking_id, {
+          amount: Number(payment.amount),
+          keySuffix: "slot_conflict",
+        });
         await notifyBookingEvent("refund.initiated", payment.booking_id, { amount: Number(payment.amount) });
         return {
           state:     "slot_conflict",
@@ -502,6 +527,13 @@ export async function verifyAndApplyPayment(orderId: string): Promise<ApplyPayme
         logSideEffectError("bookingNotPending", {
           code: "booking_not_pending",
           message: `order ${orderId} paid but booking ${payment.booking_id} was ${freshStatus || "missing"}`,
+        });
+        // Same reasoning as the slot-conflict path above: the customer paid a
+        // couple of minutes after the hold lapsed, the money was captured, and
+        // until now nothing was ever said to them.
+        await notifyBookingEvent("booking.cancelled", payment.booking_id, {
+          amount: Number(payment.amount),
+          keySuffix: `stale:${orderId}`,
         });
         await notifyBookingEvent("refund.initiated", payment.booking_id, {
           amount: Number(payment.amount),

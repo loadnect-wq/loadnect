@@ -658,3 +658,276 @@ export async function notifyTicketCreated(ticketId: string, subject: string): Pr
     console.error("[notifications] notifyTicketCreated failed:", e instanceof Error ? e.message : e);
   }
 }
+
+// ═════════════════════════════════════════════════════════════════════════════
+// SUBSCRIPTION AND ACCOUNT EVENTS
+//
+// Added after a coverage review found 42 confirmed state changes that told
+// nobody. These are the ones where silence costs money or trust:
+//
+//   • A standing monthly debit with no receipt. An owner on Pro is charged
+//     Rs9,999 every month and the only record is an opaque Cashfree line on
+//     their bank statement. That is what people charge back, and what a payment
+//     regulator treats as an unauthorised recurring mandate.
+//   • A mandate that stops collecting. The bank declines, Cashfree moves it to
+//     ON_HOLD, the last paid month runs out, the sweep retires the listing, and
+//     the owner discovers it as "my enquiries dried up". It is the one
+//     subscription failure they can actually fix, and it was the one nobody
+//     told them about.
+//   • Money captured for something never delivered — reported to an admin who
+//     can put it right by hand, because a console.error is not a person.
+//
+// Every message below uses OWNER_ACCOUNT_UPDATE or ADMIN_ALERT, both already
+// Meta-approved and both designed for exactly this: two fixed-scaffold
+// templates whose variables carry the specifics. No new template approval is
+// needed, so these ship immediately rather than waiting on Meta.
+// ═════════════════════════════════════════════════════════════════════════════
+
+/** Loads a hall plus its owner in the shape ownerRecipient() expects. */
+async function hallWithOwner(hallId: string) {
+  const admin = getSupabaseAdminClient();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const db = admin as any;
+  const { data } = await db
+    .from("halls")
+    .select(`name, hall_owners!owner_id(${OWNER_EMBED})`)
+    .eq("id", hallId)
+    .maybeSingle();
+  return data ?? null;
+}
+
+/**
+ * A monthly subscription debit succeeded — the sign-up charge and every renewal.
+ *
+ * Deduped on the CHARGE, not the day: two genuine charges in one day (rare, but
+ * possible after a retry) must both be receipted, while a redelivered webhook
+ * for the same charge must not send twice.
+ */
+export async function notifySubscriptionCharged(input: {
+  chargeRef: string;
+  hallId: string;
+  planLabel: string;
+  amount: number;
+  paidUntil?: string | null;
+}): Promise<void> {
+  try {
+    const hall = await hallWithOwner(input.hallId);
+    if (!hall) return;
+    const owner = ownerRecipient(hall.hall_owners);
+    const hallName = sanitizeName(hall.name, "your hall");
+
+    const until = input.paidUntil
+      ? ` Your boost runs until ${new Date(`${input.paidUntil}T00:00:00Z`).toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" })}.`
+      : "";
+
+    await dispatchAll([{
+      eventKey: `subscription.charged:${input.chargeRef}`,
+      eventType: "subscription.charged",
+      recipientType: "owner",
+      recipientUserId: owner.userId,
+      phone: owner.phone,
+      templateKey: "OWNER_ACCOUNT_UPDATE",
+      templateVariables: [
+        `${formatAmount(input.amount)} received for ${input.planLabel} on ${hallName}.`,
+        `This is your monthly ${input.planLabel} payment.${until} It renews automatically — you can stop it any time from Premium in your dashboard.`,
+      ],
+      hallId: input.hallId,
+      // A receipt for money taken is critical: it must send even if the owner
+      // has muted non-essential notifications.
+      critical: true,
+      optedIn: owner.optedIn,
+    }]);
+  } catch (e) {
+    console.error("[notifications] notifySubscriptionCharged failed:", e instanceof Error ? e.message : e);
+  }
+}
+
+/**
+ * The mandate stopped collecting — declined by the bank, paused, or cancelled.
+ *
+ * `critical` because this is the owner's cue to act: re-authorise, or accept
+ * that the boost ends when the paid month runs out. Muting non-essential
+ * messages should not cost them their placement.
+ */
+export async function notifySubscriptionStopped(input: {
+  subscriptionId: string;
+  hallId: string;
+  planLabel: string;
+  status: "on_hold" | "paused" | "cancelled" | "failed" | "completed";
+  paidUntil?: string | null;
+}): Promise<void> {
+  try {
+    const hall = await hallWithOwner(input.hallId);
+    if (!hall) return;
+    const owner = ownerRecipient(hall.hall_owners);
+    const hallName = sanitizeName(hall.name, "your hall");
+
+    const until = input.paidUntil
+      ? `The month you have already paid for runs to ${new Date(`${input.paidUntil}T00:00:00Z`).toLocaleDateString("en-IN", { day: "numeric", month: "long" })}, then ${hallName} returns to standard placement.`
+      : `${hallName} returns to standard placement when the paid period ends.`;
+
+    const chosen = input.status === "cancelled";
+    const subject = chosen
+      ? `Monthly ${input.planLabel} billing has been cancelled for ${hallName}.`
+      : `We could not collect this month's ${input.planLabel} payment for ${hallName}.`;
+    const detail = chosen
+      ? `No further payments will be taken. ${until}`
+      : `Your bank did not approve the automatic payment. ${until} To keep it running, set up billing again from Premium in your dashboard.`;
+
+    await dispatchAll([{
+      eventKey: `subscription.stopped:${input.subscriptionId}:${input.status}`,
+      eventType: "subscription.stopped",
+      recipientType: "owner",
+      recipientUserId: owner.userId,
+      phone: owner.phone,
+      templateKey: "OWNER_ACCOUNT_UPDATE",
+      templateVariables: [subject, detail],
+      hallId: input.hallId,
+      critical: true,
+      optedIn: owner.optedIn,
+    }]);
+  } catch (e) {
+    console.error("[notifications] notifySubscriptionStopped failed:", e instanceof Error ? e.message : e);
+  }
+}
+
+/**
+ * Money was captured and the thing it paid for could not be delivered.
+ *
+ * Goes to the ADMIN, because the admin is the only party who can put it right
+ * (grant the listing by hand from /admin/premium-listings). The owner is not
+ * messaged: they have already been told on the status page that activation is
+ * still in progress, and a second message saying "we took your money and
+ * something went wrong" helps nobody until a human has looked.
+ *
+ * Same reasoning as notifyOwnerPayoutFailed: a recorded failure nobody reads is
+ * still a silent failure.
+ */
+export async function notifyPlanChargeUnactivated(input: {
+  purchaseId: string;
+  hallId: string;
+  planSlug: string;
+  amount: number;
+}): Promise<void> {
+  try {
+    const adminPhone = await getAdminNotificationPhone();
+    const hall = await hallWithOwner(input.hallId);
+    const hallName = sanitizeName(hall?.name, "a hall");
+
+    await dispatchAll([
+      adminAlert({
+        adminPhone,
+        eventKey: `plan.unactivated:${input.purchaseId}`,
+        eventType: "plan.unactivated",
+        event: "Plan paid but NOT activated",
+        details:
+          `${formatAmount(input.amount)} taken for ${input.planSlug} on ${hallName}, ` +
+          `but the premium listing could not be created. The owner has paid and has nothing. ` +
+          `Grant it by hand from Premium Listings.`,
+        reference: `purchase ${input.purchaseId.slice(0, 8)}`,
+        hallId: input.hallId,
+      }),
+    ]);
+  } catch (e) {
+    console.error("[notifications] notifyPlanChargeUnactivated failed:", e instanceof Error ? e.message : e);
+  }
+}
+
+/** A generic operational alert to the admin. One call site per real condition. */
+export async function notifyAdminOperational(input: {
+  key: string;
+  eventType: string;
+  event: string;
+  details: string;
+  reference: string;
+  hallId?: string | null;
+  bookingId?: string | null;
+}): Promise<void> {
+  try {
+    const adminPhone = await getAdminNotificationPhone();
+    await dispatchAll([
+      adminAlert({
+        adminPhone,
+        eventKey: input.key,
+        eventType: input.eventType,
+        event: input.event,
+        details: input.details,
+        reference: input.reference,
+        hallId: input.hallId ?? null,
+        bookingId: input.bookingId ?? null,
+      }),
+    ]);
+  } catch (e) {
+    console.error("[notifications] notifyAdminOperational failed:", e instanceof Error ? e.message : e);
+  }
+}
+
+/**
+ * An owner-account decision an admin made: approved, verified, suspended or
+ * restored.
+ *
+ * Suspension is the sharpest of these. requireAuth() bounces a deactivated
+ * profile to /login?error=account_disabled, so the moment the flag flips the
+ * owner is locked out of every owner page — while their halls stay live and any
+ * pending booking request keeps counting down to auto-cancel, which they can no
+ * longer answer. The admin is required to type a reason and it goes into an
+ * audit log only admins can read. Being locked out with no explanation is the
+ * worst version of that, so this one is always sent.
+ */
+export async function notifyOwnerAccountDecision(input: {
+  profileId: string;
+  kind: "approved" | "verified" | "suspended" | "restored";
+  reason?: string | null;
+}): Promise<void> {
+  try {
+    const admin = getSupabaseAdminClient();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const db = admin as any;
+    const { data: profile } = await db
+      .from("profiles")
+      .select("id, phone, full_name, whatsapp_notifications_enabled")
+      .eq("id", input.profileId)
+      .maybeSingle();
+    if (!profile) return;
+
+    const reason = input.reason?.trim();
+    const copy: Record<typeof input.kind, [string, string]> = {
+      approved: [
+        "Your Hallnect owner account has been approved.",
+        "You can now list halls, manage booking requests and receive payouts. Open your owner dashboard to add your first hall.",
+      ],
+      verified: [
+        "Your business details have been verified.",
+        "Verified venues rank better and customers see a verified badge on your listings.",
+      ],
+      suspended: [
+        "Your Hallnect account has been suspended.",
+        reason
+          ? `Reason: ${reason}. You will not be able to sign in until this is resolved. Reply to this message or email hallnect@gmail.com to appeal.`
+          : "You will not be able to sign in until this is resolved. Please email hallnect@gmail.com and we will explain and help put it right.",
+      ],
+      restored: [
+        "Your Hallnect account has been restored.",
+        "You can sign in again and your listings are active. Thank you for your patience.",
+      ],
+    };
+
+    const [subject, detail] = copy[input.kind];
+
+    await dispatchAll([{
+      eventKey: `owner.account.${input.kind}:${input.profileId}:${todayInBusinessTz()}`,
+      eventType: `owner.account.${input.kind}`,
+      recipientType: "owner",
+      recipientUserId: profile.id,
+      phone: pickPhone(profile.phone, null),
+      templateKey: "OWNER_ACCOUNT_UPDATE",
+      templateVariables: [subject, detail],
+      // Being told you are locked out, or that you may now trade, is never
+      // "non-essential".
+      critical: true,
+      optedIn: profile.whatsapp_notifications_enabled ?? true,
+    }]);
+  } catch (e) {
+    console.error("[notifications] notifyOwnerAccountDecision failed:", e instanceof Error ? e.message : e);
+  }
+}

@@ -34,6 +34,11 @@ import {
   mapSubscriptionStatus,
 } from "@/lib/cashfree-subscriptions";
 import { activatePurchase } from "@/lib/plan-payments";
+import {
+  notifySubscriptionCharged,
+  notifySubscriptionStopped,
+  notifyPlanChargeUnactivated,
+} from "@/lib/notifications/events";
 
 /** Subscription ids are prefixed so they are recognisable in Cashfree's UI and
  *  in webhook payloads without a database lookup. */
@@ -56,6 +61,11 @@ function normalisePhone(raw: string | null | undefined): string {
  *  the record around it does, and replaying a dead one looks exactly like a
  *  broken button. Past this, the attempt is retired and a fresh one opened. */
 const MANDATE_RESUME_WINDOW_MIN = 15;
+
+/** "premium" -> "Premium". Used in owner-facing message copy. */
+function planLabelFor(slug: string): string {
+  return slug.charAt(0).toUpperCase() + slug.slice(1);
+}
 
 function gatewayMode(): "sandbox" | "production" {
   return process.env.CASHFREE_ENV === "production" ? "production" : "sandbox";
@@ -312,6 +322,15 @@ export async function syncSubscription(cfSubscriptionId: string): Promise<Subscr
   const firstActivation = mapped === "active"    && sub.status !== "active";
   const firstCancel     = mapped === "cancelled" && sub.status !== "cancelled";
 
+  // The mandate has STOPPED COLLECTING, and this is the sync that first saw it.
+  // Fired on the transition only, so a repeated poll does not nag. This is the
+  // one subscription failure the owner can actually act on — a declined debit
+  // otherwise surfaces weeks later as "my enquiries dried up", once the paid
+  // month has run out and the sweep has quietly retired the listing.
+  const stoppedNow =
+    ["on_hold", "paused", "cancelled", "failed", "completed"].includes(mapped) &&
+    sub.status !== mapped;
+
   await db.from("plan_subscriptions")
     .update({
       status:              mapped,
@@ -326,6 +345,29 @@ export async function syncSubscription(cfSubscriptionId: string): Promise<Subscr
 
   // Whatever the status, reconcile the CHARGES. A cancelled subscription may
   // still have paid months that must be honoured.
+  if (stoppedNow) {
+    // What they keep: the window already paid for runs to its end date.
+    const today = new Date().toISOString().slice(0, 10);
+    const { data: paidWindow } = await db
+      .from("premium_listings")
+      .select("end_date")
+      .eq("hall_id", sub.hall_id)
+      .eq("plan_slug", sub.plan_slug)
+      .eq("is_active", true)
+      .gte("end_date", today)
+      .order("end_date", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    await notifySubscriptionStopped({
+      subscriptionId: sub.cf_subscription_id,
+      hallId:         sub.hall_id,
+      planLabel:      planLabelFor(sub.plan_slug),
+      status:         mapped as "on_hold" | "paused" | "cancelled" | "failed" | "completed",
+      paidUntil:      paidWindow?.end_date ?? null,
+    });
+  }
+
   const applied = await applySubscriptionCharges(db, sub, live.data.authorization_details);
 
   // Is there a live listing behind this subscription right now? This, not the
@@ -433,6 +475,7 @@ async function applySubscriptionCharges(
       .maybeSingle();
 
     let purchaseId = already?.id as string | undefined;
+    let isNewCharge = false;
 
     if (!purchaseId) {
       const { data: made, error: insErr } = await db
@@ -465,6 +508,7 @@ async function applySubscriptionCharges(
       } else {
         purchaseId = made?.id;
         count += 1;
+        isNewCharge = true;
       }
     }
 
@@ -479,7 +523,30 @@ async function applySubscriptionCharges(
 
     if (full) {
       const result = await activatePurchase(full);
-      if (result.state === "unactivated") unactivated = true;
+
+      if (result.state === "unactivated") {
+        unactivated = true;
+        // Money taken, nothing delivered. Tell the only person who can fix it.
+        await notifyPlanChargeUnactivated({
+          purchaseId: full.id,
+          hallId:     sub.hall_id,
+          planSlug:   sub.plan_slug,
+          amount:     Number(full.amount),
+        });
+      }
+
+      // RECEIPT — only for a charge we recorded for the first time, never on a
+      // redelivered webhook replaying an old one. An unannounced standing debit
+      // is what people charge back.
+      if (isNewCharge) {
+        await notifySubscriptionCharged({
+          chargeRef:  ref,
+          hallId:     sub.hall_id,
+          planLabel:  planLabelFor(sub.plan_slug),
+          amount:     Number(full.amount),
+          paidUntil:  result.endDate ?? null,
+        });
+      }
     }
   }
 

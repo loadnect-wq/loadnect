@@ -14,6 +14,7 @@
 import "server-only";
 
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
+import { notifyPremiumChanged } from "@/lib/notifications/events";
 
 export type PremiumExpirySummary = {
   /** Listings whose end_date had passed and are now inactive. */
@@ -27,8 +28,32 @@ export async function expirePremiumListings(): Promise<PremiumExpirySummary> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = admin as any;
 
+  // WHICH listings are about to be retired, captured BEFORE the sweep runs —
+  // afterwards they are indistinguishable from any other inactive row, and the
+  // RPC returns counts rather than ids. Without this the owner's boost simply
+  // stopped one night with no message: they had paid for it, it ended, and the
+  // first they knew was that enquiries dried up.
+  const { data: expiring } = await db
+    .from("premium_listings")
+    .select("id, hall_id, plan_slug")
+    .eq("is_active", true)
+    .lt("end_date", new Date().toISOString().slice(0, 10));
+
   const { data, error } = await db.rpc("expire_premium_listings");
   if (error) throw new Error(error.message);
+
+  // Notified after the sweep, so the message is only sent for a demotion that
+  // actually happened. Failures here must not fail the sweep — the listing is
+  // already correctly retired, and notifyPremiumChanged swallows its own errors.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  for (const l of ((expiring ?? []) as any[])) {
+    await notifyPremiumChanged(
+      l.id,
+      l.hall_id,
+      false,
+      String(l.plan_slug).charAt(0).toUpperCase() + String(l.plan_slug).slice(1),
+    );
+  }
 
   const row = Array.isArray(data) ? data[0] : data;
   return {

@@ -20,7 +20,10 @@ import { sanitizeError } from "@/lib/errors";
 import { recordAdminAction } from "@/lib/audit";
 import { createCashfreeRefund, getCashfreeRefund, classifyRefundStatus } from "@/lib/cashfree";
 import { payOwnerOnAcceptance } from "@/lib/owner-payout";
-import { notifyBookingEvent } from "@/lib/notifications/events";
+import { notifyBookingEvent,
+  notifyOwnerAccountDecision,
+  notifyAdminOperational,
+} from "@/lib/notifications/events";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import {
   notifyHallModerated,
@@ -206,6 +209,10 @@ export async function approveOwner(profileId: string): Promise<ActionResult> {
     newStatus:  "owner_approved",
   });
 
+  // Tell them. An owner who signed up and is waiting on a human decision had no
+  // way to learn it had been made — they simply had to keep checking.
+  await notifyOwnerAccountDecision({ profileId, kind: "approved" });
+
   revalidatePath("/admin/owners");
   revalidatePath("/admin/users");
   revalidatePath("/admin/dashboard");
@@ -322,6 +329,18 @@ export async function toggleUserActive(
     newStatus:      active ? "active" : "suspended",
     reason:         cleanReason(reason),
     metadata:       { role: before.role },
+  });
+
+  // Suspension locks them out immediately — requireAuth() bounces a deactivated
+  // profile to /login?error=account_disabled — while their halls stay live and
+  // any pending booking request keeps counting down to auto-cancel, which they
+  // can no longer answer. The reason the admin typed goes into an audit log
+  // only admins can read, so without this the person is locked out with no
+  // explanation and no route back. The reason is passed on to them.
+  await notifyOwnerAccountDecision({
+    profileId,
+    kind:   active ? "restored" : "suspended",
+    reason: cleanReason(reason),
   });
 
   revalidatePath("/admin/users");
