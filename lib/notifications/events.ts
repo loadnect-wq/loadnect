@@ -500,7 +500,7 @@ export async function notifyHallModerated(
     let templateVariables: Array<string | null>;
     switch (action) {
       case "approved":
-        templateKey = "OWNER_HALL_APPROVED";
+        templateKey = "OWNER_HALL_LIVE";
         templateVariables = [hallName];
         break;
       case "rejected":
@@ -508,18 +508,20 @@ export async function notifyHallModerated(
         templateVariables = [hallName, cleanReason ?? "Please review your listing details."];
         break;
       case "suspended":
-        templateKey = "OWNER_ACCOUNT_UPDATE";
+        templateKey = "OWNER_ACCOUNT_STATUS";
         templateVariables = [
-          `${hallName} has been suspended.`,
+          hallName,
+          "Suspended",
           cleanReason
-            ? `Reason: ${cleanReason}. Contact Hallnect support to resolve this.`
+            ? `${cleanReason}. Contact Hallnect support to resolve this.`
             : "Contact Hallnect support to resolve this.",
         ];
         break;
       default:
-        templateKey = "OWNER_ACCOUNT_UPDATE";
+        templateKey = "OWNER_ACCOUNT_STATUS";
         templateVariables = [
-          `${hallName} has been restored.`,
+          hallName,
+          "Restored",
           "Your hall is visible to customers again.",
         ];
         break;
@@ -573,11 +575,13 @@ export async function notifyPremiumChanged(
       recipientType: "owner",
       recipientUserId: owner.userId,
       phone: owner.phone,
-      templateKey: "OWNER_ACCOUNT_UPDATE",
+      templateKey: "OWNER_ACCOUNT_STATUS",
       templateVariables: activated
-        ? [`Premium listing is active for ${hallName}.`,
+        ? [`${planLabel} listing for ${hallName}`,
+           "Active",
            `Your ${planLabel} plan gives this hall priority placement in search results.`]
-        : [`Premium listing has ended for ${hallName}.`,
+        : [`${planLabel} listing for ${hallName}`,
+           "Ended",
            "Your hall remains listed with standard placement."],
       hallId,
       critical: false,
@@ -717,8 +721,8 @@ export async function notifySubscriptionCharged(input: {
     const hallName = sanitizeName(hall.name, "your hall");
 
     const until = input.paidUntil
-      ? ` Your boost runs until ${new Date(`${input.paidUntil}T00:00:00Z`).toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" })}.`
-      : "";
+      ? new Date(`${input.paidUntil}T00:00:00Z`).toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" })
+      : "See your premium page";
 
     await dispatchAll([{
       eventKey: `subscription.charged:${input.chargeRef}`,
@@ -726,10 +730,12 @@ export async function notifySubscriptionCharged(input: {
       recipientType: "owner",
       recipientUserId: owner.userId,
       phone: owner.phone,
-      templateKey: "OWNER_ACCOUNT_UPDATE",
+      templateKey: "OWNER_PAYMENT_RECEIPT",
       templateVariables: [
-        `${formatAmount(input.amount)} received for ${input.planLabel} on ${hallName}.`,
-        `This is your monthly ${input.planLabel} payment.${until} It renews automatically — you can stop it any time from Premium in your dashboard.`,
+        formatAmount(input.amount),
+        input.planLabel,
+        hallName,
+        until,
       ],
       hallId: input.hallId,
       // A receipt for money taken is critical: it must send even if the owner
@@ -767,9 +773,6 @@ export async function notifySubscriptionStopped(input: {
       : `${hallName} returns to standard placement when the paid period ends.`;
 
     const chosen = input.status === "cancelled";
-    const subject = chosen
-      ? `Monthly ${input.planLabel} billing has been cancelled for ${hallName}.`
-      : `We could not collect this month's ${input.planLabel} payment for ${hallName}.`;
     const detail = chosen
       ? `No further payments will be taken. ${until}`
       : `Your bank did not approve the automatic payment. ${until} To keep it running, set up billing again from Premium in your dashboard.`;
@@ -780,8 +783,12 @@ export async function notifySubscriptionStopped(input: {
       recipientType: "owner",
       recipientUserId: owner.userId,
       phone: owner.phone,
-      templateKey: "OWNER_ACCOUNT_UPDATE",
-      templateVariables: [subject, detail],
+      templateKey: "OWNER_ACCOUNT_STATUS",
+      templateVariables: [
+        `Monthly ${input.planLabel} billing for ${hallName}`,
+        chosen ? "Cancelled" : "Payment failed",
+        detail,
+      ],
       hallId: input.hallId,
       critical: true,
       optedIn: owner.optedIn,
@@ -891,28 +898,30 @@ export async function notifyOwnerAccountDecision(input: {
     if (!profile) return;
 
     const reason = input.reason?.trim();
+    // [status, detail] — `status` fills the template's Status: line, so it is a
+    // single plain word the owner can act on, not a sentence.
     const copy: Record<typeof input.kind, [string, string]> = {
       approved: [
-        "Your Hallnect owner account has been approved.",
+        "Approved",
         "You can now list halls, manage booking requests and receive payouts. Open your owner dashboard to add your first hall.",
       ],
       verified: [
-        "Your business details have been verified.",
-        "Verified venues rank better and customers see a verified badge on your listings.",
+        "Verified",
+        "Your business details have been verified. Verified venues rank better and customers see a verified badge on your listings.",
       ],
       suspended: [
-        "Your Hallnect account has been suspended.",
+        "Suspended",
         reason
-          ? `Reason: ${reason}. You will not be able to sign in until this is resolved. Reply to this message or email hallnect@gmail.com to appeal.`
+          ? `${reason}. You will not be able to sign in until this is resolved. Reply to this message or email hallnect@gmail.com to appeal.`
           : "You will not be able to sign in until this is resolved. Please email hallnect@gmail.com and we will explain and help put it right.",
       ],
       restored: [
-        "Your Hallnect account has been restored.",
+        "Restored",
         "You can sign in again and your listings are active. Thank you for your patience.",
       ],
     };
 
-    const [subject, detail] = copy[input.kind];
+    const [status, detail] = copy[input.kind];
 
     await dispatchAll([{
       eventKey: `owner.account.${input.kind}:${input.profileId}:${todayInBusinessTz()}`,
@@ -920,8 +929,8 @@ export async function notifyOwnerAccountDecision(input: {
       recipientType: "owner",
       recipientUserId: profile.id,
       phone: pickPhone(profile.phone, null),
-      templateKey: "OWNER_ACCOUNT_UPDATE",
-      templateVariables: [subject, detail],
+      templateKey: "OWNER_ACCOUNT_STATUS",
+      templateVariables: ["Your Hallnect owner account", status, detail],
       // Being told you are locked out, or that you may now trade, is never
       // "non-essential".
       critical: true,

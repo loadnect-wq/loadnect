@@ -41,6 +41,10 @@ export type WhatsAppTemplateKey =
   | "OWNER_HALL_APPROVED"
   | "OWNER_HALL_REJECTED"
   | "OWNER_ACCOUNT_UPDATE"
+  // Utility-category replacements. See the META CATEGORY note below.
+  | "OWNER_HALL_LIVE"
+  | "OWNER_ACCOUNT_STATUS"
+  | "OWNER_PAYMENT_RECEIPT"
   // Admin
   | "ADMIN_ALERT";
 
@@ -56,6 +60,15 @@ export type WhatsAppTemplateDef = {
   variables: readonly string[];
   /** Renders the message from ordered values. The single source of the copy. */
   body: (v: readonly string[]) => string;
+  /**
+   * A superseded template to fall back to while this one's SID is unset.
+   *
+   * Only set on the Utility replacements below. Without it, a deploy that ships
+   * the new code before the new SID reaches the environment would record every
+   * affected notification as 'skipped' — no message at all, which is strictly
+   * worse than the throttled Marketing one it replaces.
+   */
+  legacyKey?: WhatsAppTemplateKey;
 };
 
 /** `${key}` → `TWILIO_TEMPLATE_${key}`. Kept mechanical so it cannot drift. */
@@ -69,8 +82,9 @@ function def(
   purpose: string,
   variables: readonly string[],
   body: (v: readonly string[]) => string,
+  legacyKey?: WhatsAppTemplateKey,
 ): WhatsAppTemplateDef {
-  return { key, envVar: envVarFor(key), audience, purpose, variables, body };
+  return { key, envVar: envVarFor(key), audience, purpose, variables, body, legacyKey };
 }
 
 // Every message opens with the brand so the recipient knows who is writing,
@@ -253,6 +267,103 @@ export const WHATSAPP_TEMPLATES: Record<WhatsAppTemplateKey, WhatsAppTemplateDef
       `Open your owner dashboard for full details.\n\n${SIGNOFF}`,
   ),
 
+  // ── Utility-category replacements ──────────────────────────────────────────
+  // META CATEGORY IS PART OF DELIVERABILITY, NOT PAPERWORK.
+  //
+  // owner_account_update and owner_hall_approved were both approved by Meta as
+  // MARKETING. Meta throttles marketing templates per recipient: a suspension
+  // notice delivered and was read, and the restoration notice eleven minutes
+  // later came back 63049 — "Meta chose not to deliver this WhatsApp marketing
+  // message". Nothing was wrong with the code; the message was simply dropped.
+  //
+  // That is unacceptable for the traffic those two carried: payment receipts,
+  // failed mandates, and being told you are locked out of your own account.
+  // A category cannot be changed once Meta has approved a template, so these
+  // three replace them and are submitted as UTILITY.
+  //
+  // They also fix WHY Meta read the old one as marketing. A template whose
+  // whole body is "{{1}} {{2}}" between two lines of scaffolding carries no
+  // evidence of being transactional, so Meta defaults it to Marketing. Concrete
+  // labelled fields — Amount, Plan, Hall, Status — are what make it legible as
+  // a service message, which is also why the catch-all is split in three.
+  //
+  // The bodies below are character-for-character what was submitted for
+  // approval. Editing one here without re-submitting it there means Twilio
+  // sends Meta's copy while the dashboard shows this one.
+  OWNER_HALL_LIVE: def(
+    "OWNER_HALL_LIVE",
+    "owner",
+    "An admin approved the hall; it is now publicly listed. (Utility.)",
+    ["hall_name"],
+    (v) =>
+      `Your hall listing has been approved
+
+` +
+      `Hall: ${v[0]}
+` +
+      `Status: Approved and live
+
+` +
+      `Your submission has completed review and is now published on Hallnect. ` +
+      `Manage availability and booking requests from your owner dashboard.
+
+${SIGNOFF}`,
+    "OWNER_HALL_APPROVED",
+  ),
+
+  OWNER_ACCOUNT_STATUS: def(
+    "OWNER_ACCOUNT_STATUS",
+    "owner",
+    "Account-level owner notice: suspension, restoration, premium, billing stopped. (Utility.)",
+    ["item", "status", "detail"],
+    (v) =>
+      `Hallnect account update
+
+` +
+      `Item: ${v[0]}
+` +
+      `Status: ${v[1]}
+
+` +
+      `Details: ${v[2]}
+
+` +
+      `This is a service message about your Hallnect owner account. ` +
+      `Sign in to your owner dashboard to review it.
+
+${SIGNOFF}`,
+    // No legacy fallback ON PURPOSE. OWNER_ACCOUNT_UPDATE takes two variables
+    // and this takes three, so falling back would land "Details" in a
+    // placeholder that does not exist and drop it. A skipped notification is
+    // recoverable; a garbled one sent to an owner is not.
+  ),
+
+  OWNER_PAYMENT_RECEIPT: def(
+    "OWNER_PAYMENT_RECEIPT",
+    "owner",
+    "A monthly plan payment was collected — the sign-up charge and every renewal. (Utility.)",
+    ["amount", "plan", "hall_name", "paid_until"],
+    (v) =>
+      `Payment received
+
+` +
+      `Amount: ${v[0]}
+` +
+      `Plan: ${v[1]}
+` +
+      `Hall: ${v[2]}
+` +
+      `Boost active until: ${v[3]}
+
+` +
+      `This is your receipt for a Hallnect monthly plan payment. ` +
+      `Manage or cancel billing from Premium in your owner dashboard.
+
+${SIGNOFF}`,
+    // No legacy fallback — four variables against the old template's two.
+    // See OWNER_ACCOUNT_STATUS above.
+  ),
+
   // ── Admin ──────────────────────────────────────────────────────────────────
   // ONE operational template covers every admin alert. Meta rejects templates
   // that are almost entirely variable, so the scaffolding here is fixed and
@@ -325,12 +436,25 @@ export function coerceVariables(
  * with a clear reason rather than attempting a send that Twilio would reject.
  */
 export function contentSidFor(key: WhatsAppTemplateKey): string | null {
-  const raw = process.env[WHATSAPP_TEMPLATES[key].envVar]?.trim();
-  if (!raw) return null;
+  const t = WHATSAPP_TEMPLATES[key];
+  const raw = process.env[t.envVar]?.trim();
   // A Content SID is always HX + 32 hex characters. Validating the shape here
   // turns a copy-paste mistake into an actionable dashboard message instead of
   // a Twilio 400 at send time.
-  return /^HX[0-9a-fA-F]{32}$/.test(raw) ? raw : null;
+  if (raw && /^HX[0-9a-fA-F]{32}$/.test(raw)) return raw;
+  // Unset (or malformed) and this template supersedes an older one: fall back
+  // rather than skip. The legacy template is approved and sends; it is only in
+  // the worse Marketing category. Silence is the worse failure of the two.
+  if (t.legacyKey) {
+    const fallback = WHATSAPP_TEMPLATES[t.legacyKey];
+    // Positional variables are the contract. Falling back across a different
+    // arity would silently reindex every value, so refuse rather than guess.
+    if (fallback.variables.length === t.variables.length) {
+      const legacy = process.env[fallback.envVar]?.trim();
+      if (legacy && /^HX[0-9a-fA-F]{32}$/.test(legacy)) return legacy;
+    }
+  }
+  return null;
 }
 
 /** True when the env value is present but is not a well-formed Content SID. */
