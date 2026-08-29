@@ -231,16 +231,104 @@ describe("checkout preview matches the actual charge", () => {
   // Both go through these helpers, so the preview can never round differently
   // from the money that leaves the customer's account.
   const hallPrices = [200, 1_500, 12_000, 29_400, 40_000, 55_555, 125_000, 999_999];
-  for (const total of hallPrices) {
-    it(`hall total ₹${total}: previewed total equals the charged total`, () => {
-      const advance = advanceFromTotal(total);
-      const previewed = advance + PLATFORM_FEE_RUPEES;
-      const charged = calculateBookingPayment({
-        hallTotal: total, advanceAmount: advance, commissionRate: 2.5,
-      }).customerTotal;
-      expect(previewed).toBe(charged);
-    });
+  // Both fee values: the standard fee AND a coupon-waived one. This is exactly
+  // the invariant a coupon touches, so covering only the default would leave
+  // the discounted path — the one where the customer is watching a number
+  // change — untested.
+  for (const fee of [PLATFORM_FEE_RUPEES, 0]) {
+    for (const total of hallPrices) {
+      it(`hall total ₹${total} at a ₹${fee} fee: previewed total equals the charged total`, () => {
+        const advance = advanceFromTotal(total);
+        const previewed = advance + fee;
+        const charged = calculateBookingPayment({
+          hallTotal: total, advanceAmount: advance, commissionRate: 2.5,
+          platformFeeRupees: fee,
+        }).customerTotal;
+        expect(previewed).toBe(charged);
+      });
+    }
   }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// COUPON — a waived platform fee.
+//
+// The whole feature is "make platformFee 0 and change nothing else". These
+// tests pin the "nothing else": above all that the owner's money is bit-identical
+// with and without a coupon, because Hallnect absorbs 100% of the discount.
+// ─────────────────────────────────────────────────────────────────────────────
+describe("platform fee waiver", () => {
+  const base = { hallTotal: 100_000, advanceAmount: 25_000, commissionRate: 2.5 };
+
+  it("defaults to the standard fee when no override is given", () => {
+    const r = calculateBookingPayment(base);
+    expect(r.platformFee).toBe(200);
+    expect(r.paise.platformFee).toBe(20_000);
+  });
+
+  it("a zero fee makes the customer total the advance alone", () => {
+    const r = calculateBookingPayment({ ...base, platformFeeRupees: 0 });
+    expect(r.platformFee).toBe(0);
+    expect(r.paise.platformFee).toBe(0);
+    expect(r.customerTotal).toBe(r.advanceAmount);
+    expect(r.paise.customerTotal).toBe(r.paise.advance);
+  });
+
+  it("keeps the paise invariant exact at a zero fee", () => {
+    for (const hallTotal of [1, 33_333, 100_001]) {
+      for (const advancePercent of [1, 25, 100]) {
+        const r = calculateBookingPayment({
+          hallTotal, advancePercent, commissionRate: 0.5, platformFeeRupees: 0,
+        });
+        expect(Number.isInteger(r.paise.customerTotal)).toBe(true);
+        expect(r.paise.advance + r.paise.platformFee).toBe(r.paise.customerTotal);
+      }
+    }
+  });
+
+  // THE OWNER-MONEY INVARIANT. If this ever fails, a coupon is being paid for
+  // by the venue instead of by Hallnect.
+  it("leaves the commission and the owner's payout bit-identical", () => {
+    const full   = calculateBookingPayment(base);
+    const waived = calculateBookingPayment({ ...base, platformFeeRupees: 0 });
+    expect(waived.commissionAmount).toBe(full.commissionAmount);
+    expect(waived.ownerNetAdvance).toBe(full.ownerNetAdvance);
+    expect(waived.paise.commission).toBe(full.paise.commission);
+    expect(waived.paise.ownerNetAdvance).toBe(full.paise.ownerNetAdvance);
+    expect(waived.advanceAmount).toBe(full.advanceAmount);
+  });
+
+  it("keeps the rupee field and its paise twin in agreement", () => {
+    for (const fee of [200, 0, 1]) {
+      const r = calculateBookingPayment({ ...base, platformFeeRupees: fee });
+      expect(r.platformFee * 100).toBe(r.paise.platformFee);
+    }
+  });
+
+  // A coupon is a DISCOUNT. Nothing may use this parameter to charge more.
+  it("refuses any fee above the standard one, or a nonsense value", () => {
+    for (const bad of [201, 1_000, -1, NaN, Infinity]) {
+      expect(() => calculateBookingPayment({ ...base, platformFeeRupees: bad }))
+        .toThrow(RangeError);
+    }
+  });
+
+  it("still refuses a commission that exceeds the advance when the fee is waived", () => {
+    expect(() => calculateBookingPayment({
+      hallTotal: 100_000, advanceAmount: 1_000, commissionRate: 2.5, platformFeeRupees: 0,
+    })).toThrow(RangeError);
+  });
+
+  it("refunds nothing extra on a zero-fee booking, whichever policy applies", () => {
+    for (const refundPlatformFee of [true, false]) {
+      const r = calculateRefund({
+        advanceAmount: 25_000, platformFee: 0,
+        refundPercentOfAdvance: 100, refundPlatformFee,
+      });
+      expect(r.nonRefundablePlatformFee).toBe(0);
+      expect(r.refundableAmount).toBe(25_000);
+    }
+  });
 });
 
 describe("server-authoritative amounts (frontend manipulation)", () => {

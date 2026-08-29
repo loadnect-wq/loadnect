@@ -23,7 +23,7 @@ export default function CancellationPolicyPage() {
       </Section>
 
       <Section title="3. Advance Payment and Cancellation">
-        All bookings require an advance payment to secure the venue, plus a flat ₹200 platform fee collected with it at checkout. The advance is held by Hallnect on behalf of the venue owner. Upon a customer-initiated cancellation, the refundable portion of the <strong>advance</strong> is returned based on the timeline in the Refund Policy; the ₹200 platform fee is non-refundable on customer cancellations.
+        All bookings require an advance payment to secure the venue, plus a flat ₹200 platform fee collected with it at checkout, unless a valid promotional code waives it. The advance is held by Hallnect on behalf of the venue owner. Upon a customer-initiated cancellation, the refundable portion of the <strong>advance</strong> is returned based on the timeline in the Refund Policy; the ₹200 platform fee is non-refundable on customer cancellations.
       </Section>
 
       <Section title="4. Cancellation by Hall Owners">

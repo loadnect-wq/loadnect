@@ -124,7 +124,7 @@ export default async function AdminDashboardPage() {
             />
             <RevenueCard
               icon={<Wallet className="h-5 w-5 text-gold-600" />}
-              label="Platform fees (₹200/booking)"
+              label="Platform fees"
               value={formatPrice(stats.revenue.platformFees)}
               highlight
             />
@@ -143,7 +143,7 @@ export default async function AdminDashboardPage() {
           {stats.revenue.refunds > 0 && (
             <p className="mt-2 text-xs text-charcoal-500">
               Refunds issued: {formatPrice(stats.revenue.refunds)} (platform fees are retained
-              except on venue/platform-caused cancellations).
+              except on venue/platform-caused cancellations, where one was charged).
             </p>
           )}
         </section>

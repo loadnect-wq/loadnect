@@ -14,7 +14,7 @@ import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import { formatPrice } from "@/lib/mock-data";
 import type { DaySlotAvailability } from "@/lib/availability";
-import { createBookingRequest, createPaymentSession, submitManualBookingRequest, type CreateBookingResult } from "../actions";
+import { createBookingRequest, createPaymentSession, submitManualBookingRequest, previewCoupon, type CreateBookingResult } from "../actions";
 import { todayInBusinessTz, addDaysToIsoDate, isoDateToLabelDate, isoDateRange, daysBetweenInclusive } from "@/lib/dates";
 import { isValidPhoneNumber } from "@/lib/notifications/phone";
 import { advanceFromTotal, PLATFORM_FEE_RUPEES } from "@/lib/booking-payment";
@@ -103,6 +103,16 @@ export function BookingFlow({ hall, availability, windowDays, onlinePaymentEnabl
   const router = useRouter();
   const [step, setStep] = useState<StepIndex>(0);
 
+  // ── Coupon ──────────────────────────────────────────────────────────────────
+  // `appliedCoupon` is what the SERVER said the code is worth (previewCoupon).
+  // `charged` is what the server actually snapshotted onto the booking. Once
+  // `charged` is set it wins: the preview is a preview, the booking is the truth.
+  const [couponInput,   setCouponInput]   = useState("");
+  const [appliedCoupon, setAppliedCoupon] = useState<{ code: string; platformFee: number } | null>(null);
+  const [couponError,   setCouponError]   = useState<string | null>(null);
+  const [couponPending, startCouponTransition] = useTransition();
+  const [charged, setCharged] = useState<{ platformFee: number; customerTotal: number } | null>(null);
+
   const [date,      setDate]      = useState<string>("");   // range START
   const [endDate,   setEndDate]   = useState<string>("");   // range END (inclusive; ""=single day)
   const [slot,      setSlot]      = useState<SlotId | "">("");
@@ -156,11 +166,22 @@ export function BookingFlow({ hall, availability, windowDays, onlinePaymentEnabl
   // differently from the charge is a support ticket waiting to happen.
   const totalAmount = baseAmount;
   const advance     = totalAmount > 0 ? advanceFromTotal(totalAmount, advancePercent) : 0;
-  const payNowTotal = advance > 0 ? advance + DISPLAY_PLATFORM_FEE : 0;
+  // Server figures first, preview second, standard fee last. The browser never
+  // decides what a coupon is worth — it only echoes what the server returned.
+  const effectivePlatformFee =
+    charged?.platformFee ?? appliedCoupon?.platformFee ?? DISPLAY_PLATFORM_FEE;
+  const payNowTotal =
+    charged?.customerTotal ?? (advance > 0 ? advance + effectivePlatformFee : 0);
+  const feeWaived = effectivePlatformFee <= 0;
 
   // Everything that determines what is being bought. Any change invalidates a
   // previously created pending booking.
-  const currentBookingKey = [date, rangeEnd, effSlot, guests].join("|");
+  // The coupon is part of WHAT IS BEING BOUGHT. Without it here, a customer
+  // whose first attempt failed could go back, apply a coupon, return, and have
+  // handlePayNow reuse the old bookingId — charging the ₹200 snapshot while the
+  // screen showed ₹0. The orphaned hold is harmless: pending_payment is excluded
+  // from uq_booking_active_slot, so it blocks nothing and lapses on its own.
+  const currentBookingKey = [date, rangeEnd, effSlot, guests, appliedCoupon?.code ?? ""].join("|");
   useEffect(() => {
     if (bookingId && bookingKey && bookingKey !== currentBookingKey) {
       // The old pending booking simply lapses (it auto-cancels after its
@@ -168,8 +189,32 @@ export function BookingFlow({ hall, availability, windowDays, onlinePaymentEnabl
       setBookingId(null);
       setBookingKey(null);
       setExpiresAt(null);
+      setCharged(null);
     }
   }, [currentBookingKey, bookingId, bookingKey]);
+
+  function applyCoupon() {
+    const code = couponInput.trim();
+    if (!code) return;
+    setCouponError(null);
+    startCouponTransition(async () => {
+      const r = await previewCoupon(code);
+      if (!r.ok) {
+        setCouponError(r.error);
+        setAppliedCoupon(null);
+        return;
+      }
+      // The fee comes back FROM THE SERVER — the client never computes it.
+      setAppliedCoupon({ code: r.code, platformFee: r.platformFee });
+      setCouponInput(r.code);
+    });
+  }
+
+  function removeCoupon() {
+    setAppliedCoupon(null);
+    setCouponInput("");
+    setCouponError(null);
+  }
 
   function next() { setStep((s) => Math.min(s + 1, STEPS.length - 1)); }
   function back() { if (step === 0) router.back(); else setStep((s) => Math.max(s - 1, 0)); }
@@ -229,6 +274,7 @@ export function BookingFlow({ hall, availability, windowDays, onlinePaymentEnabl
           contactPhone:  phone,
           customerNotes: `${eventType} event. Contact: ${name}, ${phone}.`,
           termsAccepted,
+          couponCode: appliedCoupon?.code,
         });
 
         if ("error" in result) {
@@ -249,12 +295,32 @@ export function BookingFlow({ hall, availability, windowDays, onlinePaymentEnabl
         setBookingId(result.bookingId);
         setBookingKey(currentBookingKey);
         setExpiresAt(result.expiresAt);
+        // The server is the authority on what was snapshotted. Adopting its
+        // figures here means the CTA and the summary cannot drift from the
+        // amount Cashfree is about to charge.
+        setCharged({ platformFee: result.platformFee, customerTotal: result.customerTotal });
+        if (result.couponCode !== (appliedCoupon?.code ?? null)) {
+          setAppliedCoupon(
+            result.couponCode ? { code: result.couponCode, platformFee: result.platformFee } : null,
+          );
+        }
       }
 
       // 2. Create a Cashfree order on the server and get a payment_session_id.
       const session = await createPaymentSession(id, { name, phone });
       if ("error" in session) {
         setServerError(session.error);
+        // The coupon was stopped while this customer was checking out. The
+        // booking is dead; drop it and send them back to the summary so they
+        // can rebook at the standard fee rather than retrying into a refusal.
+        if (session.error.toLowerCase().includes("no longer active")) {
+          setBookingId(null);
+          setBookingKey(null);
+          setCharged(null);
+          setAppliedCoupon(null);
+          setCouponInput("");
+          setStep(3);
+        }
         return;
       }
 
@@ -294,6 +360,7 @@ export function BookingFlow({ hall, availability, windowDays, onlinePaymentEnabl
           contactPhone:  phone,
           customerNotes: `${eventType} event. Contact: ${name}, ${phone}.`,
           termsAccepted,
+          couponCode: appliedCoupon?.code,
         });
         if ("error" in result) {
           setServerError(result.error);
@@ -619,14 +686,79 @@ export function BookingFlow({ hall, availability, windowDays, onlinePaymentEnabl
                   />
                   <div className="my-2 h-px bg-border" />
                   <PriceLine label="Advance Payment"  value={formatPrice(advance)} />
-                  <PriceLine label="Platform Fee"     value={formatPrice(DISPLAY_PLATFORM_FEE)} />
+                  {feeWaived ? (
+                    <div className="flex items-center justify-between py-1 text-sm">
+                      <span className="text-charcoal-600">Platform Fee</span>
+                      <span className="flex items-center gap-1.5">
+                        <span className="text-charcoal-400 line-through">
+                          {formatPrice(DISPLAY_PLATFORM_FEE)}
+                        </span>
+                        <span className="font-semibold text-green-700">₹0</span>
+                      </span>
+                    </div>
+                  ) : (
+                    <PriceLine label="Platform Fee" value={formatPrice(effectivePlatformFee)} />
+                  )}
                   <PriceLine label="Total Payable Now" value={formatPrice(payNowTotal)} bold highlight />
                   <div className="my-2 h-px bg-border" />
                   <PriceLine label="Balance at the venue" value={formatPrice(totalAmount - advance)} />
+
+                  {/* ── Coupon ───────────────────────────────────────────── */}
+                  <div className="mt-3 border-t border-border pt-3">
+                    {appliedCoupon ? (
+                      <div className="flex items-center justify-between gap-2 rounded-lg bg-green-50 px-3 py-2">
+                        <span className="text-xs font-semibold text-green-800">
+                          <span className="font-mono">{appliedCoupon.code}</span> applied — platform fee waived
+                        </span>
+                        <button
+                          type="button"
+                          onClick={removeCoupon}
+                          className="shrink-0 text-[11px] font-semibold text-green-800 underline"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="flex gap-2">
+                          <input
+                            value={couponInput}
+                            onChange={(e) => { setCouponInput(e.target.value.toUpperCase()); setCouponError(null); }}
+                            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); applyCoupon(); } }}
+                            placeholder="Coupon code"
+                            aria-label="Coupon code"
+                            className="min-w-0 flex-1 rounded-lg border border-border bg-white px-3 py-2 font-mono text-sm uppercase tracking-wide focus:border-maroon-500 focus:outline-none"
+                          />
+                          <button
+                            type="button"
+                            onClick={applyCoupon}
+                            disabled={couponPending || !couponInput.trim()}
+                            className="shrink-0 rounded-lg border border-charcoal-300 px-3 text-xs font-semibold text-charcoal-700 transition-colors hover:bg-charcoal-50 disabled:opacity-50"
+                          >
+                            {couponPending ? "Checking…" : "Apply"}
+                          </button>
+                        </div>
+                        {couponError && (
+                          <p className="mt-1.5 text-[11px] text-red-600">{couponError}</p>
+                        )}
+                      </>
+                    )}
+                  </div>
+
                   <p className="mt-2 text-[11px] text-charcoal-500">
-                    The ₹{DISPLAY_PLATFORM_FEE} platform fee covers secure payment and booking
-                    support, and is non-refundable. The balance is paid directly to the venue —
-                    nothing else is added.
+                    {feeWaived ? (
+                      <>
+                        Platform fee waived
+                        {appliedCoupon ? <> with <span className="font-mono">{appliedCoupon.code}</span></> : null}.
+                        The balance is paid directly to the venue — nothing else is added.
+                      </>
+                    ) : (
+                      <>
+                        The {formatPrice(effectivePlatformFee)} platform fee covers secure payment and
+                        booking support, and is non-refundable. The balance is paid directly to the
+                        venue — nothing else is added.
+                      </>
+                    )}
                   </p>
                 </div>
 
@@ -675,7 +807,9 @@ export function BookingFlow({ hall, availability, windowDays, onlinePaymentEnabl
                   <p className="mt-3 text-xs text-charcoal-500">Total payable now</p>
                   <p className="font-serif text-3xl font-bold text-maroon-700">{formatPrice(payNowTotal)}</p>
                   <p className="mt-1 text-[11px] text-charcoal-500">
-                    Advance {formatPrice(advance)} + platform fee {formatPrice(DISPLAY_PLATFORM_FEE)}
+                    {feeWaived
+                      ? `Advance ${formatPrice(advance)} · platform fee waived`
+                      : `Advance ${formatPrice(advance)} + platform fee ${formatPrice(effectivePlatformFee)}`}
                   </p>
                   <p className="mt-1 text-[11px] text-charcoal-500">Balance {formatPrice(totalAmount - advance)} due before event</p>
                 </div>

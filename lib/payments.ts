@@ -138,11 +138,22 @@ export async function startPaymentForBooking(
   const db = admin as any;
 
   // 1. Load the booking authoritatively (service-role read).
-  const { data: booking, error: bErr } = await db
+  const BOOKING_COLS =
+    "id, customer_id, status, total_amount, expires_at, advance_amount, platform_fee_amount, customer_total_amount, coupon_id";
+  let { data: booking, error: bErr } = await db
     .from("bookings")
-    .select("id, customer_id, status, total_amount, expires_at, advance_amount, platform_fee_amount, customer_total_amount")
+    .select(BOOKING_COLS)
     .eq("id", input.bookingId)
     .maybeSingle();
+  // A column list containing an unknown column fails WHOLESALE, so a pre-0045
+  // database would lose the booking entirely rather than just the coupon.
+  if (bErr && (bErr.code === "42703" || bErr.code === "PGRST204")) {
+    ({ data: booking, error: bErr } = await db
+      .from("bookings")
+      .select(BOOKING_COLS.replace(", coupon_id", ""))
+      .eq("id", input.bookingId)
+      .maybeSingle());
+  }
 
   if (bErr)        return { ok: false, error: bErr.message };
   if (!booking)    return { ok: false, error: "Booking not found." };
@@ -160,6 +171,32 @@ export async function startPaymentForBooking(
   // 4. Expiry — refuse if the pending window has already elapsed.
   if (booking.expires_at && new Date(booking.expires_at).getTime() < Date.now()) {
     return { ok: false, error: "This booking's payment window has expired. Please book again." };
+  }
+
+  // 4b. Coupon still live? THE OFF SWITCH DEPENDS ON THIS.
+  //     The fee is snapshotted at booking creation and nothing else re-checks
+  //     it. Without this, "stop the coupon" is only a 20-minute soft stop with
+  //     an attacker-chosen multiplier: pending holds neither conflict with each
+  //     other nor block availability, so a signed-in user can pre-stage any
+  //     number of ₹0 snapshots and cash them in after the stop.
+  //
+  //     REFUSE rather than reprice. Silently restoring the ₹200 would charge
+  //     the customer more than the figure they were shown on the previous
+  //     screen — the one thing the checkout must never do.
+  if (booking.coupon_id) {
+    const { data: c } = await db
+      .from("coupons")
+      .select("is_active, expires_at")
+      .eq("id", booking.coupon_id)
+      .maybeSingle();
+    const live =
+      c && c.is_active && (!c.expires_at || new Date(c.expires_at).getTime() > Date.now());
+    if (!live) {
+      return {
+        ok: false,
+        error: "The coupon on this booking is no longer active. Please start a new booking.",
+      };
+    }
   }
 
   // 5. Amount — from the booking's stored breakdown (0031), never the client.
@@ -199,6 +236,27 @@ export async function startPaymentForBooking(
       ? storedFee
       : PLATFORM_FEE_RUPEES;
   const chargeTotal = Math.round((advance + platformFee) * 100) / 100;
+
+  // The charge is composed from two columns; customer_total_amount is the third
+  // that must agree. Disagreement means the row was written by something other
+  // than calculateBookingPayment — refuse rather than charge a number nobody
+  // computed.
+  //
+  // BOTH extra gates are load-bearing: Number(null) === 0 and
+  // Number.isFinite(0) === true, so without them every legacy (pre-0031)
+  // booking would be refused at checkout.
+  const storedTotal =
+    booking.customer_total_amount == null ? null : Number(booking.customer_total_amount);
+  if (
+    canRecordBreakdown && hasBreakdown &&
+    storedTotal != null && Number.isFinite(storedTotal) &&
+    Math.abs(storedTotal - chargeTotal) > 0.005
+  ) {
+    console.error(
+      `[payments] booking ${input.bookingId}: stored total ${storedTotal} != composed ${chargeTotal}`,
+    );
+    return { ok: false, error: "This booking's amounts are inconsistent — please contact support." };
+  }
 
   const phone = normalisePhone(input.customerPhone);
   if (phone.length < 10) {
@@ -441,9 +499,15 @@ export async function verifyAndApplyPayment(orderId: string): Promise<ApplyPayme
         // payment_success + refund_state in (owed, failed) — so the customer
         // was told "refund initiated" for money the product had no way to
         // send. 'refunded' is set by issueRefund once Cashfree confirms.
+        // refund_amount is the whole capture either way; only the WORDING has
+        // to know whether a fee was actually part of it. A coupon booking has
+        // none, and claiming otherwise in the durable payment_message misleads
+        // whoever handles the refund.
+        const feeClause = Number(payment.platform_fee_amount ?? 0) > 0
+          ? " (incl. platform fee)" : "";
         const refundUpdate: Record<string, unknown> = {
           refund_state: "owed",
-          payment_message: "Slot conflict — full refund (incl. platform fee) owed",
+          payment_message: `Slot conflict — full refund${feeClause} owed`,
           refund_amount: Number(payment.amount),
         };
         let { error: refErr } = await db.from("payments").update(refundUpdate).eq("id", payment.id);
@@ -513,9 +577,11 @@ export async function verifyAndApplyPayment(orderId: string): Promise<ApplyPayme
         //     capture (platform fee included) is owed back. Recorded as
         //     refund_state='owed' with status left at payment_success, which
         //     is what puts it in the admin refund queue at all.
+        const staleFeeClause = Number(payment.platform_fee_amount ?? 0) > 0
+          ? " (incl. platform fee)" : "";
         const staleUpdate: Record<string, unknown> = {
           refund_state: "owed",
-          payment_message: "Paid, but the booking was no longer awaiting payment — full refund (incl. platform fee) owed",
+          payment_message: `Paid, but the booking was no longer awaiting payment — full refund${staleFeeClause} owed`,
           refund_amount: Number(payment.amount),
         };
         let { error: staleErr } = await db.from("payments").update(staleUpdate).eq("id", payment.id);

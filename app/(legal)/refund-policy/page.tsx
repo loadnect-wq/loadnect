@@ -60,7 +60,7 @@ export default function RefundPolicyPage() {
       </div>
 
       <Section title="4. Platform Fee">
-        Hallnect charges a flat <strong>₹200 platform fee</strong> on each booking, collected together with the advance and disclosed at checkout before payment is confirmed. This fee is <strong>non-refundable for customer-initiated cancellations</strong> — the refund schedule above applies to the advance only. For owner-initiated cancellations (see section 6), the platform fee is refunded in full.
+        Hallnect charges a flat <strong>₹200 platform fee</strong> on each booking, collected together with the advance and disclosed at checkout before payment is confirmed. A promotional code may reduce this fee to ₹0, in which case there is no platform fee to refund or retain. This fee is <strong>non-refundable for customer-initiated cancellations</strong> — the refund schedule above applies to the advance only. For owner-initiated cancellations (see section 6), the platform fee is refunded in full.
       </Section>
 
       <Section title="5. Venue Owner Subscriptions">

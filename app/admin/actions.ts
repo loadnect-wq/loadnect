@@ -14,6 +14,7 @@ import {
   premiumPlanUpdateSchema,
   commissionPercentSchema,
   ticketResponseSchema,
+  couponCreateSchema,
   parseSafe,
 } from "@/lib/validation/schemas";
 import { sanitizeError } from "@/lib/errors";
@@ -1373,4 +1374,120 @@ export async function retryOwnerPayout(bookingId: string): Promise<ActionResult>
   if (outcome.state === "paid")    return { success: true };
   if (outcome.state === "skipped") return { error: `Not retried: ${outcome.reason}` };
   return { error: outcome.reason };
+}
+
+// ── Coupons ───────────────────────────────────────────────────────────────────
+//
+// A coupon waives the flat ₹200 PLATFORM FEE — Hallnect's own revenue, charged
+// on top of the advance. It never touches the commission, so the venue is paid
+// exactly the same either way and Hallnect absorbs the whole discount.
+//
+// There is no delete action ON PURPOSE: bookings.coupon_id is ON DELETE SET
+// NULL, so deleting a coupon would quietly orphan the waiver's audit trail on
+// every booking that used it. Stopping is reversible; deleting is not.
+
+export async function createCoupon(input: {
+  code: string;
+  description?: string;
+  maxRedemptions?: string;
+  expiresAt?: string;
+}): Promise<{ success: true; code: string } | { error: string }> {
+  const actor = await requireAdminActor();
+  if (!actor.ok) return { error: actor.error };
+
+  const parsed = parseSafe(couponCreateSchema, input);
+  if (!parsed.ok) return { error: parsed.error };
+  const v = parsed.data;
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const db = actor.supabase as any;
+  const { data, error } = await db
+    .from("coupons")
+    .insert({
+      code:            v.code,
+      description:     v.description ?? null,
+      kind:            "zero_platform_fee",
+      is_active:       true,
+      max_redemptions: v.maxRedemptions ?? null,
+      expires_at:      v.expiresAt ?? null,
+      created_by:      actor.user.id,
+    })
+    .select("id, code")
+    .single();
+
+  // 23505 → sanitizeError renders "This record already exists." for a dup code.
+  if (error) return { error: sanitizeError(error, "admin") };
+
+  await recordAdminAction({
+    action:     "coupon.create",
+    entityType: "coupon",
+    entityId:   data.id,
+    newStatus:  "active",
+    metadata: {
+      code: data.code,
+      kind: "zero_platform_fee",
+      maxRedemptions: v.maxRedemptions ?? null,
+      expiresAt: v.expiresAt ?? null,
+    },
+  });
+
+  revalidatePath("/admin/coupons");
+  revalidatePath("/admin/audit-logs");
+  return { success: true, code: data.code };
+}
+
+/** Stop a coupon. New checkouts are refused immediately. */
+export async function stopCoupon(couponId: string): Promise<ActionResult> {
+  return setCouponActive(couponId, false);
+}
+
+/** Put a stopped coupon back into service. */
+export async function resumeCoupon(couponId: string): Promise<ActionResult> {
+  return setCouponActive(couponId, true);
+}
+
+async function setCouponActive(couponId: string, active: boolean): Promise<ActionResult> {
+  const actor = await requireAdminActor();
+  if (!actor.ok) return { error: actor.error };
+
+  const idErr = requireUuid(couponId, "coupon id");
+  if (idErr) return { error: idErr };
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const db = actor.supabase as any;
+  const { data: current } = await db
+    .from("coupons").select("code, is_active").eq("id", couponId).maybeSingle();
+  if (!current) return { error: "Coupon not found." };
+  if (current.is_active === active) return { success: true };
+
+  // count:"exact" — an RLS-filtered UPDATE reports zero rows with NO error, so
+  // without this a non-admin would be told the coupon had been stopped.
+  const { error, count } = await db
+    .from("coupons")
+    .update(
+      active
+        ? { is_active: true,  stopped_at: null, stopped_by: null }
+        : { is_active: false, stopped_at: new Date().toISOString(), stopped_by: actor.user.id },
+      { count: "exact" },
+    )
+    .eq("id", couponId);
+
+  if (error) return { error: sanitizeError(error, "admin") };
+  if (count === 0) return { error: "You do not have permission to change this coupon." };
+
+  await recordAdminAction({
+    // NOT "coupon.deactivate": the audit log's toneFor() regex-matches
+    // /activate/ first and would colour a STOP green. Same reason premium's
+    // off-switch is named "premium.cancel".
+    action:         active ? "coupon.reactivate" : "coupon.cancel",
+    entityType:     "coupon",
+    entityId:       couponId,
+    previousStatus: current.is_active ? "active" : "inactive",
+    newStatus:      active ? "active" : "inactive",
+    metadata:       { code: current.code },
+  });
+
+  revalidatePath("/admin/coupons");
+  revalidatePath("/admin/audit-logs");
+  return { success: true };
 }

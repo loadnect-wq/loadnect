@@ -89,7 +89,7 @@ export default async function CityPage({ params }: Props) {
     },
     {
       q: `Can I book a wedding hall in ${city} online?`,
-      a: `Yes. Choose your date and slot, then pay the 25% advance plus a flat ₹200 platform fee through Cashfree. The booking is confirmed once the venue owner accepts it, and the balance is paid directly to the venue.`,
+      a: `Yes. Choose your date and slot, then pay the 25% advance plus a flat ₹200 platform fee through Cashfree, or ₹0 if you have a promotional code. The booking is confirmed once the venue owner accepts it, and the balance is paid directly to the venue.`,
     },
     ...(largest
       ? [{

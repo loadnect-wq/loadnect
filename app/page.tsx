@@ -51,13 +51,13 @@ const HOW_IT_WORKS = [
 
 const FAQ_ITEMS = [
   { q: "How do I book a venue?",
-    a: "Pick a hall, choose your date and slot, then pay the advance plus the Rs 200 platform fee through Cashfree. The exact advance is shown before you pay. Your booking is confirmed once the venue owner accepts it." },
+    a: "Pick a hall, choose your date and slot, then pay the advance plus the Rs 200 platform fee through Cashfree. A promotional code can waive the platform fee. The exact amount is shown before you pay. Your booking is confirmed once the venue owner accepts it." },
   { q: "Is the advance payment refundable?",
-    a: "It depends when you cancel: the full advance is refundable more than 30 days before the event, and partially up to 7 days before. The Rs 200 platform fee is non-refundable on customer cancellations." },
+    a: "It depends when you cancel: the full advance is refundable more than 30 days before the event, and partially up to 7 days before. The Rs 200 platform fee, where one was charged, is non-refundable on customer cancellations." },
   { q: "Can I see the venue before booking?",
     a: "Yes. We strongly recommend visiting in person. Contact details for the venue owner are shared once a booking is confirmed." },
   { q: "How much does Hallnect charge?",
-    a: "You pay the venue advance plus a flat platform fee of Rs 200 at checkout, shown clearly before you pay. There are no other charges from Hallnect." },
+    a: "You pay the venue advance plus a flat platform fee of Rs 200 at checkout, shown clearly before you pay. A promotional code can reduce that fee to zero. There are no other charges from Hallnect." },
   { q: "I'm a venue owner — how do I list?",
     a: "Register as an owner, complete your business profile, and submit your venue for approval. Listings are reviewed within 48 hours." },
 ];

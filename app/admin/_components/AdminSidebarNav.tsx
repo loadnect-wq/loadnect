@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import {
   BadgeCheck, BellRing, Building2, CalendarDays, ClipboardCheck,
   CreditCard, LayoutDashboard, Megaphone, MessageSquare,
-  Receipt, ScrollText, Settings, Sparkles, Star, Users, Wallet,
+  Receipt, ScrollText, Settings, Sparkles, Star, TicketPercent, Users, Wallet,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -58,6 +58,7 @@ const SECTIONS: { title: string; items: NavItem[] }[] = [
     title: "Monetization",
     items: [
       { label: "Premium Listings", href: "/admin/premium-listings", icon: Sparkles },
+      { label: "Coupons",          href: "/admin/coupons",          icon: TicketPercent },
       { label: "Advertisements",   href: "/admin/advertisements",   icon: Megaphone, badgeKey: "pendingAds" },
     ],
   },

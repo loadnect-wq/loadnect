@@ -23,7 +23,7 @@
 import "server-only";
 
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
-import { calculateRefund, PLATFORM_FEE_RUPEES } from "@/lib/booking-payment";
+import { calculateRefund } from "@/lib/booking-payment";
 import { daysBetweenInclusive, todayInBusinessTz } from "@/lib/dates";
 
 /**
@@ -117,10 +117,20 @@ export async function recordBookingRefund(
       refundPlatformFee: initiator !== "customer",
     });
 
+    // `fee` is a MONEY value, so it is tested against 0 explicitly. The old
+    // `fee || PLATFORM_FEE_RUPEES` printed "₹200 retained" whenever the fee was
+    // zero — which is now every coupon booking, and was already wrong for any
+    // legacy payment that fell back to 0 at :105. This note is persisted to
+    // payments.payment_message: it is the durable record an admin quotes back
+    // to a customer in a dispute, so it must not claim money that was never
+    // taken.
+    const feeNote = fee > 0
+      ? ` ₹${fee} platform fee retained per policy.`
+      : " No platform fee was charged on this booking.";
     const note =
       initiator === "customer"
-        ? `Customer cancellation ${daysUntilEvent} day(s) before the event — ${percent}% of the advance refundable; ₹${fee || PLATFORM_FEE_RUPEES} platform fee retained per policy.`
-        : `${initiator === "owner" ? "Venue" : "Platform"}-initiated cancellation — full refund including the platform fee.`;
+        ? `Customer cancellation ${daysUntilEvent} day(s) before the event — ${percent}% of the advance refundable;${feeNote}`
+        : `${initiator === "owner" ? "Venue" : "Platform"}-initiated cancellation — full refund${fee > 0 ? " including the platform fee" : ""}.`;
 
     const update: Record<string, unknown> = {
       refund_amount: breakdown.refundableAmount,

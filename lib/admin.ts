@@ -5,6 +5,7 @@
 // and background jobs — using it here would lose the auth.uid() audit trail.
 
 import { getSupabaseServerClient } from "@/lib/supabase/server";
+import { PLATFORM_FEE_RUPEES } from "@/lib/booking-payment";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -283,7 +284,11 @@ export async function fetchAdminStats(): Promise<AdminStats> {
   // payments.amount there; policy refunds are advance-only and keep the fee).
   empty.revenue.platformFees = payments.reduce((s, p) => {
     const fee = Number(p.platform_fee_amount ?? 0);
-    if (!fee) return s;
+    // Number.isFinite, not truthiness: `!fee` is true for a legitimately waived
+    // ₹0 fee and dropped the row before the refund branch below could see it.
+    // Numerically harmless while the fee is always 200, wrong the moment a
+    // coupon exists.
+    if (!Number.isFinite(fee)) return s;
     if (p.status !== "refunded") return s + fee;
     const refunded = Number(p.refund_amount ?? 0);
     const fullRefund = refunded >= Number(p.amount) - 0.01;
@@ -1212,3 +1217,68 @@ export async function fetchStuckPlanPurchases(): Promise<StuckPlanPurchaseRow[]>
       order_id:       row.cashfree_order_id ?? null,
     }));
 }
+
+// ── Coupons ───────────────────────────────────────────────────────────────────
+
+export type AdminCouponRow = {
+  id:              string;
+  code:            string;
+  description:     string | null;
+  kind:            string;
+  is_active:       boolean;
+  max_redemptions: number | null;
+  expires_at:      string | null;
+  created_at:      string;
+  stopped_at:      string | null;
+  /** Live pending holds — not yet paid, may still lapse. */
+  held:            number;
+  /** Bookings where money actually moved. This is what a cap counts. */
+  paid:            number;
+  /** What the waivers have cost Hallnect so far, in rupees. */
+  feesForgone:     number;
+};
+
+/**
+ * Coupons plus their usage. `unavailable` distinguishes "migration 0045 has not
+ * run" from "no coupons yet", so a fresh deploy renders an explanation instead
+ * of an empty table that looks like a bug (the fetchAuditLog precedent).
+ */
+export async function fetchCoupons(): Promise<
+  { unavailable: true } | { unavailable: false; rows: AdminCouponRow[] }
+> {
+  const supabase = await getSupabaseServerClient();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const db = supabase as any;
+
+  const { data, error } = await db
+    .from("coupons")
+    .select("id, code, description, kind, is_active, max_redemptions, expires_at, created_at, stopped_at")
+    .order("created_at", { ascending: false });
+
+  if (error?.code === "42P01" || error?.code === "PGRST205") return { unavailable: true };
+  if (error) {
+    handleError("fetchCoupons", error);
+    return { unavailable: false, rows: [] };
+  }
+
+  const rows: AdminCouponRow[] = await Promise.all(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (data ?? []).map(async (c: any) => {
+      // coupon_usage() is SECURITY DEFINER and admin-gated; it raises for a
+      // non-admin rather than returning zeroes, so a failure here means the
+      // caller is not an admin and the page would not have rendered anyway.
+      const { data: u } = await db.rpc("coupon_usage", { _coupon_id: c.id });
+      const usage = Array.isArray(u) ? u[0] : u;
+      const paid = Number(usage?.paid ?? 0);
+      return {
+        ...c,
+        held:        Number(usage?.held ?? 0),
+        paid,
+        feesForgone: paid * PLATFORM_FEE_RUPEES,
+      };
+    }),
+  );
+
+  return { unavailable: false, rows };
+}
+

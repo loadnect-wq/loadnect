@@ -13,6 +13,7 @@ import { bookingSchema, paymentSessionSchema, uuidSchema, parseSafe } from "@/li
 import { sanitizeError } from "@/lib/errors";
 import { normalizePhoneE164 } from "@/lib/notifications/phone";
 import { notifyBookingEvent } from "@/lib/notifications/events";
+import { resolveCoupon, type ResolvedCoupon } from "@/lib/coupons";
 
 // ── Action ────────────────────────────────────────────────────────────────────
 //
@@ -45,6 +46,9 @@ export type CreateBookingInput = {
   contactPhone: string;       // customer mobile — REQUIRED; normalized to E.164
   customerNotes?: string;
   termsAccepted?: boolean;    // advance/cancellation/remaining-balance consent
+  /** Promo code as typed. An opaque string — the SERVER decides what it is
+   *  worth (lib/coupons.ts). There is no path from here to an amount. */
+  couponCode?: string;
 };
 
 export type CreateBookingResult =
@@ -53,10 +57,13 @@ export type CreateBookingResult =
       bookingId: string;
       totalAmount: number;
       advanceAmount: number;
-      /** Flat ₹200 collected with the advance — always disclosed to the customer. */
+      /** Collected with the advance — always disclosed. ₹0 when a coupon waived it. */
       platformFee: number;
       /** advanceAmount + platformFee — what checkout will actually charge. */
       customerTotal: number;
+      /** The coupon actually applied, canonicalised, or null. The client echoes
+       *  this rather than its own input so the two can never disagree. */
+      couponCode: string | null;
       expiresAt: string;
     }
   | { error: string };
@@ -166,10 +173,32 @@ export async function createBookingRequest(
   const commissionPercent = await getCommissionPercent();
   const advancePercent    = await getAdvancePercent();
   const totalAmount       = baseAmount;
+
+  // ── Coupon — SERVER-RESOLVED ────────────────────────────────────────────────
+  // The client sends an opaque string; resolveCoupon decides what (if anything)
+  // it is worth. A coupon can only ever waive the ₹200 platform fee, which is
+  // Hallnect's own revenue — the commission and therefore the owner's payout
+  // are computed from the hall price and are untouched below.
+  //
+  // An unusable code REJECTS the booking rather than quietly falling back to
+  // ₹200. A silent fallback would be the only path in this system where the
+  // gateway charges MORE than the last figure the customer saw; recovering from
+  // the rejection is one click.
+  const rawCoupon = String(input.couponCode ?? "").trim();
+  let coupon: ResolvedCoupon | null = null;
+  if (rawCoupon) {
+    const res = await resolveCoupon(rawCoupon);
+    if (!res.ok) {
+      return { error: `${res.error} Remove the code to continue at the standard ₹200 platform fee.` };
+    }
+    coupon = res.coupon;
+  }
+
   const pay = calculateBookingPayment({
     hallTotal:      totalAmount,
     advanceAmount:  advanceFromTotal(totalAmount, advancePercent),
     commissionRate: commissionPercent,
+    ...(coupon ? { platformFeeRupees: coupon.platformFeeRupees } : {}),
   });
 
   // ── Layer 2/3/4 — Insert with status='pending_payment' ──────────────────────
@@ -193,6 +222,12 @@ export async function createBookingRequest(
     commission_amount:     pay.commissionAmount,
     owner_net_advance:     pay.ownerNetAdvance,
   };
+
+  // Kept separate from breakdownPayload: the fallback ladder below may drop
+  // that one wholesale, and these two must live and die with it.
+  const couponPayload: Record<string, unknown> = coupon
+    ? { coupon_id: coupon.id, coupon_code: coupon.code }
+    : {};
 
   const basePayload: Record<string, unknown> = {
     hall_id:        v.hallId,
@@ -221,7 +256,7 @@ export async function createBookingRequest(
 
   let { data: inserted, error: insertErr } = await insertDb
     .from("bookings")
-    .insert({ ...basePayload, ...breakdownPayload, terms_accepted: true, terms_accepted_at: new Date().toISOString() })
+    .insert({ ...basePayload, ...breakdownPayload, ...couponPayload, terms_accepted: true, terms_accepted_at: new Date().toISOString() })
     .select("id, expires_at")
     .single();
 
@@ -232,7 +267,19 @@ export async function createBookingRequest(
   // (pre-0017) — so each vintage of database keeps every column it has.
   const isUnknownColumn = (e: { code?: string } | null) =>
     e?.code === "42703" || e?.code === "PGRST204";
-  if (isUnknownColumn(insertErr)) {
+
+  // A COUPON BOOKING MUST NEVER DEGRADE. Each rung of the ladder below drops
+  // columns to satisfy an older database: dropping couponPayload while keeping
+  // platform_fee_amount: 0 trips the 0045 trigger, and dropping breakdownPayload
+  // restores a ₹200 charge on a booking the customer was quoted at ₹0. PGRST204
+  // is a schema-cache miss as well as an un-migrated column, so this is reachable
+  // in the minutes right after 0045 is applied. Fail cleanly instead.
+  if (coupon && isUnknownColumn(insertErr)) {
+    console.error("[createBookingRequest] coupon columns unavailable:", insertErr?.code);
+    return { error: "Coupon codes are not available right now. Remove the code and try again." };
+  }
+
+  if (!coupon && isUnknownColumn(insertErr)) {
     ({ data: inserted, error: insertErr } = await insertDb
       .from("bookings")
       .insert({ ...basePayload, terms_accepted: true, terms_accepted_at: new Date().toISOString() })
@@ -265,7 +312,9 @@ export async function createBookingRequest(
     if (insertErr.message?.toLowerCase().includes("already booked")) {
       return { error: "This slot was just booked by someone else. Please pick another date or slot." };
     }
-    return { error: insertErr.message ?? "Could not create your booking. Please try again." };
+    // The 0045 guard raises P0001 with internal text like "platform_fee_amount 0
+    // below the standard fee requires a coupon_id" — never show that to a customer.
+    return { error: sanitizeError(insertErr, "createBookingRequest") };
   }
 
   // Prefill convenience for next time: save the phone to the profile ONLY when
@@ -288,6 +337,7 @@ export async function createBookingRequest(
     advanceAmount: pay.advanceAmount,
     platformFee:   pay.platformFee,
     customerTotal: pay.customerTotal,
+    couponCode:    coupon?.code ?? null,
     expiresAt:     inserted.expires_at ?? expiresAt,
   };
 }
@@ -490,4 +540,30 @@ export async function createPaymentSession(
     amount:           result.amount,
     mode,
   };
+}
+
+// ── Coupon preview ────────────────────────────────────────────────────────────
+//
+// Lets the customer see the fee drop to ₹0 BEFORE they commit to a booking.
+//
+// This is a read-only echo of the same resolver the booking uses, so the preview
+// and the charge can never disagree. It returns the fee FROM THE SERVER, exactly
+// as advancePercent is served — the browser still never computes or sends money.
+//
+// Sign-in gated. Without that this is an anonymous code-guessing oracle; with it,
+// an attacker needs an account, and every failure returns one identical string so
+// a hit is indistinguishable from a miss.
+export type CouponPreviewResult =
+  | { ok: true; code: string; platformFee: number }
+  | { ok: false; error: string };
+
+export async function previewCoupon(rawCode: string): Promise<CouponPreviewResult> {
+  const supabase = await getSupabaseServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: "Please sign in to use a coupon code." };
+
+  const res = await resolveCoupon(rawCode);
+  if (!res.ok) return { ok: false, error: res.error };
+
+  return { ok: true, code: res.coupon.code, platformFee: res.coupon.platformFeeRupees };
 }

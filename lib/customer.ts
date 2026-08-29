@@ -44,6 +44,9 @@ export type CustomerBooking = {
    *  Deliberately EXCLUDES the internal commission: never a customer figure. */
   advance_amount:        number | null;
   platform_fee_amount:   number | null;
+  /** The promo code applied at booking, or null. Readable by the customer —
+   *  they typed it — unlike the internal commission columns 0032 withholds. */
+  coupon_code:           string | null;
   customer_total_amount: number | null;
   status:         string;           // booking_status enum
   customer_notes: string | null;
@@ -110,6 +113,7 @@ const BOOKING_SELECT = `
   id, hall_id, event_date, end_date, slot, guest_count,
   base_amount, platform_fee, total_amount,
   advance_amount, platform_fee_amount, customer_total_amount,
+  coupon_code,
   status, customer_notes, owner_notes, cancel_reason,
   created_at, updated_at,
   halls(id, name, slug, city, state, address, hall_images(url, is_cover)),
@@ -146,6 +150,7 @@ function mapBooking(row: any): CustomerBooking {
     total_amount:   Number(row.total_amount),
     advance_amount:        row.advance_amount        == null ? null : Number(row.advance_amount),
     platform_fee_amount:   row.platform_fee_amount   == null ? null : Number(row.platform_fee_amount),
+    coupon_code:           row.coupon_code ?? null,
     customer_total_amount: row.customer_total_amount == null ? null : Number(row.customer_total_amount),
     status:         row.status,
     customer_notes: row.customer_notes ?? null,

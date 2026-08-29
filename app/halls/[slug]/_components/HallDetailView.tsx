@@ -348,7 +348,7 @@ export function HallDetailView({ hall, similar, isPreview, sidebarAd, advancePer
                 <div className="px-4 py-2.5 flex items-start gap-2 border-t border-border">
                   <Info className="h-3.5 w-3.5 shrink-0 mt-0.5 text-charcoal-400" />
                   <p className="text-[11px] text-charcoal-500">
-                    Remaining {balancePct}% is paid directly to the venue on the event day. A flat ₹200
+                    Remaining {balancePct}% is paid directly to the venue on the event day. Unless a promotional code applies, a flat ₹200
                     platform fee is added at checkout.
                   </p>
                 </div>

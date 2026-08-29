@@ -148,7 +148,12 @@ export default async function BookingStatusPage({ params, searchParams }: Props)
                 {booking.payment.advance_amount != null ? (
                   <>
                     <Line label="Advance paid" value={formatPrice(booking.payment.advance_amount)} strong={paid} />
-                    <Line label="Platform fee" value={formatPrice(booking.payment.platform_fee_amount ?? 0)} />
+                    <Line
+                      label={Number(booking.payment.platform_fee_amount ?? 0) > 0
+                        ? "Platform fee"
+                        : "Platform fee (waived)"}
+                      value={formatPrice(booking.payment.platform_fee_amount ?? 0)}
+                    />
                     <Line label="Total paid" value={formatPrice(booking.payment.amount)} strong={paid} />
                   </>
                 ) : (

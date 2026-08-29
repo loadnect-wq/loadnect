@@ -144,6 +144,16 @@ export function calculateBookingPayment(input: {
   /** Commission percent, e.g. 2.5. Callers pass the server-side rate from
    *  platform_settings — NEVER a client-supplied value. */
   commissionRate: number;
+  /**
+   * Platform fee in rupees FOR THIS BOOKING. Omit for the standard fee.
+   *
+   * Exists so a coupon can waive it. A coupon may only ever REDUCE the fee:
+   * a value above PLATFORM_FEE_RUPEES throws, so no caller and no bug can
+   * quietly charge a customer MORE than the advertised fee. Like
+   * commissionRate this is SERVER-RESOLVED — the browser sends a code string,
+   * never a number.
+   */
+  platformFeeRupees?: number;
 }): BookingPaymentBreakdown {
   const hallTotalPaise = toPaise(input.hallTotal);
   if (hallTotalPaise <= 0) {
@@ -157,7 +167,19 @@ export function calculateBookingPayment(input: {
     throw new RangeError("calculateBookingPayment: advance must be positive");
   }
 
-  // THE BASE IS THE HALL TOTAL, not the advance.
+  // A coupon may only ever take the fee DOWN. Bounding it here rather than at
+  // the call site means every surface — booking, retry, replay, test — is held
+  // to the same ceiling, and the invariant below cannot be used to overcharge.
+  const feeRupees = input.platformFeeRupees ?? PLATFORM_FEE_RUPEES;
+  if (!Number.isFinite(feeRupees) || feeRupees < 0 || feeRupees > PLATFORM_FEE_RUPEES) {
+    throw new RangeError(
+      `calculateBookingPayment: platform fee ${feeRupees} out of [0, ${PLATFORM_FEE_RUPEES}]`,
+    );
+  }
+  const feePaise = toPaise(feeRupees);
+
+  // THE BASE IS THE HALL TOTAL, not the advance. The platform fee is NOT part
+  // of it — waiving the fee must never move the owner's money.
   const commissionPaise = commissionPaiseOn(hallTotalPaise, input.commissionRate);
 
   // The commission is drawn from a pot smaller than its own base, so the two
@@ -175,12 +197,12 @@ export function calculateBookingPayment(input: {
   }
 
   const ownerPaise = advancePaise - commissionPaise;
-  const customerTotalPaise = advancePaise + PLATFORM_FEE_PAISE;
+  const customerTotalPaise = advancePaise + feePaise;
 
   return {
     hallTotal:       hallTotalPaise / PAISE_PER_RUPEE,
     advanceAmount:   advancePaise / PAISE_PER_RUPEE,
-    platformFee:     PLATFORM_FEE_RUPEES,
+    platformFee:     feePaise / PAISE_PER_RUPEE,
     customerTotal:   customerTotalPaise / PAISE_PER_RUPEE,
     commissionRate:  input.commissionRate,
     commissionAmount: commissionPaise / PAISE_PER_RUPEE,
@@ -188,7 +210,7 @@ export function calculateBookingPayment(input: {
     paise: {
       hallTotal:       hallTotalPaise,
       advance:         advancePaise,
-      platformFee:     PLATFORM_FEE_PAISE,
+      platformFee:     feePaise,
       customerTotal:   customerTotalPaise,
       commission:      commissionPaise,
       ownerNetAdvance: ownerPaise,

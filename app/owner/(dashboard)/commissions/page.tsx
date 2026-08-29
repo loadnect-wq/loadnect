@@ -174,7 +174,7 @@ export default async function OwnerCommissionsPage() {
           <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-charcoal-400" />
           <span>
             &ldquo;Your share&rdquo; is the hall price less commission, across the advance Hallnect
-            transfers to you and the balance you collect at the venue. The ₹200 booking fee shown to
+            transfers to you and the balance you collect at the venue. The platform fee shown to
             the customer is charged on top of the advance and is not taken from your share.
           </span>
         </p>

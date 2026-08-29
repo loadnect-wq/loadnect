@@ -484,6 +484,46 @@ export const commissionPercentSchema = z
   .refine((n) => Number.isFinite(n), "Enter a valid number.")
   .refine((n) => n >= 0 && n <= 100, "Rate must be between 0 and 100.");
 
+// ── Coupons ─────────────────────────────────────────────────────────────────
+
+/**
+ * A promo code as typed by a customer or an admin.
+ *
+ * The transform is the SAME canonicalisation as normalizeCouponCode() in
+ * lib/coupons.ts, and the pattern is the same as the coupons_code_format CHECK
+ * in migration 0045. All three must move together: a code that passes here but
+ * fails the CHECK becomes a 500 on an admin form, and one that passes here but
+ * fails normalisation silently never matches a row.
+ *
+ * The 8-character floor is a security bound — see lib/coupons.ts.
+ */
+export const couponCodeSchema = z
+  .string()
+  .transform((v) => String(v ?? "").slice(0, 64).normalize("NFKC").replace(/\s+/g, "").toUpperCase())
+  .refine((v) => /^[A-Z0-9][A-Z0-9-]{7,23}$/.test(v),
+    "Use 8-24 letters, digits or hyphens (for example LAUNCH2026).");
+
+export const couponCreateSchema = z.object({
+  code:        couponCodeSchema,
+  description: optionalTrimmed(500),
+  // Blank means UNLIMITED, which is what "until I stop it" asks for. A cap is
+  // opt-in, and is enforced by the database trigger as well as here.
+  maxRedemptions: z
+    .union([z.string(), z.number(), z.undefined(), z.null()])
+    .transform((v) =>
+      v === undefined || v === null || String(v).trim() === ""
+        ? undefined
+        : parseInt(String(v), 10))
+    .refine((n) => n === undefined || (Number.isInteger(n) && n > 0),
+      "Leave blank for unlimited, or enter a positive whole number."),
+  expiresAt: z
+    .union([z.string(), z.undefined(), z.null()])
+    .transform((v) =>
+      v === undefined || v === null || String(v).trim() === "" ? undefined : String(v).trim())
+    .refine((v) => v === undefined || /^\d{4}-\d{2}-\d{2}$/.test(v),
+      "Enter a date as YYYY-MM-DD, or leave blank for no expiry."),
+});
+
 // ── Helper: parse safely and return ActionResult-shaped errors ───────────────
 
 export type ValidationResult<T> =

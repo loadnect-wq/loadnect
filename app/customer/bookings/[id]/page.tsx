@@ -246,8 +246,15 @@ export default async function BookingDetailPage({ params }: Props) {
               amount={booking.advance_amount}
             />
           )}
-          {booking.platform_fee_amount != null && booking.platform_fee_amount > 0 && (
-            <AmountRow label="Platform fee" amount={booking.platform_fee_amount} />
+          {booking.platform_fee_amount != null && (
+            <AmountRow
+              label={
+                booking.platform_fee_amount > 0
+                  ? "Platform fee"
+                  : `Platform fee — waived${booking.coupon_code ? ` (${booking.coupon_code})` : ""}`
+              }
+              amount={booking.platform_fee_amount}
+            />
           )}
           <div className="border-t border-border px-4 py-3 bg-ivory-50">
             <div className="flex items-center justify-between">
@@ -259,8 +266,10 @@ export default async function BookingDetailPage({ params }: Props) {
             {booking.advance_amount != null && (
               <p className="mt-1 text-[11px] text-charcoal-500">
                 Balance {formatPrice(Math.max(0, booking.total_amount - booking.advance_amount))} is
-                payable directly at the venue. The platform fee is separate from the hall total
-                and non-refundable.
+                payable directly at the venue.
+                {booking.platform_fee_amount != null && booking.platform_fee_amount > 0
+                  ? " The platform fee is separate from the hall total and non-refundable."
+                  : ""}
               </p>
             )}
           </div>
@@ -281,7 +290,11 @@ export default async function BookingDetailPage({ params }: Props) {
               <BookingRow
                 icon={<CreditCard className="h-4 w-4" />}
                 label="Breakdown"
-                value={`${formatPrice(booking.payment.advance_amount)} advance + ${formatPrice(booking.payment.platform_fee_amount)} platform fee`}
+                value={
+                  booking.payment.platform_fee_amount > 0
+                    ? `${formatPrice(booking.payment.advance_amount)} advance + ${formatPrice(booking.payment.platform_fee_amount)} platform fee`
+                    : `${formatPrice(booking.payment.advance_amount)} advance · platform fee waived`
+                }
               />
             )}
             {/* "Refunded" only when the money has ACTUALLY been sent.
