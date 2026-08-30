@@ -33,6 +33,8 @@ import {
 import type { BookingExpirySummary } from "@/lib/booking-expiry";
 import type { PremiumExpirySummary } from "@/lib/premium-expiry";
 import { DEFAULT_ADVANCE_PERCENT } from "@/lib/booking-payment";
+import { recordBookingRefund } from "@/lib/refunds";
+import { releaseAvailabilityForBooking } from "@/lib/availability-release";
 
 function requireUuid(id: string, label = "id"): string | null {
   return parseSafe(uuidSchema, id).ok ? null : `Invalid ${label}.`;
@@ -1374,6 +1376,177 @@ export async function retryOwnerPayout(bookingId: string): Promise<ActionResult>
   if (outcome.state === "paid")    return { success: true };
   if (outcome.state === "skipped") return { error: `Not retried: ${outcome.reason}` };
   return { error: outcome.reason };
+}
+
+/**
+ * Record that an owner was paid OUTSIDE the gateway — by NEFT/UPI, by hand.
+ *
+ * WHY THIS EXISTS: until Cashfree activates Easy Split there is no automatic
+ * payout at all, so every accepted booking has to be settled by bank transfer.
+ * Before this action there was no way to write that fact down, and the gap cost
+ * money twice over:
+ *
+ *   • retryOwnerPayout accepts split_status in (none, failed, not_applicable),
+ *     so a booking already paid by NEFT could be dispatched again the moment
+ *     Easy Split came online — paying the owner twice.
+ *   • issueRefund's double-spend guard is `split_status === "done"`, which a
+ *     hand transfer never wrote. So a later cancellation would refund the
+ *     customer on top of a share already sent to the venue.
+ *
+ * Writing 'done' closes both, because both already key off exactly that value.
+ * The reference is required: an untraceable "trust me, I paid it" is what this
+ * is meant to replace.
+ */
+export async function markPayoutSettledManually(
+  bookingId: string,
+  reference: string,
+): Promise<ActionResult> {
+  const actor = await requireAdminActor();
+  if (!actor.ok) return { error: actor.error };
+  const idErr = requireUuid(bookingId, "booking id");
+  if (idErr) return { error: idErr };
+
+  const ref = (reference ?? "").trim().replace(/\s+/g, " ").slice(0, 200);
+  if (ref.length < 4) {
+    return { error: "Enter the bank/UPI reference for the transfer you made." };
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const db = actor.supabase as any;
+
+  const { data: payment } = await db
+    .from("payments")
+    .select("id, split_status, refund_state, status")
+    .eq("booking_id", bookingId)
+    .eq("status", "payment_success")
+    .maybeSingle();
+
+  if (!payment) return { error: "No successful payment found for this booking." };
+  if (payment.split_status === "done") {
+    return { error: "This payout is already recorded as settled." };
+  }
+  // A refund in flight means the money is the CUSTOMER's. Recording a payout
+  // here would assert the opposite.
+  if (["owed", "processing", "completed"].includes(String(payment.refund_state ?? "none"))) {
+    return { error: "A refund is in progress on this booking — resolve that first." };
+  }
+
+  // count:"exact" — an RLS-filtered update reports zero rows with no error, and
+  // silently claiming a payout is settled is the one outcome worse than the bug.
+  const { error, count } = await db
+    .from("payments")
+    .update(
+      { split_status: "done", split_error: `Settled manually: ${ref}` },
+      { count: "exact" },
+    )
+    .eq("id", payment.id)
+    .neq("split_status", "done");
+
+  if (error)       return { error: sanitizeError(error, "admin") };
+  if (count === 0) return { error: "Could not record the payout — reload and try again." };
+
+  await recordAdminAction({
+    action:     "owner_payout_settled_manually",
+    entityType: "booking",
+    entityId:   bookingId,
+    newStatus:  "done",
+    reason:     `Paid outside the gateway. Reference: ${ref}`,
+  });
+
+  revalidatePath("/admin/payments");
+  return { success: true };
+}
+
+/**
+ * Cancel a booking on behalf of the VENUE or the PLATFORM.
+ *
+ * WHY THIS EXISTS: before it, the only way out of an `owner_confirmed` booking
+ * was the customer's own cancel button — which passes initiator "customer" and
+ * therefore applies the customer PENALTY schedule. So when a venue flooded five
+ * days before a wedding, the customer cancelled and got back **nothing**:
+ * `customerRefundPercent(5)` is 0% and the platform fee is retained. On a
+ * ₹1,00,000 hall that is ₹25,200 forfeited for a cancellation the venue caused.
+ * The admin could not originate a refund either — `issueRefund` can only pay
+ * out a row that `recordBookingRefund` has already marked 'owed'.
+ *
+ * Passing "owner" or "platform" gives the customer 100% of the advance AND the
+ * platform fee back, which is exactly what /refund-policy §6 already promises
+ * in writing.
+ *
+ * The service role is used for the status write on purpose: the DB trigger
+ * validate_booking_transition() only allows the CUSTOMER or the OWNER of the
+ * hall to move a booking, and an admin is neither.
+ */
+export async function cancelBookingAsAdmin(
+  bookingId: string,
+  reason: string,
+  initiator: "owner" | "platform",
+): Promise<ActionResult> {
+  const actor = await requireAdminActor();
+  if (!actor.ok) return { error: actor.error };
+  const idErr = requireUuid(bookingId, "booking id");
+  if (idErr) return { error: idErr };
+
+  const cleanReason = (reason ?? "").replace(/[<>]/g, "").trim().slice(0, 500);
+  if (cleanReason.length < 10) {
+    return { error: "Give a reason of at least 10 characters — the customer is told it." };
+  }
+
+  const CANCELLABLE = ["payment_success", "booking_requested", "owner_confirmed"];
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const adminDb = getSupabaseAdminClient() as any;
+
+  const { data: booking } = await adminDb
+    .from("bookings").select("id, status").eq("id", bookingId).maybeSingle();
+  if (!booking) return { error: "Booking not found." };
+  if (!CANCELLABLE.includes(String(booking.status))) {
+    return { error: `A booking in "${String(booking.status).replace(/_/g, " ")}" cannot be cancelled.` };
+  }
+
+  const { error, count } = await adminDb
+    .from("bookings")
+    .update(
+      {
+        status: "cancelled",
+        cancel_reason:
+          initiator === "owner"
+            ? `Cancelled by the venue: ${cleanReason}`
+            : `Cancelled by Hallnect: ${cleanReason}`,
+      },
+      { count: "exact" },
+    )
+    .eq("id", bookingId)
+    .in("status", CANCELLABLE);
+
+  if (error)       return { error: sanitizeError(error, "admin") };
+  if (count === 0) return { error: "This booking changed state — reload and try again." };
+
+  // Give the dates back, or the venue loses them forever.
+  await releaseAvailabilityForBooking(bookingId);
+
+  await recordAdminAction({
+    action:         initiator === "owner" ? "booking.cancelled_by_venue" : "booking.cancelled_by_platform",
+    entityType:     "booking",
+    entityId:       bookingId,
+    previousStatus: String(booking.status),
+    newStatus:      "cancelled",
+    reason:         cleanReason,
+  });
+
+  await notifyBookingEvent("booking.cancelled", bookingId, { reason: cleanReason });
+
+  // THE POINT OF THE WHOLE ACTION: initiator decides the refund. "owner" and
+  // "platform" both return the full advance AND the platform fee.
+  const refund = await recordBookingRefund(bookingId, initiator);
+  if (refund && refund.refundAmount > 0) {
+    await notifyBookingEvent("refund.initiated", bookingId, { amount: refund.refundAmount });
+  }
+
+  revalidatePath("/admin/bookings");
+  revalidatePath("/admin/payments");
+  revalidatePath(`/customer/bookings/${bookingId}`);
+  return { success: true };
 }
 
 // ── Coupons ───────────────────────────────────────────────────────────────────

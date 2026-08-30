@@ -84,8 +84,8 @@ export default async function BookingStatusPage({ params, searchParams }: Props)
         icon:  <CheckCircle2 className="h-9 w-9" />,
         ring:  "bg-green-100 text-green-600",
         badge: <Badge variant="success">Payment successful</Badge>,
-        title: "Payment confirmed!",
-        body:  "Your advance has been received and your booking is confirmed. The venue will review your request.",
+        title: "Payment received",
+        body:  "Your advance is in. The venue now has 48 hours to accept — we will let you know as soon as they do. Your booking is not confirmed until they accept, and if they do not respond in time you are refunded in full, including the platform fee.",
       }
     : conflicted
       ? {
@@ -103,13 +103,34 @@ export default async function BookingStatusPage({ params, searchParams }: Props)
             title: "Payment not completed",
             body:  verifyMessage ?? "Your payment did not go through. You can try again.",
           }
-        : {
-            icon:  <Clock className="h-9 w-9" />,
-            ring:  "bg-amber-100 text-amber-600",
-            badge: <Badge variant="warning">Awaiting payment</Badge>,
-            title: "Payment pending",
-            body:  "We haven't received your payment yet. If you just paid, refresh in a moment — confirmation can take a few seconds.",
-          };
+        // UNRESOLVED, NOT UNPAID. `error` and `not_found` used to fall through
+        // to "Payment pending — we haven't received your payment yet", which is
+        // a statement we cannot support: `error` is returned for any non-2xx or
+        // network blip while verifying, AND for an amount mismatch where money
+        // WAS captured. Telling that customer they have not paid, next to a
+        // "Try payment again" button, is how one becomes two charges.
+        : (verifyState === "error" || verifyState === "not_found")
+          ? {
+              icon:  <Clock className="h-9 w-9" />,
+              ring:  "bg-amber-100 text-amber-600",
+              badge: <Badge variant="warning">Confirming</Badge>,
+              title: "We're confirming your payment",
+              body:  verifyMessage
+                ?? "We could not confirm this payment just yet. If money left your account, do NOT pay again — refresh this page in a minute, and contact Hallnect support if it has not cleared.",
+            }
+          : {
+              icon:  <Clock className="h-9 w-9" />,
+              ring:  "bg-amber-100 text-amber-600",
+              badge: <Badge variant="warning">Awaiting payment</Badge>,
+              title: "Payment pending",
+              body:  "We haven't received your payment yet. If you just paid, refresh in a moment — confirmation can take a few seconds.",
+            };
+
+  // The retry button MUST NOT render while the outcome is unknown — that is the
+  // exact state in which a captured payment can be paid for a second time.
+  const safeToRetry = stillPending
+    && verifyState !== "error"
+    && verifyState !== "not_found";
 
   return (
     <div className="min-h-screen bg-ivory-100 pb-10">
@@ -179,7 +200,7 @@ export default async function BookingStatusPage({ params, searchParams }: Props)
 
         {/* Actions */}
         <div className="grid grid-cols-2 gap-2">
-          {stillPending && booking.hall_slug && (
+          {safeToRetry && booking.hall_slug && (
             <Link href={`/book/${booking.hall_slug}`} className="col-span-2">
               <Button variant="gold" className="w-full">Try payment again</Button>
             </Link>

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Lock, AlertTriangle, Undo2 } from "lucide-react";
 import { fetchAllPayments, fetchStuckPayouts, fetchRefundQueue } from "@/lib/admin";
+import { MarkPaidManuallyButton } from "./_components/MarkPaidManuallyButton";
 import { IssueRefundButton, SyncRefundButton, RetryPayoutButton } from "./_components/MoneyActions";
 import { formatPrice } from "@/lib/mock-data";
 import { Badge } from "@/components/ui/Badge";
@@ -136,8 +137,8 @@ export default async function AdminPaymentsPage({ searchParams }: Props) {
                   These bookings are confirmed and the customer was charged, but the owner&apos;s
                   share is still in Hallnect&apos;s account. The usual causes are an owner who has
                   not finished payout onboarding, or Easy Split not yet being enabled on the
-                  Cashfree account. Where a payout was never attempted the figure shown is the
-                  amount captured, not the owner&apos;s computed share.
+                  Cashfree account. The figure shown is the owner&apos;s SHARE — the advance
+                  less Hallnect&apos;s commission — so it is the amount to transfer.
                 </p>
                 <ul className="mt-3 space-y-2">
                   {stuck.map((r) => (
@@ -152,8 +153,18 @@ export default async function AdminPaymentsPage({ searchParams }: Props) {
                       {r.split_error && (
                         <p className="mt-0.5 text-red-700">{r.split_error}</p>
                       )}
-                      <div className="mt-2">
+                      {r.amount_is_estimated && (
+                        <p className="mt-0.5 font-semibold text-amber-700">
+                          Estimated — this booking has no commission snapshot. Check the
+                          booking before transferring.
+                        </p>
+                      )}
+                      <div className="mt-2 space-y-2">
                         <RetryPayoutButton
+                          bookingId={r.booking_id}
+                          amountLabel={formatPrice(r.owner_amount)}
+                        />
+                        <MarkPaidManuallyButton
                           bookingId={r.booking_id}
                           amountLabel={formatPrice(r.owner_amount)}
                         />

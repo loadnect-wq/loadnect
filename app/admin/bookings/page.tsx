@@ -5,6 +5,7 @@ import { fetchAllBookings } from "@/lib/admin";
 import { formatPrice } from "@/lib/mock-data";
 import { Badge } from "@/components/ui/Badge";
 import { AdminPageHeader } from "../_components/AdminPageHeader";
+import { CancelBookingButton } from "./_components/CancelBookingButton";
 
 export const metadata: Metadata = { title: "Bookings — Admin" };
 
@@ -82,6 +83,7 @@ export default async function AdminBookingsPage({ searchParams }: Props) {
                   <Th>Event</Th>
                   <Th>Amount</Th>
                   <Th>Status</Th>
+                  <Th>Action</Th>
                 </tr>
               </thead>
               <tbody>
@@ -104,6 +106,11 @@ export default async function AdminBookingsPage({ searchParams }: Props) {
                       </Td>
                       <Td className="font-semibold">{formatPrice(b.total_amount)}</Td>
                       <Td><Badge variant={cfg.variant} size="sm">{cfg.label}</Badge></Td>
+                      <Td>
+                        {["payment_success", "booking_requested", "owner_confirmed"].includes(b.status) && (
+                          <CancelBookingButton bookingId={b.id} />
+                        )}
+                      </Td>
                     </tr>
                   );
                 })}

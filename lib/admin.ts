@@ -506,7 +506,35 @@ export type StuckPayoutRow = {
   split_error: string | null;
   hall_name: string;
   created_at: string;
+  /** True when owner_amount had to be inferred from the captured total because
+   *  the booking carries no commission snapshot — pay it only after checking. */
+  amount_is_estimated: boolean;
 };
+
+/** The owner's share of a payment, from the most authoritative source present. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function ownerShareOf(row: any): number {
+  const dispatched = Number(row.split_owner_amount);
+  if (row.split_owner_amount != null && Number.isFinite(dispatched)) return dispatched;
+
+  const snapshot = Number(row.bookings?.owner_net_advance);
+  if (row.bookings?.owner_net_advance != null && Number.isFinite(snapshot)) return snapshot;
+
+  const advance    = Number(row.advance_amount);
+  const commission = Number(row.bookings?.commission_amount);
+  if (Number.isFinite(advance) && Number.isFinite(commission)) {
+    return Math.round((advance - commission) * 100) / 100;
+  }
+  return Number(row.amount ?? 0);
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function isEstimatedShare(row: any): boolean {
+  return row.split_owner_amount == null
+    && row.bookings?.owner_net_advance == null
+    && !(Number.isFinite(Number(row.advance_amount))
+         && Number.isFinite(Number(row.bookings?.commission_amount)));
+}
 
 export async function fetchStuckPayouts(): Promise<StuckPayoutRow[]> {
   const supabase = await getSupabaseServerClient();
@@ -527,7 +555,7 @@ export async function fetchStuckPayouts(): Promise<StuckPayoutRow[]> {
   // payable state and which has no refund in flight.
   const { data, error } = await db
     .from("payments")
-    .select("id, booking_id, amount, split_owner_amount, split_status, split_error, refund_state, advance_amount, created_at, bookings(status, halls(name))")
+    .select("id, booking_id, amount, split_owner_amount, split_status, split_error, refund_state, advance_amount, platform_fee_amount, created_at, bookings(status, commission_amount, owner_net_advance, halls(name))")
     .eq("status", "payment_success")
     .order("created_at", { ascending: false })
     .limit(200);
@@ -551,12 +579,24 @@ export async function fetchStuckPayouts(): Promise<StuckPayoutRow[]> {
     .map((row: any): StuckPayoutRow => ({
       payment_id:   row.id,
       booking_id:   row.booking_id,
-      // A payout never ATTEMPTED has no split_owner_amount, and a pre-0031 row
-      // has no advance_amount either — so falling through to 0 would print
-      // "Rs0 owed" over money that is genuinely outstanding. Fall back to the
-      // captured amount, which overstates the owner's share by at most the
-      // Rs200 fee but never understates it to nothing.
-      owner_amount: Number(row.split_owner_amount ?? row.advance_amount ?? row.amount ?? 0),
+      // THIS FIGURE IS PAID BY HAND, so it has to be the owner's share and not
+      // the gross advance.
+      //
+      // The previous fallback used advance_amount and claimed in a comment to
+      // overstate "by at most the Rs200 fee". That was wrong by the COMMISSION,
+      // not the fee: the advance is what the customer paid toward the hall, and
+      // the owner's share is that MINUS Hallnect's commission. On a Rs1,00,000
+      // hall it printed Rs25,000 where Rs22,500 is owed — an admin following the
+      // screen hands the venue Hallnect's own Rs2,500 commission, every time.
+      //
+      // Order of preference, most authoritative first:
+      //   1. split_owner_amount — what a dispatched split actually carried.
+      //   2. owner_net_advance  — the booking's own snapshot of the same figure.
+      //   3. advance - commission, recomputed from the snapshot.
+      // Only if all three are absent (a pre-0031 row) does it fall back to the
+      // captured amount, and that case is flagged rather than shown as exact.
+      owner_amount: ownerShareOf(row),
+      amount_is_estimated: isEstimatedShare(row),
       split_status: row.split_status ?? "none",
       split_error:  row.split_error ?? null,
       hall_name:    row.bookings?.halls?.name ?? "Hall",

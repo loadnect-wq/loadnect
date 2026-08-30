@@ -570,7 +570,49 @@ export async function verifyAndApplyPayment(orderId: string): Promise<ApplyPayme
       //     repeat, not a failure: the side effects below are themselves
       //     idempotent, so fall through and let them no-op.
       if (["booking_requested", "owner_confirmed", "completed"].includes(freshStatus)) {
-        // deliberately NOT returning — continue to the (idempotent) paid path
+        // ...BUT "someone already moved it" is not the same as "I already
+        // moved it". A DIFFERENT payment row may own that transition — which is
+        // exactly what a double capture looks like: the customer was told the
+        // first payment had not landed, paid again, and both were captured.
+        // Falling through here would stamp this second row payment_success too,
+        // giving one booking two successful payments, only one of which the
+        // customer's booking page can see. Money taken twice, invisible to the
+        // refund queue.
+        const { data: other } = await db
+          .from("payments")
+          .select("id")
+          .eq("booking_id", payment.booking_id)
+          .eq("status", "payment_success")
+          .neq("id", payment.id)
+          .maybeSingle();
+
+        if (other?.id) {
+          const dupUpdate: Record<string, unknown> = {
+            refund_state: "owed",
+            payment_message:
+              "Duplicate payment for a booking that was already paid — full refund owed",
+            refund_amount: Number(payment.amount),
+          };
+          let { error: dupErr } = await db.from("payments").update(dupUpdate).eq("id", payment.id);
+          if (dupErr && (dupErr.code === "42703" || dupErr.code === "PGRST204")) {
+            ({ error: dupErr } = await db.from("payments")
+              .update({ status: "refunded", payment_message: dupUpdate.payment_message })
+              .eq("id", payment.id));
+          }
+          if (dupErr) logSideEffectError("duplicateCaptureRefund", dupErr);
+          logSideEffectError("duplicateCapture", {
+            code: "duplicate_capture",
+            message: `order ${orderId} is a second capture on booking ${payment.booking_id}; payment ${other.id} already succeeded`,
+          });
+          return {
+            state: "slot_conflict",
+            bookingId: payment.booking_id,
+            message:
+              "This booking was already paid for. The duplicate payment will be refunded in full — you have not lost it.",
+          };
+        }
+        // Otherwise it really is an idempotent repeat of THIS payment: fall
+        // through and let the (idempotent) side effects no-op.
       } else {
         // (b) Genuinely orphaned: cancelled or expired before payment landed.
         //     The customer paid for something we cannot honour, so the FULL
