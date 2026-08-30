@@ -1156,7 +1156,7 @@ export async function fetchNotifications(opts: {
     .select(
       "id, event_type, recipient_type, recipient_phone, booking_id, hall_id, message, status, " +
       "provider_message_id, error_message, attempt_count, is_read, created_at, sent_at, failed_at, " +
-      "channel, template_key, template_sid, delivery_status, delivery_updated_at, error_code, " +
+      "channel, template_key, provider_template_id, delivery_status, delivery_updated_at, error_code, " +
       "permanent_failure, test_mode",
       { count: "exact" },
     )
