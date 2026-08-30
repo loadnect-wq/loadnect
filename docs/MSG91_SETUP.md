@@ -127,9 +127,9 @@ without a linked consent template; Promotional is blocked on DND and confined to
 
 Two further limits worth knowing:
 
-- **DND / NDNC.** Numbers on the Do Not Disturb registry may refuse messages
-  even on a transactional route. The admin alert number should be one that
-  accepts them.
+- **DND / NDNC.** Only a concern if a template is registered under the wrong
+  category. Service Implicit reaches DND numbers; Service Explicit and
+  Promotional do not.
 - **Variable length.** Operators cap DLT variable content (commonly 30
   characters). `MAX_VARIABLE_LENGTH` truncates and marks values so an over-long
   venue name shortens the message instead of having the whole thing rejected.
@@ -226,7 +226,7 @@ Those rows are flagged **TEST** in `/admin/notifications`.
 | Rows land as `skipped` | `MSG91_SMS_ENABLED` is false, or credentials / template id missing. The row's `error_message` names the exact variable |
 | `MSG91 rejected the auth key` | Wrong or rotated `MSG91_AUTH_KEY` — or the variable was changed without a redeploy |
 | `template not found` | The `MSG91_TEMPLATE_*` id is not a template on this account |
-| Accepted, never delivered | Body does not match the DLT-registered text, or the number is on DND. Check *SMS → Logs* in the panel |
+| Accepted, never delivered | Body does not match the DLT-registered text character for character, or the template was registered under a category that DND blocks. Check *SMS → Logs* in the panel |
 | Delivery status stuck at `accepted` | The webhook is not configured, or its secret header does not match |
 | Message is 3 segments | A non-GSM-7 character reached the wire. `toGsm7()` should have caught it — check what changed |
 | OTP screen says "not available yet" | `MSG91_AUTH_KEY` or `MSG91_OTP_TEMPLATE_ID` missing, or the template id is not 24 hex characters |

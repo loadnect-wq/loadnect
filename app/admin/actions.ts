@@ -1048,8 +1048,8 @@ export async function updateAdminAlertPhone(raw: string): Promise<ActionResult> 
  *
  * Bounded to 25 per run so one click cannot fan out into an unbounded burst
  * against the provider, and it skips rows already at MAX_SEND_ATTEMPTS or
- * marked permanently failed — a number on the DND registry will never accept
- * the message no matter how often it is retried.
+ * marked permanently failed — a template the operator has not approved will be
+ * dropped no matter how often it is retried.
  */
 export async function retryAllFailedNotifications(): Promise<
   { success: true; sent: number; failed: number; skipped: number } | { error: string }
@@ -1163,7 +1163,7 @@ export async function retryNotification(notificationId: string): Promise<ActionR
   if (row.attempt_count >= MAX_SEND_ATTEMPTS) {
     return { error: `Maximum of ${MAX_SEND_ATTEMPTS} attempts reached for this notification.` };
   }
-  // A permanent failure (number on DND, template not DLT-approved, bad
+  // A permanent failure (template not DLT-approved, blocked recipient, bad
   // credentials) repeats identically on retry and only burns an attempt.
   // 'skipped' rows are exempt: they are permanent-flagged only when a config
   // gap caused them, and fixing that config is exactly when a retry is right.

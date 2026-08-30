@@ -80,8 +80,8 @@ export function AdminAlertNumberForm({
       )}
       <p className="mt-1.5 text-[10px] leading-relaxed text-charcoal-400">
         Operational alerts (new bookings, payments, hall submissions, failures) are
-        texted to this number. Indian numbers on the DND registry may not receive
-        them, so use a number that accepts transactional SMS.
+        texted to this number. A number on the DND registry is fine — the templates
+        are registered as Service Implicit, which reaches DND numbers 24x7.
       </p>
     </div>
   );
