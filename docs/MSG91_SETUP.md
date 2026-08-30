@@ -118,6 +118,13 @@ admin dashboard ever claims a template is "approved": DLT approval lives with
 the operator and is not queryable from any API. The dashboard reports only what
 it can actually check — whether a template id is configured.
 
+**Register every template as Service Implicit.** The category is not cosmetic:
+Service Implicit messages are delivered 24x7 *and reach numbers on the DND
+registry*, which is what makes booking confirmations and your own admin alerts
+arrive at all. Service Explicit is blocked on DND and is rejected outright
+without a linked consent template; Promotional is blocked on DND and confined to
+10am-9pm; Transactional is reserved for banks.
+
 Two further limits worth knowing:
 
 - **DND / NDNC.** Numbers on the Do Not Disturb registry may refuse messages
@@ -223,6 +230,32 @@ Those rows are flagged **TEST** in `/admin/notifications`.
 | Delivery status stuck at `accepted` | The webhook is not configured, or its secret header does not match |
 | Message is 3 segments | A non-GSM-7 character reached the wire. `toGsm7()` should have caught it — check what changed |
 | OTP screen says "not available yet" | `MSG91_AUTH_KEY` or `MSG91_OTP_TEMPLATE_ID` missing, or the template id is not 24 hex characters |
+
+---
+
+## The OTP body
+
+Registered separately from the fifteen below, because MSG91's OTP product renders
+it — this codebase never composes it, which is also why it is not in
+`lib/notifications/sms-templates.ts`. Register it under **Service Implicit**, like
+the rest.
+
+Register this body on the DLT portal:
+
+```
+Hallnect: {#var#} is your verification code. It is valid for 10 minutes. Do not share it with anyone.
+```
+
+Paste this into MSG91 → OTP → Templates. The `##OTP##` placeholder is required —
+MSG91 rejects an OTP template without it:
+
+```
+Hallnect: ##OTP## is your verification code. It is valid for 10 minutes. Do not share it with anyone.
+```
+
+The ten-minute validity must match `otp_expiry` in `lib/msg91/otp.ts`. If you
+register a different window, change it there too — a message promising ten
+minutes on a code that expires in five is a support ticket per user.
 
 ---
 
