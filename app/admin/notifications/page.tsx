@@ -199,6 +199,18 @@ export default async function AdminNotificationsPage({ searchParams }: Props) {
   const templatesReady = templates.filter((t) => t.configured).length;
   const templatesBroken = templates.filter((t) => t.malformed);
 
+  // Name ONLY what is actually missing. "Set MSG91_AUTH_KEY and MSG91_SENDER_ID"
+  // when the key is already set sends whoever reads it to check a variable that
+  // is fine, which is exactly the kind of message that wastes an afternoon.
+  // Whenever the key IS set, its masked hint is shown instead, which is also the
+  // only way to confirm which key production actually picked up.
+  const missingCredentials = [
+    msg91.authKeyHint ? null : "MSG91_AUTH_KEY",
+    msg91.senderId ? null : msg91.malformedSenderId
+      ? "a valid MSG91_SENDER_ID (the current value is not a usable DLT header)"
+      : "MSG91_SENDER_ID",
+  ].filter((v): v is string => v !== null);
+
   const testModeMisconfigured = msg91.testMode && !msg91.testRecipient;
   const live =
     msg91.enabled && msg91.configured && templatesReady > 0 && !testModeMisconfigured;
@@ -232,7 +244,7 @@ export default async function AdminNotificationsPage({ searchParams }: Props) {
             <p className="mt-0.5 text-sm font-bold text-charcoal-900">
               {!msg91.enabled ? "Disabled"
                 : msg91.malformedSenderId ? "Sender ID is not a valid DLT header"
-                : !msg91.configured ? "Enabled, no credentials or sender ID"
+                : !msg91.configured ? `Enabled — missing ${missingCredentials.length} of 2 credentials`
                 // Checked BEFORE the template states: while this is true nothing
                 // sends at all, so reporting a template problem would be a lie
                 // about why messages are not going out.
@@ -245,7 +257,9 @@ export default async function AdminNotificationsPage({ searchParams }: Props) {
                 ? "Set MSG91_TEST_TO, or set MSG91_TEST_MODE=false"
                 : msg91.configured
                 ? `Key ${msg91.authKeyHint} · sender ${msg91.senderId}`
-                : "Set MSG91_AUTH_KEY and MSG91_SENDER_ID"}
+                : missingCredentials.length > 0
+                  ? `Set ${missingCredentials.join(" and ")}`
+                  : "Credentials incomplete"}
             </p>
           </div>
           {[

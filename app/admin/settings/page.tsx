@@ -35,6 +35,12 @@ export default async function AdminSettingsPage() {
   // Cheap, synchronous env reads — no network call, unlike the probes above.
   const msg91 = getMsg91Status();
   const otpConfigured = msg91.otpConfigured;
+  // Name only what is genuinely missing — listing a variable that is already set
+  // sends whoever reads this to check something that is fine.
+  const otpMissing = [
+    msg91.authKeyHint ? null : "MSG91_AUTH_KEY",
+    msg91.otpTemplateId ? null : "MSG91_OTP_TEMPLATE_ID",
+  ].filter((v): v is string => v !== null);
 
   return (
     <div>
@@ -218,13 +224,17 @@ export default async function AdminSettingsPage() {
                 </>
               ) : (
                 <p className="mt-0.5 text-xs text-amber-900">
-                  Not configured — MSG91_AUTH_KEY and MSG91_OTP_TEMPLATE_ID must both be set,
-                  and the OTP template must be registered on the DLT portal first.
+                  Not configured — still needs{" "}
+                  <strong>{otpMissing.join(" and ")}</strong>.
+                  {msg91.authKeyHint
+                    ? ` The auth key in effect is ${msg91.authKeyHint}.`
+                    : ""}
                   {msg91.malformedOtpTemplateId
                     ? " MSG91_OTP_TEMPLATE_ID is set but is not a 24-character template id."
                     : ""}{" "}
-                  Until then the &ldquo;Verify your phone&rdquo; row is hidden from profiles
-                  rather than leading to a dead end.
+                  The OTP body must be registered on the DLT portal before MSG91 will
+                  issue that template id. Until then the &ldquo;Verify your phone&rdquo; row
+                  is hidden from profiles rather than leading to a dead end.
                 </p>
               )}
             </div>
