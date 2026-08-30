@@ -508,20 +508,27 @@ export const couponCreateSchema = z.object({
   description: optionalTrimmed(500),
   // Blank means UNLIMITED, which is what "until I stop it" asks for. A cap is
   // opt-in, and is enforced by the database trigger as well as here.
+  //
+  // THE TRAILING .optional() IS LOAD-BEARING. A Next.js server action drops
+  // `undefined` properties when it serialises the argument across the RSC
+  // boundary, so a blank field arrives as a MISSING KEY, not as a key holding
+  // undefined. Zod 4 treats a .transform() pipe as a required key unless the
+  // pipe itself is optional, so without this the admin form failed on every
+  // blank optional with "expected nonoptional, received undefined" — while
+  // in-process tests passed, because they keep the key.
   maxRedemptions: z
-    .union([z.string(), z.number(), z.undefined(), z.null()])
+    .union([z.string(), z.number(), z.null()])
     .transform((v) =>
-      v === undefined || v === null || String(v).trim() === ""
-        ? undefined
-        : parseInt(String(v), 10))
+      v === null || String(v).trim() === "" ? undefined : parseInt(String(v), 10))
     .refine((n) => n === undefined || (Number.isInteger(n) && n > 0),
-      "Leave blank for unlimited, or enter a positive whole number."),
+      "Leave blank for unlimited, or enter a positive whole number.")
+    .optional(),
   expiresAt: z
-    .union([z.string(), z.undefined(), z.null()])
-    .transform((v) =>
-      v === undefined || v === null || String(v).trim() === "" ? undefined : String(v).trim())
+    .union([z.string(), z.null()])
+    .transform((v) => (v === null || String(v).trim() === "" ? undefined : String(v).trim()))
     .refine((v) => v === undefined || /^\d{4}-\d{2}-\d{2}$/.test(v),
-      "Enter a date as YYYY-MM-DD, or leave blank for no expiry."),
+      "Enter a date as YYYY-MM-DD, or leave blank for no expiry.")
+    .optional(),
 });
 
 // ── Helper: parse safely and return ActionResult-shaped errors ───────────────

@@ -1405,7 +1405,7 @@ export async function createCoupon(input: {
     .from("coupons")
     .insert({
       code:            v.code,
-      description:     v.description ?? null,
+      description:     v.description || null,
       kind:            "zero_platform_fee",
       is_active:       true,
       max_redemptions: v.maxRedemptions ?? null,
