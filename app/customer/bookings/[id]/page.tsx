@@ -1,4 +1,4 @@
-import { formatBookingDates } from "@/lib/dates";
+import { formatBookingDates, todayInBusinessTz } from "@/lib/dates";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import type { Metadata } from "next";
@@ -363,7 +363,13 @@ export default async function BookingDetailPage({ params }: Props) {
         {/* ── Cancel booking ───────────────────────────────────────── */}
         {CANCELLABLE_STATUSES.has(booking.status) && (
           <div className="rounded-2xl bg-white shadow-card p-4">
-            <CancelButton bookingId={booking.id} />
+            <CancelButton
+              bookingId={booking.id}
+              eventDate={booking.event_date}
+              todayIso={todayInBusinessTz()}
+              advancePaid={booking.payment?.advance_amount ?? booking.advance_amount}
+              platformFeePaid={booking.payment?.platform_fee_amount ?? booking.platform_fee_amount}
+            />
           </div>
         )}
 

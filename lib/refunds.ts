@@ -31,20 +31,13 @@ import { daysBetweenInclusive, todayInBusinessTz } from "@/lib/dates";
  * the ADVANCE returned, by how far ahead of the event the cancellation lands.
  * Editing this table is how the policy changes — no caller hard-codes a number.
  */
-export const CUSTOMER_REFUND_SCHEDULE = [
-  { minDaysBeforeEvent: 31, percentOfAdvance: 100 },
-  { minDaysBeforeEvent: 15, percentOfAdvance: 75 },
-  { minDaysBeforeEvent: 7,  percentOfAdvance: 50 },
-  { minDaysBeforeEvent: 0,  percentOfAdvance: 0 },
-] as const;
-
-/** Percent of the advance refundable for a customer cancellation. */
-export function customerRefundPercent(daysUntilEvent: number): number {
-  for (const tier of CUSTOMER_REFUND_SCHEDULE) {
-    if (daysUntilEvent >= tier.minDaysBeforeEvent) return tier.percentOfAdvance;
-  }
-  return 0;
-}
+// MOVED to lib/refund-schedule.ts so the cancel dialog — a client component —
+// can read it and show the customer what they get back before they confirm,
+// which /cancellation-policy promises in writing. Re-exported here so every
+// existing server import keeps working and there is still ONE table.
+export { CUSTOMER_REFUND_SCHEDULE, customerRefundPercent } from "@/lib/refund-schedule";
+// A re-export does not bind the name locally, and this module calls it.
+import { customerRefundPercent } from "@/lib/refund-schedule";
 
 /** Who caused the cancellation — this decides the platform fee's fate. */
 export type CancellationInitiator =

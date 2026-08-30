@@ -18,6 +18,7 @@ import {
   DEFAULT_ADVANCE_PERCENT,
 } from "@/lib/booking-payment";
 import { commissionPaiseOn, splitFromParts, toPaise } from "@/lib/money";
+import { customerRefundPercent, daysUntilEventFromToday } from "@/lib/refund-schedule";
 import { computeOwnerShare } from "@/lib/owner-payout";
 
 describe("calculateBookingPayment — spec acceptance cases", () => {
@@ -438,5 +439,50 @@ describe("advance percentage is admin-configurable", () => {
     expect(b.advanceAmount).toBe(20_000);
     expect(b.commissionAmount).toBe(2_500);
     expect(b.ownerNetAdvance).toBe(17_500);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// The cancel dialog previews the refund a customer will get. It MUST agree with
+// what the server actually applies — a dialog that promises more than
+// calculateRefund pays out is worse than showing nothing.
+// ─────────────────────────────────────────────────────────────────────────────
+describe("cancel preview matches the server's refund", () => {
+  const CASES = [
+    { days: 40, percent: 100 },
+    { days: 31, percent: 100 },
+    { days: 30, percent: 75 },
+    { days: 15, percent: 75 },
+    { days: 14, percent: 50 },
+    { days: 7,  percent: 50 },
+    { days: 6,  percent: 0 },
+    { days: 0,  percent: 0 },
+  ];
+
+  for (const c of CASES) {
+    it(`${c.days} days out → ${c.percent}% of the advance`, () => {
+      expect(customerRefundPercent(c.days)).toBe(c.percent);
+
+      // The dialog floors the same way calculateRefund does, so the previewed
+      // figure is the figure paid.
+      const advance = 25_000;
+      const previewed = Math.floor((advance * c.percent) / 100);
+      const actual = calculateRefund({
+        advanceAmount: advance,
+        platformFee: 200,
+        refundPercentOfAdvance: c.percent,
+      }).refundableAmount;
+      expect(previewed).toBe(actual);
+    });
+  }
+
+  it("counts the days the same way the server does", () => {
+    // Server: daysBetweenInclusive(today, event) - 1. The dialog's helper must
+    // land on the same integer or the two quote different tiers at a boundary.
+    expect(daysUntilEventFromToday("2026-10-01", "2026-09-01")).toBe(30);
+    expect(daysUntilEventFromToday("2026-09-08", "2026-09-01")).toBe(7);
+    expect(daysUntilEventFromToday("2026-09-01", "2026-09-01")).toBe(0);
+    // A past date must never produce a negative that reads as a higher tier.
+    expect(daysUntilEventFromToday("2026-08-01", "2026-09-01")).toBe(0);
   });
 });
