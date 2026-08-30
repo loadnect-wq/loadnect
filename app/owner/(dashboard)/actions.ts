@@ -97,9 +97,16 @@ export async function upsertOwnerRow(data: {
   };
 
   if (existing) {
+    // profile_id is EXCLUDED from the update on purpose. It is the ownership
+    // link, it never changes on a profile save, and migration 0046 revoked the
+    // client's table-wide UPDATE in favour of an enumerated column grant that
+    // deliberately omits it — so writing it here would fail the whole save on
+    // a permission error rather than quietly doing nothing.
+    const { profile_id: _ownerLink, ...editable } = payload;
+    void _ownerLink;
     const { error } = await db
       .from("hall_owners")
-      .update(payload)
+      .update(editable)
       .eq("id", existing.id);
     if (error) return { error: sanitizeError(error, "owner") };
   } else {
