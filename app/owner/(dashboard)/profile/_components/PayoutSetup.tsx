@@ -240,12 +240,27 @@ export function PayoutSetup({
               is the stored outcome of the previous one — when an attempt has
               just failed they are the same string, and rendering both made the
               card look broken. */}
-          {(error ?? (verified || notice ? null : lastError)) && (
-            <p className="mt-2 flex items-start gap-1.5 rounded-lg bg-red-50 p-2 text-[11px] text-red-700">
-              <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-              {error ?? lastError}
-            </p>
-          )}
+          {/* A PLATFORM-SIDE FAILURE IS NOT THE OWNER'S FAULT AND MUST NOT LOOK
+              LIKE IT. "Merchant not enabled with easy splits" means Cashfree has
+              not switched the feature on for Hallnect — nothing the owner can
+              act on. Shown raw and in red above copy saying "add the account you
+              want to be paid into", it read as a rejection of the details they
+              had just entered, and persisted on every page load afterwards. */}
+          {(() => {
+            const shown = error ?? (verified || notice ? null : lastError);
+            if (!shown) return null;
+            const platformSide = /easy split|not enabled|merchant/i.test(shown);
+            return (
+              <p className={`mt-2 flex items-start gap-1.5 rounded-lg p-2 text-[11px] ${
+                platformSide ? "bg-amber-50 text-amber-800" : "bg-red-50 text-red-700"
+              }`}>
+                <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                {platformSide
+                  ? "Your details are saved. Automatic payouts are not switched on for Hallnect yet — this is on our side, not yours. Hallnect will pay you directly in the meantime and turn this on as soon as it is available."
+                  : shown}
+              </p>
+            );
+          })()}
           {notice && !error && (
             <p className="mt-2 rounded-lg bg-green-50 p-2 text-[11px] font-medium text-green-800">
               {notice}

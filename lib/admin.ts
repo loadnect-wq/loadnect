@@ -197,6 +197,12 @@ export type AdminStats = {
     pendingOwners:  number;
     openTickets:    number;
     pendingAds:     number;
+    /** Money owed BACK to customers and not yet sent. */
+    refundsOwed:         number;
+    /** Money owed to venues whose payout has not completed. */
+    stuckPayouts:        number;
+    /** Messages that failed and are still retryable. */
+    failedNotifications: number;
   };
 };
 
@@ -222,7 +228,8 @@ export async function fetchAdminStats(): Promise<AdminStats> {
     halls:    { total: 0, approved: 0, pending: 0, rejected: 0, suspended: 0 },
     bookings: { total: 0, requested: 0, confirmed: 0, completed: 0, cancelled: 0 },
     revenue:  { grossBookings: 0, grossAdvances: 0, commission: 0, platformFees: 0, netRevenue: 0, ownerPayouts: 0, refunds: 0 },
-    open:     { pendingHalls: 0, pendingOwners: 0, openTickets: 0, pendingAds: 0 },
+    open:     { pendingHalls: 0, pendingOwners: 0, openTickets: 0, pendingAds: 0,
+                refundsOwed: 0, stuckPayouts: 0, failedNotifications: 0 },
   };
 
   const [usersRes, hallsRes, bookingsRes, commissionsRes, ticketsRes, adsRes, paymentsRes] = await Promise.all([
@@ -267,11 +274,15 @@ export async function fetchAdminStats(): Promise<AdminStats> {
     commission_amount: number | string; owner_payout_amount: number | string;
     advance_amount: number | string | null; status: string;
   }[];
-  // Waived commissions were never earned — including them overstated revenue.
-  empty.revenue.commission    = commissions
-    .filter((c) => c.status !== "waived")
+  // Waived commissions were never earned, and 'refunded' ones were un-earned
+  // when the booking was cancelled — including either overstates revenue.
+  // ownerPayouts had NO status filter at all, so it counted money promised on
+  // bookings that never happened.
+  const EARNED = (c: { status: string }) => c.status !== "waived" && c.status !== "refunded";
+  empty.revenue.commission    = commissions.filter(EARNED)
     .reduce((s, c) => s + Number(c.commission_amount), 0);
-  empty.revenue.ownerPayouts  = commissions.reduce((s, c) => s + Number(c.owner_payout_amount), 0);
+  empty.revenue.ownerPayouts  = commissions.filter(EARNED)
+    .reduce((s, c) => s + Number(c.owner_payout_amount), 0);
   empty.revenue.grossAdvances = commissions.reduce((s, c) => s + Number(c.advance_amount ?? 0), 0);
 
   const payments = (paymentsRes.data ?? []) as {
@@ -305,6 +316,36 @@ export async function fetchAdminStats(): Promise<AdminStats> {
     .filter((t) => t.status === "open" || t.status === "in_progress").length;
   empty.open.pendingAds    = ((adsRes.data ?? []) as { status: string }[])
     .filter((a) => a.status === "pending").length;
+
+  // THE MONEY QUEUES. Without these the dashboard showed "0 / 0 / 0 — all
+  // clear" over a customer waiting on a refund and a venue waiting on a
+  // payout, which with push notifications down is the only place either would
+  // ever have surfaced.
+  //
+  // Counted from the same helpers the /admin/payments page uses, so the badge
+  // and the page can never disagree. Failures here must not take the whole
+  // dashboard down, so each falls back to 0.
+  try {
+    const [refundRows, payoutRows] = await Promise.all([
+      fetchRefundQueue(),
+      fetchStuckPayouts(),
+    ]);
+    empty.open.refundsOwed  = refundRows.filter((r) => r.state !== "completed").length;
+    empty.open.stuckPayouts = payoutRows.length;
+  } catch (e) {
+    handleError("fetchAdminStats.moneyQueues", e as { code?: string; message: string });
+  }
+
+  try {
+    const { count } = await db
+      .from("notifications")
+      .select("id", { count: "exact", head: true })
+      .eq("status", "failed")
+      .or("permanent_failure.is.null,permanent_failure.eq.false");
+    empty.open.failedNotifications = Number(count ?? 0);
+  } catch {
+    /* a missing table must not break the dashboard */
+  }
 
   return empty;
 }

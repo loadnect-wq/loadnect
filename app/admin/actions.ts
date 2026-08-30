@@ -728,8 +728,11 @@ export async function updatePremiumPlan(input: {
   monthly_price: number;
   duration_days: number;
 }): Promise<ActionResult> {
-  const { supabase, user } = await getAuthUser();
-  if (!user) return { error: "Not authenticated" };
+  // requireAdminActor, not getAuthUser: this sets the price every owner is
+  // charged, and "signed in" is not the same as "admin".
+  const actor = await requireAdminActor();
+  if (!actor.ok) return { error: actor.error };
+  const { supabase } = actor;
 
   const parsed = parseSafe(premiumPlanUpdateSchema, input);
   if (!parsed.ok) return { error: parsed.error };
@@ -738,15 +741,19 @@ export async function updatePremiumPlan(input: {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = supabase as any;
 
-  const { error } = await db
+  // count:"exact" — an RLS-filtered UPDATE reports zero rows with NO error, so
+  // an unguarded version returned {success:true} for a price change that never
+  // happened, and the admin would go on believing plans cost what they typed.
+  const { error, count } = await db
     .from("premium_plans")
     .update({
       monthly_price: Math.round(v.monthly_price * 100) / 100,
       duration_days: v.duration_days,
-    })
+    }, { count: "exact" })
     .eq("slug", v.slug);
 
-  if (error) return { error: sanitizeError(error, "admin") };
+  if (error)       return { error: sanitizeError(error, "admin") };
+  if (count === 0) return { error: "That plan could not be updated — check you are signed in as an admin." };
   revalidatePath("/admin/settings");
   revalidatePath("/owner/premium/upgrade");
   return { success: true };
@@ -1031,6 +1038,62 @@ export async function updateAdminWhatsAppNumber(raw: string): Promise<ActionResu
  * send path in the app — and even it cannot choose a phone number or message:
  * both are locked into the outbox row that the server composed originally.
  */
+/**
+ * Re-send every notification still sitting failed and retryable.
+ *
+ * WHY: the only retry was one button per row. When an outage ends — Meta
+ * approving the business verification, say — nothing re-sends anything. Every
+ * message generated during the outage waits for a human to find and click each
+ * row individually, which for a booking confirmation is the same as never.
+ *
+ * Bounded to 25 per run so one click cannot fan out into an unbounded burst
+ * against the provider, and it skips rows already at MAX_SEND_ATTEMPTS or
+ * marked permanently failed — 63024 ("not a WhatsApp number") will never
+ * succeed no matter how often it is retried.
+ */
+export async function retryAllFailedNotifications(): Promise<
+  { success: true; sent: number; failed: number; skipped: number } | { error: string }
+> {
+  const actor = await requireAdminActor();
+  if (!actor.ok) return { error: actor.error };
+
+  const { getSupabaseAdminClient } = await import("@/lib/supabase/admin");
+  const { attemptSend, MAX_SEND_ATTEMPTS } = await import("@/lib/notifications/service");
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const db = getSupabaseAdminClient() as any;
+
+  const { data: rows, error } = await db
+    .from("notifications")
+    .select("id, attempt_count")
+    .eq("status", "failed")
+    .or("permanent_failure.is.null,permanent_failure.eq.false")
+    .order("created_at", { ascending: true })
+    .limit(25);
+
+  if (error) return { error: sanitizeError(error, "admin") };
+
+  let sent = 0, failed = 0, skipped = 0;
+  for (const row of (rows ?? []) as { id: string; attempt_count: number | null }[]) {
+    if ((row.attempt_count ?? 0) >= MAX_SEND_ATTEMPTS) { skipped++; continue; }
+    try {
+      const result = await attemptSend(db, row.id, /* isRetry */ true);
+      if (result.sent) sent++; else failed++;
+    } catch {
+      failed++;
+    }
+  }
+
+  await recordAdminAction({
+    action:     "notifications.retried_all",
+    entityType: "notification",
+    entityId:   null,
+    metadata:   { sent, failed, skipped },
+  });
+
+  revalidatePath("/admin/notifications");
+  return { success: true, sent, failed, skipped };
+}
+
 export async function retryNotification(notificationId: string): Promise<ActionResult> {
   const actor = await requireAdminActor();
   if (!actor.ok) return { error: actor.error };

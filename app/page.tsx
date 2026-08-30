@@ -44,7 +44,7 @@ const CATEGORY_ICONS: Record<string, React.ReactNode> = {
 };
 
 const HOW_IT_WORKS = [
-  { step: "01", title: "Discover", body: "Browse verified wedding halls across Tamil Nadu with real photos, capacity, pricing and amenities." },
+  { step: "01", title: "Discover", body: "Browse wedding halls across Tamil Nadu with photos, capacity, pricing and amenities, as listed by each venue." },
   { step: "02", title: "Compare",  body: "Filter by city, capacity, budget, and amenities. Check availability instantly." },
   { step: "03", title: "Book",     body: "Pay a small advance to secure your date. Settle the balance with the venue directly." },
 ];
@@ -208,7 +208,7 @@ export default async function HomePage() {
             {/* Trust strip — honest launch-stage messaging (no fabricated numbers) */}
             <div className="mt-10 grid grid-cols-2 gap-4 border-t border-white/10 pt-8 sm:grid-cols-4">
               <TrustItem text="Launching in Tamil Nadu" />
-              <TrustItem text="Verified listings only" />
+              <TrustItem text="Owner-submitted listings" />
               <TrustItem text="Secure booking flow" />
               <TrustItem text="Owner-approved venues" />
             </div>
@@ -241,9 +241,9 @@ export default async function HomePage() {
         {/* ── Featured venues grid ─────────────────────────────── */}
         <section className="container-page py-12">
           <DesktopSectionHeader
-            eyebrow="Hand-picked"
+            eyebrow="Promoted"
             title="Featured Venues"
-            blurb="Promoted halls with verified photography and transparent pricing."
+            blurb="Halls promoted by their owners, with transparent pricing."
             linkLabel="Browse all venues →"
             linkHref="/halls"
           />
@@ -401,8 +401,8 @@ export default async function HomePage() {
           </p>
           <p>
             Check which dates are free, see the advance payable before you commit, and
-            reserve online. The balance is settled directly with the venue, and booking
-            updates reach you on WhatsApp at every step.
+            reserve online. The balance is settled directly with the venue, and every booking
+            update is on your Hallnect bookings page.
           </p>
         </div>
 

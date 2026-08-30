@@ -14,7 +14,7 @@ export default function CancellationPolicyPage() {
       <LegalHeader title="Cancellation Policy" updated="August 2026" />
 
       <Section title="1. General">
-        This Cancellation Policy applies to all bookings made through Hallnect. By confirming a booking and paying the advance, you agree to these cancellation terms. Specific cancellation conditions may vary by venue and are displayed on the booking checkout page before payment. This policy sets the minimum standard that applies to all bookings.
+        This Cancellation Policy applies to all bookings made through Hallnect. By confirming a booking and paying the advance, you agree to these cancellation terms. One schedule applies to every booking on Hallnect — venues do not set their own cancellation terms.
       </Section>
 
       <Section title="2. Cancellation by Customers">
@@ -23,7 +23,9 @@ export default function CancellationPolicyPage() {
       </Section>
 
       <Section title="3. Advance Payment and Cancellation">
-        All bookings require an advance payment to secure the venue, plus a flat ₹200 platform fee collected with it at checkout, unless a valid promotional code waives it. The advance is held by Hallnect on behalf of the venue owner. Upon a customer-initiated cancellation, the refundable portion of the <strong>advance</strong> is returned based on the timeline in the Refund Policy; the ₹200 platform fee is non-refundable on customer cancellations.
+        The venue has <strong>48 hours</strong> to accept a booking request. If they do not respond in
+        that time the booking is cancelled automatically and you are refunded in full — the entire
+        advance <em>and</em> the platform fee. All bookings require an advance payment to secure the venue, plus a flat ₹200 platform fee collected with it at checkout, unless a valid promotional code waives it. The advance is held by Hallnect on behalf of the venue owner. Upon a customer-initiated cancellation, the refundable portion of the <strong>advance</strong> is returned based on the timeline in the Refund Policy; the ₹200 platform fee is non-refundable on customer cancellations.
       </Section>
 
       <Section title="4. Cancellation by Hall Owners">

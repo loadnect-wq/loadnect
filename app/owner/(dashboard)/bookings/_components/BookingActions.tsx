@@ -62,7 +62,7 @@ export function BookingActions({ bookingId, status, customerLabel, hasConflict }
           Decline this booking{customerLabel ? ` from ${customerLabel}` : ""}?
         </p>
         <p className="mt-0.5 text-[11px] text-red-700">
-          The customer is told why on WhatsApp. Any advance they paid is handled by Hallnect.
+          The customer sees your reason on their booking page. Any advance they paid is refunded in full by Hallnect.
         </p>
 
         <textarea

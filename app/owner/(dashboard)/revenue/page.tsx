@@ -82,8 +82,19 @@ export default async function OwnerRevenuePage() {
           <SummaryCard label="Total Bookings"  value={bookings.length.toString()} />
           <SummaryCard label="Completed"       value={completedCount.toString()} />
           <SummaryCard label="Booking Value"   value={formatPrice(totalBookingAmount)} wide />
-          <SummaryCard label="Est. Payout"     value={totalPayout > 0 ? formatPrice(totalPayout) : "—"} wide highlight />
+          <SummaryCard label="Your share"      value={totalPayout > 0 ? formatPrice(totalPayout) : "—"} wide highlight />
         </div>
+
+        {/* "Your share" is the hall price MINUS commission — most of it is
+            collected by the venue at the event, not transferred by Hallnect.
+            Labelling it "Est. Payout" read as "this is what Hallnect will send
+            you", which on a Rs1,00,000 hall overstates the transfer roughly
+            fourfold (Rs97,500 shown against a Rs22,500 transfer). */}
+        <p className="-mt-2 text-[11px] text-charcoal-500">
+          <strong>Your share</strong> is the hall price less Hallnect&apos;s commission, across
+          both parts: the advance Hallnect transfers to you after the venue accepts, and the
+          balance you collect directly at the event. It is not a single payment from Hallnect.
+        </p>
 
         {/* Platform commission summary — only the owner sees their own halls' commissions */}
         <div className="rounded-2xl bg-white p-4 shadow-card">
@@ -140,7 +151,9 @@ export default async function OwnerRevenuePage() {
                 <div className="shrink-0 text-right space-y-0.5">
                   <p className="text-sm font-bold text-charcoal-900">{formatPrice(b.total_amount)}</p>
                   {b.payout_amount != null && (
-                    <p className="text-[11px] font-semibold text-emerald-700">Payout {formatPrice(b.payout_amount)}</p>
+                    <p className="text-[11px] font-semibold text-emerald-700">
+                      Your share {formatPrice(b.payout_amount)}
+                    </p>
                   )}
                   <Badge
                     variant={b.status === "completed" ? "success" : "warning"}

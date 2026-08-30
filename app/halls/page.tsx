@@ -56,7 +56,7 @@ export async function generateMetadata({
   return buildMetadata({
     title: filtered ? "Wedding Hall Search Results" : "Browse Wedding Halls & Event Venues",
     description:
-      "Browse every verified wedding hall, marriage hall and event venue on Hallnect. " +
+      "Browse every wedding hall, marriage hall and event venue listed on Hallnect. " +
       "Filter by city, guest capacity, budget, date and amenities, then book your date online.",
     path: "/halls",
     indexable: !filtered,
@@ -143,7 +143,7 @@ export default async function HallsPage({
         </h1>
         <p className="mt-1 text-sm text-charcoal-600">
           {halls.length > 0
-            ? `${halls.length} verified ${halls.length === 1 ? "venue" : "venues"} with photos, capacity, pricing and live availability.`
+            ? `${halls.length} ${halls.length === 1 ? "venue" : "venues"} with photos, capacity, pricing and live availability.`
             : "Verified venues with photos, capacity, pricing and live availability."}
         </p>
       </section>

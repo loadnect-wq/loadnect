@@ -36,6 +36,28 @@ export default async function AdminDashboardPage() {
       href:  "/admin/advertisements",
       color: "border-purple-200 bg-purple-50 text-purple-900",
     },
+    // MONEY FIRST IN THE EYE, LAST IN THE LIST — these three are the only
+    // queues where waiting costs somebody real money, and none of them was
+    // surfaced anywhere. With WhatsApp alerts dead this dashboard is the only
+    // place they can appear at all.
+    {
+      count: stats.open.refundsOwed,
+      label: "Refunds owed to customers",
+      href:  "/admin/payments",
+      color: "border-red-200 bg-red-50 text-red-900",
+    },
+    {
+      count: stats.open.stuckPayouts,
+      label: "Payouts owed to venues",
+      href:  "/admin/payments",
+      color: "border-red-200 bg-red-50 text-red-900",
+    },
+    {
+      count: stats.open.failedNotifications,
+      label: "Messages that failed to send",
+      href:  "/admin/notifications?status=failed",
+      color: "border-orange-200 bg-orange-50 text-orange-900",
+    },
   ];
 
   return (

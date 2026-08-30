@@ -15,7 +15,7 @@ export default function RefundPolicyPage() {
 
       <Section title="1. Overview">
         Hallnect is a marketplace connecting customers with venue owners. All bookings require an{" "}
-        <strong>advance payment</strong> at checkout to secure the venue and date. Refunds for bookings are subject to the venue owner&apos;s cancellation terms and the schedule below. The specific refund amount applicable to your booking is shown on the booking detail page. We strongly recommend reading these terms before paying the advance.
+        <strong>advance payment</strong> at checkout to secure the venue and date. Refunds follow the single Hallnect schedule below — venues do not set their own cancellation terms. The specific refund amount applicable to your booking is shown on the booking detail page. We strongly recommend reading these terms before paying the advance.
       </Section>
 
       <Section title="2. Advance Payment">
@@ -78,7 +78,7 @@ export default function RefundPolicyPage() {
 
       <Section title="7. How to Request a Refund">
         Log in to your Hallnect account and go to My Bookings. Select the booking and use the Cancel Booking option (if within the cancellation window). Alternatively, email{" "}
-        <a href="mailto:hallnect@gmail.com" className="text-maroon-600 hover:underline">hallnect@gmail.com</a> with your booking reference number. We will confirm the eligible refund amount based on the venue&apos;s policy and the timing of your request.
+        <a href="mailto:hallnect@gmail.com" className="text-maroon-600 hover:underline">hallnect@gmail.com</a> with your booking reference number. We will confirm the eligible refund amount based on the schedule below and the timing of your request.
       </Section>
 
       <Section title="7. Refund Processing Time">

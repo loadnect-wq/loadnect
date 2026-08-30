@@ -142,6 +142,29 @@ export async function recordBookingRefund(
       ...(breakdown.refundableAmount > 0 ? { refund_state: "owed" } : {}),
     };
 
+    // THE COMMISSION IS NOT EARNED ON A CANCELLED BOOKING.
+    //
+    // createCommission writes status 'collected' the moment payment lands —
+    // before the venue has even accepted. Nothing ever wrote it back, so a
+    // cancelled, rejected or refunded booking kept counting toward "Net
+    // Hallnect revenue" permanently, and the owner's commissions page kept
+    // showing a green "Retained from advance" for a booking that never
+    // happened. The 'refunded' badge on that page was dead code with nothing
+    // to trigger it.
+    //
+    // Best-effort and deliberately BEFORE the payment write is checked: a
+    // ledger correction must never be the reason a customer's refund fails to
+    // be recorded.
+    try {
+      await db.from("commissions")
+        .update({ status: "refunded" })
+        .eq("booking_id", bookingId)
+        .neq("status", "refunded");
+    } catch (e) {
+      console.error("[recordBookingRefund] commission reversal failed:",
+        e instanceof Error ? e.message : e);
+    }
+
     let { error } = await db
       .from("payments").update(update).eq("id", payment.id).is("refund_amount", null);
     if (error && (error.code === "42703" || error.code === "PGRST204")) {

@@ -84,7 +84,7 @@ export function ProfileEditForm({ initialName, initialPhone, email, initialNotif
         <div>
           <p className="text-xs font-semibold text-charcoal-800">WhatsApp updates</p>
           <p className="mt-0.5 text-[11px] leading-relaxed text-charcoal-500">
-            Optional updates on WhatsApp. Essential booking and payment messages are always sent.
+            Optional updates on WhatsApp, when messaging is available. Your bookings and payments are always shown on your bookings page.
           </p>
         </div>
         <button
