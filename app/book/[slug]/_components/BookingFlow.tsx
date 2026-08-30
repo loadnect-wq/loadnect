@@ -653,7 +653,7 @@ export function BookingFlow({ hall, availability, windowDays, onlinePaymentEnabl
                     />
                     {phone !== "" && !isValidPhoneNumber(phone) && (
                       <p className="mt-1 text-[11px] text-red-600">
-                        Enter a valid mobile number — booking updates are sent to it on WhatsApp.
+                        Enter a valid mobile number — booking updates are texted to it.
                       </p>
                     )}
                   </div>

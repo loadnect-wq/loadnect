@@ -2,9 +2,9 @@
 // lib/notifications/templates.ts — shared formatting helpers for notification
 // content (PURE).
 //
-// The MESSAGE COPY itself lives in lib/notifications/whatsapp-templates.ts,
-// because every message this platform sends is a Meta-approved WhatsApp
-// template and the copy has to match what was approved. What remains here is
+// The MESSAGE COPY itself lives in lib/notifications/sms-templates.ts,
+// because every message this platform sends is a DLT-registered SMS template
+// and the copy has to match what the operator approved. What remains here is
 // the small set of value formatters those templates share, kept separate so
 // they can be unit-tested and reused without pulling in the registry.
 //

@@ -36,7 +36,7 @@ export default function PrivacyPage() {
       </Section>
 
       <Section title="5. Data Sharing">
-        We share your information only with: (a) venue owners to fulfil your confirmed booking — your name and contact details are shared so the owner can prepare for your event; (b) Cashfree Payments for transaction processing, and for venue owners the payout and identity details listed in section 4 so that settlements can be made; (b-i) Twilio and WhatsApp, to deliver booking notifications to the phone number you gave us; (c) cloud infrastructure and email delivery service providers under strict confidentiality agreements; and (d) law enforcement when required by a valid legal order. Venue owners may not use customer contact details for any purpose other than fulfilling the specific booking.
+        We share your information only with: (a) venue owners to fulfil your confirmed booking — your name and contact details are shared so the owner can prepare for your event; (b) Cashfree Payments for transaction processing, and for venue owners the payout and identity details listed in section 4 so that settlements can be made; (b-i) MSG91, our SMS provider, to deliver booking notifications and one-time verification codes to the phone number you gave us; (c) cloud infrastructure and email delivery service providers under strict confidentiality agreements; and (d) law enforcement when required by a valid legal order. Venue owners may not use customer contact details for any purpose other than fulfilling the specific booking.
       </Section>
 
       <Section title="6. Cookies">

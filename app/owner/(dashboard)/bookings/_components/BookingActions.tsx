@@ -8,7 +8,7 @@ import { acceptBooking, rejectBooking, markBookingCompleted } from "@/app/owner/
 // Owner's accept / decline control for a booking request.
 //
 // Declining now REQUIRES a written reason: it is stored on the booking and sent
-// to the customer on WhatsApp, so a customer whose event is refused is told why
+// to the customer by SMS, so a customer whose event is refused is told why
 // rather than just seeing "declined". The server re-validates the reason.
 //
 // Sizing is mobile-first (44px targets, full-width stacked on phones,

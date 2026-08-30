@@ -202,7 +202,7 @@ export async function updateProfile(data: {
 
   // NORMALISE before storing. profiles.phone previously took whatever the form
   // sent, so the same person could be '9876543210' here and '+919876543210' on
-  // their booking — and WhatsApp needs E.164 exactly. Rejecting an
+  // their booking — and MSG91 needs a full country-coded number. Rejecting an
   // un-normalisable number is better than silently storing one we can never
   // message.
   let normalisedPhone: string | null = null;
@@ -239,7 +239,7 @@ export async function updateProfile(data: {
   // Controls NON-critical messages only — critical transactional messages
   // (booking/payment) are always sent regardless of this flag.
   if (typeof data.notificationsEnabled === "boolean") {
-    updatePayload.whatsapp_notifications_enabled = data.notificationsEnabled;
+    updatePayload.notifications_enabled = data.notificationsEnabled;
   }
 
   let { error } = await db
@@ -249,8 +249,8 @@ export async function updateProfile(data: {
 
   // Unknown column (pre-0026): PostgREST reports it as PGRST204, Postgres as
   // 42703 — retry without it so profile edits still work on un-migrated DBs.
-  if ((error?.code === "42703" || error?.code === "PGRST204") && "whatsapp_notifications_enabled" in updatePayload) {
-    delete updatePayload.whatsapp_notifications_enabled;
+  if ((error?.code === "42703" || error?.code === "PGRST204") && "notifications_enabled" in updatePayload) {
+    delete updatePayload.notifications_enabled;
     ({ error } = await db.from("profiles").update(updatePayload).eq("id", user.id));
   }
 

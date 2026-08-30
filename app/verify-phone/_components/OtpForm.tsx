@@ -8,18 +8,11 @@ const OTP_LENGTH = 6;
 
 interface Props {
   initialPhone: string | null;
+  /** False when MSG91's auth key or OTP template id is missing. */
   configured:   boolean;
-  /**
-   * The channel the code is ACTUALLY sent on, read server-side from
-   * TWILIO_VERIFY_CHANNEL. This used to be hardcoded as "WhatsApp" in the copy
-   * while production was configured for SMS, so the screen promised a WhatsApp
-   * message and a text message arrived. Driving the wording from the same value
-   * the API call uses means the two cannot drift apart again.
-   */
-  channel:      "whatsapp" | "sms";
 }
 
-export function OtpForm({ initialPhone, configured, channel }: Props) {
+export function OtpForm({ initialPhone, configured }: Props) {
   const [step, setStep]         = useState<"phone" | "code" | "done">("phone");
   const [phone, setPhone]       = useState(initialPhone ?? "");
   const [digits, setDigits]     = useState<string[]>(Array(OTP_LENGTH).fill(""));
@@ -35,13 +28,19 @@ export function OtpForm({ initialPhone, configured, channel }: Props) {
     return () => clearInterval(t);
   }, [cooldown]);
 
-  function requestOtp() {
+  /**
+   * `resend` asks MSG91 to re-deliver the SAME code rather than issue a new
+   * one. It matters: a user who taps Resend and then receives the FIRST SMS
+   * would otherwise type a code that had just been invalidated, and be told it
+   * was wrong. The boxes are therefore cleared only on a fresh send.
+   */
+  function requestOtp(resend = false) {
     setError(null);
     startTransition(async () => {
-      const r = await sendPhoneOtp(phone);
+      const r = await sendPhoneOtp(phone, resend);
       if ("error" in r) { setError(r.error); return; }
       setCooldown(r.cooldownSeconds ?? 60);
-      setDigits(Array(OTP_LENGTH).fill(""));
+      if (!resend) setDigits(Array(OTP_LENGTH).fill(""));
       setStep("code");
       setTimeout(() => boxRefs.current[0]?.focus(), 50);
     });
@@ -130,7 +129,7 @@ export function OtpForm({ initialPhone, configured, channel }: Props) {
             </div>
             <button
               type="button"
-              onClick={requestOtp}
+              onClick={() => requestOtp(false)}
               disabled={pending || phone.trim().length < 8}
               className="inline-flex min-h-[44px] items-center gap-1.5 rounded-xl bg-maroon-700 px-4 text-sm font-semibold text-white transition active:scale-[0.97] disabled:opacity-60 motion-reduce:active:scale-100"
             >
@@ -139,8 +138,7 @@ export function OtpForm({ initialPhone, configured, channel }: Props) {
             </button>
           </div>
           <p className="mt-2 text-[11px] text-charcoal-500">
-            We&apos;ll send a one-time code {channel === "whatsapp" ? "on WhatsApp" : "by SMS"} to
-            confirm this number.
+            We&apos;ll send a one-time code by SMS to confirm this number.
           </p>
         </>
       )}
@@ -148,7 +146,7 @@ export function OtpForm({ initialPhone, configured, channel }: Props) {
       {step === "code" && (
         <>
           <p className="text-sm text-charcoal-700">
-            Enter the code sent {channel === "whatsapp" ? "on WhatsApp" : "by SMS"} to{" "}
+            Enter the code sent by SMS to{" "}
             <strong className="text-charcoal-900">{phone}</strong>
           </p>
           <div className="mt-3 flex justify-between gap-2" role="group" aria-label="One-time code">
@@ -183,7 +181,7 @@ export function OtpForm({ initialPhone, configured, channel }: Props) {
             ) : (
               <button
                 type="button"
-                onClick={requestOtp}
+                onClick={() => requestOtp(true)}
                 disabled={pending}
                 className="min-h-[44px] font-semibold text-maroon-700 hover:underline disabled:opacity-60"
               >

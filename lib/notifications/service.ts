@@ -1,9 +1,9 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // lib/notifications/service.ts — notification dispatch core (SERVER-ONLY).
 //
-// The ONLY path that writes the notifications outbox and calls the WhatsApp
-// transport. WhatsApp is the sole channel: there is no SMS path and no
-// fallback to one. Invariants:
+// The ONLY path that writes the notifications outbox and calls the MSG91 SMS
+// transport. SMS over MSG91 is the sole channel: there is no second provider
+// and no fallback to one. Invariants:
 //
 //   • RECIPIENTS AND CONTENT ARE SERVER-DECIDED. No function here accepts a
 //     client-supplied phone+message pair. Callers pass entity ids and a
@@ -13,11 +13,11 @@
 //   • NEVER FAILS THE BUSINESS ACTION. A booking must succeed even if every
 //     message fails — all errors are recorded on the outbox row and swallowed.
 //   • IDEMPOTENT. dedupe_key is UNIQUE in the DB; a webhook redelivery or
-//     double-run inserts nothing and sends nothing (23505 → no-op).
-//   • OBSERVABLE WHEN DISABLED. With TWILIO_WHATSAPP_ENABLED=false, or with no
-//     Content SID approved yet, the row is written with status 'skipped' and a
-//     precise reason. The whole pipeline is testable before credentials exist
-//     and nothing ever pretends to have sent.
+//     double-run inserts nothing and sends nothing (23505 -> no-op).
+//   • OBSERVABLE WHEN DISABLED. With MSG91_SMS_ENABLED=false, or with no DLT
+//     template id yet, the row is written with status 'skipped' and a precise
+//     reason. The whole pipeline is testable before credentials exist and
+//     nothing ever pretends to have sent.
 //   • Writes use the service-role client: business events fire under customer
 //     or owner sessions, and RLS (correctly) forbids those sessions from
 //     inserting notification rows. The service role is the trusted backend.
@@ -28,20 +28,19 @@ import "server-only";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import { normalizePhoneE164 } from "@/lib/notifications/phone";
 import {
-  isWhatsAppEnabled,
-  isWhatsAppConfigured,
-  isWhatsAppTestMode,
-  isPermanentWhatsAppError,
-  sendWhatsAppTemplate,
-} from "@/lib/twilio/whatsapp";
+  isSmsEnabled,
+  isMsg91Configured,
+  isSmsTestMode,
+  sendTemplatedSms,
+} from "@/lib/msg91";
 import {
-  contentSidFor,
-  resolveTemplate,
-  hasMalformedSid,
+  templateIdFor,
+  hasMalformedTemplateId,
+  coerceVariables,
   renderTemplate,
-  WHATSAPP_TEMPLATES,
-  type WhatsAppTemplateKey,
-} from "@/lib/notifications/whatsapp-templates";
+  SMS_TEMPLATES,
+  type SmsTemplateKey,
+} from "@/lib/notifications/sms-templates";
 import { getCanonicalAppUrl } from "@/lib/app-url";
 import { CONTACT } from "@/lib/constants";
 
@@ -53,17 +52,17 @@ export type NotificationRequest = {
   eventType: string;
   recipientType: RecipientType;
   recipientUserId?: string | null;
-  /** Raw phone; normalized here. null/invalid → recorded as failed, never thrown. */
+  /** Raw phone; normalized here. null/invalid -> recorded as failed, never thrown. */
   phone: string | null | undefined;
-  /** Which approved WhatsApp template carries this event. */
-  templateKey: WhatsAppTemplateKey;
+  /** Which registered SMS template carries this event. */
+  templateKey: SmsTemplateKey;
   /** Values for the template's positional variables, in declaration order. */
   templateVariables: readonly (string | number | null | undefined)[];
   bookingId?: string | null;
   hallId?: string | null;
   /** Non-critical messages respect the recipient's notification preference. */
   critical?: boolean;
-  /** From profiles.whatsapp_notifications_enabled, resolved by the event layer. */
+  /** From profiles.notifications_enabled, resolved by the event layer. */
   optedIn?: boolean;
 };
 
@@ -75,7 +74,8 @@ export type NotificationRequest = {
 //     capping only by phone would let an attacker spam a fresh victim per
 //     booking. Keyed by recipient_user_id.
 //   • GLOBAL/day       — a cost fuse: even a novel abuse pattern cannot spend
-//     more than this many messages in a day without an admin noticing.
+//     more than this many messages in a day without an admin noticing. Each
+//     one is a billed SMS, so this is a real rupee ceiling, not a soft limit.
 // Counts include 'processing' (in-flight, claimed) rows so concurrent
 // dispatches see each other — pure status='sent' counting was a race.
 const MAX_PER_PHONE_PER_HOUR  = 15;
@@ -83,21 +83,21 @@ const MAX_PER_ACCOUNT_PER_DAY = 30;
 const MAX_GLOBAL_PER_DAY      = 500;
 export const MAX_SEND_ATTEMPTS = 5;
 
-/** Where Twilio posts delivery receipts for the messages we send. */
-export function whatsappStatusCallbackUrl(): string {
-  return `${getCanonicalAppUrl()}/api/webhooks/twilio-whatsapp`;
+/** Where MSG91 posts delivery reports for the messages we send. */
+export function smsDeliveryWebhookUrl(): string {
+  return `${getCanonicalAppUrl()}/api/webhooks/msg91`;
 }
 
 /**
  * Resolves the platform's admin alert number, in priority order:
- *   1. platform_settings.admin_whatsapp_phone — editable by an admin in the UI
- *   2. ADMIN_WHATSAPP_NUMBER env
+ *   1. platform_settings.admin_alert_phone — editable by an admin in the UI
+ *   2. ADMIN_ALERT_PHONE env
  *   3. CONTACT.phone from lib/constants
  * Always normalized to E.164; null when none yields a valid number.
  *
- * Async because the authoritative source is now the admin settings row. The
- * env var remains as a deployment-level override for an environment whose
- * database has not been configured yet.
+ * Async because the authoritative source is the admin settings row. The env
+ * var remains a deployment-level override for an environment whose database
+ * has not been configured yet.
  */
 export async function getAdminNotificationPhone(): Promise<string | null> {
   return (await resolveAdminNotificationPhone()).phone;
@@ -121,24 +121,28 @@ export async function resolveAdminNotificationPhone(): Promise<{
     const db = admin as any;
     const { data } = await db
       .from("platform_settings")
-      .select("admin_whatsapp_phone")
+      .select("admin_alert_phone")
       .eq("id", true)
       .maybeSingle();
-    const fromDb = data?.admin_whatsapp_phone?.trim();
+    const fromDb = data?.admin_alert_phone?.trim();
     if (fromDb) {
       const normalized = normalizePhoneE164(fromDb);
       if (normalized) return { phone: normalized, source: "settings" };
-      console.error("[notifications] platform_settings.admin_whatsapp_phone is not a valid number");
+      console.error("[notifications] platform_settings.admin_alert_phone is not a valid number");
     }
   } catch {
     // Column or table missing (un-migrated environment) — fall through to env.
   }
 
-  const fromEnv = process.env.ADMIN_WHATSAPP_NUMBER?.trim();
+  // ADMIN_WHATSAPP_NUMBER is read as a LEGACY name so a deployment mid-rename
+  // keeps alerting instead of going silent. Remove it once the hosting
+  // environment has been switched to ADMIN_ALERT_PHONE.
+  const fromEnv =
+    process.env.ADMIN_ALERT_PHONE?.trim() || process.env.ADMIN_WHATSAPP_NUMBER?.trim();
   if (fromEnv) {
     const normalized = normalizePhoneE164(fromEnv);
     if (normalized) return { phone: normalized, source: "env" };
-    console.error("[notifications] ADMIN_WHATSAPP_NUMBER is not a valid phone number");
+    console.error("[notifications] ADMIN_ALERT_PHONE is not a valid phone number");
   }
 
   const fallback = normalizePhoneE164(CONTACT.phone);
@@ -161,23 +165,13 @@ export async function dispatchNotification(req: NotificationRequest): Promise<vo
     const phone = req.phone ? normalizePhoneE164(req.phone) : null;
 
     // Content is derived from the template registry, never from a caller's
-    // free-text string — so the stored message is exactly what the approved
-    // template renders.
-    // The EFFECTIVE template, not the requested one: resolveTemplate may fall
-    // back to a superseded template whose SID is configured, and it reshapes
-    // the values to that template's positional contract when it does. Storing
-    // the effective key/sid/variables together is what keeps the send path, the
-    // stored message and the admin dashboard describing the same message.
-    const resolved = resolveTemplate(req.templateKey, req.templateVariables);
-    const variables = resolved.variables;
-    const message = renderTemplate(resolved.key, variables);
-    const contentSid = resolved.sid;
-    if (resolved.usedFallback) {
-      console.warn(
-        `[notifications] ${req.templateKey} is not configured — sent via ${resolved.key} instead. ` +
-        `Set ${WHATSAPP_TEMPLATES[req.templateKey].envVar} once Meta approves it.`,
-      );
-    }
+    // free-text string — so the stored message is exactly what the registered
+    // template renders, with the SAME GSM-7-sanitised values that go on the
+    // wire. Storing the variables alongside the key is what lets an admin
+    // retry reproduce the message without re-deriving it.
+    const variables = coerceVariables(req.templateKey, req.templateVariables);
+    const message = renderTemplate(req.templateKey, variables);
+    const templateId = templateIdFor(req.templateKey);
 
     // Preference gate — non-critical only. Recorded (not silently dropped) so
     // the admin center shows WHY nothing was sent.
@@ -192,10 +186,10 @@ export async function dispatchNotification(req: NotificationRequest): Promise<vo
       booking_id: req.bookingId ?? null,
       hall_id: req.hallId ?? null,
       message: message.slice(0, 800),
-      channel: "whatsapp",
-      provider: "twilio",
-      template_key: resolved.key,
-      template_sid: contentSid,
+      channel: "sms",
+      provider: "msg91",
+      template_key: req.templateKey,
+      provider_template_id: templateId,
       template_variables: variables,
     };
 
@@ -294,13 +288,13 @@ export async function attemptSend(
     return { sent: false, error: "no recipient phone" };
   }
 
-  const templateKey = current.template_key as WhatsAppTemplateKey | null;
-  if (!templateKey || !(templateKey in WHATSAPP_TEMPLATES)) {
+  const templateKey = current.template_key as SmsTemplateKey | null;
+  if (!templateKey || !(templateKey in SMS_TEMPLATES)) {
     await db.from("notifications")
       .update({
         status: "failed",
         permanent_failure: true,
-        error_message: "No WhatsApp template is associated with this notification",
+        error_message: "No SMS template is associated with this notification",
         failed_at: now(),
       })
       .eq("id", notificationId);
@@ -308,26 +302,26 @@ export async function attemptSend(
   }
 
   // ── Not-configured modes: record precisely why, keep the app working ───────
-  const contentSid = contentSidFor(templateKey);
+  const templateId = templateIdFor(templateKey);
   const skip = async (reason: string) => {
-    console.log(`[whatsapp] ${reason} — notification recorded, not sent`);
+    console.log(`[sms] ${reason} — notification recorded, not sent`);
     await db.from("notifications")
-      .update({ status: "skipped", error_message: reason, template_sid: contentSid })
+      .update({ status: "skipped", error_message: reason, provider_template_id: templateId })
       .eq("id", notificationId);
     return { sent: false, error: reason };
   };
 
-  if (!isWhatsAppEnabled()) {
-    return skip("WhatsApp is disabled (TWILIO_WHATSAPP_ENABLED != true)");
+  if (!isSmsEnabled()) {
+    return skip("SMS is disabled (MSG91_SMS_ENABLED != true)");
   }
-  if (!isWhatsAppConfigured()) {
-    return skip("Twilio WhatsApp credentials or sender not configured");
+  if (!isMsg91Configured()) {
+    return skip("MSG91 auth key or DLT sender ID is not configured");
   }
-  if (!contentSid) {
+  if (!templateId) {
     return skip(
-      hasMalformedSid(templateKey)
-        ? `${WHATSAPP_TEMPLATES[templateKey].envVar} is not a valid Content SID (expected HX + 32 hex characters)`
-        : `No approved WhatsApp template configured — set ${WHATSAPP_TEMPLATES[templateKey].envVar}`,
+      hasMalformedTemplateId(templateKey)
+        ? `${SMS_TEMPLATES[templateKey].envVar} is not a valid MSG91 template id (expected 24 hex characters)`
+        : `No DLT-approved SMS template configured — set ${SMS_TEMPLATES[templateKey].envVar}`,
     );
   }
 
@@ -408,21 +402,19 @@ export async function attemptSend(
     ? (current.template_variables as unknown[]).map((v) => String(v ?? ""))
     : [];
 
-  const result = await sendWhatsAppTemplate({
-    toE164: phone,
-    contentSid,
-    variables,
-    statusCallbackUrl: whatsappStatusCallbackUrl(),
-  });
+  const result = await sendTemplatedSms({ toE164: phone, templateId, variables });
 
   if (result.ok) {
     await db.from("notifications")
       .update({
         status: "sent",
         provider_message_id: result.providerMessageId,
-        delivery_status: result.providerStatus,
+        // MSG91 accepts the request and reports delivery later on the webhook.
+        // 'accepted' says exactly that, and is not upgraded until a delivery
+        // report actually arrives.
+        delivery_status: "accepted",
         delivery_updated_at: now(),
-        template_sid: contentSid,
+        provider_template_id: templateId,
         test_mode: result.redirectedTo !== null,
         sent_at: now(),
         error_message: result.redirectedTo
@@ -437,15 +429,14 @@ export async function attemptSend(
 
   // A permanent failure is marked so the admin UI does not offer a retry that
   // is guaranteed to fail the same way. Transient failures stay retryable.
-  const permanent = isPermanentWhatsAppError(result.kind);
   await db.from("notifications")
     .update({
       status: "failed",
       error_message: result.detail,
-      error_code: result.errorCode,
-      permanent_failure: permanent,
-      template_sid: contentSid,
-      test_mode: isWhatsAppTestMode(),
+      error_code: result.kind,
+      permanent_failure: result.permanent,
+      provider_template_id: templateId,
+      test_mode: isSmsTestMode(),
       failed_at: now(),
     })
     .eq("id", notificationId);

@@ -53,7 +53,7 @@ export default async function AdminTicketsPage({ searchParams }: Props) {
     <div>
       <AdminPageHeader title="Support Tickets" description="Help requests from users. Reply and update status to close out tickets." />
 
-      {/* Public contact-form messages. Shown here because the WhatsApp alert
+      {/* Public contact-form messages. Shown here because the SMS alert
           for each one points at this page. Senders may be signed out, so these
           cannot be tickets — replies go out by email/phone, by hand. */}
       {contactMessages.length > 0 && (

@@ -5,8 +5,8 @@
 // imported by client components (booking form validation) and exercised by
 // standalone unit tests. There is nothing secret here — just string rules.
 //
-// normalizePhoneE164 moved here from the former lib/twilio.ts unchanged; the
-// lib/twilio barrel re-exports it so existing imports keep working.
+// normalizePhoneE164 lives here rather than in lib/msg91 so it stays free of
+// "server-only"; the lib/msg91 barrel re-exports it for server call sites.
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
@@ -66,7 +66,7 @@ export function maskPhone(phone: string | null | undefined): string {
 
 /**
  * Sanitizes a NAME (venue name, customer name, owner business name) for use as
- * a WhatsApp template variable.
+ * an SMS template variable.
  *
  * These are user-controlled too: a venue owner picks their hall's name, and it
  * appears inside every branded booking message. A hall named
@@ -86,7 +86,7 @@ export function sanitizeName(
 
 /**
  * Sanitizes free text (owner rejection notes, admin reasons, ticket subjects)
- * before it is interpolated into a branded WhatsApp message. The message
+ * before it is interpolated into a branded SMS. The message
  * arrives from Hallnect's verified business sender, so any text we embed
  * inherits the platform's credibility — a malicious venue owner must not be
  * able to smuggle a phishing link or a call-this-number scam into an official

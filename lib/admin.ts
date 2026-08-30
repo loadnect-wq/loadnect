@@ -1085,7 +1085,7 @@ export async function fetchAuditLog(opts: {
   };
 }
 
-// ── WhatsApp notification center (migrations 0026 + 0030) ───────────────────
+// ── SMS notification center (migrations 0026 + 0030 + 0047) ─────────────────
 // The outbox is written exclusively by the trusted backend (lib/notifications).
 // This fetcher runs on the ADMIN's session client, so RLS enforces is_admin().
 
@@ -1105,12 +1105,12 @@ export type AdminNotificationRow = {
   created_at:          string;
   sent_at:             string | null;
   failed_at:           string | null;
-  // WhatsApp (migration 0030). `status` is OUR send-side state; delivery_status
-  // is what WhatsApp reported afterwards over the status callback — a message
-  // can be status='sent' but delivery_status='undelivered'.
+  // `status` is OUR send-side state; delivery_status is the operator's verdict,
+  // which arrives later on the MSG91 delivery-report webhook — a message can be
+  // status='sent' but delivery_status='undelivered'.
   channel:             string | null;
   template_key:        string | null;
-  template_sid:        string | null;
+  provider_template_id: string | null;
   delivery_status:     string | null;
   delivery_updated_at: string | null;
   error_code:          string | null;
@@ -1205,7 +1205,7 @@ export type NotificationStats = {
   totalFailed: number;
   totalSkipped: number;
   totalPending: number;
-  /** Handed to Twilio successfully, but WhatsApp then reported non-delivery. */
+  /** Accepted by MSG91, then reported as not delivered by the operator. */
   undelivered: number;
   unread:      number;
   lastSentAt:  string | null;

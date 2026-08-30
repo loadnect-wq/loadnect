@@ -22,7 +22,7 @@ export default async function OwnerProfilePage() {
   const db = supabase as any;
   let { data: extra } = await db
     .from("profiles")
-    .select("phone, whatsapp_notifications_enabled")
+    .select("phone, notifications_enabled")
     .eq("id", profile.id)
     .maybeSingle();
   if (!extra) {
@@ -72,7 +72,7 @@ export default async function OwnerProfilePage() {
           fullName={profile.full_name}
           email={profile.email}
           phone={(extra as { phone?: string | null } | null)?.phone ?? null}
-          initialNotificationsEnabled={(extra as { whatsapp_notifications_enabled?: boolean } | null)?.whatsapp_notifications_enabled ?? true}
+          initialNotificationsEnabled={(extra as { notifications_enabled?: boolean } | null)?.notifications_enabled ?? true}
         />
 
         {/* Sign out */}

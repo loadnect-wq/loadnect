@@ -88,9 +88,10 @@ the app.
 **Is data encrypted in transit?** Yes (HTTPS everywhere; cleartext disabled in the app).
 **Can users request deletion?** Yes — account deletion via support (hallnect@gmail.com); state this in the form.
 **Data shared with third parties:** payment processing is performed BY
-Cashfree on their own pages (processor relationship); WhatsApp notifications
-are delivered via Twilio as a processor. Neither receives data for their own
-use — answer "No" to selling/sharing for advertising.
+Cashfree on their own pages (processor relationship); SMS notifications and
+one-time verification codes are delivered via MSG91 as a processor. Neither
+receives data for their own use — answer "No" to selling/sharing for
+advertising.
 
 ---
 

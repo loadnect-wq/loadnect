@@ -18,7 +18,7 @@ export default async function ProfilePage() {
   const db = supabase as any;
   let { data: extra } = await db
     .from("profiles")
-    .select("phone, whatsapp_notifications_enabled")
+    .select("phone, notifications_enabled")
     .eq("id", profile.id)
     .maybeSingle();
   // Pre-0026 databases have no sms_notifications_enabled column.
@@ -58,7 +58,7 @@ export default async function ProfilePage() {
             initialName={profile.full_name}
             initialPhone={(extra as { phone?: string | null } | null)?.phone ?? null}
             email={profile.email}
-            initialNotificationsEnabled={(extra as { whatsapp_notifications_enabled?: boolean } | null)?.whatsapp_notifications_enabled ?? true}
+            initialNotificationsEnabled={(extra as { notifications_enabled?: boolean } | null)?.notifications_enabled ?? true}
           />
         </div>
 

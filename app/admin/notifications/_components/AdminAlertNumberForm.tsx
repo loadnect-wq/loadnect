@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { CheckCircle2, Loader2, Phone } from "lucide-react";
-import { updateAdminWhatsAppNumber } from "@/app/admin/actions";
+import { updateAdminAlertPhone } from "@/app/admin/actions";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Which number receives platform admin alerts.
@@ -31,14 +31,14 @@ export function AdminAlertNumberForm({
 
   const sourceLabel =
     source === "settings"   ? "set here"
-    : source === "env"      ? "from ADMIN_WHATSAPP_NUMBER"
+    : source === "env"      ? "from ADMIN_ALERT_PHONE"
     : source === "constant" ? "falling back to the public contact number"
     : "not configured";
 
   function save() {
     setError(null); setSaved(false);
     start(async () => {
-      const r = await updateAdminWhatsAppNumber(value);
+      const r = await updateAdminAlertPhone(value);
       if ("error" in r) setError(r.error);
       else { setSaved(true); setValue(""); }
     });
@@ -79,8 +79,9 @@ export function AdminAlertNumberForm({
         </p>
       )}
       <p className="mt-1.5 text-[10px] leading-relaxed text-charcoal-400">
-        Operational alerts (new bookings, payments, hall submissions, failures) go to this
-        number on WhatsApp. It must be a number that has WhatsApp installed.
+        Operational alerts (new bookings, payments, hall submissions, failures) are
+        texted to this number. Indian numbers on the DND registry may not receive
+        them, so use a number that accepts transactional SMS.
       </p>
     </div>
   );

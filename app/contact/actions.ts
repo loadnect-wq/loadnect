@@ -6,7 +6,7 @@
 // The form used to await an 800ms timer and show "Message sent!" while
 // discarding the message — a fake that cost real enquiries (including, on a
 // marketplace this young, potential venue owners). Submissions now land in
-// contact_messages and ping the admin on WhatsApp.
+// contact_messages and text the admin.
 //
 // ANON-CALLABLE BY DESIGN: /contact is public, so this action takes input from
 // signed-out visitors. That shapes everything here:
@@ -83,7 +83,7 @@ export async function submitContactMessage(input: {
     return { error: "Something went wrong sending your message. Please try again." };
   }
 
-  // Admin WhatsApp alert — best-effort, never fails the submission. The
+  // Admin SMS alert — best-effort, never fails the submission. The
   // visitor-supplied subject is sanitised before entering a branded message.
   try {
     const adminPhone = await getAdminNotificationPhone();

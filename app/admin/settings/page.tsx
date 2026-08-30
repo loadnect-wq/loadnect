@@ -9,7 +9,7 @@ import { getCommissionPercent, getPublicPaymentSettings } from "@/lib/platform-s
 import { fetchPremiumPlans } from "@/lib/premium-plans";
 import { checkAuthRedirectHealth } from "@/lib/auth-health";
 import { checkCashfreeHealth } from "@/lib/cashfree-health";
-import { isTwilioConfigured, verifyChannel } from "@/lib/twilio";
+import { getMsg91Status } from "@/lib/msg91";
 import { Badge } from "@/components/ui/Badge";
 import { AdminPageHeader } from "../_components/AdminPageHeader";
 import { CleanupButton } from "./_components/CleanupButton";
@@ -33,8 +33,8 @@ export default async function AdminSettingsPage() {
   ]);
 
   // Cheap, synchronous env reads — no network call, unlike the probes above.
-  const otpConfigured = isTwilioConfigured();
-  const otpChannel    = verifyChannel();
+  const msg91 = getMsg91Status();
+  const otpConfigured = msg91.otpConfigured;
 
   return (
     <div>
@@ -194,12 +194,11 @@ export default async function AdminSettingsPage() {
           </div>
         </div>
 
-        {/* Phone verification (Twilio Verify).
-            Its env vars are write-only in Vercel, so "which channel does
-            production actually use?" was unanswerable — and the answer mattered:
-            the verify screen promised WhatsApp while production sent SMS. Same
-            reasoning as the Cashfree readout above: surface it, because there is
-            no other way to see it. */}
+        {/* Phone verification (MSG91 OTP) and outbound SMS.
+            The credentials are write-only in Vercel, so "what did production
+            actually pick up?" is unanswerable anywhere else. Same reasoning as
+            the Cashfree readout above: surface it, because there is no other way
+            to see it. The auth key is shown only as its last four characters. */}
         <div className={`rounded-2xl border-2 p-5 ${otpConfigured ? "border-green-200 bg-green-50" : "border-amber-200 bg-amber-50"}`}>
           <div className="flex items-start gap-3">
             <ShieldCheck className={`mt-0.5 h-5 w-5 shrink-0 ${otpConfigured ? "text-green-600" : "text-amber-600"}`} />
@@ -208,22 +207,24 @@ export default async function AdminSettingsPage() {
               {otpConfigured ? (
                 <>
                   <p className="mt-0.5 text-xs text-charcoal-700">
-                    Twilio Verify is configured. One-time codes are sent{" "}
-                    <span className="font-bold uppercase">
-                      {otpChannel === "whatsapp" ? "on WhatsApp" : "by SMS"}
-                    </span>.
+                    MSG91 OTP is configured. One-time codes are sent{" "}
+                    <span className="font-bold uppercase">by SMS</span>. MSG91 generates,
+                    expires and checks the code — Hallnect never stores one.
                   </p>
                   <p className="mt-2 rounded-lg bg-white/70 p-2 text-[11px] text-charcoal-600">
-                    The channel comes from TWILIO_VERIFY_CHANNEL and there is no fallback — one
-                    channel is chosen and nothing silently retries on the other. The wording on the
-                    verify screen follows this same value, so the two cannot disagree.
+                    Auth key {msg91.authKeyHint} · OTP template{" "}
+                    <span className="font-mono">{msg91.otpTemplateId?.slice(0, 8)}…</span>
                   </p>
                 </>
               ) : (
                 <p className="mt-0.5 text-xs text-amber-900">
-                  Not configured — TWILIO_VERIFY_SERVICE_SID, TWILIO_ACCOUNT_SID and
-                  TWILIO_AUTH_TOKEN must all be set. Until then the &ldquo;Verify your phone&rdquo; row
-                  is hidden from profiles rather than leading to a dead end.
+                  Not configured — MSG91_AUTH_KEY and MSG91_OTP_TEMPLATE_ID must both be set,
+                  and the OTP template must be registered on the DLT portal first.
+                  {msg91.malformedOtpTemplateId
+                    ? " MSG91_OTP_TEMPLATE_ID is set but is not a 24-character template id."
+                    : ""}{" "}
+                  Until then the &ldquo;Verify your phone&rdquo; row is hidden from profiles
+                  rather than leading to a dead end.
                 </p>
               )}
             </div>

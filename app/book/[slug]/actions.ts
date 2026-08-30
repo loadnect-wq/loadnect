@@ -99,7 +99,7 @@ export async function createBookingRequest(
   }
 
   // ── Contact phone (SERVER-AUTHORITATIVE; §booking-notifications) ────────────
-  // A booking cannot be finalized without a reachable mobile number: WhatsApp
+  // A booking cannot be finalized without a reachable mobile number: SMS
   // confirmations go to THIS number. Normalized to E.164 so one canonical
   // format is stored ("+919876543210"), never a mix of local formats.
   const contactPhone = normalizePhoneE164(input.contactPhone ?? "");

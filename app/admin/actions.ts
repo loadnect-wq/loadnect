@@ -158,7 +158,7 @@ async function moderateHall(
     reason:         cleaned,
   });
 
-  // Owner WhatsApp: approved / rejected(+reason) / suspended(+reason) / restored.
+  // Owner SMS: approved / rejected(+reason) / suspended(+reason) / restored.
   // "unsuspend" and a fresh approval both land on status=approved — the action
   // string distinguishes them for the right wording.
   const moderationKind =
@@ -977,21 +977,21 @@ export async function respondToTicket(
   return { success: true };
 }
 
-// ── WhatsApp notification center actions ────────────────────────────────────
+// ── SMS notification center actions ─────────────────────────────────────────
 
 /**
  * Sets the phone number that receives platform admin alerts.
  *
  * Stored on platform_settings (the existing single-row admin config table)
  * rather than in an environment variable, so it can be changed without a
- * redeploy. ADMIN_WHATSAPP_NUMBER remains a deployment-level fallback and
+ * redeploy. ADMIN_ALERT_PHONE remains a deployment-level fallback and
  * lib/constants CONTACT.phone the last resort — see getAdminNotificationPhone.
  *
  * Admin-only and audited. Normalised to E.164 before storage: the column has a
  * CHECK constraint requiring it, and an un-normalised number is one we could
  * never actually message.
  */
-export async function updateAdminWhatsAppNumber(raw: string): Promise<ActionResult> {
+export async function updateAdminAlertPhone(raw: string): Promise<ActionResult> {
   const actor = await requireAdminActor();
   if (!actor.ok) return { error: actor.error };
 
@@ -1013,12 +1013,12 @@ export async function updateAdminWhatsAppNumber(raw: string): Promise<ActionResu
 
   const { error } = await db
     .from("platform_settings")
-    .upsert({ id: true, admin_whatsapp_phone: value, updated_by: actor.user.id }, { onConflict: "id" });
+    .upsert({ id: true, admin_alert_phone: value, updated_by: actor.user.id }, { onConflict: "id" });
 
   if (error) return { error: sanitizeError(error, "admin") };
 
   await recordAdminAction({
-    action:     "settings.admin_whatsapp_number",
+    action:     "settings.admin_alert_phone",
     entityType: "platform_settings",
     entityId:   null,
     // The number itself is deliberately NOT recorded in the audit log: the log
@@ -1041,15 +1041,15 @@ export async function updateAdminWhatsAppNumber(raw: string): Promise<ActionResu
 /**
  * Re-send every notification still sitting failed and retryable.
  *
- * WHY: the only retry was one button per row. When an outage ends — Meta
- * approving the business verification, say — nothing re-sends anything. Every
- * message generated during the outage waits for a human to find and click each
- * row individually, which for a booking confirmation is the same as never.
+ * WHY: the only retry was one button per row. When an outage ends — a DLT
+ * template finally approved, say — nothing re-sends anything. Every message
+ * generated during the outage waits for a human to find and click each row
+ * individually, which for a booking confirmation is the same as never.
  *
  * Bounded to 25 per run so one click cannot fan out into an unbounded burst
  * against the provider, and it skips rows already at MAX_SEND_ATTEMPTS or
- * marked permanently failed — 63024 ("not a WhatsApp number") will never
- * succeed no matter how often it is retried.
+ * marked permanently failed — a number on the DND registry will never accept
+ * the message no matter how often it is retried.
  */
 export async function retryAllFailedNotifications(): Promise<
   { success: true; sent: number; failed: number; skipped: number } | { error: string }
@@ -1124,13 +1124,13 @@ export async function retryNotification(notificationId: string): Promise<ActionR
     if ((row.status !== "pending" && row.status !== "processing") || ageMs < 15 * 60 * 1000) {
       return { error: `Only failed or skipped notifications can be retried (this one is ${row.status}).` };
     }
-    // A stale row that ALREADY carries a Twilio message id was accepted by
-    // Twilio — only the bookkeeping update failed. Resending it would deliver
+    // A stale row that ALREADY carries an MSG91 request id was accepted by
+    // MSG91 — only the bookkeeping update failed. Resending it would deliver
     // the same message to the customer twice, which is worse than a row that
-    // looks stuck. Only rows that never reached Twilio may be re-sent.
+    // looks stuck. Only rows that never reached MSG91 may be re-sent.
     if (row.provider_message_id) {
       return {
-        error: "This message was already accepted by Twilio; resending would deliver it twice. Check its delivery status instead.",
+        error: "This message was already accepted by MSG91; resending would deliver it twice. Check its delivery status instead.",
       };
     }
   }
@@ -1163,7 +1163,7 @@ export async function retryNotification(notificationId: string): Promise<ActionR
   if (row.attempt_count >= MAX_SEND_ATTEMPTS) {
     return { error: `Maximum of ${MAX_SEND_ATTEMPTS} attempts reached for this notification.` };
   }
-  // A permanent failure (not a WhatsApp user, template unapproved, bad
+  // A permanent failure (number on DND, template not DLT-approved, bad
   // credentials) repeats identically on retry and only burns an attempt.
   // 'skipped' rows are exempt: they are permanent-flagged only when a config
   // gap caused them, and fixing that config is exactly when a retry is right.

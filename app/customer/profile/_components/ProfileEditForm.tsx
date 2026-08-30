@@ -82,16 +82,16 @@ export function ProfileEditForm({ initialName, initialPhone, email, initialNotif
       {/* Notification preference — non-critical messages only */}
       <div className="flex items-start justify-between gap-3 rounded-xl border border-border bg-ivory-50 p-3">
         <div>
-          <p className="text-xs font-semibold text-charcoal-800">WhatsApp updates</p>
+          <p className="text-xs font-semibold text-charcoal-800">SMS updates</p>
           <p className="mt-0.5 text-[11px] leading-relaxed text-charcoal-500">
-            Optional updates on WhatsApp, when messaging is available. Your bookings and payments are always shown on your bookings page.
+            Optional text updates, when messaging is available. Your bookings and payments are always shown on your bookings page.
           </p>
         </div>
         <button
           type="button"
           role="switch"
           aria-checked={notifyEnabled}
-          aria-label="WhatsApp updates"
+          aria-label="SMS updates"
           onClick={() => setNotifyEnabled((v) => !v)}
           className={
             "relative mt-0.5 h-6 w-11 shrink-0 rounded-full transition-colors " +

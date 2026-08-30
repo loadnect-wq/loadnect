@@ -22,7 +22,7 @@ type ProfileState = {
 export function ProfileView({
   phoneVerificationAvailable = false,
 }: {
-  /** False when TWILIO_VERIFY_SERVICE_SID is unset — the OTP service cannot
+  /** False when MSG91_AUTH_KEY or MSG91_OTP_TEMPLATE_ID is unset — the OTP service cannot
    *  send a code, so the row is hidden rather than leading to a dead end. */
   phoneVerificationAvailable?: boolean;
 }) {

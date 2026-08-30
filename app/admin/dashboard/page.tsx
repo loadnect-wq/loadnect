@@ -38,7 +38,7 @@ export default async function AdminDashboardPage() {
     },
     // MONEY FIRST IN THE EYE, LAST IN THE LIST — these three are the only
     // queues where waiting costs somebody real money, and none of them was
-    // surfaced anywhere. With WhatsApp alerts dead this dashboard is the only
+    // surfaced anywhere. While SMS alerts cannot send, this dashboard is the only
     // place they can appear at all.
     {
       count: stats.open.refundsOwed,

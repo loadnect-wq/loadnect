@@ -52,11 +52,12 @@ Changing one in the Vercel dashboard does **not** affect the running
 deployment. A redeploy is required, and given the above, that redeploy may not
 happen on its own.
 
-Most `TWILIO_*` and `CASHFREE_*` vars are typed **Sensitive**, which makes them
-write-only — `vercel env pull` returns the literal `[SENSITIVE]`. Prefer the
-**Config** type for anything that is not a credential (a Twilio Content SID, a
-feature flag), so it can be read back later. `/admin/settings` surfaces the
-values the app actually resolved, which is the only way to check a Sensitive one.
+`MSG91_AUTH_KEY`, `MSG91_WEBHOOK_SECRET` and the `CASHFREE_*` credentials are
+typed **Sensitive**, which makes them write-only — `vercel env pull` returns the
+literal `[SENSITIVE]`. Use the **Config** type for anything that is not a
+credential (an `MSG91_TEMPLATE_*` id, a sender ID, a feature flag), so it can be
+read back later. `/admin/settings` and `/admin/notifications` surface the values
+the app actually resolved, which is the only way to check a Sensitive one.
 
 ## If pushes stop triggering builds
 

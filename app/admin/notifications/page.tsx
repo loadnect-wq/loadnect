@@ -6,9 +6,8 @@ import {
   fetchNotificationStats,
   type AdminNotificationRow,
 } from "@/lib/admin";
-import { getWhatsAppStatus } from "@/lib/twilio/whatsapp";
-import { templateConfigStatus } from "@/lib/notifications/whatsapp-templates";
-import { fetchTemplateApprovals, type TemplateApprovalStatus } from "@/lib/twilio/approvals";
+import { getMsg91Status } from "@/lib/msg91";
+import { smsTemplateConfigStatus, dltBody } from "@/lib/notifications/sms-templates";
 import { maskPhone } from "@/lib/notifications/phone";
 import { resolveAdminNotificationPhone } from "@/lib/notifications/service";
 import { AdminAlertNumberForm } from "./_components/AdminAlertNumberForm";
@@ -16,7 +15,7 @@ import { AdminPageHeader } from "../_components/AdminPageHeader";
 import { ConfirmButton } from "../_components/ConfirmButton";
 import { retryNotification, markNotificationRead, markAllNotificationsRead } from "../actions";
 
-export const metadata: Metadata = { title: "WhatsApp notifications — Admin" };
+export const metadata: Metadata = { title: "SMS notifications — Admin" };
 
 const STATUS_FILTERS = [
   { key: "all",     label: "All",     value: undefined },
@@ -49,35 +48,16 @@ const STATUS_TONE: Record<string, string> = {
   cancelled:  "bg-charcoal-50 text-charcoal-500 border-charcoal-200",
 };
 
-/** WhatsApp's own view of the message, which can disagree with ours. */
+/**
+ * The OPERATOR's verdict, which arrives later on the delivery-report webhook
+ * and can disagree with ours: a message can be status='sent' (MSG91 accepted
+ * it) and delivery_status='undelivered' (the handset never got it).
+ */
 const DELIVERY_TONE: Record<string, string> = {
   delivered:   "bg-green-50 text-green-700 border-green-200",
-  read:        "bg-green-100 text-green-800 border-green-300",
-  sent:        "bg-blue-50 text-blue-700 border-blue-200",
-  queued:      "bg-charcoal-50 text-charcoal-600 border-charcoal-200",
-  sending:     "bg-charcoal-50 text-charcoal-600 border-charcoal-200",
   accepted:    "bg-charcoal-50 text-charcoal-600 border-charcoal-200",
   undelivered: "bg-red-50 text-red-700 border-red-200",
   failed:      "bg-red-50 text-red-700 border-red-200",
-};
-
-/** Meta's verdict on a template. `undefined` = no Content SID configured. */
-const APPROVAL_TONE: Record<string, string> = {
-  approved:    "bg-green-50 text-green-700 border-green-200",
-  pending:     "bg-amber-50 text-amber-800 border-amber-200",
-  received:    "bg-amber-50 text-amber-800 border-amber-200",
-  rejected:    "bg-red-50 text-red-700 border-red-200",
-  unsubmitted: "bg-charcoal-50 text-charcoal-600 border-charcoal-200",
-  unknown:     "bg-charcoal-50 text-charcoal-500 border-charcoal-200",
-};
-
-const APPROVAL_LABEL: Record<string, string> = {
-  approved:    "approved",
-  pending:     "awaiting Meta",
-  received:    "submitted",
-  rejected:    "rejected",
-  unsubmitted: "not submitted",
-  unknown:     "status unknown",
 };
 
 function fmtWhen(iso: string | null) {
@@ -121,8 +101,8 @@ function NotificationCard({ row }: { row: AdminNotificationRow }) {
         <Chip text={row.status} tone={STATUS_TONE[row.status] ?? STATUS_TONE.pending} />
         {row.delivery_status && (
           <Chip
-            text={`WA: ${row.delivery_status}`}
-            tone={DELIVERY_TONE[row.delivery_status] ?? DELIVERY_TONE.queued}
+            text={`DLR: ${row.delivery_status}`}
+            tone={DELIVERY_TONE[row.delivery_status] ?? DELIVERY_TONE.accepted}
           />
         )}
         {row.test_mode && (
@@ -144,7 +124,7 @@ function NotificationCard({ row }: { row: AdminNotificationRow }) {
         {row.delivery_updated_at && <span>Updated: {fmtWhen(row.delivery_updated_at)}</span>}
         {row.attempt_count > 0 && <span>Attempts: {row.attempt_count}</span>}
         {row.provider_message_id && (
-          <span className="font-mono">SID: {row.provider_message_id.slice(0, 12)}…</span>
+          <span className="font-mono">Req: {row.provider_message_id.slice(0, 12)}…</span>
         )}
       </div>
 
@@ -195,7 +175,7 @@ export default async function AdminNotificationsPage({ searchParams }: Props) {
   const search = (q ?? "").trim();
   const pageNum = Number.parseInt(page ?? "1", 10) || 1;
 
-  const [log, stats, adminPhone, approvals] = await Promise.all([
+  const [log, stats, adminPhone] = await Promise.all([
     fetchNotifications({
       status:    activeFilter.value,
       unread:    activeFilter.unread,
@@ -206,34 +186,22 @@ export default async function AdminNotificationsPage({ searchParams }: Props) {
     }),
     fetchNotificationStats(),
     resolveAdminNotificationPhone(),
-    // Meta's verdict per template. Fails soft — the page renders without it.
-    fetchTemplateApprovals(),
   ]);
 
-  const wa = getWhatsAppStatus();
-  // Join our configuration against Meta's verdict, keyed by Content SID.
-  // A configured SID only means "we know which template to reference"; it says
-  // nothing about whether Meta will let us send it.
-  const templates = templateConfigStatus().map((t) => ({
-    ...t,
-    approval: (approvals.ok && t.sid ? approvals.bySid[t.sid]?.status : undefined)
-      ?? (t.configured ? ("unknown" as TemplateApprovalStatus) : undefined),
-    rejectionReason:
-      approvals.ok && t.sid ? approvals.bySid[t.sid]?.rejectionReason ?? null : null,
-  }));
+  const msg91 = getMsg91Status();
 
+  // DLT approval is NOT queryable: it happens on a telecom operator's portal,
+  // outside MSG91's API. So the honest thing to show is our own configuration —
+  // "is a template id set for this event" — and never a claim about approval we
+  // have no way to verify. A template id that was never DLT-approved simply
+  // fails at send time, and that failure lands on the row below.
+  const templates = smsTemplateConfigStatus();
   const templatesReady = templates.filter((t) => t.configured).length;
   const templatesBroken = templates.filter((t) => t.malformed);
-  const templatesApproved = templates.filter((t) => t.approval === "approved").length;
-  const templatesRejected = templates.filter((t) => t.approval === "rejected");
-  const templatesWaiting = templates.filter(
-    (t) => t.approval === "pending" || t.approval === "received",
-  ).length;
 
-  // Only genuinely live when Meta has approved at least one template — a
-  // configured-but-unapproved SID fails at send time with error 63016.
+  const testModeMisconfigured = msg91.testMode && !msg91.testRecipient;
   const live =
-    wa.enabled && wa.configured && templatesApproved > 0 && !wa.testModeMisconfigured;
+    msg91.enabled && msg91.configured && templatesReady > 0 && !testModeMisconfigured;
 
   const qs = (over: Record<string, string | undefined>) => {
     const p = new URLSearchParams();
@@ -252,32 +220,32 @@ export default async function AdminNotificationsPage({ searchParams }: Props) {
   return (
     <div>
       <AdminPageHeader
-        title="WhatsApp notifications"
-        description="Every WhatsApp message the platform has queued — sent, delivered, failed, or skipped while Twilio is disabled."
+        title="SMS notifications"
+        description="Every SMS the platform has queued — sent, delivered, failed, or skipped while messaging is not fully configured."
       />
 
       <div className="p-4 sm:p-6 lg:p-8">
-        {/* Twilio status — masked configuration only, never credentials. */}
+        {/* MSG91 status — masked configuration only, never credentials. */}
         <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
           <div className={`rounded-xl border p-3 ${live ? "border-green-200 bg-green-50" : "border-amber-200 bg-amber-50"}`}>
-            <p className="text-[10px] font-bold uppercase tracking-wide text-charcoal-500">Twilio WhatsApp</p>
+            <p className="text-[10px] font-bold uppercase tracking-wide text-charcoal-500">MSG91 SMS</p>
             <p className="mt-0.5 text-sm font-bold text-charcoal-900">
-              {!wa.enabled ? "Disabled"
-                : !wa.configured ? "Enabled, no credentials"
+              {!msg91.enabled ? "Disabled"
+                : msg91.malformedSenderId ? "Sender ID is not a valid DLT header"
+                : !msg91.configured ? "Enabled, no credentials or sender ID"
                 // Checked BEFORE the template states: while this is true nothing
                 // sends at all, so reporting a template problem would be a lie
                 // about why messages are not going out.
-                : wa.testModeMisconfigured ? "Blocked — test mode has no recipient"
-                : templatesReady === 0 ? "No templates configured"
-                : templatesApproved === 0 ? "Awaiting Meta approval"
-                : wa.testMode ? "Live — TEST MODE" : "Live"}
+                : testModeMisconfigured ? "Blocked — test mode has no recipient"
+                : templatesReady === 0 ? "No DLT templates configured"
+                : msg91.testMode ? "Live — TEST MODE" : "Live"}
             </p>
             <p className="text-[10px] text-charcoal-500">
-              {wa.testModeMisconfigured
-                ? "Set TWILIO_WHATSAPP_TEST_TO, or set TWILIO_WHATSAPP_TEST_MODE=false"
-                : wa.configured
-                ? `SID ${wa.accountSidMasked} · ${wa.sender ?? "no sender"}`
-                : "Set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN and TWILIO_WHATSAPP_FROM"}
+              {testModeMisconfigured
+                ? "Set MSG91_TEST_TO, or set MSG91_TEST_MODE=false"
+                : msg91.configured
+                ? `Key ${msg91.authKeyHint} · sender ${msg91.senderId}`
+                : "Set MSG91_AUTH_KEY and MSG91_SENDER_ID"}
             </p>
           </div>
           {[
@@ -292,67 +260,82 @@ export default async function AdminNotificationsPage({ searchParams }: Props) {
             </div>
           ))}
           <div className="rounded-xl border border-border bg-white p-3">
-            <p className="text-[10px] font-bold uppercase tracking-wide text-charcoal-500">Templates approved</p>
+            <p className="text-[10px] font-bold uppercase tracking-wide text-charcoal-500">Templates configured</p>
             <p className="mt-0.5 text-lg font-bold text-charcoal-900">
-              {templatesApproved}<span className="text-sm font-semibold text-charcoal-400">/{templates.length}</span>
+              {templatesReady}<span className="text-sm font-semibold text-charcoal-400">/{templates.length}</span>
             </p>
             <p className="text-[10px] text-charcoal-500">
-              {!approvals.ok
-                ? "approval status unavailable"
-                : templatesRejected.length > 0
-                  ? `${templatesWaiting} awaiting · ${templatesRejected.length} rejected`
-                  : `${templatesWaiting} awaiting Meta`}
+              {templatesBroken.length > 0
+                ? `${templatesBroken.length} set to an invalid id`
+                : `${templates.length - templatesReady} still to register on DLT`}
             </p>
           </div>
         </div>
 
-        {/* Per-template state: our configuration AND Meta's verdict. These
-            are two different things — a Content SID being set does not mean
-            WhatsApp will accept it — so both are shown side by side. Content
-            SIDs are not secrets; they identify approved public message copy. */}
-        {(templatesApproved < templates.length || !approvals.ok) && (
+        {/* Per-template state. Two DIFFERENT things have to be true before a
+            message can be delivered in India, and only one of them is visible
+            from here:
+              1. the body is registered and approved on a telecom DLT portal
+                 (not queryable from any API — it lives with the operator), and
+              2. the resulting MSG91 template id is set in the environment.
+            Only (2) is shown, because asserting (1) without being able to check
+            it would be a guess presented as a status. The exact body to register
+            is printed so it can be pasted into the DLT portal verbatim — the
+            operator matches on the text, character for character. */}
+        {templatesReady < templates.length && (
           <details className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-3">
             <summary className="cursor-pointer text-xs font-semibold text-amber-900">
-              {!approvals.ok
-                ? `Template approval status unavailable — ${approvals.reason}`
-                : templatesRejected.length > 0
-                  ? `${templatesRejected.length} template${templatesRejected.length === 1 ? "" : "s"} rejected by Meta · ${templatesApproved}/${templates.length} approved`
-                  : templatesReady < templates.length
-                    ? `${templates.length - templatesReady} template${templates.length - templatesReady === 1 ? "" : "s"} not configured — messages using them are recorded as skipped, not sent`
-                    : `${templatesApproved}/${templates.length} approved by Meta — the rest cannot be sent yet`}
+              {templatesBroken.length > 0
+                ? `${templatesBroken.length} template id${templatesBroken.length === 1 ? " is" : "s are"} invalid · ${templatesReady}/${templates.length} configured`
+                : `${templates.length - templatesReady} template${templates.length - templatesReady === 1 ? "" : "s"} not configured — messages using them are recorded as skipped, not sent`}
             </summary>
 
-            <ul className="mt-2 space-y-1.5">
+            <ul className="mt-2 space-y-3">
               {templates.map((t) => (
-                <li key={t.key} className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px]">
-                  <Chip
-                    text={t.approval ? APPROVAL_LABEL[t.approval] : "not configured"}
-                    tone={t.approval ? APPROVAL_TONE[t.approval] : APPROVAL_TONE.unsubmitted}
-                  />
-                  <code className="font-mono font-semibold text-charcoal-800">{t.key}</code>
-                  <span className="text-charcoal-600">{t.purpose}</span>
+                <li key={t.key} className="border-t border-amber-200 pt-2 text-[11px] first:border-0 first:pt-0">
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                    <Chip
+                      text={t.malformed ? "invalid id" : t.configured ? "configured" : "not configured"}
+                      tone={
+                        t.malformed
+                          ? "bg-red-50 text-red-700 border-red-200"
+                          : t.configured
+                            ? "bg-green-50 text-green-700 border-green-200"
+                            : "bg-charcoal-50 text-charcoal-600 border-charcoal-200"
+                      }
+                    />
+                    <code className="font-mono font-semibold text-charcoal-800">{t.key}</code>
+                    <span className="text-charcoal-600">{t.purpose}</span>
+                    <span className="ml-auto text-charcoal-500">
+                      {t.segments} SMS segment{t.segments === 1 ? "" : "s"}
+                    </span>
+                  </div>
 
                   {!t.configured && (
-                    <code className="font-mono text-amber-900">set {t.envVar}</code>
+                    <p className="mt-1">
+                      <code className="font-mono text-amber-900">set {t.envVar}</code>
+                      {t.malformed && (
+                        <span className="ml-2 font-semibold text-red-700">
+                          — set, but not a 24-character MSG91 template id
+                        </span>
+                      )}
+                    </p>
                   )}
-                  {t.malformed && (
-                    <span className="font-semibold text-red-700">
-                      set but not a valid HX… Content SID
-                    </span>
-                  )}
-                  {t.rejectionReason && (
-                    <span className="w-full text-red-700">
-                      Meta&apos;s reason: {t.rejectionReason}
-                    </span>
-                  )}
+
+                  <p className="mt-1 whitespace-pre-wrap break-words rounded-lg bg-white p-2 font-mono text-[10px] leading-relaxed text-charcoal-700">
+                    {dltBody(t.key)}
+                  </p>
                 </li>
               ))}
             </ul>
 
             <p className="mt-2 border-t border-amber-200 pt-2 text-[10px] leading-relaxed text-amber-800">
-              Approval comes from Meta and is read live from Twilio (cached ~2 min).
-              A template must be <strong>approved</strong> before it can open a
-              conversation — sending an unapproved one fails with Twilio error 63016.
+              Indian A2P SMS runs under TRAI&apos;s DLT regime. Each body above must be
+              registered against the sender header on a DLT portal and approved by
+              the operator; MSG91 then issues a template id for it. A message whose
+              body does not match a registered template is dropped by the operator
+              <strong> silently</strong> — there is no error to catch, which is why
+              nothing here claims a template is approved.
             </p>
           </details>
         )}
@@ -441,8 +424,9 @@ export default async function AdminNotificationsPage({ searchParams }: Props) {
             <MessageSquareWarning className="mx-auto h-8 w-8 text-amber-500" />
             <p className="mt-2 text-sm font-semibold text-amber-900">Notifications not provisioned</p>
             <p className="mt-1 text-xs text-amber-700">
-              Run migrations <code className="font-mono">0026_notifications.sql</code> and{" "}
-              <code className="font-mono">0030_whatsapp_notifications.sql</code> to enable the outbox.
+              Run migrations <code className="font-mono">0026_notifications.sql</code>,{" "}
+              <code className="font-mono">0030_whatsapp_notifications.sql</code> and{" "}
+              <code className="font-mono">0047_msg91_sms.sql</code> to enable the outbox.
             </p>
           </div>
         ) : log.rows.length === 0 ? (
@@ -486,8 +470,8 @@ export default async function AdminNotificationsPage({ searchParams }: Props) {
 
         <p className="mt-6 flex items-start gap-1.5 text-[11px] leading-relaxed text-charcoal-400">
           <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-          Recipient numbers are masked here and Twilio credentials are never displayed or logged.
-          Message content is composed server-side from approved templates — it can never be set by a customer.
+          Recipient numbers are masked here and the MSG91 auth key is never displayed or logged.
+          Message content is composed server-side from registered templates — it can never be set by a customer.
         </p>
       </div>
     </div>

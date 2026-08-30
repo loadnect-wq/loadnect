@@ -136,7 +136,7 @@ export async function updateOwnerProfileName(data: {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = supabase as any;
 
-  // NORMALISE before storing, exactly as the customer profile does: WhatsApp
+  // NORMALISE before storing, exactly as the customer profile does: SMS
   // needs E.164, and a profile phone stored in some other shape is a number we
   // can never message.
   let normalisedPhone: string | null = null;
@@ -164,7 +164,7 @@ export async function updateOwnerProfileName(data: {
 
   // Non-critical preference only — critical booking/payment messages always send.
   if (typeof data.notificationsEnabled === "boolean") {
-    updatePayload.whatsapp_notifications_enabled = data.notificationsEnabled;
+    updatePayload.notifications_enabled = data.notificationsEnabled;
   }
 
   let { error } = await db
@@ -174,8 +174,8 @@ export async function updateOwnerProfileName(data: {
 
   // Unknown column (pre-0026): PostgREST reports it as PGRST204, Postgres as
   // 42703 — retry without it.
-  if ((error?.code === "42703" || error?.code === "PGRST204") && "whatsapp_notifications_enabled" in updatePayload) {
-    delete updatePayload.whatsapp_notifications_enabled;
+  if ((error?.code === "42703" || error?.code === "PGRST204") && "notifications_enabled" in updatePayload) {
+    delete updatePayload.notifications_enabled;
     ({ error } = await db.from("profiles").update(updatePayload).eq("id", user.id));
   }
 

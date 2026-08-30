@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// lib/notifications/events.ts — business events → WhatsApp notifications
+// lib/notifications/events.ts — business events → SMS notifications
 // (SERVER-ONLY).
 //
 // The single translation layer between "something happened" and "who gets
@@ -25,7 +25,7 @@ import {
   getAdminNotificationPhone,
   type NotificationRequest,
 } from "@/lib/notifications/service";
-import type { WhatsAppTemplateKey } from "@/lib/notifications/whatsapp-templates";
+import type { SmsTemplateKey } from "@/lib/notifications/sms-templates";
 
 /**
  * First candidate that is actually a VALID phone number.
@@ -46,7 +46,7 @@ function pickPhone(...candidates: Array<string | null | undefined>): string | nu
 /** Owner contact columns, selected identically everywhere an owner is notified. */
 const OWNER_EMBED =
   "business_phone, business_name, profile_id, " +
-  "profiles!profile_id(full_name, phone, whatsapp_notifications_enabled)";
+  "profiles!profile_id(full_name, phone, notifications_enabled)";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type OwnerRow = any;
@@ -55,7 +55,7 @@ function ownerRecipient(ownerRow: OwnerRow) {
   return {
     userId: ownerRow?.profile_id ?? null,
     phone: pickPhone(ownerRow?.business_phone, ownerRow?.profiles?.phone),
-    optedIn: ownerRow?.profiles?.whatsapp_notifications_enabled ?? true,
+    optedIn: ownerRow?.profiles?.notifications_enabled ?? true,
     // Owner-chosen text landing in a branded message — sanitised like any
     // other user-supplied string.
     name: sanitizeName(ownerRow?.business_name ?? ownerRow?.profiles?.full_name, "a venue owner"),
@@ -126,7 +126,7 @@ async function loadBookingContext(bookingId: string): Promise<BookingContext | n
       // embed must disambiguate with !profile_id or PostgREST errors out.
       "id, hall_id, customer_id, event_date, end_date, total_amount, contact_phone, " +
       `halls(name, owner_id, hall_owners!owner_id(${OWNER_EMBED})),` +
-      "profiles!customer_id(full_name, phone, phone_verified, whatsapp_notifications_enabled)"
+      "profiles!customer_id(full_name, phone, phone_verified, notifications_enabled)"
     )
     .eq("id", bookingId)
     .maybeSingle();
@@ -159,7 +159,7 @@ async function loadBookingContext(bookingId: string): Promise<BookingContext | n
         (customerProfile?.phone_verified && customerProfile?.phone)
           ? customerProfile.phone
           : data.contact_phone ?? customerProfile?.phone ?? null,
-      optedIn: customerProfile?.whatsapp_notifications_enabled ?? true,
+      optedIn: customerProfile?.notifications_enabled ?? true,
     },
     owner: {
       userId: owner.userId,
@@ -171,7 +171,7 @@ async function loadBookingContext(bookingId: string): Promise<BookingContext | n
 }
 
 /**
- * Fires WhatsApp messages for one booking lifecycle event. Idempotent per
+ * Fires SMS messages for one booking lifecycle event. Idempotent per
  * (event, booking, recipient) — safe to call from webhook redeliveries and
  * re-run actions.
  *
@@ -206,7 +206,7 @@ export async function notifyBookingEvent(
     const reason = sanitizeNotificationText(opts.reason);
 
     const toCustomer = (
-      templateKey: WhatsAppTemplateKey,
+      templateKey: SmsTemplateKey,
       templateVariables: Array<string | number | null | undefined>,
     ): NotificationRequest => ({
       eventKey, eventType: kind, recipientType: "customer",
@@ -217,7 +217,7 @@ export async function notifyBookingEvent(
     });
 
     const toOwner = (
-      templateKey: WhatsAppTemplateKey,
+      templateKey: SmsTemplateKey,
       templateVariables: Array<string | number | null | undefined>,
     ): NotificationRequest => ({
       eventKey, eventType: kind, recipientType: "owner",
@@ -496,7 +496,7 @@ export async function notifyHallModerated(
     // Approval and rejection get their own dedicated templates because they are
     // the two the owner acts on. Suspension/restoration reuse the general
     // account-update template rather than burning two more Meta approvals.
-    let templateKey: WhatsAppTemplateKey;
+    let templateKey: SmsTemplateKey;
     let templateVariables: Array<string | null>;
     switch (action) {
       case "approved":
@@ -892,7 +892,7 @@ export async function notifyOwnerAccountDecision(input: {
     const db = admin as any;
     const { data: profile } = await db
       .from("profiles")
-      .select("id, phone, full_name, whatsapp_notifications_enabled")
+      .select("id, phone, full_name, notifications_enabled")
       .eq("id", input.profileId)
       .maybeSingle();
     if (!profile) return;
@@ -934,7 +934,7 @@ export async function notifyOwnerAccountDecision(input: {
       // Being told you are locked out, or that you may now trade, is never
       // "non-essential".
       critical: true,
-      optedIn: profile.whatsapp_notifications_enabled ?? true,
+      optedIn: profile.notifications_enabled ?? true,
     }]);
   } catch (e) {
     console.error("[notifications] notifyOwnerAccountDecision failed:", e instanceof Error ? e.message : e);
