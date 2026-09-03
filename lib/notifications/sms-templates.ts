@@ -160,7 +160,7 @@ function clampValue(raw: string): string {
 //   variable is opaque to them, a body that reads naturally to a customer who
 //   knows they booked a wedding hall reads as unattributable to a reviewer who
 //   does not. So each body names the subject in fixed text — "hall booking",
-//   "advance payment", "hall listing", "premium listing plan" — and never
+//   "advance payment", "hall listing", "listing plan" — and never
 //   leaves the noun to a variable. Do not trim these words back out to save
 //   characters: the shorter body is the one that gets rejected.
 
@@ -193,7 +193,7 @@ export const SMS_TEMPLATES: Record<SmsTemplateKey, SmsTemplateDef> = {
     ["customer_name", "hall_name", "booking_date", "booking_id", "status_note"],
     (v) =>
       `Hallnect: Hi ${v[0]}, your hall booking at ${v[1]} on ${v[2]} is cancelled. ` +
-      `Ref ${v[3]}. ${v[4]}. Our team will contact you about anything outstanding.`,
+      `Ref ${v[3]}. Details: ${v[4]}. Any refund due will follow.`,
   ),
 
   CUSTOMER_PAYMENT_SUCCESS: def(
@@ -297,7 +297,8 @@ export const SMS_TEMPLATES: Record<SmsTemplateKey, SmsTemplateDef> = {
     "Account-level owner notice: suspension, restoration, premium, billing stopped.",
     ["item", "status", "detail"],
     (v) =>
-      `Hallnect venue owner account update. ${v[0]}: ${v[1]}. ${v[2]}. ` +
+      `Hallnect venue owner account update for your hall listing. ` +
+      `Item: ${v[0]}. New status: ${v[1]}. Detail: ${v[2]}. ` +
       `Sign in to your owner dashboard to review it.`,
   ),
 
@@ -307,9 +308,9 @@ export const SMS_TEMPLATES: Record<SmsTemplateKey, SmsTemplateDef> = {
     "A monthly plan payment was collected — the sign-up charge and every renewal.",
     ["amount", "plan", "hall_name", "paid_until"],
     (v) =>
-      `Hallnect: Payment of ${v[0]} received for the ${v[1]} premium listing plan ` +
-      `for your hall ${v[2]}. ` +
-      `Boost active until ${v[3]}. Manage billing from Premium in your dashboard.`,
+      `Hallnect: Payment of ${v[0]} received for the ${v[1]} listing plan ` +
+      `on your hall ${v[2]}. ` +
+      `The plan is active until ${v[3]}. Manage billing in your owner dashboard.`,
   ),
 
   // ── Admin ──────────────────────────────────────────────────────────────────
@@ -321,8 +322,8 @@ export const SMS_TEMPLATES: Record<SmsTemplateKey, SmsTemplateDef> = {
     "Operational alert to the platform admin: bookings, payments, halls, failures.",
     ["event", "details", "reference"],
     (v) =>
-      `Hallnect venue booking admin alert. Event: ${v[0]}. Details: ${v[1]}. ` +
-      `Reference: ${v[2]}. ` +
+      `Hallnect venue booking platform alert for the admin team. ` +
+      `Event: ${v[0]}. Details: ${v[1]}. Reference: ${v[2]}. ` +
       `Open the admin dashboard for full details.`,
   ),
 };

@@ -269,6 +269,27 @@ the real messages, so the registered body and what is sent cannot drift apart.
 means what it meant at registration. Add new variables at the END and
 re-register.
 
+**The `Variables` row below is POSITIONAL, not declaration order.** The DLT
+portal asks for a sample value per variable and matches them to the `{#var#}`
+slots left to right, so position 1 is whichever value appears FIRST IN THE TEXT.
+For three templates that is not the order the `variables` array declares, because
+the body renders them out of order:
+
+| Template | Reads left to right as |
+|---|---|
+| CUSTOMER_PAYMENT_SUCCESS | customer_name, amount_paid, hall_name, booking_id, balance_note |
+| CUSTOMER_REFUND_INITIATED | customer_name, amount, booking_id |
+| OWNER_PAYMENT_RECEIVED | amount, hall_name, booking_id |
+
+Type them into the portal in the order printed below and they will agree with the
+Sample Content. Fill them in declaration order instead and the reviewer reads "a
+refund of 9E816700 for your hall booking Rs.29,400" — a guaranteed rejection.
+
+This affects the DLT portal ONLY. Delivery is unaffected: MSG91 matches by name,
+`msg91Body()` already emits `##varN##` at the right textual position, and
+`sendTemplatedSms()` maps the array to `var1..varN`. Do NOT reorder the
+`variables` arrays to "fix" this — that array is the wire contract and is correct.
+
 ### What the DLT operator actually rejects
 
 On 2026-09-03 the operator (STPL) approved the OTP template and rejected three
@@ -350,13 +371,13 @@ The booking was cancelled or declined, by either side.
 **Register this body on the DLT portal** (`{#var#}` is the DLT placeholder):
 
 ```
-Hallnect: Hi {#var#}, your hall booking at {#var#} on {#var#} is cancelled. Ref {#var#}. {#var#}. Our team will contact you about anything outstanding.
+Hallnect: Hi {#var#}, your hall booking at {#var#} on {#var#} is cancelled. Ref {#var#}. Details: {#var#}. Any refund due will follow.
 ```
 
 **Paste this into the MSG91 template editor:**
 
 ```
-Hallnect: Hi ##var1##, your hall booking at ##var2## on ##var3## is cancelled. Ref ##var4##. ##var5##. Our team will contact you about anything outstanding.
+Hallnect: Hi ##var1##, your hall booking at ##var2## on ##var3## is cancelled. Ref ##var4##. Details: ##var5##. Any refund due will follow.
 ```
 
 ### CUSTOMER_PAYMENT_SUCCESS
@@ -367,7 +388,7 @@ A Cashfree payment was VERIFIED server-side (never from a browser claim).
 |---|---|
 | Audience | customer |
 | Env var | `MSG91_TEMPLATE_CUSTOMER_PAYMENT_SUCCESS` |
-| Variables | `1` customer_name · `2` hall_name · `3` booking_id · `4` amount_paid · `5` balance_note |
+| Variables | `1` customer_name · `2` amount_paid · `3` hall_name · `4` booking_id · `5` balance_note |
 | Segments | 1 |
 
 **Register this body on the DLT portal** (`{#var#}` is the DLT placeholder):
@@ -413,7 +434,7 @@ A refund has genuinely been sent for a paid booking.
 |---|---|
 | Audience | customer |
 | Env var | `MSG91_TEMPLATE_CUSTOMER_REFUND_INITIATED` |
-| Variables | `1` customer_name · `2` booking_id · `3` amount |
+| Variables | `1` customer_name · `2` amount · `3` booking_id |
 | Segments | 1 |
 
 **Register this body on the DLT portal** (`{#var#}` is the DLT placeholder):
@@ -482,7 +503,7 @@ A customer's advance was verified for one of the owner's bookings.
 |---|---|
 | Audience | owner |
 | Env var | `MSG91_TEMPLATE_OWNER_PAYMENT_RECEIVED` |
-| Variables | `1` hall_name · `2` booking_id · `3` amount |
+| Variables | `1` amount · `2` hall_name · `3` booking_id |
 | Segments | 1 |
 
 **Register this body on the DLT portal** (`{#var#}` is the DLT placeholder):
@@ -580,13 +601,13 @@ Account-level owner notice: suspension, restoration, premium, billing stopped.
 **Register this body on the DLT portal** (`{#var#}` is the DLT placeholder):
 
 ```
-Hallnect venue owner account update. {#var#}: {#var#}. {#var#}. Sign in to your owner dashboard to review it.
+Hallnect venue owner account update for your hall listing. Item: {#var#}. New status: {#var#}. Detail: {#var#}. Sign in to your owner dashboard to review it.
 ```
 
 **Paste this into the MSG91 template editor:**
 
 ```
-Hallnect venue owner account update. ##var1##: ##var2##. ##var3##. Sign in to your owner dashboard to review it.
+Hallnect venue owner account update for your hall listing. Item: ##var1##. New status: ##var2##. Detail: ##var3##. Sign in to your owner dashboard to review it.
 ```
 
 ### OWNER_PAYMENT_RECEIPT
@@ -603,13 +624,13 @@ A monthly plan payment was collected — the sign-up charge and every renewal.
 **Register this body on the DLT portal** (`{#var#}` is the DLT placeholder):
 
 ```
-Hallnect: Payment of {#var#} received for the {#var#} premium listing plan for your hall {#var#}. Boost active until {#var#}. Manage billing from Premium in your dashboard.
+Hallnect: Payment of {#var#} received for the {#var#} listing plan on your hall {#var#}. The plan is active until {#var#}. Manage billing in your owner dashboard.
 ```
 
 **Paste this into the MSG91 template editor:**
 
 ```
-Hallnect: Payment of ##var1## received for the ##var2## premium listing plan for your hall ##var3##. Boost active until ##var4##. Manage billing from Premium in your dashboard.
+Hallnect: Payment of ##var1## received for the ##var2## listing plan on your hall ##var3##. The plan is active until ##var4##. Manage billing in your owner dashboard.
 ```
 
 ### ADMIN_ALERT
@@ -626,11 +647,11 @@ Operational alert to the platform admin: bookings, payments, halls, failures.
 **Register this body on the DLT portal** (`{#var#}` is the DLT placeholder):
 
 ```
-Hallnect venue booking admin alert. Event: {#var#}. Details: {#var#}. Reference: {#var#}. Open the admin dashboard for full details.
+Hallnect venue booking platform alert for the admin team. Event: {#var#}. Details: {#var#}. Reference: {#var#}. Open the admin dashboard for full details.
 ```
 
 **Paste this into the MSG91 template editor:**
 
 ```
-Hallnect venue booking admin alert. Event: ##var1##. Details: ##var2##. Reference: ##var3##. Open the admin dashboard for full details.
+Hallnect venue booking platform alert for the admin team. Event: ##var1##. Details: ##var2##. Reference: ##var3##. Open the admin dashboard for full details.
 ```
