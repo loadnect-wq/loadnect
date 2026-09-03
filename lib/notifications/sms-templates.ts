@@ -149,6 +149,20 @@ function clampValue(raw: string): string {
 // writing. No URLs: a link in a DLT template needs the domain whitelisted
 // separately, and MSG91's shortener would rewrite it to another domain and
 // break the exact approved body.
+//
+// SAY WHAT IS BEING BOOKED. THIS IS A REJECTION REASON, NOT A STYLE NOTE.
+//   On 2026-09-03 the operator (STPL) rejected three of these bodies:
+//     "your booking at {#var#} on {#var#} is CONFIRMED"
+//         -> "Please specify which booking in the content."
+//     "we have received {#var#} for {#var#}"
+//         -> "Purpose of template is not clear."
+//   A DLT reviewer sees ONE template with no product context. Because every
+//   variable is opaque to them, a body that reads naturally to a customer who
+//   knows they booked a wedding hall reads as unattributable to a reviewer who
+//   does not. So each body names the subject in fixed text — "hall booking",
+//   "advance payment", "hall listing", "premium listing plan" — and never
+//   leaves the noun to a variable. Do not trim these words back out to save
+//   characters: the shorter body is the one that gets rejected.
 
 export const SMS_TEMPLATES: Record<SmsTemplateKey, SmsTemplateDef> = {
   // ── Customer ───────────────────────────────────────────────────────────────
@@ -158,7 +172,7 @@ export const SMS_TEMPLATES: Record<SmsTemplateKey, SmsTemplateDef> = {
     "The customer submitted a booking request (before the venue has responded).",
     ["customer_name", "hall_name", "booking_date", "amount", "booking_id"],
     (v) =>
-      `Hallnect: Hi ${v[0]}, your booking request for ${v[1]} on ${v[2]} is submitted. ` +
+      `Hallnect: Hi ${v[0]}, your hall booking request for ${v[1]} on ${v[2]} is submitted. ` +
       `Total ${v[3]}. Ref ${v[4]}. We will text you when the venue responds.`,
   ),
 
@@ -168,7 +182,7 @@ export const SMS_TEMPLATES: Record<SmsTemplateKey, SmsTemplateDef> = {
     "The venue owner accepted the booking.",
     ["customer_name", "hall_name", "booking_date", "booking_id"],
     (v) =>
-      `Hallnect: Hi ${v[0]}, your booking at ${v[1]} on ${v[2]} is CONFIRMED. ` +
+      `Hallnect: Hi ${v[0]}, your hall booking at ${v[1]} on ${v[2]} is CONFIRMED. ` +
       `Ref ${v[3]}. Please carry your booking details on the event day.`,
   ),
 
@@ -178,7 +192,7 @@ export const SMS_TEMPLATES: Record<SmsTemplateKey, SmsTemplateDef> = {
     "The booking was cancelled or declined, by either side.",
     ["customer_name", "hall_name", "booking_date", "booking_id", "status_note"],
     (v) =>
-      `Hallnect: Hi ${v[0]}, your booking at ${v[1]} on ${v[2]} is cancelled. ` +
+      `Hallnect: Hi ${v[0]}, your hall booking at ${v[1]} on ${v[2]} is cancelled. ` +
       `Ref ${v[3]}. ${v[4]}. Our team will contact you about anything outstanding.`,
   ),
 
@@ -188,7 +202,7 @@ export const SMS_TEMPLATES: Record<SmsTemplateKey, SmsTemplateDef> = {
     "A Cashfree payment was VERIFIED server-side (never from a browser claim).",
     ["customer_name", "hall_name", "booking_id", "amount_paid", "balance_note"],
     (v) =>
-      `Hallnect: Hi ${v[0]}, we have received ${v[3]} for ${v[1]}. ` +
+      `Hallnect: Hi ${v[0]}, we have received your advance payment of ${v[3]} for your hall booking at ${v[1]}. ` +
       `Ref ${v[2]}. ${v[4]}`,
   ),
 
@@ -198,7 +212,7 @@ export const SMS_TEMPLATES: Record<SmsTemplateKey, SmsTemplateDef> = {
     "The gateway order expired or was terminated without payment.",
     ["customer_name", "hall_name", "booking_id"],
     (v) =>
-      `Hallnect: Hi ${v[0]}, your payment for ${v[1]} could not be completed. ` +
+      `Hallnect: Hi ${v[0]}, your advance payment for the hall booking at ${v[1]} could not be completed. ` +
       `Ref ${v[2]}. Your dates are not held until payment succeeds. ` +
       `You can retry from My Bookings.`,
   ),
@@ -209,7 +223,7 @@ export const SMS_TEMPLATES: Record<SmsTemplateKey, SmsTemplateDef> = {
     "A refund has genuinely been sent for a paid booking.",
     ["customer_name", "booking_id", "amount"],
     (v) =>
-      `Hallnect: Hi ${v[0]}, a refund of ${v[2]} has been initiated for booking ${v[1]}. ` +
+      `Hallnect: Hi ${v[0]}, a refund of ${v[2]} has been initiated for your hall booking ${v[1]}. ` +
       `Banks usually credit refunds within 5-7 working days.`,
   ),
 
@@ -220,7 +234,7 @@ export const SMS_TEMPLATES: Record<SmsTemplateKey, SmsTemplateDef> = {
     "A customer requested the owner's hall — the owner must accept or decline.",
     ["hall_name", "customer_name", "booking_date", "booking_id", "advance_paid", "total_amount"],
     (v) =>
-      `Hallnect: New booking request for ${v[0]} from ${v[1]} on ${v[2]}. ` +
+      `Hallnect: New hall booking request for ${v[0]} from ${v[1]} on ${v[2]}. ` +
       `Ref ${v[3]}. Advance ${v[4]}, total ${v[5]}. ` +
       `Accept or decline in your owner dashboard.`,
   ),
@@ -231,7 +245,7 @@ export const SMS_TEMPLATES: Record<SmsTemplateKey, SmsTemplateDef> = {
     "A booking for the owner's hall was cancelled.",
     ["hall_name", "booking_date", "booking_id"],
     (v) =>
-      `Hallnect: The booking at ${v[0]} on ${v[1]} (ref ${v[2]}) is cancelled. ` +
+      `Hallnect: The hall booking at ${v[0]} on ${v[1]} (ref ${v[2]}) is cancelled. ` +
       `These dates are available again in your calendar.`,
   ),
 
@@ -241,7 +255,8 @@ export const SMS_TEMPLATES: Record<SmsTemplateKey, SmsTemplateDef> = {
     "A customer's advance was verified for one of the owner's bookings.",
     ["hall_name", "booking_id", "amount"],
     (v) =>
-      `Hallnect: ${v[2]} received for a booking at ${v[0]}. Ref ${v[1]}. ` +
+      `Hallnect: Advance payment of ${v[2]} received for a hall booking at ${v[0]}. ` +
+      `Ref ${v[1]}. ` +
       `Accept the booking to have your share paid out.`,
   ),
 
@@ -251,7 +266,7 @@ export const SMS_TEMPLATES: Record<SmsTemplateKey, SmsTemplateDef> = {
     "The owner submitted a hall for review (creation or resubmission).",
     ["hall_name"],
     (v) =>
-      `Hallnect: ${v[0]} has been submitted for review. ` +
+      `Hallnect: Your hall ${v[0]} has been submitted for review as a venue listing. ` +
       `We will text you as soon as it is verified.`,
   ),
 
@@ -261,7 +276,7 @@ export const SMS_TEMPLATES: Record<SmsTemplateKey, SmsTemplateDef> = {
     "An admin approved the hall; it is now publicly listed.",
     ["hall_name"],
     (v) =>
-      `Hallnect: ${v[0]} has been approved and is now live for customers. ` +
+      `Hallnect: Your hall ${v[0]} is approved and now listed for customers to book. ` +
       `Manage availability and booking requests in your owner dashboard.`,
   ),
 
@@ -271,7 +286,8 @@ export const SMS_TEMPLATES: Record<SmsTemplateKey, SmsTemplateDef> = {
     "An admin sent the hall back for changes, with a reason.",
     ["hall_name", "reason"],
     (v) =>
-      `Hallnect: ${v[0]} needs changes before it goes live. Reason: ${v[1]}. ` +
+      `Hallnect: Your hall listing ${v[0]} needs changes before it goes live. ` +
+      `Reason: ${v[1]}. ` +
       `Update the details in your owner dashboard and submit it again.`,
   ),
 
@@ -281,7 +297,7 @@ export const SMS_TEMPLATES: Record<SmsTemplateKey, SmsTemplateDef> = {
     "Account-level owner notice: suspension, restoration, premium, billing stopped.",
     ["item", "status", "detail"],
     (v) =>
-      `Hallnect account update. ${v[0]}: ${v[1]}. ${v[2]}. ` +
+      `Hallnect venue owner account update. ${v[0]}: ${v[1]}. ${v[2]}. ` +
       `Sign in to your owner dashboard to review it.`,
   ),
 
@@ -291,7 +307,8 @@ export const SMS_TEMPLATES: Record<SmsTemplateKey, SmsTemplateDef> = {
     "A monthly plan payment was collected — the sign-up charge and every renewal.",
     ["amount", "plan", "hall_name", "paid_until"],
     (v) =>
-      `Hallnect: Payment of ${v[0]} received for the ${v[1]} plan on ${v[2]}. ` +
+      `Hallnect: Payment of ${v[0]} received for the ${v[1]} premium listing plan ` +
+      `for your hall ${v[2]}. ` +
       `Boost active until ${v[3]}. Manage billing from Premium in your dashboard.`,
   ),
 
@@ -304,7 +321,8 @@ export const SMS_TEMPLATES: Record<SmsTemplateKey, SmsTemplateDef> = {
     "Operational alert to the platform admin: bookings, payments, halls, failures.",
     ["event", "details", "reference"],
     (v) =>
-      `Hallnect admin alert. Event: ${v[0]}. Details: ${v[1]}. Reference: ${v[2]}. ` +
+      `Hallnect venue booking admin alert. Event: ${v[0]}. Details: ${v[1]}. ` +
+      `Reference: ${v[2]}. ` +
       `Open the admin dashboard for full details.`,
   ),
 };

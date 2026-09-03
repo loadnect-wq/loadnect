@@ -269,6 +269,27 @@ the real messages, so the registered body and what is sent cannot drift apart.
 means what it meant at registration. Add new variables at the END and
 re-register.
 
+### What the DLT operator actually rejects
+
+On 2026-09-03 the operator (STPL) approved the OTP template and rejected three
+of these, with these remarks:
+
+| Template | Remark |
+|---|---|
+| booking confirmed | Please specify which booking in the content. |
+| owner new booking | Please specify which booking in the content. |
+| payment success | Purpose of template is not clear. |
+
+The tagging, header, category and sample content were all accepted — the
+objection was to the **copy**. A reviewer reads one template with no product
+around it, and every variable is opaque to them, so "your booking at {#var#}"
+says nothing about what was booked. Every body therefore names its subject in
+**fixed text** — "hall booking", "advance payment", "hall listing", "premium
+listing plan" — and never leaves that noun to a variable.
+
+Keep this in mind when registering the remaining templates, and do not shorten
+those words back out to save a segment.
+
 ### CUSTOMER_BOOKING_CREATED
 
 The customer submitted a booking request (before the venue has responded).
@@ -283,13 +304,13 @@ The customer submitted a booking request (before the venue has responded).
 **Register this body on the DLT portal** (`{#var#}` is the DLT placeholder):
 
 ```
-Hallnect: Hi {#var#}, your booking request for {#var#} on {#var#} is submitted. Total {#var#}. Ref {#var#}. We will text you when the venue responds.
+Hallnect: Hi {#var#}, your hall booking request for {#var#} on {#var#} is submitted. Total {#var#}. Ref {#var#}. We will text you when the venue responds.
 ```
 
 **Paste this into the MSG91 template editor:**
 
 ```
-Hallnect: Hi ##var1##, your booking request for ##var2## on ##var3## is submitted. Total ##var4##. Ref ##var5##. We will text you when the venue responds.
+Hallnect: Hi ##var1##, your hall booking request for ##var2## on ##var3## is submitted. Total ##var4##. Ref ##var5##. We will text you when the venue responds.
 ```
 
 ### CUSTOMER_BOOKING_CONFIRMED
@@ -301,18 +322,18 @@ The venue owner accepted the booking.
 | Audience | customer |
 | Env var | `MSG91_TEMPLATE_CUSTOMER_BOOKING_CONFIRMED` |
 | Variables | `1` customer_name · `2` hall_name · `3` booking_date · `4` booking_id |
-| Segments | 1 |
+| Segments | 2 |
 
 **Register this body on the DLT portal** (`{#var#}` is the DLT placeholder):
 
 ```
-Hallnect: Hi {#var#}, your booking at {#var#} on {#var#} is CONFIRMED. Ref {#var#}. Please carry your booking details on the event day.
+Hallnect: Hi {#var#}, your hall booking at {#var#} on {#var#} is CONFIRMED. Ref {#var#}. Please carry your booking details on the event day.
 ```
 
 **Paste this into the MSG91 template editor:**
 
 ```
-Hallnect: Hi ##var1##, your booking at ##var2## on ##var3## is CONFIRMED. Ref ##var4##. Please carry your booking details on the event day.
+Hallnect: Hi ##var1##, your hall booking at ##var2## on ##var3## is CONFIRMED. Ref ##var4##. Please carry your booking details on the event day.
 ```
 
 ### CUSTOMER_BOOKING_CANCELLED
@@ -329,13 +350,13 @@ The booking was cancelled or declined, by either side.
 **Register this body on the DLT portal** (`{#var#}` is the DLT placeholder):
 
 ```
-Hallnect: Hi {#var#}, your booking at {#var#} on {#var#} is cancelled. Ref {#var#}. {#var#}. Our team will contact you about anything outstanding.
+Hallnect: Hi {#var#}, your hall booking at {#var#} on {#var#} is cancelled. Ref {#var#}. {#var#}. Our team will contact you about anything outstanding.
 ```
 
 **Paste this into the MSG91 template editor:**
 
 ```
-Hallnect: Hi ##var1##, your booking at ##var2## on ##var3## is cancelled. Ref ##var4##. ##var5##. Our team will contact you about anything outstanding.
+Hallnect: Hi ##var1##, your hall booking at ##var2## on ##var3## is cancelled. Ref ##var4##. ##var5##. Our team will contact you about anything outstanding.
 ```
 
 ### CUSTOMER_PAYMENT_SUCCESS
@@ -352,13 +373,13 @@ A Cashfree payment was VERIFIED server-side (never from a browser claim).
 **Register this body on the DLT portal** (`{#var#}` is the DLT placeholder):
 
 ```
-Hallnect: Hi {#var#}, we have received {#var#} for {#var#}. Ref {#var#}. {#var#}
+Hallnect: Hi {#var#}, we have received your advance payment of {#var#} for your hall booking at {#var#}. Ref {#var#}. {#var#}
 ```
 
 **Paste this into the MSG91 template editor:**
 
 ```
-Hallnect: Hi ##var1##, we have received ##var4## for ##var2##. Ref ##var3##. ##var5##
+Hallnect: Hi ##var1##, we have received your advance payment of ##var4## for your hall booking at ##var2##. Ref ##var3##. ##var5##
 ```
 
 ### CUSTOMER_PAYMENT_FAILED
@@ -375,13 +396,13 @@ The gateway order expired or was terminated without payment.
 **Register this body on the DLT portal** (`{#var#}` is the DLT placeholder):
 
 ```
-Hallnect: Hi {#var#}, your payment for {#var#} could not be completed. Ref {#var#}. Your dates are not held until payment succeeds. You can retry from My Bookings.
+Hallnect: Hi {#var#}, your advance payment for the hall booking at {#var#} could not be completed. Ref {#var#}. Your dates are not held until payment succeeds. You can retry from My Bookings.
 ```
 
 **Paste this into the MSG91 template editor:**
 
 ```
-Hallnect: Hi ##var1##, your payment for ##var2## could not be completed. Ref ##var3##. Your dates are not held until payment succeeds. You can retry from My Bookings.
+Hallnect: Hi ##var1##, your advance payment for the hall booking at ##var2## could not be completed. Ref ##var3##. Your dates are not held until payment succeeds. You can retry from My Bookings.
 ```
 
 ### CUSTOMER_REFUND_INITIATED
@@ -398,13 +419,13 @@ A refund has genuinely been sent for a paid booking.
 **Register this body on the DLT portal** (`{#var#}` is the DLT placeholder):
 
 ```
-Hallnect: Hi {#var#}, a refund of {#var#} has been initiated for booking {#var#}. Banks usually credit refunds within 5-7 working days.
+Hallnect: Hi {#var#}, a refund of {#var#} has been initiated for your hall booking {#var#}. Banks usually credit refunds within 5-7 working days.
 ```
 
 **Paste this into the MSG91 template editor:**
 
 ```
-Hallnect: Hi ##var1##, a refund of ##var3## has been initiated for booking ##var2##. Banks usually credit refunds within 5-7 working days.
+Hallnect: Hi ##var1##, a refund of ##var3## has been initiated for your hall booking ##var2##. Banks usually credit refunds within 5-7 working days.
 ```
 
 ### OWNER_NEW_BOOKING
@@ -421,13 +442,13 @@ A customer requested the owner's hall — the owner must accept or decline.
 **Register this body on the DLT portal** (`{#var#}` is the DLT placeholder):
 
 ```
-Hallnect: New booking request for {#var#} from {#var#} on {#var#}. Ref {#var#}. Advance {#var#}, total {#var#}. Accept or decline in your owner dashboard.
+Hallnect: New hall booking request for {#var#} from {#var#} on {#var#}. Ref {#var#}. Advance {#var#}, total {#var#}. Accept or decline in your owner dashboard.
 ```
 
 **Paste this into the MSG91 template editor:**
 
 ```
-Hallnect: New booking request for ##var1## from ##var2## on ##var3##. Ref ##var4##. Advance ##var5##, total ##var6##. Accept or decline in your owner dashboard.
+Hallnect: New hall booking request for ##var1## from ##var2## on ##var3##. Ref ##var4##. Advance ##var5##, total ##var6##. Accept or decline in your owner dashboard.
 ```
 
 ### OWNER_BOOKING_CANCELLED
@@ -444,13 +465,13 @@ A booking for the owner's hall was cancelled.
 **Register this body on the DLT portal** (`{#var#}` is the DLT placeholder):
 
 ```
-Hallnect: The booking at {#var#} on {#var#} (ref {#var#}) is cancelled. These dates are available again in your calendar.
+Hallnect: The hall booking at {#var#} on {#var#} (ref {#var#}) is cancelled. These dates are available again in your calendar.
 ```
 
 **Paste this into the MSG91 template editor:**
 
 ```
-Hallnect: The booking at ##var1## on ##var2## (ref ##var3##) is cancelled. These dates are available again in your calendar.
+Hallnect: The hall booking at ##var1## on ##var2## (ref ##var3##) is cancelled. These dates are available again in your calendar.
 ```
 
 ### OWNER_PAYMENT_RECEIVED
@@ -467,13 +488,13 @@ A customer's advance was verified for one of the owner's bookings.
 **Register this body on the DLT portal** (`{#var#}` is the DLT placeholder):
 
 ```
-Hallnect: {#var#} received for a booking at {#var#}. Ref {#var#}. Accept the booking to have your share paid out.
+Hallnect: Advance payment of {#var#} received for a hall booking at {#var#}. Ref {#var#}. Accept the booking to have your share paid out.
 ```
 
 **Paste this into the MSG91 template editor:**
 
 ```
-Hallnect: ##var3## received for a booking at ##var1##. Ref ##var2##. Accept the booking to have your share paid out.
+Hallnect: Advance payment of ##var3## received for a hall booking at ##var1##. Ref ##var2##. Accept the booking to have your share paid out.
 ```
 
 ### OWNER_HALL_SUBMITTED
@@ -490,13 +511,13 @@ The owner submitted a hall for review (creation or resubmission).
 **Register this body on the DLT portal** (`{#var#}` is the DLT placeholder):
 
 ```
-Hallnect: {#var#} has been submitted for review. We will text you as soon as it is verified.
+Hallnect: Your hall {#var#} has been submitted for review as a venue listing. We will text you as soon as it is verified.
 ```
 
 **Paste this into the MSG91 template editor:**
 
 ```
-Hallnect: ##var1## has been submitted for review. We will text you as soon as it is verified.
+Hallnect: Your hall ##var1## has been submitted for review as a venue listing. We will text you as soon as it is verified.
 ```
 
 ### OWNER_HALL_LIVE
@@ -513,13 +534,13 @@ An admin approved the hall; it is now publicly listed.
 **Register this body on the DLT portal** (`{#var#}` is the DLT placeholder):
 
 ```
-Hallnect: {#var#} has been approved and is now live for customers. Manage availability and booking requests in your owner dashboard.
+Hallnect: Your hall {#var#} is approved and now listed for customers to book. Manage availability and booking requests in your owner dashboard.
 ```
 
 **Paste this into the MSG91 template editor:**
 
 ```
-Hallnect: ##var1## has been approved and is now live for customers. Manage availability and booking requests in your owner dashboard.
+Hallnect: Your hall ##var1## is approved and now listed for customers to book. Manage availability and booking requests in your owner dashboard.
 ```
 
 ### OWNER_HALL_REJECTED
@@ -536,13 +557,13 @@ An admin sent the hall back for changes, with a reason.
 **Register this body on the DLT portal** (`{#var#}` is the DLT placeholder):
 
 ```
-Hallnect: {#var#} needs changes before it goes live. Reason: {#var#}. Update the details in your owner dashboard and submit it again.
+Hallnect: Your hall listing {#var#} needs changes before it goes live. Reason: {#var#}. Update the details in your owner dashboard and submit it again.
 ```
 
 **Paste this into the MSG91 template editor:**
 
 ```
-Hallnect: ##var1## needs changes before it goes live. Reason: ##var2##. Update the details in your owner dashboard and submit it again.
+Hallnect: Your hall listing ##var1## needs changes before it goes live. Reason: ##var2##. Update the details in your owner dashboard and submit it again.
 ```
 
 ### OWNER_ACCOUNT_STATUS
@@ -559,13 +580,13 @@ Account-level owner notice: suspension, restoration, premium, billing stopped.
 **Register this body on the DLT portal** (`{#var#}` is the DLT placeholder):
 
 ```
-Hallnect account update. {#var#}: {#var#}. {#var#}. Sign in to your owner dashboard to review it.
+Hallnect venue owner account update. {#var#}: {#var#}. {#var#}. Sign in to your owner dashboard to review it.
 ```
 
 **Paste this into the MSG91 template editor:**
 
 ```
-Hallnect account update. ##var1##: ##var2##. ##var3##. Sign in to your owner dashboard to review it.
+Hallnect venue owner account update. ##var1##: ##var2##. ##var3##. Sign in to your owner dashboard to review it.
 ```
 
 ### OWNER_PAYMENT_RECEIPT
@@ -577,18 +598,18 @@ A monthly plan payment was collected — the sign-up charge and every renewal.
 | Audience | owner |
 | Env var | `MSG91_TEMPLATE_OWNER_PAYMENT_RECEIPT` |
 | Variables | `1` amount · `2` plan · `3` hall_name · `4` paid_until |
-| Segments | 1 |
+| Segments | 2 |
 
 **Register this body on the DLT portal** (`{#var#}` is the DLT placeholder):
 
 ```
-Hallnect: Payment of {#var#} received for the {#var#} plan on {#var#}. Boost active until {#var#}. Manage billing from Premium in your dashboard.
+Hallnect: Payment of {#var#} received for the {#var#} premium listing plan for your hall {#var#}. Boost active until {#var#}. Manage billing from Premium in your dashboard.
 ```
 
 **Paste this into the MSG91 template editor:**
 
 ```
-Hallnect: Payment of ##var1## received for the ##var2## plan on ##var3##. Boost active until ##var4##. Manage billing from Premium in your dashboard.
+Hallnect: Payment of ##var1## received for the ##var2## premium listing plan for your hall ##var3##. Boost active until ##var4##. Manage billing from Premium in your dashboard.
 ```
 
 ### ADMIN_ALERT
@@ -605,11 +626,11 @@ Operational alert to the platform admin: bookings, payments, halls, failures.
 **Register this body on the DLT portal** (`{#var#}` is the DLT placeholder):
 
 ```
-Hallnect admin alert. Event: {#var#}. Details: {#var#}. Reference: {#var#}. Open the admin dashboard for full details.
+Hallnect venue booking admin alert. Event: {#var#}. Details: {#var#}. Reference: {#var#}. Open the admin dashboard for full details.
 ```
 
 **Paste this into the MSG91 template editor:**
 
 ```
-Hallnect admin alert. Event: ##var1##. Details: ##var2##. Reference: ##var3##. Open the admin dashboard for full details.
+Hallnect venue booking admin alert. Event: ##var1##. Details: ##var2##. Reference: ##var3##. Open the admin dashboard for full details.
 ```
