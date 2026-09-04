@@ -1,10 +1,22 @@
 // Server-side data layer for the admin dashboard.
-// All queries use getSupabaseServerClient() (session-aware, anon key).
+// Queries use getSupabaseServerClient() (session-aware, anon key).
 // RLS policies all include `or public.is_admin()` exceptions, so admin sessions
 // have full read access. The admin client (admin.ts) is reserved for webhooks
 // and background jobs — using it here would lose the auth.uid() audit trail.
+//
+// ONE EXCEPTION, AND THE REASON MATTERS. "Admins have full read access" is a
+// statement about RLS POLICIES. It is not true of GRANTS. A column the role
+// `authenticated` was never granted stays unreadable no matter who is asking,
+// because grants are checked before row security and have no notion of
+// is_admin(). Migration 0046 moved `bookings` to per-column grants and withheld
+// the commission columns, which silently broke every admin query that touched
+// them. fetchStuckPayouts is the only one; it uses the service role behind an
+// explicit admin check. Before adding a query here, check the GRANT as well as
+// the policy — a "permission denied for table X" is this, never RLS.
 
 import { getSupabaseServerClient } from "@/lib/supabase/server";
+import { getSupabaseAdminClient } from "@/lib/supabase/admin";
+import { getProfile } from "@/lib/auth";
 import { PLATFORM_FEE_RUPEES } from "@/lib/booking-payment";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -578,9 +590,33 @@ function isEstimatedShare(row: any): boolean {
 }
 
 export async function fetchStuckPayouts(): Promise<StuckPayoutRow[]> {
-  const supabase = await getSupabaseServerClient();
+  // THE ONE QUERY IN THIS FILE THAT CANNOT USE THE SESSION CLIENT.
+  //
+  // This file's header says admin sessions have full read access because every
+  // RLS policy carries an `or is_admin()` exception. That is true of POLICIES
+  // and false of GRANTS. Migration 0046 replaced table-wide SELECT on
+  // `bookings` with per-column grants and deliberately withheld
+  // commission_amount, commission_rate and owner_net_advance, so that a
+  // customer or a venue owner cannot read Hallnect's own economics.
+  //
+  // Column grants are checked BEFORE row security and know nothing about
+  // is_admin(). So this query — the only one that embeds those columns — threw
+  // "permission denied for table bookings" for everyone, admins included. It
+  // failed 17 times for 3 users across /admin/payments, /admin/dashboard,
+  // /admin/notifications, /admin/settings and /admin/coupons between
+  // 2026-08-30 and 2026-09-04, taking the money queue with it. That queue is
+  // how venues actually get paid while Cashfree Easy Split is still off, so
+  // the payout list read empty exactly when it mattered.
+  //
+  // Granting the three columns to `authenticated` would clear the error by
+  // undoing the protection 0046 added. Instead this single read runs as the
+  // service role behind an explicit admin check that fails closed — a read,
+  // not a write, so no audit trail is lost.
+  const viewer = await getProfile();
+  if (viewer?.role !== "admin") return [];
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const db = supabase as any;
+  const db = getSupabaseAdminClient() as any;
 
   // THE QUESTION IS "WHOSE MONEY IS THIS", NOT "WHAT DOES split_status SAY".
   //
