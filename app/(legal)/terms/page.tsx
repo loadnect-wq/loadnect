@@ -111,7 +111,16 @@ export default function TermsPage() {
         These Terms are governed by the laws of India. Any disputes shall be subject to the exclusive jurisdiction of the courts of <strong>Madurai, Tamil Nadu</strong>.
       </Section>
 
-      <Section title="16. Contact">
+      <Section title="16. Grievance Redressal">
+        We have appointed a grievance officer under Rule 4(5) of the Consumer Protection
+        (E-Commerce) Rules, 2020. Their name, designation and contact details, along with
+        the timelines we commit to — acknowledgement within 48 hours and resolution within
+        one month — are published on our{" "}
+        <a href="/grievance-redressal" className="text-maroon-600 hover:underline">Grievance Redressal</a>{" "}
+        page. Nothing in these Terms limits your rights under the Consumer Protection Act, 2019.
+      </Section>
+
+      <Section title="17. Contact">
         For questions about these Terms, contact us at{" "}
         <a href="mailto:hallnect@gmail.com" className="text-maroon-600 hover:underline">hallnect@gmail.com</a>{" "}
         or through our <a href="/contact" className="text-maroon-600 hover:underline">Contact page</a>.

@@ -67,6 +67,7 @@ export const FOOTER_LINKS = {
     { label: "Refund Policy",       href: "/refund-policy"        },
     { label: "Cancellation Policy", href: "/cancellation-policy"  },
     { label: "Disclaimer",          href: "/disclaimer"           },
+    { label: "Grievance Redressal", href: "/grievance-redressal"   },
   ],
 } as const;
 
