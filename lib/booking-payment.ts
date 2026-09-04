@@ -37,11 +37,54 @@
 // re-derive any of these numbers with its own formula.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { commissionPaiseOn, toPaise, PAISE_PER_RUPEE } from "@/lib/money";
+import { commissionPaiseOn, gstPaiseOn, toPaise, PAISE_PER_RUPEE } from "@/lib/money";
 
 /** Flat, separately-collected, NON-refundable platform fee (rupees). */
 export const PLATFORM_FEE_RUPEES = 200;
 export const PLATFORM_FEE_PAISE = PLATFORM_FEE_RUPEES * PAISE_PER_RUPEE;
+
+/**
+ * GST charged ON HALLNECT'S OWN FEE, and on nothing else.
+ *
+ * HALLNECT LLP is GST-registered (33AATFH8253K1ZT, Regular, liable from
+ * 2026-08-21) and the published fee is exclusive of tax, so the fee is grossed
+ * up at checkout: ₹200 + 18% = ₹236.
+ *
+ * WHAT THIS IS DELIBERATELY *NOT* APPLIED TO — the advance.
+ *
+ * The advance is payment for the VENUE's supply, not Hallnect's. Hallnect
+ * collects it as an agent and passes it on. Whether GST is due on the hall
+ * rental, and at what rate, is the venue owner's liability and depends on the
+ * owner's own registration status — a platform cannot charge tax on a supply
+ * it does not make. Adding 18% to the advance would both overcharge the
+ * customer and collect tax against the wrong GSTIN.
+ *
+ * The commission is likewise untouched here. It IS a taxable supply by
+ * Hallnect (to the owner, not the customer), but it is retained out of the
+ * owner's money rather than charged on top, so taxing it changes what owners
+ * are paid. That is a separate decision and is not made in this module.
+ *
+ * The rate is snapshotted onto every booking (bookings.gst_rate) rather than
+ * read back from this constant, for the same reason commission_rate is
+ * snapshotted: a rate change must never rewrite what a past customer was
+ * charged.
+ */
+export const PLATFORM_FEE_GST_PERCENT = 18;
+
+/**
+ * GST on a platform fee, in rupees — for the CHECKOUT PREVIEW.
+ *
+ * Exists so the browser and the server cannot round differently. The preview
+ * must not re-derive tax with its own `fee * 0.18`: that is a float, it rounds
+ * differently from the paise-integer path, and a preview that disagrees with
+ * the charge by one paisa is a support ticket. Both sides land here.
+ */
+export function platformFeeGstRupees(
+  feeRupees: number,
+  gstPercent: number = PLATFORM_FEE_GST_PERCENT,
+): number {
+  return gstPaiseOn(toPaise(feeRupees), gstPercent) / PAISE_PER_RUPEE;
+}
 
 /** Default commission percent of the FULL HALL PRICE. The live rate is read
  *  from platform_settings (admin-editable); this is the fallback when the
@@ -96,9 +139,15 @@ export type BookingPaymentBreakdown = {
   hallTotal: number;
   /** Gross advance the customer pays toward the hall (rupees). */
   advanceAmount: number;
-  /** Flat platform fee collected on top (rupees) — non-refundable. */
+  /** Flat platform fee collected on top (rupees), EXCLUSIVE of GST — non-refundable. */
   platformFee: number;
-  /** advanceAmount + platformFee — the ONLY amount the gateway may charge. */
+  /** GST on the platform fee (rupees). Zero when a coupon waives the fee. */
+  platformFeeGst: number;
+  /** GST percent snapshotted for this booking, so a later rate change cannot
+   *  rewrite what this customer was charged. */
+  gstRate: number;
+  /** advanceAmount + platformFee + platformFeeGst — the ONLY amount the gateway
+   *  may charge. */
   customerTotal: number;
   /** Commission percent snapshotted for this booking. */
   commissionRate: number;
@@ -112,6 +161,7 @@ export type BookingPaymentBreakdown = {
     hallTotal: number;
     advance: number;
     platformFee: number;
+    platformFeeGst: number;
     customerTotal: number;
     commission: number;
     ownerNetAdvance: number;
@@ -126,7 +176,9 @@ export type BookingPaymentBreakdown = {
  * Guarantees:
  *   commission = floor(hallTotal × rate)          (base is the HALL PRICE)
  *   commission + ownerNetAdvance === advance      (paise-exact)
- *   advance + platformFee === customerTotal       (paise-exact)
+ *   advance + platformFee + platformFeeGst
+ *       === customerTotal                         (paise-exact)
+ *   platformFeeGst = round(platformFee × gstRate) (fee only, never the advance)
  *   commission < advance                          (else it throws)
  */
 export function calculateBookingPayment(input: {
@@ -154,6 +206,14 @@ export function calculateBookingPayment(input: {
    * never a number.
    */
   platformFeeRupees?: number;
+  /**
+   * GST percent on the platform fee. Omit for the current rate.
+   *
+   * Passed explicitly ONLY when replaying a booking that was charged at a
+   * different rate — verification, webhooks, refunds — so the reconciliation
+   * uses the rate the customer actually paid rather than today's.
+   */
+  gstPercent?: number;
 }): BookingPaymentBreakdown {
   const hallTotalPaise = toPaise(input.hallTotal);
   if (hallTotalPaise <= 0) {
@@ -197,12 +257,23 @@ export function calculateBookingPayment(input: {
   }
 
   const ownerPaise = advancePaise - commissionPaise;
-  const customerTotalPaise = advancePaise + feePaise;
+
+  // GST on the FEE ONLY, and on the fee AFTER any coupon reduction — tax
+  // follows the amount actually charged, so a waived fee carries no tax.
+  const gstRate = input.gstPercent ?? PLATFORM_FEE_GST_PERCENT;
+  if (!Number.isFinite(gstRate) || gstRate < 0 || gstRate > 100) {
+    throw new RangeError(`calculateBookingPayment: gst percent ${gstRate} out of [0, 100]`);
+  }
+  const gstPaise = gstPaiseOn(feePaise, gstRate);
+
+  const customerTotalPaise = advancePaise + feePaise + gstPaise;
 
   return {
     hallTotal:       hallTotalPaise / PAISE_PER_RUPEE,
     advanceAmount:   advancePaise / PAISE_PER_RUPEE,
     platformFee:     feePaise / PAISE_PER_RUPEE,
+    platformFeeGst:  gstPaise / PAISE_PER_RUPEE,
+    gstRate,
     customerTotal:   customerTotalPaise / PAISE_PER_RUPEE,
     commissionRate:  input.commissionRate,
     commissionAmount: commissionPaise / PAISE_PER_RUPEE,
@@ -211,6 +282,7 @@ export function calculateBookingPayment(input: {
       hallTotal:       hallTotalPaise,
       advance:         advancePaise,
       platformFee:     feePaise,
+      platformFeeGst:  gstPaise,
       customerTotal:   customerTotalPaise,
       commission:      commissionPaise,
       ownerNetAdvance: ownerPaise,
@@ -248,6 +320,16 @@ export function calculateRefund(input: {
   /** Platform fee actually collected with it (rupees); 0 for legacy bookings
    *  that predate the fee. */
   platformFee: number;
+  /**
+   * GST actually collected on that fee (rupees); 0 for bookings that predate
+   * GST registration.
+   *
+   * Travels with the fee and only with the fee. When the fee is retained the
+   * supply happened and the tax stays remitted; when the fee is returned the
+   * supply is cancelled, so the tax goes back with it — a customer who paid
+   * ₹236 and is being made whole must receive ₹236, not ₹200.
+   */
+  platformFeeGst?: number;
   /** Percent of the ADVANCE the policy refunds (0–100). */
   refundPercentOfAdvance: number;
   /** True ONLY for owner/platform-initiated cancellations, where the published
@@ -256,6 +338,7 @@ export function calculateRefund(input: {
 }): RefundBreakdown {
   const advancePaise = toPaise(input.advanceAmount);
   const feePaise = toPaise(input.platformFee);
+  const feeGstPaise = toPaise(input.platformFeeGst ?? 0);
   const pct = input.refundPercentOfAdvance;
   if (!Number.isFinite(pct) || pct < 0 || pct > 100) {
     throw new RangeError(`calculateRefund: refund percent ${pct} out of [0,100]`);
@@ -264,9 +347,12 @@ export function calculateRefund(input: {
   // floor() so a partial refund can never round UP past the policy.
   const advanceRefundPaise = Math.floor((advancePaise * Math.round(pct * 100)) / 10_000);
   const feeRefundPaise = input.refundPlatformFee ? feePaise : 0;
+  // The tax is refunded when, and only when, the thing it was charged on is.
+  const feeGstRefundPaise = input.refundPlatformFee ? feeGstPaise : 0;
 
   return {
-    refundableAmount:         (advanceRefundPaise + feeRefundPaise) / PAISE_PER_RUPEE,
+    refundableAmount:
+      (advanceRefundPaise + feeRefundPaise + feeGstRefundPaise) / PAISE_PER_RUPEE,
     nonRefundablePlatformFee: (feePaise - feeRefundPaise) / PAISE_PER_RUPEE,
     advanceWithheld:          (advancePaise - advanceRefundPaise) / PAISE_PER_RUPEE,
   };

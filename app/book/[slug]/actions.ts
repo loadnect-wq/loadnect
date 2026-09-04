@@ -217,6 +217,12 @@ export async function createBookingRequest(
   const breakdownPayload: Record<string, unknown> = {
     advance_amount:        pay.advanceAmount,
     platform_fee_amount:   pay.platformFee,
+    // GST on the fee (0049). customer_total_amount INCLUDES it, and the
+    // verification guard recomposes the charge from these columns — so writing
+    // the total without the tax that is inside it would make every booking fail
+    // its own consistency check at checkout.
+    platform_fee_gst:      pay.platformFeeGst,
+    gst_rate:              pay.gstRate,
     customer_total_amount: pay.customerTotal,
     commission_rate:       pay.commissionRate,
     commission_amount:     pay.commissionAmount,

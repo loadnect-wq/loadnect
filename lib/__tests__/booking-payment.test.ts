@@ -13,7 +13,9 @@ import {
   calculateBookingPayment,
   calculateRefund,
   advanceFromTotal,
+  platformFeeGstRupees,
   PLATFORM_FEE_RUPEES,
+  PLATFORM_FEE_GST_PERCENT,
   DEFAULT_COMMISSION_PERCENT,
   DEFAULT_ADVANCE_PERCENT,
 } from "@/lib/booking-payment";
@@ -22,30 +24,100 @@ import { customerRefundPercent, daysUntilEventFromToday } from "@/lib/refund-sch
 import { computeOwnerShare } from "@/lib/owner-payout";
 
 describe("calculateBookingPayment — spec acceptance cases", () => {
-  it("hall ₹1,00,000 → advance ₹25,000 + fee ₹200; commission ₹2,500; owner ₹22,500", () => {
-    // The worked example from the business owner, verbatim.
+  // These totals moved when HALLNECT LLP became GST-registered and the
+  // published fee was declared EXCLUSIVE of tax: the ₹200 fee is now charged as
+  // ₹236. The advance, the commission and the owner's net are all unchanged —
+  // GST applies to Hallnect's fee, never to the venue's supply.
+  it("hall ₹1,00,000 → advance ₹25,000 + fee ₹200 + GST ₹36; commission ₹2,500; owner ₹22,500", () => {
+    // The worked example from the business owner, verbatim, plus tax.
     const b = calculateBookingPayment({ hallTotal: 100_000, commissionRate: 2.5 });
     expect(b.advanceAmount).toBe(25_000);
     expect(b.platformFee).toBe(200);
-    expect(b.customerTotal).toBe(25_200);
+    expect(b.platformFeeGst).toBe(36);
+    expect(b.gstRate).toBe(18);
+    expect(b.customerTotal).toBe(25_236);
     expect(b.commissionAmount).toBe(2_500);
     expect(b.ownerNetAdvance).toBe(22_500);
-    // What Hallnect actually keeps: commission + the separately collected fee.
+    // What Hallnect actually keeps: commission + the fee. The GST is collected,
+    // not earned — it is the government's and must not be counted as revenue.
     expect(b.commissionAmount + b.platformFee).toBe(2_700);
   });
 
-  it("hall ₹40,000 → advance ₹10,000 + fee ₹200; commission ₹1,000; owner ₹9,000", () => {
+  it("hall ₹40,000 → advance ₹10,000 + fee ₹200 + GST ₹36; commission ₹1,000; owner ₹9,000", () => {
     const b = calculateBookingPayment({ hallTotal: 40_000, commissionRate: 2.5 });
-    expect(b.customerTotal).toBe(10_200);
+    expect(b.customerTotal).toBe(10_236);
     expect(b.commissionAmount).toBe(1_000);
     expect(b.ownerNetAdvance).toBe(9_000);
   });
 
-  it("hall ₹20,000 → advance ₹5,000 + fee ₹200; commission ₹500; owner ₹4,500", () => {
+  it("hall ₹20,000 → advance ₹5,000 + fee ₹200 + GST ₹36; commission ₹500; owner ₹4,500", () => {
     const b = calculateBookingPayment({ hallTotal: 20_000, commissionRate: 2.5 });
-    expect(b.customerTotal).toBe(5_200);
+    expect(b.customerTotal).toBe(5_236);
     expect(b.commissionAmount).toBe(500);
     expect(b.ownerNetAdvance).toBe(4_500);
+  });
+
+  it("never charges GST on the advance — tax follows Hallnect's supply, not the venue's", () => {
+    // The single most important property of this change. If someone ever
+    // applies the rate to the advance or the customer total, this fails: the
+    // gap between what the customer pays and the advance+fee must be exactly
+    // the tax on the FEE, whatever the hall costs.
+    for (const total of [400, 20_000, 100_000, 999_999]) {
+      const b = calculateBookingPayment({ hallTotal: total, commissionRate: 2.5 });
+      expect(b.paise.platformFeeGst).toBe(Math.round((b.paise.platformFee * 1800) / 10_000));
+      expect(b.paise.customerTotal - b.paise.advance - b.paise.platformFee)
+        .toBe(b.paise.platformFeeGst);
+    }
+  });
+
+  it("charges no GST when a coupon waives the fee — tax follows the amount actually charged", () => {
+    const b = calculateBookingPayment({
+      hallTotal: 100_000, commissionRate: 2.5, platformFeeRupees: 0,
+    });
+    expect(b.platformFee).toBe(0);
+    expect(b.platformFeeGst).toBe(0);
+    expect(b.customerTotal).toBe(25_000);
+  });
+
+  it("refunds the tax with the fee, so a cancelled customer is made whole", () => {
+    // Owner/platform cancellation returns the fee. The customer handed over
+    // ₹236 for that fee, so ₹236 has to come back — returning the ₹200 and
+    // keeping the ₹36 would leave the customer short by exactly the tax on a
+    // service they never received.
+    const full = calculateRefund({
+      advanceAmount: 25_000, platformFee: 200, platformFeeGst: 36,
+      refundPercentOfAdvance: 100, refundPlatformFee: true,
+    });
+    expect(full.refundableAmount).toBe(25_236);
+    expect(full.nonRefundablePlatformFee).toBe(0);
+
+    // Customer cancellation retains the fee — and therefore the tax on it,
+    // because that supply did happen and the tax is already the government's.
+    const retained = calculateRefund({
+      advanceAmount: 25_000, platformFee: 200, platformFeeGst: 36,
+      refundPercentOfAdvance: 100, refundPlatformFee: false,
+    });
+    expect(retained.refundableAmount).toBe(25_000);
+    expect(retained.nonRefundablePlatformFee).toBe(200);
+  });
+
+  it("refunds nothing extra for a booking taken before GST registration", () => {
+    // platformFeeGst omitted entirely — legacy rows must behave exactly as they
+    // did, or every historic refund is restated.
+    const b = calculateRefund({
+      advanceAmount: 25_000, platformFee: 200,
+      refundPercentOfAdvance: 100, refundPlatformFee: true,
+    });
+    expect(b.refundableAmount).toBe(25_200);
+  });
+
+  it("snapshots the rate, so a replay at the old rate reproduces the old total", () => {
+    // A booking captured before the rate changed must reconcile against the
+    // rate it was charged at, not today's.
+    const b = calculateBookingPayment({ hallTotal: 100_000, commissionRate: 2.5, gstPercent: 0 });
+    expect(b.platformFeeGst).toBe(0);
+    expect(b.gstRate).toBe(0);
+    expect(b.customerTotal).toBe(25_200);
   });
 
   it("is exactly 4x what the retired advance-based formula produced", () => {
@@ -64,8 +136,9 @@ describe("calculateBookingPayment — invariants", () => {
       const b = calculateBookingPayment({ hallTotal: total, commissionRate: 2.5 });
       // Commission + owner net always equals the advance — paise-exact.
       expect(b.paise.commission + b.paise.ownerNetAdvance).toBe(b.paise.advance);
-      // Advance + fee always equals the customer total — paise-exact.
-      expect(b.paise.advance + b.paise.platformFee).toBe(b.paise.customerTotal);
+      // Advance + fee + GST always equals the customer total — paise-exact.
+      expect(b.paise.advance + b.paise.platformFee + b.paise.platformFeeGst)
+        .toBe(b.paise.customerTotal);
       // The commission is charged on the HALL TOTAL, never the advance.
       expect(b.paise.commission).toBe(Math.floor((b.paise.hallTotal * 250) / 10_000));
       // It still has to fit inside the advance it is retained from.
@@ -240,7 +313,11 @@ describe("checkout preview matches the actual charge", () => {
     for (const total of hallPrices) {
       it(`hall total ₹${total} at a ₹${fee} fee: previewed total equals the charged total`, () => {
         const advance = advanceFromTotal(total);
-        const previewed = advance + fee;
+        // Mirrors BookingFlow exactly, including its GST line. Both sides call
+        // platformFeeGstRupees rather than each doing their own fee * 0.18,
+        // which is what keeps a float in the browser from disagreeing with the
+        // paise-integer charge.
+        const previewed = advance + fee + platformFeeGstRupees(fee);
         const charged = calculateBookingPayment({
           hallTotal: total, advanceAmount: advance, commissionRate: 2.5,
           platformFeeRupees: fee,
@@ -340,7 +417,7 @@ describe("server-authoritative amounts (frontend manipulation)", () => {
     const a = calculateBookingPayment({ hallTotal: 40_000, commissionRate: 2.5 });
     const b = calculateBookingPayment({ hallTotal: 40_000, commissionRate: 2.5 });
     expect(a).toEqual(b);
-    expect(a.customerTotal).toBe(10_200); // any tampered client figure is ignored by construction
+    expect(a.customerTotal).toBe(10_236); // any tampered client figure is ignored by construction
   });
 });
 
@@ -363,10 +440,11 @@ describe("END TO END — the money actually reaches the right accounts", () => {
   // 3. The paise ledger is built from the SAME snapshot, never recomputed.
   const ledger = splitFromParts(pay.paise.advance, pay.paise.commission, RATE);
 
-  it("charges the customer the advance plus the flat fee, and nothing else", () => {
+  it("charges the customer the advance plus the flat fee plus tax on that fee, and nothing else", () => {
     expect(pay.advanceAmount).toBe(25_000);
     expect(pay.platformFee).toBe(200);
-    expect(pay.customerTotal).toBe(25_200);
+    expect(pay.platformFeeGst).toBe(36);
+    expect(pay.customerTotal).toBe(25_236);
   });
 
   it("pays the owner ₹22,500 — the advance minus commission on the HALL price", () => {
@@ -381,9 +459,16 @@ describe("END TO END — the money actually reaches the right accounts", () => {
     expect(pay.commissionAmount + pay.platformFee).toBe(2_700);
   });
 
-  it("loses nothing: owner + Hallnect === what the customer paid", () => {
+  it("loses nothing: owner + Hallnect + the taxman === what the customer paid", () => {
+    // The conservation law, restated for a GST-registered platform. The
+    // customer's money now lands in THREE places, not two, and the third is not
+    // Hallnect's: the ₹36 is collected on the government's behalf and remitted.
+    // Counting it as revenue is exactly the error this test exists to catch —
+    // it would overstate earnings and understate the GST liability by the same
+    // amount, which reconciles perfectly right up until the return is filed.
     const hallnect = pay.commissionAmount + pay.platformFee;
-    expect((share.ok ? share.ownerAmount : 0) + hallnect).toBe(pay.customerTotal);
+    const taxman   = pay.platformFeeGst;
+    expect((share.ok ? share.ownerAmount : 0) + hallnect + taxman).toBe(pay.customerTotal);
   });
 
   it("the payout and the ledger both agree with the one calculation", () => {

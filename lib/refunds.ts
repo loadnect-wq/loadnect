@@ -96,6 +96,11 @@ export async function recordBookingRefund(
     const fee = payment.platform_fee_amount != null && Number.isFinite(Number(payment.platform_fee_amount))
       ? Number(payment.platform_fee_amount)
       : 0;
+    // GST collected on that fee (0049). Absent on payments taken before GST
+    // registration, where it is genuinely zero rather than unknown.
+    const feeGst = payment.platform_fee_gst != null && Number.isFinite(Number(payment.platform_fee_gst))
+      ? Number(payment.platform_fee_gst)
+      : 0;
 
     // Days until the event decides the customer tier. Owner/platform-caused
     // cancellations return everything regardless of timing.
@@ -106,6 +111,7 @@ export async function recordBookingRefund(
     const breakdown = calculateRefund({
       advanceAmount: advance,
       platformFee: fee,
+      platformFeeGst: feeGst,
       refundPercentOfAdvance: percent,
       refundPlatformFee: initiator !== "customer",
     });

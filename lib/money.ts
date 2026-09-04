@@ -86,6 +86,31 @@ export function commissionPaiseOn(basePaise: number, ratePercent: number): numbe
 }
 
 /**
+ * GST in paise on a base amount, at `ratePercent`.
+ *
+ * ROUNDS TO NEAREST, where commissionPaiseOn() deliberately FLOORS. That is not
+ * an inconsistency — the two amounts belong to different people.
+ *
+ * Commission is Hallnect's own money, so flooring guarantees the platform can
+ * never round a fraction of a paisa in its own favour. GST is not Hallnect's
+ * money; it is collected on the government's behalf and remitted. Flooring it
+ * would systematically collect less tax than is due on every booking, and the
+ * shortfall is Hallnect's to pay. Rounding to nearest is neutral and is what
+ * the tax is actually computed at.
+ *
+ * Base and rate are integers-in-basis-points throughout, so a rate like 18%
+ * never touches floating-point drift.
+ */
+export function gstPaiseOn(basePaise: number, ratePercent: number): number {
+  assertIntPaise(basePaise);
+  if (!Number.isFinite(ratePercent) || ratePercent < 0 || ratePercent > 100) {
+    throw new RangeError(`gstPaiseOn: rate ${ratePercent} out of [0,100]`);
+  }
+  const rateBps = Math.round(ratePercent * 100);
+  return Math.round((basePaise * rateBps) / 10_000);
+}
+
+/**
  * Builds a split from an ALREADY-DECIDED commission, rather than recomputing.
  *
  * Needed because the commission base (the hall price) is not the amount being

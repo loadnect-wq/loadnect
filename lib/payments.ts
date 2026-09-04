@@ -139,7 +139,7 @@ export async function startPaymentForBooking(
 
   // 1. Load the booking authoritatively (service-role read).
   const BOOKING_COLS =
-    "id, customer_id, status, total_amount, expires_at, advance_amount, platform_fee_amount, customer_total_amount, coupon_id";
+    "id, customer_id, status, total_amount, expires_at, advance_amount, platform_fee_amount, platform_fee_gst, customer_total_amount, coupon_id";
   let { data: booking, error: bErr } = await db
     .from("bookings")
     .select(BOOKING_COLS)
@@ -235,12 +235,27 @@ export async function startPaymentForBooking(
     : hasBreakdown && booking.platform_fee_amount != null && Number.isFinite(storedFee)
       ? storedFee
       : PLATFORM_FEE_RUPEES;
-  const chargeTotal = Math.round((advance + platformFee) * 100) / 100;
+  // GST ON THE FEE (0049). Read from the row, NEVER recomputed at today's rate.
+  //
+  // NULL is not zero-by-accident here, it is a fact about the booking: rows
+  // written before GST registration were charged advance + fee and nothing
+  // else, and their customer_total_amount says so. Re-deriving tax for them at
+  // the current 18% would compose a total ₹36 higher than the one stored, and
+  // the consistency check below would refuse every one of those bookings at
+  // checkout. So an absent value contributes nothing, and only a value the
+  // booking actually recorded is charged.
+  const storedFeeGst = Number(booking.platform_fee_gst);
+  const feeGst =
+    canRecordBreakdown && booking.platform_fee_gst != null && Number.isFinite(storedFeeGst)
+      ? storedFeeGst
+      : 0;
 
-  // The charge is composed from two columns; customer_total_amount is the third
-  // that must agree. Disagreement means the row was written by something other
-  // than calculateBookingPayment — refuse rather than charge a number nobody
-  // computed.
+  const chargeTotal = Math.round((advance + platformFee + feeGst) * 100) / 100;
+
+  // The charge is composed from three columns; customer_total_amount is the
+  // fourth that must agree. Disagreement means the row was written by something
+  // other than calculateBookingPayment — refuse rather than charge a number
+  // nobody computed.
   //
   // BOTH extra gates are load-bearing: Number(null) === 0 and
   // Number.isFinite(0) === true, so without them every legacy (pre-0031)
@@ -302,8 +317,10 @@ export async function startPaymentForBooking(
     payment_session_id: order.data.payment_session_id,
     // Only when the columns exist. Otherwise platformFee is 0 and chargeTotal
     // IS the advance, so the legacy-shaped row stays truthful.
+    // platform_fee_gst rides along so a refund can return the tax with the fee
+    // without having to reach back to the booking row for it.
     ...(canRecordBreakdown
-      ? { advance_amount: advance, platform_fee_amount: platformFee }
+      ? { advance_amount: advance, platform_fee_amount: platformFee, platform_fee_gst: feeGst }
       : {}),
   };
   const { error: pErr } = await db.from("payments").insert(paymentRow);

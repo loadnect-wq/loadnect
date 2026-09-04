@@ -17,7 +17,12 @@ import type { DaySlotAvailability } from "@/lib/availability";
 import { createBookingRequest, createPaymentSession, submitManualBookingRequest, previewCoupon, type CreateBookingResult } from "../actions";
 import { todayInBusinessTz, addDaysToIsoDate, isoDateToLabelDate, isoDateRange, daysBetweenInclusive } from "@/lib/dates";
 import { isValidPhoneNumber } from "@/lib/notifications/phone";
-import { advanceFromTotal, PLATFORM_FEE_RUPEES } from "@/lib/booking-payment";
+import {
+  advanceFromTotal,
+  platformFeeGstRupees,
+  PLATFORM_FEE_GST_PERCENT,
+  PLATFORM_FEE_RUPEES,
+} from "@/lib/booking-payment";
 
 const STEPS = ["Date", "Slot", "Details", "Summary", "Pay", "Done"] as const;
 type StepIndex = number;
@@ -170,8 +175,12 @@ export function BookingFlow({ hall, availability, windowDays, onlinePaymentEnabl
   // decides what a coupon is worth — it only echoes what the server returned.
   const effectivePlatformFee =
     charged?.platformFee ?? appliedCoupon?.platformFee ?? DISPLAY_PLATFORM_FEE;
+  // GST is charged on Hallnect's fee only — never on the advance, which is the
+  // venue's money. Computed by the SAME helper the server uses, so the previewed
+  // total and the charged total cannot round apart.
+  const effectiveFeeGst = platformFeeGstRupees(effectivePlatformFee);
   const payNowTotal =
-    charged?.customerTotal ?? (advance > 0 ? advance + effectivePlatformFee : 0);
+    charged?.customerTotal ?? (advance > 0 ? advance + effectivePlatformFee + effectiveFeeGst : 0);
   const feeWaived = effectivePlatformFee <= 0;
 
   // Everything that determines what is being bought. Any change invalidates a
@@ -699,6 +708,15 @@ export function BookingFlow({ hall, availability, windowDays, onlinePaymentEnabl
                   ) : (
                     <PriceLine label="Platform Fee" value={formatPrice(effectivePlatformFee)} />
                   )}
+                  {/* Shown only when there is tax to show. A waived fee carries
+                      no GST, and a ₹0 tax line just adds noise to the one screen
+                      where the customer is counting rupees. */}
+                  {effectiveFeeGst > 0 && (
+                    <PriceLine
+                      label={`GST (${PLATFORM_FEE_GST_PERCENT}% on platform fee)`}
+                      value={formatPrice(effectiveFeeGst)}
+                    />
+                  )}
                   <PriceLine label="Total Payable Now" value={formatPrice(payNowTotal)} bold highlight />
                   <div className="my-2 h-px bg-border" />
                   <PriceLine label="Balance at the venue" value={formatPrice(totalAmount - advance)} />
@@ -755,8 +773,9 @@ export function BookingFlow({ hall, availability, windowDays, onlinePaymentEnabl
                     ) : (
                       <>
                         The {formatPrice(effectivePlatformFee)} platform fee covers secure payment and
-                        booking support, and is non-refundable. The balance is paid directly to the
-                        venue — nothing else is added.
+                        booking support, and is non-refundable. GST at {PLATFORM_FEE_GST_PERCENT}% applies
+                        to this fee only — not to the advance, which goes to the venue. The balance is
+                        paid directly to the venue — nothing else is added.
                       </>
                     )}
                   </p>
@@ -809,7 +828,7 @@ export function BookingFlow({ hall, availability, windowDays, onlinePaymentEnabl
                   <p className="mt-1 text-[11px] text-charcoal-500">
                     {feeWaived
                       ? `Advance ${formatPrice(advance)} · platform fee waived`
-                      : `Advance ${formatPrice(advance)} + platform fee ${formatPrice(effectivePlatformFee)}`}
+                      : `Advance ${formatPrice(advance)} + platform fee ${formatPrice(effectivePlatformFee)} + GST ${formatPrice(effectiveFeeGst)}`}
                   </p>
                   <p className="mt-1 text-[11px] text-charcoal-500">Balance {formatPrice(totalAmount - advance)} due before event</p>
                 </div>
