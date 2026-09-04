@@ -194,4 +194,22 @@ describe("failure classification", () => {
     const r = await send();
     expect(r.ok).toBe(false);
   });
+
+  it("marks an EMPTY WALLET as transient, so the message survives a top-up", async () => {
+    // The one refusal that is not permanent. A wrong template id is still
+    // wrong on the tenth attempt; an empty wallet is not — the identical
+    // message sends the moment the account is funded. Marked permanent, the
+    // row reads "Retry will not help" and every booking confirmation queued
+    // while the balance was zero is abandoned with no way to send it later.
+    for (const msg of [
+      "insufficient balance",
+      "Insufficient Credits",
+      "Your account balance is low",
+    ]) {
+      stubFetch(200, { type: "error", message: msg });
+      const r = await send();
+      expect(r.ok).toBe(false);
+      if (!r.ok) expect(r.permanent, `"${msg}" should be retryable`).toBe(false);
+    }
+  });
 });

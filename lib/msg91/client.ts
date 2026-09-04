@@ -30,7 +30,8 @@ export type Msg91ErrorKind =
   | "not_configured"   // no auth key on this deployment
   | "auth"             // 401 — key rejected
   | "invalid_request"  // bad number, missing template, malformed params
-  | "rejected"         // MSG91 understood and refused (DLT, balance, blacklist)
+  | "rejected"         // MSG91 understood and refused (DLT, blacklist)
+  | "balance"          // wallet empty — refused now, identical message sends after a top-up
   | "rate_limited"
   | "timeout"
   | "network"
@@ -47,7 +48,8 @@ export type Msg91Response =
  * so the admin UI does not offer a retry that is guaranteed to fail again.
  */
 export function isTransientMsg91Error(kind: Msg91ErrorKind): boolean {
-  return kind === "timeout" || kind === "network" || kind === "server" || kind === "rate_limited";
+  return kind === "timeout" || kind === "network" || kind === "server"
+    || kind === "rate_limited" || kind === "balance";
 }
 
 /** Inverse of the above, for readability at call sites. */
@@ -65,6 +67,16 @@ export function isPermanentMsg91Error(kind: Msg91ErrorKind): boolean {
  */
 function classifyMessage(message: string): Msg91ErrorKind {
   const m = message.toLowerCase();
+  // BALANCE IS THE ONE REFUSAL THAT IS NOT PERMANENT. Every other thing MSG91
+  // "judges" stays judged: a wrong template id is wrong on the tenth attempt
+  // too. An empty wallet is different — the message is refused now and the
+  // byte-identical message sends the moment the account is topped up. Left in
+  // the default "rejected" bucket it marked the row permanent_failure, and the
+  // admin UI then said "Retry will not help", which is the exact opposite of
+  // the truth. Every booking confirmation queued while the balance sat at zero
+  // would have been silently abandoned with no way to send it afterwards.
+  // Checked first, because "insufficient" would otherwise never be reached.
+  if (m.includes("balance") || m.includes("insufficient") || m.includes("credit")) return "balance";
   if (m.includes("authkey") || m.includes("authentication") || m.includes("unauthorized")) return "auth";
   if (m.includes("expired") || m.includes("not match") || m.includes("mismatch")) return "invalid_request";
   if (m.includes("invalid") || m.includes("missing") || m.includes("not found") || m.includes("required")) {

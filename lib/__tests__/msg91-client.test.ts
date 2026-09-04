@@ -158,7 +158,12 @@ describe("error classification", () => {
     ["invalid mobile number", "invalid_request"],
     ["flow id missing", "invalid_request"],
     ["Max retry attempted", "rate_limited"],
-    ["insufficient balance", "rejected"],
+    // Was asserted as "rejected", i.e. permanent. That was the bug, written
+    // down: an empty wallet is the one refusal that fixes itself from outside,
+    // and marking it permanent abandons every message queued while the balance
+    // was zero.
+    ["insufficient balance", "balance"],
+    ["Insufficient Credits", "balance"],
   ])("classifies %s as %s", async (message, kind) => {
     stubFetch(200, { message, type: "error" });
     const r = await msg91Request({ path: "flow", method: "POST", body: {}, retries: 0 });
@@ -167,7 +172,7 @@ describe("error classification", () => {
   });
 
   it("agrees with itself about what is transient", () => {
-    for (const k of ["timeout", "network", "server", "rate_limited"] as const) {
+    for (const k of ["timeout", "network", "server", "rate_limited", "balance"] as const) {
       expect(isTransientMsg91Error(k)).toBe(true);
       expect(isPermanentMsg91Error(k)).toBe(false);
     }
