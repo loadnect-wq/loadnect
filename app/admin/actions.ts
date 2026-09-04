@@ -124,8 +124,16 @@ async function moderateHall(
   const idErr = requireUuid(hallId, "hall id");
   if (idErr) return { error: idErr };
 
+  // SERVICE ROLE, NOT THE SESSION CLIENT — see migration 0048.
+  // 0046 revoked table-wide UPDATE on halls and re-granted only the descriptive
+  // columns, deliberately withholding status, rejection_reason, moderated_at
+  // and moderated_by. A column GRANT is checked BEFORE row security and knows
+  // nothing about is_admin(), so this write raised 42501 for admins too and no
+  // hall could ever be approved. requireAdminActor() above is the gate, and
+  // trg_prevent_hall_self_approve still refuses anyone who is neither
+  // is_admin() nor is_trusted_backend().
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const db = actor.supabase as any;
+  const db = getSupabaseAdminClient() as any;
 
   const { data: current } = await db
     .from("halls").select("status").eq("id", hallId).maybeSingle();
@@ -147,7 +155,9 @@ async function moderateHall(
     .eq("id", hallId);
 
   if (error) return { error: sanitizeError(error, "admin") };
-  if (count === 0) return { error: "You do not have permission to moderate this hall." };
+  // RLS is not in play on the service-role client, so 0 rows no longer means
+  // "not permitted" — it can only mean the hall was deleted since the read.
+  if (count === 0) return { error: "That hall no longer exists. Reload the queue." };
 
   await recordAdminAction({
     action,
@@ -200,10 +210,21 @@ export async function approveOwner(profileId: string): Promise<ActionResult> {
   if (count === 0) return { error: "You do not have permission to change this account." };
 
   // 2. Mark their hall_owners row as verified, if it exists.
-  await db
+  //
+  // Service role: 0046 withheld hall_owners.is_verified from `authenticated`,
+  // so this raised 42501 — and because the result was never destructured,
+  // nothing noticed. Step 1 succeeded, so the account flipped to
+  // owner_approved while the owner stayed unverified: a half-approved state
+  // that only shows up later, when something checks is_verified.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const adminDb = getSupabaseAdminClient() as any;
+  const { error: verifyErr } = await adminDb
     .from("hall_owners")
     .update({ is_verified: true, verified_at: new Date().toISOString(), verified_by: user.id })
     .eq("profile_id", profileId);
+  // Not every approved profile has a hall_owners row yet, so matching no row is
+  // fine and stays unchecked. A genuine write failure is not.
+  if (verifyErr) return { error: sanitizeError(verifyErr, "admin") };
 
   await recordAdminAction({
     action:     "owner.approve",
@@ -264,8 +285,11 @@ export async function verifyOwnerRow(ownerRowId: string): Promise<ActionResult> 
   const user = actor.user;
   const idErr = requireUuid(ownerRowId, "owner row id");
   if (idErr) return { error: idErr };
+  // Service role — hall_owners.is_verified is not granted to `authenticated`
+  // (0046), so this raised 42501 for admins too. requireAdminActor() above is
+  // the gate; trg_prevent_owner_self_verify is the DB-side backstop.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const db = actor.supabase as any;
+  const db = getSupabaseAdminClient() as any;
 
   const { error, count } = await db
     .from("hall_owners")
@@ -273,7 +297,7 @@ export async function verifyOwnerRow(ownerRowId: string): Promise<ActionResult> 
     .eq("id", ownerRowId);
 
   if (error) return { error: sanitizeError(error, "admin") };
-  if ((count ?? 0) === 0) return { error: "Owner not found, or you do not have permission to verify them." };
+  if ((count ?? 0) === 0) return { error: "That owner record no longer exists. Reload the page." };
 
   await recordAdminAction({
     action:     "owner.verify",
@@ -362,12 +386,21 @@ export async function toggleReviewVisible(reviewId: string, visible: boolean): P
   // back to true on their own moderated review. RLS matched their row, the
   // count was 1, and the action reported success: moderation undone, and the
   // audit insert silently dropped because they are not an admin.
+  //
+  // That hardening was necessary but never sufficient: a server action is not
+  // the only door to the table. The same author could PATCH PostgREST directly
+  // with their own JWT and the public anon key — and, because reviews_update
+  // leaves hall_id unrestricted too, move the review onto a venue they never
+  // booked, where SECURITY DEFINER recalc_hall_rating() rewrites that hall's
+  // rating past guard_hall_privileged_columns. Migration 0048 revokes UPDATE on
+  // reviews from every client role and adds a guard trigger, making this the
+  // only door — which is why the write below runs as the service role.
   const actor = await requireAdminActor();
   if (!actor.ok) return { error: actor.error };
   const idErr = requireUuid(reviewId, "review id");
   if (idErr) return { error: idErr };
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const db = actor.supabase as any;
+  const db = getSupabaseAdminClient() as any;
 
   const { error, count } = await db
     .from("reviews")
@@ -375,7 +408,7 @@ export async function toggleReviewVisible(reviewId: string, visible: boolean): P
     .eq("id", reviewId);
 
   if (error) return { error: sanitizeError(error, "admin") };
-  if (count === 0) return { error: "You do not have permission to moderate this review." };
+  if (count === 0) return { error: "That review no longer exists. Reload the page." };
 
   await recordAdminAction({
     action:         visible ? "review.show" : "review.hide",
@@ -1474,8 +1507,16 @@ export async function markPayoutSettledManually(
     return { error: "Enter the bank/UPI reference for the transfer you made." };
   }
 
+  // SERVICE ROLE — 0046 revoked every client write on payments and restored
+  // none, by design, so split_status is unwritable by `authenticated` and this
+  // raised 42501 every time. It matters more than a broken button: this is the
+  // ONLY writer of split_status='done', and issueRefund's double-spend guard
+  // reads exactly that value. While this failed, a venue could be paid by hand
+  // and the customer still refunded in full on top of it. Same pattern as
+  // issueRefund — requireAdminActor() gates it, guard_payment_split_writes()
+  // backs it, recordAdminAction below keeps the trail.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const db = actor.supabase as any;
+  const db = getSupabaseAdminClient() as any;
 
   const { data: payment } = await db
     .from("payments")
