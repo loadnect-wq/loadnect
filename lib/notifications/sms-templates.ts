@@ -163,6 +163,15 @@ function clampValue(raw: string): string {
 //   "advance payment", "hall listing", "listing plan" — and never
 //   leaves the noun to a variable. Do not trim these words back out to save
 //   characters: the shorter body is the one that gets rejected.
+//
+// NEVER PUT TWO VARIABLES BACK TO BACK. ALSO A REJECTION REASON.
+//   STPL rejected CUSTOMER_PAYMENT_SUCCESS on 2026-09-03 with "Please reduce two
+//   continuous variable into one." Its tail read "Ref {#var#}. {#var#}" — two
+//   slots separated by nothing but a full stop. DLT treats adjacent variables as
+//   uncheckable, because between them the operator has no fixed text to review.
+//   Every variable needs static words in front of it, which is why the bodies
+//   below say "Ref", "Details:", "Payment status:", "Item:", "New status:".
+//   A test enforces this; do not work around it by shortening the label.
 
 export const SMS_TEMPLATES: Record<SmsTemplateKey, SmsTemplateDef> = {
   // ── Customer ───────────────────────────────────────────────────────────────
@@ -203,7 +212,7 @@ export const SMS_TEMPLATES: Record<SmsTemplateKey, SmsTemplateDef> = {
     ["customer_name", "hall_name", "booking_id", "amount_paid", "balance_note"],
     (v) =>
       `Hallnect: Hi ${v[0]}, we have received your advance payment of ${v[3]} for your hall booking at ${v[1]}. ` +
-      `Ref ${v[2]}. ${v[4]}`,
+      `Ref ${v[2]}. Payment status: ${v[4]}`,
   ),
 
   CUSTOMER_PAYMENT_FAILED: def(

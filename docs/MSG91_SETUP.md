@@ -301,6 +301,18 @@ of these, with these remarks:
 | owner new booking | Please specify which booking in the content. |
 | payment success | Purpose of template is not clear. |
 
+A later round added two more, both on the payment-success template:
+
+| Remark | Meaning |
+|---|---|
+| Please reduce two continuous variable into one. | Two `{#var#}` were separated only by a full stop. Every variable needs static words in front of it — "Ref", "Details:", "Payment status:". A test now enforces this. |
+| Variable can be reduce to static information. | A slot was carrying wording that never varies. Put the fixed part in the body and leave only the part that changes in the variable. |
+
+Two rejections also demanded **"Please mention website/app url in the content"**. Do NOT
+add one reflexively: ten templates, including the booking-request one, were approved with
+no URL at all. A URL also needs its domain whitelisted on DLT separately and would break
+the no-URL test. Treat it as reviewer-specific and re-submit without one first.
+
 The tagging, header, category and sample content were all accepted — the
 objection was to the **copy**. A reviewer reads one template with no product
 around it, and every variable is opaque to them, so "your booking at {#var#}"
@@ -389,18 +401,18 @@ A Cashfree payment was VERIFIED server-side (never from a browser claim).
 | Audience | customer |
 | Env var | `MSG91_TEMPLATE_CUSTOMER_PAYMENT_SUCCESS` |
 | Variables | `1` customer_name · `2` amount_paid · `3` hall_name · `4` booking_id · `5` balance_note |
-| Segments | 1 |
+| Segments | 2 |
 
 **Register this body on the DLT portal** (`{#var#}` is the DLT placeholder):
 
 ```
-Hallnect: Hi {#var#}, we have received your advance payment of {#var#} for your hall booking at {#var#}. Ref {#var#}. {#var#}
+Hallnect: Hi {#var#}, we have received your advance payment of {#var#} for your hall booking at {#var#}. Ref {#var#}. Payment status: {#var#}
 ```
 
 **Paste this into the MSG91 template editor:**
 
 ```
-Hallnect: Hi ##var1##, we have received your advance payment of ##var4## for your hall booking at ##var2##. Ref ##var3##. ##var5##
+Hallnect: Hi ##var1##, we have received your advance payment of ##var4## for your hall booking at ##var2##. Ref ##var3##. Payment status: ##var5##
 ```
 
 ### CUSTOMER_PAYMENT_FAILED
