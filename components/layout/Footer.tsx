@@ -124,9 +124,21 @@ export function Footer() {
 
         {/* ── Bottom bar ───────────────────────────────────────── */}
         <div className="mt-12 flex flex-col items-center gap-2 border-t border-maroon-900 pt-6 sm:flex-row sm:justify-between">
+          {/* LLPIN and the limited-liability statement come from LLP Act 2008
+              s.21(1), which binds "invoices, official correspondence and
+              publications". Whether a website is a "publication" is genuinely
+              unsettled — the Companies Act has an express website clause and the
+              LLP Act does not. One line of footer text against a ₹10,000 penalty
+              under s.21(2) is a trade worth making either way.
+
+              The GSTIN is deliberately NOT here. No rule puts it on a website —
+              CGST Rule 18 is about the name board at the physical premises — and
+              a GSTIN embeds the PAN, so a footer copy on every page is free raw
+              material for fake-invoice schemes. It belongs on the invoice. */}
           <p className="text-xs text-ivory-600">
             &copy; <span suppressHydrationWarning>{new Date().getFullYear()}</span>{" "}
-            {CONTACT.legalName}. All rights reserved.
+            {CONTACT.legalName} &middot; LLPIN {CONTACT.llpin} &middot; Registered with
+            limited liability. All rights reserved.
           </p>
           <p className="text-xs text-ivory-600">
             Made in Tamil Nadu <span className="text-rose-400" aria-label="love">♥</span>

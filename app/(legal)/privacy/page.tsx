@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { buildMetadata } from "@/lib/seo/metadata";
+import { CONTACT } from "@/lib/constants";
 
 export const metadata: Metadata = buildMetadata({
   title: "Privacy Policy",
@@ -14,8 +15,8 @@ export default function PrivacyPage() {
       <LegalHeader title="Privacy Policy" updated="August 2026" />
 
       <Section title="1. Who We Are">
-        Hallnect is operated by <strong>HALLNECT LLP</strong>, an Indian company. We act as the data controller for personal information collected through this platform. For privacy concerns, contact us at{" "}
-        <a href="mailto:hallnect@gmail.com" className="text-maroon-600 hover:underline">hallnect@gmail.com</a>.
+        Hallnect is operated by <strong>{CONTACT.legalName}</strong> (LLPIN {CONTACT.llpin}), a limited liability partnership registered in India under the Limited Liability Partnership Act, 2008, with its registered office at {CONTACT.address}. We act as the data fiduciary for personal information collected through this platform. For privacy concerns, contact us at{" "}
+        <a href={`mailto:${CONTACT.email}`} className="text-maroon-600 hover:underline">{CONTACT.email}</a>.
       </Section>
 
       <Section title="2. Information We Collect">

@@ -4,12 +4,20 @@ import { CONTACT } from "@/lib/constants";
 
 // WHY THIS PAGE EXISTS
 //
-// Rule 4(5) of the Consumer Protection (E-Commerce) Rules, 2020 requires every
+// Rule 4(4) of the Consumer Protection (E-Commerce) Rules, 2020 requires every
 // e-commerce entity operating in India to APPOINT a grievance officer and to
 // DISPLAY that officer's name, contact details and designation on the platform.
-// It is not optional and it is not satisfied by a generic support address: the
-// rule names the officer specifically, and sets the clock — acknowledge within
-// forty-eight hours, redress within one month.
+// Rule 4(5) is the separate clock on that officer: acknowledge within
+// forty-eight hours, redress within one month. Neither is satisfied by a
+// generic support address — the rule names the officer specifically.
+//
+// TWO REGIMES, TWO CLOCKS. Hallnect also hosts third-party content — listings,
+// photos and reviews supplied by venue owners and customers — which makes it an
+// intermediary under the IT Act. Rule 3(2)(a) of the IT (Intermediary
+// Guidelines) Rules 2021 sets a SHORTER clock for the same officer:
+// acknowledge within 24 hours, dispose within 15 days. Where both apply the
+// shorter one governs, so the timelines published below are the intermediary
+// ones and they satisfy the e-commerce ones by construction.
 //
 // Every contact detail below already appears on /contact and in the site's
 // JSON-LD, so this page publishes nothing new about anyone; it names the
@@ -41,8 +49,10 @@ export default function GrievanceRedressalPage() {
       </Section>
 
       <Section title="2. Grievance Officer">
-        In accordance with Rule 4(5) of the Consumer Protection (E-Commerce) Rules, 2020,
-        the following officer is appointed to receive and redress consumer complaints:
+        In accordance with Rule 4(4) of the Consumer Protection (E-Commerce) Rules, 2020
+        and Rule 3(2)(a) of the Information Technology (Intermediary Guidelines and
+        Digital Media Ethics Code) Rules, 2021, the following officer is appointed to
+        receive and redress consumer complaints:
       </Section>
 
       <div className="mb-8 rounded-xl border border-border bg-white p-5">
@@ -71,16 +81,17 @@ export default function GrievanceRedressalPage() {
       </div>
 
       <Section title="3. How long we take">
-        We will <strong>acknowledge your complaint within 48 hours</strong> of receiving it
-        and give you a ticket reference. We will <strong>resolve it within one month</strong>{" "}
-        of receipt, as required by the Rules. If a complaint depends on a third party —
-        a refund moving through your bank, or a venue owner responding — we will tell you
-        that, and tell you what we are doing about it, rather than letting the clock run
-        quietly.
+        We will <strong>acknowledge your complaint within 24 hours</strong> of receiving it,
+        and <strong>resolve it within 15 days</strong>. Our reply comes from the address
+        above and quotes your booking reference, so the email thread is the record of your
+        complaint and its status &mdash; keep it and reply on it rather than starting a new
+        message. If a complaint depends on a third party &mdash; a refund moving through
+        your bank, or a venue owner responding &mdash; we will tell you that, and tell you
+        what we are doing about it, rather than letting the clock run quietly.
       </Section>
 
       <Section title="4. If you are not satisfied">
-        If we have not resolved your complaint within a month, or you are unhappy with the
+        If we have not resolved your complaint in that time, or you are unhappy with the
         outcome, you may escalate to the National Consumer Helpline on{" "}
         <strong>1915</strong> or at{" "}
         <a

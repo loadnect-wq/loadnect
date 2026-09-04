@@ -7,9 +7,39 @@ export const APP_DESCRIPTION =
 //   • brandName  → customer-facing product/brand ("Hallnect")
 //   • legalName  → registered legal entity ("HALLNECT LLP")
 //   • phoneHref  → tel: link (digits only) for tap-to-call on mobile
+//
+// WHAT BELONGS IN HERE, AND WHAT MUST NEVER.
+//
+// `llpin` and `gstin` are PUBLIC-REGISTER identifiers, verifiable on mca.gov.in
+// and the GST portal, and both belong on invoices and official correspondence.
+//
+// THE GSTIN CONTAINS THE PAN. A GSTIN is [state][PAN][entity][Z][checksum], so
+// characters 3–12 of the value below ARE the LLP's PAN. Storing it here is
+// correct — a tax invoice cannot be issued without it — but it means the gstin
+// field must be treated with the care its PAN deserves:
+//
+//   • It belongs on an INVOICE, disclosed to the counterparty who needs it.
+//   • It does NOT belong in the site footer, on every page, or in JSON-LD.
+//     No rule requires it there: CGST Rule 18 governs the name board at the
+//     physical place of business, not a website. Scraped from a public footer,
+//     a GSTIN is raw material for bogus-invoice and fake-ITC schemes run in
+//     this entity's name.
+//
+// The LLP's TAN is NOT here and must not be added. It is quoted only in TDS
+// returns and challans, no display rule reaches it, and it authenticates the
+// entity to the tax department. The same goes for bank details, partner
+// personal identifiers, and any scan of the incorporation or GST certificate.
+//
+// `address` is the registered office exactly as recorded at the Registrar of
+// Companies. Keep it byte-identical to the MCA record — a marketplace's
+// published address is what a consumer forum serves notice to.
 export const CONTACT = {
   brandName: "Hallnect",
   legalName: "HALLNECT LLP",
+  /** LLP Identification Number, Registrar of Companies. Public register data. */
+  llpin:     "ADA-7588",
+  /** GSTIN, Tamil Nadu (state code 33). Regular registration, liable from 2026-08-21. */
+  gstin:     "33AATFH8253K1ZT",
   email:     "hallnect@gmail.com",
   phone:     "+91 9344040013",          // primary, for display
   phoneHref: "tel:+919344040013",       // clickable (mobile tap-to-call)
