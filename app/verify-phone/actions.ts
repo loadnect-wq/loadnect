@@ -42,6 +42,22 @@ const MAX_SENDS_PER_PHONE_PER_DAY = 10;
 const MAX_FAILED_CHECKS = 5;
 const FAILED_CHECK_WINDOW_MINUTES = 15;
 
+// EVERY CEILING ABOVE IS SCOPED TO ONE PHONE NUMBER, WHICH LEAVES A HOLE.
+//
+// The resend cooldown and the hourly cap are keyed on (user_id, phone); the
+// daily cap is keyed on phone. So they all reset the moment the attacker types
+// a DIFFERENT number. One signed-in account could walk a list of strangers'
+// numbers and send each of them a code, hitting no limit at all — every counter
+// reads zero for a phone that has never been texted before.
+//
+// Each of those is a billed SMS to someone who never asked for it. These two
+// ceilings are the ones that do not reset per number: what a single account may
+// spend in a day, and what the whole platform may spend in a day. They mirror
+// MAX_PER_ACCOUNT_PER_DAY / MAX_GLOBAL_PER_DAY in lib/notifications/service.ts,
+// which already guards the notification path for exactly this reason.
+const MAX_SENDS_PER_ACCOUNT_PER_DAY = 15;
+const MAX_OTP_SENDS_GLOBAL_PER_DAY = 300;
+
 export type OtpActionResult =
   | { success: true; cooldownSeconds?: number }
   | { error: string };
@@ -66,14 +82,16 @@ function since(minutes: number): string {
 async function countAttempts(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   db: any,
-  filters: { phone: string; userId?: string; kind: "send" | "check"; succeeded?: boolean; sinceIso: string },
+  // `phone` is optional so the same helper can count the two ceilings that must
+  // NOT be scoped to a number — per account, and platform-wide.
+  filters: { phone?: string; userId?: string; kind: "send" | "check"; succeeded?: boolean; sinceIso: string },
 ): Promise<number | null> {
   let q = db
     .from("otp_attempts")
     .select("id", { count: "exact", head: true })
-    .eq("phone", filters.phone)
     .eq("kind", filters.kind)
     .gte("created_at", filters.sinceIso);
+  if (filters.phone) q = q.eq("phone", filters.phone);
   if (filters.userId) q = q.eq("user_id", filters.userId);
   if (filters.succeeded !== undefined) q = q.eq("succeeded", filters.succeeded);
 
@@ -163,6 +181,35 @@ export async function sendPhoneOtp(rawPhone: string, resend = false): Promise<Ot
   });
   if (perPhone !== null && perPhone >= MAX_SENDS_PER_PHONE_PER_DAY) {
     return { error: "Too many codes requested for this number today. Please try again tomorrow." };
+  }
+
+  // Not scoped to a phone: this is what stops ONE account rotating through
+  // other people's numbers, where every phone-keyed counter above reads zero.
+  const perAccount = await countAttempts(anyDb, {
+    userId: user.id, kind: "send", sinceIso: since(60 * 24),
+  });
+  if (perAccount !== null && perAccount >= MAX_SENDS_PER_ACCOUNT_PER_DAY) {
+    return { error: "Too many codes requested from this account today. Please try again tomorrow." };
+  }
+
+  // The cost fuse. Every send below is a billed SMS out of a shared prepaid
+  // wallet, so this bounds what any pattern — including one nobody has thought
+  // of — can spend in a day.
+  //
+  // This one FAILS CLOSED, unlike its siblings. They allow on a count error
+  // because a rate-limit table that cannot be read must not lock everyone out
+  // of verifying a phone. That reasoning inverts here: null means either the
+  // query failed or otp_attempts does not exist, and in BOTH cases every
+  // ceiling above is reading zero and recordAttempt is writing nothing — the
+  // guard rails are down, not merely noisy. Sending on regardless would spend
+  // real money with nothing counting it.
+  //
+  // The cost is that an environment without otp_attempts cannot send codes at
+  // all, rather than sending them unmetered. countAttempts logs the underlying
+  // error, so that shows up as a missing migration rather than a mystery.
+  const globalToday = await countAttempts(anyDb, { kind: "send", sinceIso: since(60 * 24) });
+  if (globalToday === null || globalToday >= MAX_OTP_SENDS_GLOBAL_PER_DAY) {
+    return { error: GENERIC_SEND_ERROR };
   }
 
   const result = resend
