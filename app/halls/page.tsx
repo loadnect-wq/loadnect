@@ -144,7 +144,7 @@ export default async function HallsPage({
         <p className="mt-1 text-sm text-charcoal-600">
           {halls.length > 0
             ? `${halls.length} ${halls.length === 1 ? "venue" : "venues"} with photos, capacity, pricing and live availability.`
-            : "Verified venues with photos, capacity, pricing and live availability."}
+            : "Venues with photos, capacity, pricing and live availability."}
         </p>
       </section>
 

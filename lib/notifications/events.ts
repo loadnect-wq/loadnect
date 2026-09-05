@@ -905,9 +905,16 @@ export async function notifyOwnerAccountDecision(input: {
         "Approved",
         "You can now list halls, manage booking requests and receive payouts. Open your owner dashboard to add your first hall.",
       ],
+      // WAS: "Verified venues rank better and customers see a verified badge on
+      // your listings." Both halves were false. fetchHalls orders on
+      // premium_tier then rating_average and never reads is_verified, and
+      // HallCard renders premium badges only — there is no verified badge for a
+      // customer to see. Telling an owner their listing now ranks better is the
+      // kind of promise they make decisions on. This says what the flag
+      // actually is: an internal check an admin has completed.
       verified: [
         "Verified",
-        "Your business details have been verified. Verified venues rank better and customers see a verified badge on your listings.",
+        "Your business details are confirmed on file. No action is needed from you.",
       ],
       suspended: [
         "Suspended",

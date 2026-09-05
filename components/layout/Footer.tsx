@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Camera, Globe, MessageCircle, PlayCircle, Mail, Phone, MapPin } from "lucide-react";
-import { APP_NAME, FOOTER_LINKS, CONTACT } from "@/lib/constants";
+import { APP_NAME, APP_DESCRIPTION, FOOTER_LINKS, CONTACT } from "@/lib/constants";
 
 // Hallnect has no social accounts yet. These were four icons all pointing at
 // "#", on every page of the site — a visitor tapping one stayed exactly where
@@ -29,7 +29,12 @@ export function Footer() {
                 <span className="ml-1.5 text-gold-400" aria-hidden>✦</span>
               </p>
               <p className="mt-2 text-sm leading-relaxed text-ivory-400 max-w-xs">
-                Discover and book verified wedding halls and event venues across Tamil Nadu — secure booking, owner-approved listings.
+                {/* Rendered from the constant, not a copy of it. This line had
+                    drifted into a second hardcoded version of APP_DESCRIPTION,
+                    which is how the "verified" claim survived being removed at
+                    the source — it was fixed in one place and still shipped in
+                    the footer of every page. */}
+                {APP_DESCRIPTION}
               </p>
             </div>
 

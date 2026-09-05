@@ -28,7 +28,7 @@ const OPTIONS: {
   {
     id: "book",
     title: "Book a hall",
-    description: "Discover and book verified wedding halls and event venues.",
+    description: "Discover and book wedding halls and event venues.",
     Icon: CalendarHeart,
   },
   {
