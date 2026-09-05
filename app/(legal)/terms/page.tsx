@@ -143,7 +143,12 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   return (
     <section className="mb-8">
       <h2 className="font-serif text-lg font-semibold text-charcoal-900">{title}</h2>
-      <p className="mt-2 text-sm leading-relaxed text-charcoal-600">{children}</p>
+      {/* Must stay a <div>. Section 7 passes a <ul>, which a <p> cannot legally contain:
+          the browser closes the paragraph before the list and reparents it, so the DOM
+          stops matching the server HTML and React throws a hydration error — on the very
+          page the checkout's mandatory consent checkbox links to. Tailwind's preflight
+          zeroes paragraph margins, so this renders identically to the old <p>. */}
+      <div className="mt-2 text-sm leading-relaxed text-charcoal-600">{children}</div>
     </section>
   );
 }

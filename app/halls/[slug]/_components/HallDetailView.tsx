@@ -184,9 +184,18 @@ export function HallDetailView({ hall, similar, isPreview, sidebarAd, advancePer
             {/* Title block */}
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
+                {/* The gold tier badge is a feature owners buy; the plain
+                    "Promoted" tag beside it is the disclosure that makes it
+                    honest — a paid placement, not a quality rating. Same pairing
+                    as HallCard; see the longer note there. */}
                 <div className="flex items-center gap-1.5 flex-wrap">
                   {hall.premium_tier === "pro"     && <Badge variant="gold" size="sm">★ Pro</Badge>}
                   {hall.premium_tier === "premium" && <Badge variant="gold" size="sm">✦ Premium</Badge>}
+                  {(hall.premium_tier === "premium" || hall.premium_tier === "pro") && (
+                    <span className="rounded-full bg-white px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-charcoal-600 shadow-sm">
+                      Promoted
+                    </span>
+                  )}
                   {isPreview       && (
                     <Badge variant="default" size="sm" className="bg-amber-100 text-amber-800 border-amber-300">
                       {hall.status.replace(/_/g, " ")}
@@ -324,6 +333,42 @@ export function HallDetailView({ hall, similar, isPreview, sidebarAd, advancePer
                 </a>
               </div>
             </section>
+
+            {/* ── Listed by (the seller) ─────────────────────────────
+                Rule 5(3)(a) of the Consumer Protection (E-Commerce) Rules 2020
+                requires a marketplace to display the seller's business name and
+                geographic address on the listing. This page previously showed
+                only the venue's own street address, so a customer paying an
+                advance could not tell which business they were contracting
+                with, or where to send a notice.
+
+                ONLY THESE THREE FIELDS. hall_owners also holds gst_number,
+                pan_number and the payout bank columns; none of them may ever
+                appear here. lib/halls.ts fetches exactly business_name, address
+                and city — read the comment on fetchHallSeller before adding to
+                it. `seller` is null when the service-role key is unset, in which
+                case the block is absent rather than half-filled. */}
+            {hall.seller && (
+              <section className="mt-6">
+                <h2 className="font-serif text-base font-semibold text-charcoal-900">Listed by</h2>
+                <div className="mt-3 rounded-2xl bg-white p-4 shadow-card">
+                  <p className="text-sm font-semibold text-charcoal-900">
+                    {hall.seller.business_name}
+                  </p>
+                  {(hall.seller.address || hall.seller.city) && (
+                    <p className="mt-1 text-xs leading-relaxed text-charcoal-500">
+                      {[hall.seller.address, hall.seller.city].filter(Boolean).join(", ")}
+                    </p>
+                  )}
+                  <p className="mt-2 text-[11px] leading-relaxed text-charcoal-500">
+                    Hallnect lists this venue on the seller&apos;s behalf. Listing details are
+                    supplied by the seller and are not independently verified — confirm them
+                    with the venue before you commit. The seller&apos;s contact details are
+                    shared once a booking is confirmed.
+                  </p>
+                </div>
+              </section>
+            )}
 
             {/* Pricing breakdown */}
             <section className="mt-6">

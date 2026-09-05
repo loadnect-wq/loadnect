@@ -52,6 +52,39 @@ function buildSubscriptionId(rowId: string): string {
   return `${SUBSCRIPTION_ID_PREFIX}${rowId.replace(/-/g, "").slice(0, 18)}_${Date.now().toString(36)}`;
 }
 
+/**
+ * Placeholder written into cf_subscription_id BEFORE Cashfree is called.
+ *
+ * The column is NOT NULL and UNIQUE, so the row cannot be created empty and
+ * filled in afterwards — it has to carry something. A value with this prefix
+ * therefore means one thing only: WE NEVER HEARD BACK FROM CASHFREE, so no
+ * mandate exists behind this row and nothing has ever been charged for it.
+ * Both the writer and the reader below use this constant so they cannot drift.
+ */
+const PENDING_MANDATE_PREFIX = "pending_";
+
+export function isUnauthorisedPlaceholder(cfSubscriptionId: string | null | undefined): boolean {
+  return String(cfSubscriptionId ?? "").startsWith(PENDING_MANDATE_PREFIX);
+}
+
+/**
+ * What a monthly charge is RECORDED and RECEIPTED at.
+ *
+ * The amount Cashfree debited, whenever it sent one. A mandate goes on charging
+ * whatever it was authorised at, so today's catalogue price is not evidence of
+ * anything about a charge that already happened — reading it back would restate
+ * an old renewal at the new price and put that figure in the owner's receipt.
+ * The catalogue price is the fallback for one case only: a charge record that
+ * carries no amount at all.
+ */
+export function subscriptionChargeAmount(
+  paidAmount: number | null | undefined,
+  cataloguePrice: number,
+): number {
+  const paid = Number(paidAmount);
+  return Number.isFinite(paid) && paid > 0 ? paid : cataloguePrice;
+}
+
 function normalisePhone(raw: string | null | undefined): string {
   return (raw ?? "").replace(/\D/g, "").slice(-12);
 }
@@ -138,7 +171,50 @@ export async function startPlanSubscription(input: {
     .in("status", ["created", "active", "on_hold", "paused"])
     .maybeSingle();
 
-  if (existing) {
+  // AN INTERRUPTED SUBSCRIBE MUST NOT LOCK THE HALL OUT FOREVER.
+  //
+  // The row below is inserted with a `pending_` placeholder before Cashfree is
+  // called. If that request dies — tab closed, deploy mid-flight, gateway
+  // timeout — the placeholder row survives at status 'created', which is inside
+  // uq_plan_subscriptions_live. Every later attempt then found it here and
+  // asked Cashfree about an id Cashfree has never seen; the lookup fails, and
+  // the "we could not check your existing subscription" guard below (correct
+  // for a REAL mandate) refused permanently. That hall could never subscribe to
+  // that plan again, and no support action short of a manual DB edit fixed it.
+  //
+  // A placeholder id is proof there is no mandate, so there is nothing to
+  // double-charge and nothing to protect: retire the row and open a fresh
+  // attempt below. Marking it 'failed' also takes it out of the partial unique
+  // index, so the insert that follows is not blocked by it either.
+  if (existing && isUnauthorisedPlaceholder(existing.cf_subscription_id)) {
+    const { error: retireErr, count: retired } = await db
+      .from("plan_subscriptions")
+      .update(
+        {
+          status:         "failed",
+          raw_response:   { error: "Abandoned before Cashfree returned a mandate — no subscription was ever created for this row" },
+          last_synced_at: new Date().toISOString(),
+        },
+        { count: "exact" },
+      )
+      .eq("id", existing.id)
+      // Guarded on the placeholder still being there, so a concurrent attempt
+      // that has meanwhile linked a REAL mandate id cannot be retired by us.
+      .eq("cf_subscription_id", existing.cf_subscription_id);
+
+    if (retireErr || !retired) {
+      // Failing to clear it means the insert below would collide with the live
+      // partial index and report something misleading. Say so plainly instead.
+      console.error(
+        "[plan-subscriptions] could not retire an abandoned attempt:",
+        retireErr?.message ?? "0 rows",
+      );
+      return {
+        ok: false,
+        error: "Could not start this subscription just now. Please try again in a moment.",
+      };
+    }
+  } else if (existing) {
     const live = await getCashfreeSubscription(existing.cf_subscription_id);
 
     if (live.ok) {
@@ -200,7 +276,7 @@ export async function startPlanSubscription(input: {
       hall_id:            input.hallId,
       plan_slug:          plan.slug,
       cf_plan_id:         plan.cf_plan_id,
-      cf_subscription_id: `pending_${crypto.randomUUID()}`,
+      cf_subscription_id: `${PENDING_MANDATE_PREFIX}${crypto.randomUUID()}`,
       amount,
       status:             "created",
     })
@@ -457,6 +533,9 @@ async function applySubscriptionCharges(
     .eq("slug", sub.plan_slug)
     .maybeSingle();
 
+  /** TODAY's list price. Not what this mandate debits — see below. */
+  const cataloguePrice = Number(plan?.monthly_price ?? sub.amount);
+
   let count = 0;
   let unactivated = false;
 
@@ -468,6 +547,20 @@ async function applySubscriptionCharges(
     const paidAmount = Number(p.payment_amount ?? 0);
     if (Math.abs(paidAmount - Number(sub.amount)) > 0.5) continue;
 
+    // WHAT CASHFREE ACTUALLY DEBITED — never today's list price.
+    //
+    // A mandate keeps charging the amount it was authorised at; changing
+    // premium_plans.monthly_price does not touch it. Recording the catalogue
+    // figure therefore rewrote history the instant the price moved: last
+    // month's Rs499 renewal was restated as Rs699, and the receipt SMS below —
+    // which quotes this same number to the owner as "you have been charged" —
+    // stated a figure that never left their account. A receipt has to be true.
+    //
+    // The guard above has already tied this to the mandate snapshot (within
+    // half a rupee of sub.amount), so this is a validated amount, not whatever
+    // the gateway happened to send.
+    const chargedAmount = subscriptionChargeAmount(paidAmount, cataloguePrice);
+
     const { data: already } = await db
       .from("plan_purchases")
       .select("id, premium_listing_id")
@@ -478,23 +571,49 @@ async function applySubscriptionCharges(
     let isNewCharge = false;
 
     if (!purchaseId) {
-      const { data: made, error: insErr } = await db
+      const chargeRow = (amount: number) => ({
+        owner_id:        sub.owner_id,
+        hall_id:         sub.hall_id,
+        plan_slug:       sub.plan_slug,
+        amount,
+        duration_days:   Number(plan?.duration_days ?? 30),
+        status:          "paid",
+        paid_at:         p.payment_time ?? new Date().toISOString(),
+        subscription_id: sub.id,
+        cf_payment_ref:  ref,
+        cycle:           p.cycle ?? null,
+        raw_response:    p,
+      });
+
+      let { data: made, error: insErr } = await db
         .from("plan_purchases")
-        .insert({
-          owner_id:        sub.owner_id,
-          hall_id:         sub.hall_id,
-          plan_slug:       sub.plan_slug,
-          amount:          Number(plan?.monthly_price ?? sub.amount),
-          duration_days:   Number(plan?.duration_days ?? 30),
-          status:          "paid",
-          paid_at:         p.payment_time ?? new Date().toISOString(),
-          subscription_id: sub.id,
-          cf_payment_ref:  ref,
-          cycle:           p.cycle ?? null,
-          raw_response:    p,
-        })
+        .insert(chargeRow(chargedAmount))
         .select("id")
         .maybeSingle();
+
+      // trg_guard_plan_purchase (migration 0040) refuses any plan_purchases row
+      // whose amount is not TODAY's catalogue price. That guard was written for
+      // one-off purchases, where the app itself chooses the price, and it is
+      // right there. It cannot express "the amount this mandate was authorised
+      // at", so after a price change it rejects the true figure.
+      //
+      // A paid month must never be dropped over bookkeeping, so we fall back to
+      // the price the guard will accept — and say so loudly, because the stored
+      // amount is then NOT what the owner was debited. The receipt below still
+      // quotes the real charge either way. Widening the guard to accept a
+      // subscription's snapshot needs a migration (see plan_purchases).
+      if (insErr && insErr.code !== "23505" && chargedAmount !== cataloguePrice) {
+        console.error(
+          `[plan-subscriptions] could not record charge ${ref} at the amount actually debited ` +
+          `(${chargedAmount}); retrying at the catalogue price (${cataloguePrice}):`,
+          insErr.message,
+        );
+        ({ data: made, error: insErr } = await db
+          .from("plan_purchases")
+          .insert(chargeRow(cataloguePrice))
+          .select("id")
+          .maybeSingle());
+      }
 
       if (insErr) {
         // 23505 = another caller recorded this same charge first. Fine.
@@ -531,7 +650,10 @@ async function applySubscriptionCharges(
           purchaseId: full.id,
           hallId:     sub.hall_id,
           planSlug:   sub.plan_slug,
-          amount:     Number(full.amount),
+          // The debited amount, not the stored one: this alert exists so a
+          // human can make the owner whole, and they need the figure that
+          // actually left the owner's account.
+          amount:     chargedAmount,
         });
       }
 
@@ -543,7 +665,9 @@ async function applySubscriptionCharges(
           chargeRef:  ref,
           hallId:     sub.hall_id,
           planLabel:  planLabelFor(sub.plan_slug),
-          amount:     Number(full.amount),
+          // What was really debited. Quoting the stored row would restate an
+          // old renewal at the new price the moment the catalogue moved.
+          amount:     chargedAmount,
           paidUntil:  result.endDate ?? null,
         });
       }

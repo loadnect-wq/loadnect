@@ -54,6 +54,22 @@ interface Props {
   defaultDate:     string;
   defaultSort:     string;
   count:           number;
+  /**
+   * Approved halls currently holding a paid premium tier, from
+   * countActivePremiumHalls() in lib/halls.ts.
+   *
+   * The "✦ Premium" chip filters on category=premium, which returns nothing
+   * while premium_listings is empty and every hall's premium_tier is null — so
+   * the chip advertised a shelf that does not exist and dead-ended on "No halls
+   * found". It is hidden until this is above zero.
+   *
+   * DEFAULTS TO ZERO, i.e. HIDDEN. That is correct at launch (there is no
+   * premium inventory) but it means the chip stays hidden until the parent
+   * actually passes this. app/halls/page.tsx must add:
+   *     premiumCount={await countActivePremiumHalls()}
+   * or premium owners lose the category filter their plan sells.
+   */
+  premiumCount?:   number;
 }
 
 export function SearchControls({
@@ -61,6 +77,7 @@ export function SearchControls({
   defaultPriceMin, defaultPriceMax,
   defaultQuery, defaultCategory, defaultAmenity,
   defaultDate, defaultSort, count,
+  premiumCount = 0,
 }: Props) {
   const router      = useRouter();
   const searchParams = useSearchParams();
@@ -102,6 +119,25 @@ export function SearchControls({
 
   const activeChip      = defaultCategory;
   const activeSortLabel = SORT_OPTIONS.find((s) => s.value === defaultSort)?.label ?? "Recommended";
+
+  // Hide the premium chip while there is no premium inventory — but keep it
+  // when it is already the active category, or a visitor who arrived on
+  // ?category=premium would have no way to switch it off.
+  const visibleChips = QUICK_CHIPS.filter(
+    (c) => c.key !== "premium" || premiumCount > 0 || activeChip === "premium",
+  );
+
+  // RANKING DISCLOSURE — Rule 5(3)(f), Consumer Protection (E-Commerce) Rules
+  // 2020: a marketplace must publish the main parameters that determine the
+  // ranking of goods, and disclose any that relate to paid promotion.
+  // "Recommended" is fetchHalls's default sort, which orders premium_tier
+  // descending BEFORE rating_average — that is paid placement under a word that
+  // reads like merit, and the only on-card marker was a gold badge. Keep this
+  // line honest against lib/halls.ts if that sort ever changes.
+  const rankingNote =
+    !defaultSort || defaultSort === "recommended"
+      ? "Ranking: halls promoted by their owners (a paid placement) appear first, then the highest rated."
+      : `Ranking: sorted by “${activeSortLabel}” only — paid placement does not affect this order.`;
 
   // Count active filters for the filter button badge
   const activeFilterCount = [
@@ -164,7 +200,7 @@ export function SearchControls({
           </button>
 
           {/* Category chips */}
-          {QUICK_CHIPS.map((chip) => {
+          {visibleChips.map((chip) => {
             const isActive = activeChip === chip.key;
             return (
               <button
@@ -188,6 +224,7 @@ export function SearchControls({
       <p className="mt-2 text-[11px] text-charcoal-500">
         {count} venue{count !== 1 ? "s" : ""} found
       </p>
+      <p className="mt-0.5 text-[11px] text-charcoal-400">{rankingNote}</p>
 
       {/* ── Filter bottom sheet ── */}
       <BottomSheet
@@ -199,8 +236,14 @@ export function SearchControls({
             <Button variant="outline" className="flex-1" onClick={clearAll}>
               Clear all
             </Button>
+            {/* Not "Show {count} results". `count` is the result count for the
+                URL already loaded, not for the filters being edited in this
+                sheet — so the number was wrong the moment anyone touched a
+                control, and unpluralised into the bargain ("Show 1 results"
+                was what the very first visitor saw). The live count is stated
+                above the sheet, correctly pluralised. */}
             <Button variant="gold" className="flex-1" onClick={applyFilters}>
-              Show {count} results
+              Show results
             </Button>
           </div>
         }

@@ -672,8 +672,21 @@ export function BookingFlow({ hall, availability, windowDays, onlinePaymentEnabl
                       onChange={(e) => setPhone(e.target.value)}
                       placeholder="+91 98765 43210"
                       aria-invalid={phone !== "" && !isValidPhoneNumber(phone)}
+                      aria-describedby="phone-sms-notice"
                       required
                     />
+                    {/* NOTICE AT THE POINT OF COLLECTION. This field is
+                        prefilled from the profile but freely editable, so the
+                        number typed here is often a THIRD PARTY's — a parent,
+                        a spouse, the event coordinator. Since SMS went live it
+                        is a real destination: createBookingRequest stores it as
+                        bookings.contact_phone and every booking notification is
+                        sent to it. Labelling it "Mobile Number *" alone told
+                        that person's number nothing about where it was going.
+                        Do not remove this line without removing the SMS. */}
+                    <p id="phone-sms-notice" className="mt-1 text-[11px] text-charcoal-500">
+                      We&apos;ll send booking updates by SMS to this number.
+                    </p>
                     {phone !== "" && !isValidPhoneNumber(phone) && (
                       <p className="mt-1 text-[11px] text-red-600">
                         Enter a valid mobile number — booking updates are texted to it.

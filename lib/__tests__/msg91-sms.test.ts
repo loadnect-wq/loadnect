@@ -175,11 +175,30 @@ describe("the wire format", () => {
 });
 
 describe("failure classification", () => {
-  it("marks a rejected template as PERMANENT so the admin UI offers no retry", async () => {
-    stubFetch(200, { type: "error", message: "template not found" });
+  it("marks an unrecognised refusal as PERMANENT so the admin UI offers no retry", async () => {
+    stubFetch(200, { type: "error", message: "number is blacklisted" });
     const r = await send();
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.permanent).toBe(true);
+  });
+
+  it("marks a template awaiting DLT APPROVAL as transient, so it survives the wait", async () => {
+    // This assertion used to read the other way, with "template not found"
+    // standing in for a permanent refusal. That was the bug: DLT approval is a
+    // queue run by the operator, and a row marked permanent_failure says
+    // "Retry will not help" — so every booking confirmation raised while a
+    // template sat in review was abandoned, even though the identical body
+    // sends the moment approval lands.
+    for (const msg of [
+      "template not found",
+      "Template is not approved",
+      "DLT template approval pending",
+    ]) {
+      stubFetch(200, { type: "error", message: msg });
+      const r = await send();
+      expect(r.ok).toBe(false);
+      if (!r.ok) expect(r.permanent, `"${msg}" should be retryable`).toBe(false);
+    }
   });
 
   it("marks a provider outage as TRANSIENT so it stays retryable", async () => {

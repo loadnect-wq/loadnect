@@ -26,18 +26,27 @@ import { cityFromSlug, fetchCityInventoryBySlug, citySlug } from "@/lib/seo/citi
 
 type Props = { params: Promise<{ city: string }> };
 
-/** Description written from the city's REAL inventory, so no two are alike. */
+/**
+ * Description written from the city's REAL inventory, so no two are alike.
+ *
+ * NOT "verified". This string is the city page's meta description as well as
+ * its visible intro, and Terms section 5 states that Hallnect displays venue
+ * information as provided by owners and does not independently verify every
+ * listing detail. Advertising "verified venues" against that is a misleading
+ * advertisement, and a city page is exactly where a searcher forms the
+ * impression. Same reasoning as APP_DESCRIPTION in lib/constants.ts.
+ */
 function describeCity(city: string, venueCount: number, priceFrom: number | null): string {
   if (venueCount === 0) {
     return (
-      `Looking for a wedding hall in ${city}? Hallnect is adding verified ${city} venues — ` +
+      `Looking for a wedding hall in ${city}? Hallnect is adding ${city} venues — ` +
       `browse halls across Tamil Nadu meanwhile, or list your ${city} venue with us.`
     );
   }
   const price = priceFrom ? ` from ₹${Math.round(priceFrom).toLocaleString("en-IN")} per day` : "";
   const noun = venueCount === 1 ? "venue" : "venues";
   return (
-    `Compare ${venueCount} verified wedding ${noun} in ${city}${price} — real photos, ` +
+    `Compare ${venueCount} owner-listed wedding ${noun} in ${city}${price} — real photos, ` +
     `guest capacity, amenities and live availability. Book your date online with Hallnect.`
   );
 }
@@ -89,7 +98,12 @@ export default async function CityPage({ params }: Props) {
     },
     {
       q: `Can I book a wedding hall in ${city} online?`,
-      a: `Yes. Choose your date and slot, then pay the 25% advance plus a flat ₹200 platform fee through Cashfree, or ₹0 if you have a promotional code. The booking is confirmed once the venue owner accepts it, and the balance is paid directly to the venue.`,
+      // advancePercent, not a literal 25. The advance is an admin setting
+      // (platform_settings) that checkout reads live, and this page already
+      // fetches it above — the hardcoded "25%" quoted a figure the customer
+      // would not actually be asked for the moment an admin changed it, on the
+      // one page Google shows for "book wedding hall in <city>".
+      a: `Yes. Choose your date and slot, then pay the ${advancePercent}% advance plus a flat ₹200 platform fee through Cashfree, or ₹0 if you have a promotional code. The booking is confirmed once the venue owner accepts it, and the balance is paid directly to the venue.`,
     },
     ...(largest
       ? [{
@@ -142,7 +156,7 @@ export default async function CityPage({ params }: Props) {
             <div className="flex items-center gap-1.5">
               <Building2 className="h-3.5 w-3.5 text-maroon-500" />
               <dt className="sr-only">Venues listed</dt>
-              <dd>{halls.length} verified {halls.length === 1 ? "venue" : "venues"}</dd>
+              <dd>{halls.length} {halls.length === 1 ? "venue" : "venues"} listed</dd>
             </div>
             {priceFrom != null && (
               <div className="flex items-center gap-1.5">
@@ -180,7 +194,7 @@ export default async function CityPage({ params }: Props) {
             </h2>
             <p className="mx-auto mt-2 max-w-md text-sm text-charcoal-600">
               Hallnect is onboarding venues in {city}. In the meantime you can browse every
-              verified hall across Tamil Nadu, or list your own venue.
+              hall listed across Tamil Nadu, or list your own venue.
             </p>
             <div className="mt-4 flex flex-wrap justify-center gap-2">
               <Link

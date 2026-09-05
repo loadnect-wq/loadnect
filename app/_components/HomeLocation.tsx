@@ -1,29 +1,47 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { ChevronDown, MapPin } from "lucide-react";
 import { BottomSheet } from "@/components/app/BottomSheet";
-import { CITIES } from "@/lib/mock-data";
 import { cn } from "@/lib/utils";
 
-const KEY = "hallnect:city";
+// ─────────────────────────────────────────────────────────────────────────────
+// THE CITY PICKER UNDER THE HOMEPAGE H1.
+//
+// It used to be a dead control, and it was the most prominent one on the site.
+// Selecting a city wrote it to localStorage under "hallnect:city" and stopped
+// there: nothing in the codebase ever read that key, so the picker changed a
+// label and nothing else. Worse, its list came from lib/mock-data's CITIES —
+// seventeen hardcoded names including several Hallnect has never had a venue
+// in, so even a working version would have offered empty searches.
+//
+// Now it navigates, and its list is the live inventory the server already
+// computed for the "Browse by city" links (lib/seo/cities.ts). Every option
+// leads to a search with results in it. If there is no inventory anywhere the
+// component renders nothing at all — an absent control beats a lying one.
+//
+// The localStorage write is gone rather than "kept just in case": a stored
+// preference nothing consumes is exactly how this became dead the first time.
+// If a remembered city is wanted later, add the reader in the same change.
+// ─────────────────────────────────────────────────────────────────────────────
 
-export function HomeLocation() {
-  const [city, setCity] = useState<string>("");
+/** Structural — mirrors CityInventory from lib/seo/cities (server-only there). */
+type CityOption = {
+  city:       string;
+  slug:       string;
+  venueCount: number;
+};
+
+export function HomeLocation({ cities }: { cities: readonly CityOption[] }) {
+  const router = useRouter();
   const [open, setOpen] = useState(false);
 
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem(KEY);
-      if (stored) setCity(stored);
-      else setCity("Madurai");
-    } catch { setCity("Madurai"); }
-  }, []);
+  if (cities.length === 0) return null;
 
-  function selectCity(name: string) {
-    setCity(name);
-    try { localStorage.setItem(KEY, name); } catch { /* ignore */ }
+  function goToCity(city: string) {
     setOpen(false);
+    router.push(`/halls?city=${encodeURIComponent(city)}`);
   }
 
   return (
@@ -34,26 +52,30 @@ export function HomeLocation() {
         className="mt-2 inline-flex items-center gap-1.5 text-sm font-medium text-charcoal-700"
       >
         <MapPin className="h-4 w-4 text-maroon-500" />
-        <span>{city || "Choose city"}</span>
+        <span>Browse by city</span>
         <ChevronDown className="h-3.5 w-3.5 text-charcoal-500" />
       </button>
 
-      <BottomSheet open={open} onClose={() => setOpen(false)} title="Select City">
+      <BottomSheet open={open} onClose={() => setOpen(false)} title="Cities with venues">
         <ul className="grid grid-cols-2 gap-2 pb-4">
-          {CITIES.map((c) => (
-            <li key={c}>
+          {cities.map((c) => (
+            <li key={c.slug}>
               <button
                 type="button"
-                onClick={() => selectCity(c)}
+                onClick={() => goToCity(c.city)}
                 className={cn(
-                  "flex w-full items-center gap-2 rounded-xl border px-3 py-2.5 text-left text-sm",
-                  c === city
-                    ? "border-maroon-500 bg-maroon-50 font-semibold text-maroon-700"
-                    : "border-border bg-white text-charcoal-800",
+                  "flex w-full items-center gap-2 rounded-xl border border-border bg-white",
+                  "px-3 py-2.5 text-left text-sm text-charcoal-800",
                 )}
               >
-                <MapPin className={cn("h-4 w-4", c === city ? "text-maroon-600" : "text-charcoal-400")} />
-                {c}
+                <MapPin className="h-4 w-4 shrink-0 text-charcoal-400" />
+                <span className="min-w-0">
+                  <span className="block truncate">{c.city}</span>
+                  {/* The real count, so the tap is an informed one. */}
+                  <span className="block text-[11px] text-charcoal-500">
+                    {c.venueCount} {c.venueCount === 1 ? "venue" : "venues"}
+                  </span>
+                </span>
               </button>
             </li>
           ))}

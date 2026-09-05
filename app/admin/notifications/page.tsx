@@ -17,12 +17,26 @@ import { retryNotification, markNotificationRead, markAllNotificationsRead } fro
 
 export const metadata: Metadata = { title: "SMS notifications — Admin" };
 
-const STATUS_FILTERS = [
+/**
+ * `value` is what fetchNotifications filters on — a single status, or a SET.
+ *
+ * PENDING IS TWO STATUSES, NOT ONE. A message is written 'pending', flipped to
+ * 'processing' the moment a sender claims it, and only then to sent/failed. A
+ * crash between the claim and the result strands the row at 'processing'
+ * forever. The Pending chip used to be an exact match on 'pending' alone, so
+ * every stranded row was invisible here — while fetchNotificationStats counted
+ * it in totalPending and retryNotification() would happily re-send it once it
+ * was 15 minutes stale. The count and the chip now select the same two states,
+ * which is the whole point: the number on the tile is a number you can click.
+ */
+const STATUS_FILTERS: {
+  key: string; label: string; value?: string | string[]; unread?: boolean;
+}[] = [
   { key: "all",     label: "All",     value: undefined },
   { key: "sent",    label: "Sent",    value: "sent" },
   { key: "failed",  label: "Failed",  value: "failed" },
   { key: "skipped", label: "Skipped", value: "skipped" },
-  { key: "pending", label: "Pending", value: "pending" },
+  { key: "pending", label: "Pending", value: ["pending", "processing"] },
   { key: "unread",  label: "Unread",  value: undefined, unread: true },
 ];
 
@@ -238,7 +252,7 @@ export default async function AdminNotificationsPage({ searchParams }: Props) {
 
       <div className="p-4 sm:p-6 lg:p-8">
         {/* MSG91 status — masked configuration only, never credentials. */}
-        <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+        <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-7">
           <div className={`rounded-xl border p-3 ${live ? "border-green-200 bg-green-50" : "border-amber-200 bg-amber-50"}`}>
             <p className="text-[10px] font-bold uppercase tracking-wide text-charcoal-500">MSG91 SMS</p>
             <p className="mt-0.5 text-sm font-bold text-charcoal-900">
@@ -262,17 +276,39 @@ export default async function AdminNotificationsPage({ searchParams }: Props) {
                   : "Credentials incomplete"}
             </p>
           </div>
+          {/* Pending is counted here AND selectable below — see STATUS_FILTERS.
+              It was already being fetched and shown nowhere, which is how a
+              message stuck mid-send could exist with nothing on the page ever
+              mentioning it. Each of these is a link to the filter that returns
+              exactly the rows it counts. */}
           {[
-            { label: "Sent",        value: stats.totalSent },
-            { label: "Failed",      value: stats.totalFailed },
-            { label: "Undelivered", value: stats.undelivered },
-            { label: "Skipped",     value: stats.totalSkipped },
-          ].map((s) => (
-            <div key={s.label} className="rounded-xl border border-border bg-white p-3">
-              <p className="text-[10px] font-bold uppercase tracking-wide text-charcoal-500">{s.label}</p>
-              <p className="mt-0.5 text-lg font-bold text-charcoal-900">{s.value.toLocaleString("en-IN")}</p>
-            </div>
-          ))}
+            { label: "Sent",        value: stats.totalSent,    filter: "sent" },
+            { label: "Failed",      value: stats.totalFailed,  filter: "failed" },
+            { label: "Undelivered", value: stats.undelivered,  filter: undefined },
+            { label: "Skipped",     value: stats.totalSkipped, filter: "skipped" },
+            { label: "Pending",     value: stats.totalPending, filter: "pending" },
+          ].map((s) => {
+            const body = (
+              <>
+                <p className="text-[10px] font-bold uppercase tracking-wide text-charcoal-500">{s.label}</p>
+                <p className="mt-0.5 text-lg font-bold text-charcoal-900">{s.value.toLocaleString("en-IN")}</p>
+              </>
+            );
+            // 'Undelivered' is the OPERATOR's verdict on delivery_status, not
+            // one of our send-side statuses, so no status chip selects it and
+            // it stays a plain tile rather than a link that would lie.
+            return s.filter ? (
+              <Link
+                key={s.label}
+                href={qs({ filter: s.filter, page: undefined })}
+                className="rounded-xl border border-border bg-white p-3 transition-colors hover:bg-ivory-50"
+              >
+                {body}
+              </Link>
+            ) : (
+              <div key={s.label} className="rounded-xl border border-border bg-white p-3">{body}</div>
+            );
+          })}
           <div className="rounded-xl border border-border bg-white p-3">
             <p className="text-[10px] font-bold uppercase tracking-wide text-charcoal-500">Templates configured</p>
             <p className="mt-0.5 text-lg font-bold text-charcoal-900">

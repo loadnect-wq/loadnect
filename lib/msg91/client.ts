@@ -12,10 +12,11 @@
 // The 401 case is the only one decided by the status code, and it means the
 // auth key is missing or invalid.
 //
-// RETRIES are deliberately narrow: network errors, timeouts and 5xx only.
-// A logical error is never retried — resending "template not found" five
-// times just spends five times as long failing, and a send MSG91 accepted
-// must never be replayed.
+// RETRIES are deliberately narrow: network errors, timeouts, 5xx, and the two
+// PROVIDER-STATE refusals (empty wallet, template awaiting DLT approval).
+// A logical error is never retried — resending "flow id missing" five times
+// just spends five times as long failing, and a send MSG91 accepted must never
+// be replayed.
 //
 // LOGGING: status, endpoint and MSG91's own message. Never the auth key,
 // never a full URL (it carries the key and the recipient), never an OTP.
@@ -32,6 +33,7 @@ export type Msg91ErrorKind =
   | "invalid_request"  // bad number, missing template, malformed params
   | "rejected"         // MSG91 understood and refused (DLT, blacklist)
   | "balance"          // wallet empty — refused now, identical message sends after a top-up
+  | "template_state"   // DLT template not approved/found YET — sends unchanged once approval lands
   | "rate_limited"
   | "timeout"
   | "network"
@@ -46,10 +48,15 @@ export type Msg91Response =
  * True when retrying could plausibly succeed. Anything MSG91 has already
  * judged (auth, invalid, rejected) is permanent — attemptSend marks those rows
  * so the admin UI does not offer a retry that is guaranteed to fail again.
+ *
+ * "balance" and "template_state" are the two refusals that are NOT the
+ * provider's final word: both describe an account state that someone else
+ * changes on their own timetable (a top-up, a DLT approval), after which the
+ * byte-identical message goes out.
  */
 export function isTransientMsg91Error(kind: Msg91ErrorKind): boolean {
   return kind === "timeout" || kind === "network" || kind === "server"
-    || kind === "rate_limited" || kind === "balance";
+    || kind === "rate_limited" || kind === "balance" || kind === "template_state";
 }
 
 /** Inverse of the above, for readability at call sites. */
@@ -67,9 +74,9 @@ export function isPermanentMsg91Error(kind: Msg91ErrorKind): boolean {
  */
 function classifyMessage(message: string): Msg91ErrorKind {
   const m = message.toLowerCase();
-  // BALANCE IS THE ONE REFUSAL THAT IS NOT PERMANENT. Every other thing MSG91
-  // "judges" stays judged: a wrong template id is wrong on the tenth attempt
-  // too. An empty wallet is different — the message is refused now and the
+  // BALANCE IS NOT A PERMANENT REFUSAL. Most of what MSG91 "judges" stays
+  // judged: a malformed request is malformed on the tenth attempt too. An
+  // empty wallet is different — the message is refused now and the
   // byte-identical message sends the moment the account is topped up. Left in
   // the default "rejected" bucket it marked the row permanent_failure, and the
   // admin UI then said "Retry will not help", which is the exact opposite of
@@ -78,6 +85,26 @@ function classifyMessage(message: string): Msg91ErrorKind {
   // Checked first, because "insufficient" would otherwise never be reached.
   if (m.includes("balance") || m.includes("insufficient") || m.includes("credit")) return "balance";
   if (m.includes("authkey") || m.includes("authentication") || m.includes("unauthorized")) return "auth";
+  // THE SAME ARGUMENT AS BALANCE, FOR THE OTHER THING WE DO NOT CONTROL.
+  // "template not found" / "template not approved" is what MSG91 answers while
+  // a DLT template is still working through operator approval — a queue run by
+  // the telco, on nobody's schedule but their own. Left in the "rejected"
+  // default it marked the row permanent_failure and the admin UI said "Retry
+  // will not help", so every message queued during the approval wait was
+  // abandoned even though the identical body sends the moment approval lands.
+  // Checked BEFORE the "not found"/"invalid" line below, which would otherwise
+  // swallow it as invalid_request.
+  //
+  // The cost of being wrong here is bounded and small: a template id that is
+  // genuinely wrong stays retryable, and MAX_SEND_ATTEMPTS in
+  // lib/notifications/service.ts stops the row after five tries.
+  if (m.includes("template") || m.includes("dlt")) {
+    if (m.includes("not approved") || m.includes("unapproved") || m.includes("not found")
+      || m.includes("not registered") || m.includes("not active") || m.includes("inactive")
+      || m.includes("pending") || m.includes("approval") || m.includes("under review")) {
+      return "template_state";
+    }
+  }
   if (m.includes("expired") || m.includes("not match") || m.includes("mismatch")) return "invalid_request";
   if (m.includes("invalid") || m.includes("missing") || m.includes("not found") || m.includes("required")) {
     return "invalid_request";

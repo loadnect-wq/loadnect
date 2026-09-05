@@ -132,10 +132,22 @@ describe("msg91Request — retries", () => {
   });
 
   it("NEVER retries a logical error — a send MSG91 accepted must not be replayed", async () => {
-    const spy = stubFetch(200, { message: "template not found", type: "error" });
+    // "flow id missing" is a bug in OUR request; it is wrong on the tenth
+    // attempt too. (It used to be "template not found" here, which is NOT that
+    // kind of error — see the template-approval test below.)
+    const spy = stubFetch(200, { message: "flow id missing", type: "error" });
     const r = await msg91Request({ path: "flow", method: "POST", body: {}, retries: 3 });
     expect(r.ok).toBe(false);
     expect(spy).toHaveBeenCalledTimes(1);
+  });
+
+  it("DOES retry a template still awaiting DLT approval", async () => {
+    // Provider state, not a verdict on our request: the approval can land
+    // between two attempts, and the identical body then sends.
+    const spy = stubFetch(200, { message: "Template not approved", type: "error" });
+    const r = await msg91Request({ path: "flow", method: "POST", body: {}, retries: 1 });
+    expect(r.ok).toBe(false);
+    expect(spy).toHaveBeenCalledTimes(2);
   });
 });
 
@@ -164,6 +176,13 @@ describe("error classification", () => {
     // was zero.
     ["insufficient balance", "balance"],
     ["Insufficient Credits", "balance"],
+    // Same story as the wallet, different queue. A DLT template waiting on
+    // operator approval is not a refusal of the message — it is a state that
+    // changes on the telco's timetable, and marking it permanent abandoned
+    // every message queued during the wait.
+    ["template not found", "template_state"],
+    ["Template is not approved", "template_state"],
+    ["DLT template approval pending", "template_state"],
   ])("classifies %s as %s", async (message, kind) => {
     stubFetch(200, { message, type: "error" });
     const r = await msg91Request({ path: "flow", method: "POST", body: {}, retries: 0 });
@@ -172,7 +191,9 @@ describe("error classification", () => {
   });
 
   it("agrees with itself about what is transient", () => {
-    for (const k of ["timeout", "network", "server", "rate_limited", "balance"] as const) {
+    for (const k of [
+      "timeout", "network", "server", "rate_limited", "balance", "template_state",
+    ] as const) {
       expect(isTransientMsg91Error(k)).toBe(true);
       expect(isPermanentMsg91Error(k)).toBe(false);
     }

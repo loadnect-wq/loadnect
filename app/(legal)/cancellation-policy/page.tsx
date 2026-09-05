@@ -63,8 +63,13 @@ export default function CancellationPolicyPage() {
         <a href="mailto:hallnect@gmail.com" className="text-maroon-600 hover:underline">hallnect@gmail.com</a> immediately if you believe your booking is affected.
       </Section>
 
+      {/* The response window here and in the Refund Policy's Disputes section describe the
+          same dispute and must state the same number. They said 7 and 5 business days, so
+          whichever page a customer happened to read set a different expectation. Aligned on
+          7 business days — the slower of the two, because promising the faster one and
+          missing it is the failure that actually costs us. Change both or neither. */}
       <Section title="10. Dispute Resolution">
-        If a cancellation or refund dispute arises, Hallnect will review the case and respond within 7 business days. Our decision in such disputes is final. To raise a dispute, use the Support Tickets feature in your account or email{" "}
+        If a cancellation or refund dispute arises, Hallnect will review the case and respond within 7 business days. Our decision in such disputes is final within Hallnect&apos;s internal process; this does not affect your rights under the Consumer Protection Act, 2019. To raise a dispute, use the Support Tickets feature in your account or email{" "}
         <a href="mailto:hallnect@gmail.com" className="text-maroon-600 hover:underline">hallnect@gmail.com</a>.
       </Section>
 
@@ -89,7 +94,13 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   return (
     <section className="mb-8">
       <h2 className="font-serif text-lg font-semibold text-charcoal-900">{title}</h2>
-      <p className="mt-2 text-sm leading-relaxed text-charcoal-600">{children}</p>
+      {/* A <div>, not a <p>, and it must stay one: the sibling legal pages pass block
+          content (Terms 7 a <ul>, Privacy 4 <p> elements) into their identical copy of
+          this helper, and a <p> wrapper makes the browser reparent those — server and
+          client trees diverge and React throws a hydration error. Kept the same here so
+          the five copies do not drift. Tailwind's preflight zeroes paragraph margins, so
+          this renders identically to the old <p>. */}
+      <div className="mt-2 text-sm leading-relaxed text-charcoal-600">{children}</div>
     </section>
   );
 }

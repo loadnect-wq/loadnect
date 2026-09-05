@@ -31,6 +31,9 @@
 //   three. Every value is therefore forced through toGsm7() before it is
 //   rendered OR sent — the same sanitised values feed both, so the stored
 //   message cannot differ from the delivered one.
+//   The corollary is gsm7OrFallback(): GSM 03.38 has no Indic script, so a
+//   Tamil venue name sanitises to NOTHING, and a fallback chosen before that
+//   happens is never taken. Encoding and fallback are one decision.
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** Every SMS this platform sends. Keys are stable identifiers. */
@@ -126,6 +129,26 @@ export function isGsm7(raw: string): boolean {
 }
 
 /**
+ * The GSM-7 form of `candidate`, or `fallback` when NOTHING survives.
+ *
+ * THE BUG THIS CLOSES: GSM 03.38 contains no Indic script at all, so a Tamil
+ * venue name — on a Tamil Nadu marketplace, an ordinary name, not an exotic
+ * one — filters down to "". Call sites that pick a fallback the usual way
+ *     sanitizeSomething(name) ?? "your venue"
+ * have already committed to the real value by then: the candidate is a
+ * perfectly good non-empty string, so the fallback is not taken, and the empty
+ * result is what ships. The customer gets "your hall booking at  on 12 Jan".
+ *
+ * So the encoding decision and the fallback decision have to be the SAME
+ * decision, which is what this function is. Sanitise first, THEN ask whether
+ * anything is left.
+ */
+export function gsm7OrFallback(candidate: string | null | undefined, fallback: string): string {
+  const safe = candidate ? toGsm7(candidate) : "";
+  return safe === "" ? toGsm7(fallback) : safe;
+}
+
+/**
  * Longest a single interpolated value may be.
  *
  * DLT variables are length-capped by the operator (commonly 30 characters).
@@ -136,8 +159,29 @@ export function isGsm7(raw: string): boolean {
  */
 export const MAX_VARIABLE_LENGTH = 60;
 
-function clampValue(raw: string): string {
-  const safe = toGsm7(raw);
+/**
+ * LAST-RESORT stand-ins for a value that GSM-7 erases completely, by variable
+ * name. Deliberately generic: the good wording belongs at the call site, which
+ * knows whether it is writing to the customer or the owner and passes its own
+ * fallback through gsm7OrFallback. This map only exists so that no path can
+ * put an EMPTY slot into a DLT-registered body — "your hall booking at  on
+ * 12 Jan" reads as a broken platform, and an empty variable is also the kind of
+ * thing an operator drops.
+ */
+const LOST_VALUE_FALLBACK: Record<string, string> = {
+  customer_name: "there",
+  hall_name: "your venue",
+};
+const LOST_VALUE_DEFAULT = "not available";
+
+function clampValue(raw: string, variable: string): string {
+  // The fallback is chosen AFTER encoding, never before — see gsm7OrFallback.
+  // An empty input stays empty (coerceVariables documents missing values as ""),
+  // so this only fires for a real value with no GSM-7 character in it at all.
+  const safe =
+    raw.trim() === ""
+      ? toGsm7(raw)
+      : gsm7OrFallback(raw, LOST_VALUE_FALLBACK[variable] ?? LOST_VALUE_DEFAULT);
   if (safe.length <= MAX_VARIABLE_LENGTH) return safe;
   return `${safe.slice(0, MAX_VARIABLE_LENGTH - 3).trimEnd()}...`;
 }
@@ -364,16 +408,20 @@ export function msg91Body(key: SmsTemplateKey): string {
  * SMS-safe. Missing entries become "" rather than "undefined": getting the
  * count wrong produces a slightly empty message, not the literal word
  * "undefined" in a customer's confirmation.
+ *
+ * A PRESENT value never becomes "": one written entirely in Tamil or Devanagari
+ * has no GSM-7 form, and clampValue substitutes a stand-in rather than leaving
+ * a hole in the middle of a sentence.
  */
 export function coerceVariables(
   key: SmsTemplateKey,
   values: readonly (string | number | null | undefined)[],
 ): string[] {
-  const want = SMS_TEMPLATES[key].variables.length;
+  const names = SMS_TEMPLATES[key].variables;
   const out: string[] = [];
-  for (let i = 0; i < want; i++) {
+  for (let i = 0; i < names.length; i++) {
     const v = values[i];
-    out.push(v === null || v === undefined ? "" : clampValue(String(v)));
+    out.push(v === null || v === undefined ? "" : clampValue(String(v), names[i]));
   }
   return out;
 }

@@ -62,13 +62,28 @@ export function HallCard({ hall, advancePercent }: HallCardProps) {
         <div className="absolute inset-0 bg-gradient-to-t from-black/45 via-transparent to-transparent" />
 
         {/* Top-left: premium tier badge — only renders for ACTIVE listings
-            (premium_tier is null for free + expired/inactive). */}
+            (premium_tier is null for free + expired/inactive).
+
+            THE GOLD BADGE ALONE IS NOT AN ADEQUATE DISCLOSURE. "★ Pro" and
+            "✦ Premium" read as quality marks, but what they actually mean is
+            that the owner paid Rs4,999–9,999 a month for the placement — and
+            fetchHalls's default sort puts these cards above everything else
+            under a control labelled "Recommended". Rule 5(3)(f) of the Consumer
+            Protection (E-Commerce) Rules requires the paid-ranking parameter to
+            be published, so the plain word goes on the card as well. The tier
+            badge stays because it is a feature owners are sold; the "Promoted"
+            tag stays because it is the truthful half. Do not drop either. */}
         <div className="absolute left-3 top-3 flex flex-col items-start gap-1.5">
           {hall.premium_tier === "pro" && (
             <Badge variant="gold" size="sm">★ Pro</Badge>
           )}
           {hall.premium_tier === "premium" && (
             <Badge variant="gold" size="sm">✦ Premium</Badge>
+          )}
+          {(hall.premium_tier === "premium" || hall.premium_tier === "pro") && (
+            <span className="rounded-full bg-white/95 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-charcoal-600 shadow-sm">
+              Promoted
+            </span>
           )}
         </div>
 

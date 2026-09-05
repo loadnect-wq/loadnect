@@ -37,6 +37,33 @@ import { resolveCoupon, type ResolvedCoupon } from "@/lib/coupons";
 //            half-day overlap, which the unique index alone can't catch
 //            (different `slot` values, so the index wouldn't conflict).
 
+/**
+ * WHICH VERSION OF THE POLICIES THE CUSTOMER ACTUALLY AGREED TO.
+ *
+ * /refund-policy and /cancellation-policy both say, in writing, that "the
+ * version applicable to your booking is the one in force at the time the
+ * booking was confirmed". That sentence makes the version LOAD-BEARING: the
+ * moment either page is edited, every stored `terms_accepted: true` becomes an
+ * unfalsifiable claim about a document nobody kept. In a refund dispute — the
+ * exact situation those pages exist for — "they accepted the terms" is worth
+ * nothing if we cannot say which terms.
+ *
+ * So the accepted version is snapshotted onto the booking next to
+ * terms_accepted_at, the same way 0049 snapshots gst_rate: the record has to
+ * survive the policy changing underneath it.
+ *
+ * The value tracks the "Last updated" stamp rendered on /terms,
+ * /cancellation-policy and /refund-policy (currently "August 2026" on all
+ * three). BUMP THIS IN THE SAME COMMIT that edits any of those pages — a
+ * changed policy served under an unchanged version is worse than no version at
+ * all, because it looks like evidence.
+ *
+ * NOT exported: this is a "use server" module, and Next only permits async
+ * function exports from one. If another module ever needs this value, it moves
+ * to lib/ — it does not get an `export` here.
+ */
+const POLICY_VERSION = "2026-08";
+
 export type CreateBookingInput = {
   hallId:       string;
   eventDate:    string;       // YYYY-MM-DD (range START)
@@ -235,6 +262,17 @@ export async function createBookingRequest(
     ? { coupon_id: coupon.id, coupon_code: coupon.code }
     : {};
 
+  // The consent snapshot. Kept in its own object for two reasons: every rung of
+  // the ladder below has to carry it, and terms_version (0052) is the NEWEST
+  // column of the three, so it is the first thing dropped when the database is
+  // behind. One timestamp is computed here rather than at each rung, so a
+  // fallback retry records when the customer consented, not when the retry ran.
+  const termsPayload: Record<string, unknown> = {
+    terms_accepted:    true,
+    terms_accepted_at: new Date().toISOString(),
+    terms_version:     POLICY_VERSION,
+  };
+
   const basePayload: Record<string, unknown> = {
     hall_id:        v.hallId,
     customer_id:    user.id,
@@ -260,19 +298,45 @@ export async function createBookingRequest(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const insertDb = adminInsert as any;
 
+  // Unknown-column fallbacks for un-migrated databases. PostgREST reports an
+  // unknown column in an INSERT body as PGRST204 (schema-cache miss), not the
+  // Postgres 42703 — check both. Four stages, newest first: drop terms_version
+  // (pre-0052), then the 0031 breakdown columns, then contact_phone (pre-0026),
+  // then the terms columns (pre-0017) — so each vintage of database keeps every
+  // column it has.
+  const isUnknownColumn = (e: { code?: string } | null) =>
+    e?.code === "42703" || e?.code === "PGRST204";
+
   let { data: inserted, error: insertErr } = await insertDb
     .from("bookings")
-    .insert({ ...basePayload, ...breakdownPayload, ...couponPayload, terms_accepted: true, terms_accepted_at: new Date().toISOString() })
+    .insert({ ...basePayload, ...breakdownPayload, ...couponPayload, ...termsPayload })
     .select("id, expires_at")
     .single();
 
-  // Unknown-column fallbacks for un-migrated databases. PostgREST reports an
-  // unknown column in an INSERT body as PGRST204 (schema-cache miss), not the
-  // Postgres 42703 — check both. Three stages, newest first: drop the 0031
-  // breakdown columns, then contact_phone (pre-0026), then the terms columns
-  // (pre-0017) — so each vintage of database keeps every column it has.
-  const isUnknownColumn = (e: { code?: string } | null) =>
-    e?.code === "42703" || e?.code === "PGRST204";
+  // RUNG 0 — terms_version, and ONLY terms_version. This rung exists ahead of
+  // the coupon guard on purpose: without it, a database that has 0045 (coupons)
+  // but not 0052 would hit the guard below and refuse every coupon booking,
+  // because "some column was unknown" would be read as "the coupon columns were
+  // unknown". Retrying with just this field removed keeps the coupon, the
+  // breakdown and the phone intact and costs one round trip on exactly one
+  // deploy window — the minutes between shipping this code and applying 0052.
+  //
+  // Losing the version is survivable; losing the consent is not. NULL here means
+  // "we did not record which policy version applied", which the migration's
+  // comment spells out — it must never be back-filled with today's constant,
+  // for the same reason 0049 refuses to back-fill gst_rate.
+  let termsFields = termsPayload;
+  if (isUnknownColumn(insertErr)) {
+    const { terms_version: _tv, ...withoutVersion } = termsPayload;
+    void _tv;
+    termsFields = withoutVersion;
+    console.error("[createBookingRequest] bookings.terms_version missing — apply migration 0052; recording consent without a version.");
+    ({ data: inserted, error: insertErr } = await insertDb
+      .from("bookings")
+      .insert({ ...basePayload, ...breakdownPayload, ...couponPayload, ...termsFields })
+      .select("id, expires_at")
+      .single());
+  }
 
   // A COUPON BOOKING MUST NEVER DEGRADE. Each rung of the ladder below drops
   // columns to satisfy an older database: dropping couponPayload while keeping
@@ -288,7 +352,7 @@ export async function createBookingRequest(
   if (!coupon && isUnknownColumn(insertErr)) {
     ({ data: inserted, error: insertErr } = await insertDb
       .from("bookings")
-      .insert({ ...basePayload, terms_accepted: true, terms_accepted_at: new Date().toISOString() })
+      .insert({ ...basePayload, ...termsFields })
       .select("id, expires_at")
       .single());
     if (isUnknownColumn(insertErr)) {
@@ -296,7 +360,7 @@ export async function createBookingRequest(
       void _cp;
       ({ data: inserted, error: insertErr } = await insertDb
         .from("bookings")
-        .insert({ ...noPhonePayload, terms_accepted: true, terms_accepted_at: new Date().toISOString() })
+        .insert({ ...noPhonePayload, ...termsFields })
         .select("id, expires_at")
         .single());
       if (isUnknownColumn(insertErr)) {

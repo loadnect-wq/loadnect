@@ -13,6 +13,7 @@ import {
   premiumListingSchema,
   premiumPlanUpdateSchema,
   commissionPercentSchema,
+  checkCommissionAgainstAdvance,
   ticketResponseSchema,
   couponCreateSchema,
   parseSafe,
@@ -32,7 +33,7 @@ import {
 } from "@/lib/notifications/events";
 import type { BookingExpirySummary } from "@/lib/booking-expiry";
 import type { PremiumExpirySummary } from "@/lib/premium-expiry";
-import { DEFAULT_ADVANCE_PERCENT } from "@/lib/booking-payment";
+import { DEFAULT_ADVANCE_PERCENT, DEFAULT_COMMISSION_PERCENT } from "@/lib/booking-payment";
 import { recordBookingRefund } from "@/lib/refunds";
 import { releaseAvailabilityForBooking } from "@/lib/availability-release";
 
@@ -50,20 +51,23 @@ type ActionResult = { success: true } | { error: string };
 // prevent_hall_self_approve / prevent_owner_self_verify triggers entirely,
 // disabling audit even for admin actions. So we deliberately don't use it.
 
-async function getAuthUser() {
-  const supabase = await getSupabaseServerClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  return { supabase, user };
-}
-
 /**
- * Server-side ADMIN gate for privileged actions.
+ * Server-side ADMIN gate — the ONLY entry check in this file.
  *
- * getAuthUser() only proves *authentication*. Without a role check, a
- * non-admin calling one of these server actions directly hit RLS, which
- * silently filtered the rows — the statement affected 0 rows, raised no error,
- * and the action returned { success: true }. That reported a privileged change
- * that never happened. Every sensitive admin action now starts here.
+ * There used to be a second one, `getAuthUser()`, which returned the session
+ * client and the user and nothing else. It proved *authentication* and was read
+ * as authorization, so the actions built on it opened with "if (!user) return
+ * Not authenticated" and then left RLS to sort out the rest. RLS does not sort
+ * it out in a way a caller can see: a non-admin invoking one of these server
+ * actions directly (they are directly invocable) had their statement filtered
+ * to 0 rows, which raises NO error — so the action returned { success: true }
+ * for a privileged change that never happened, and in some cases went on to
+ * write an audit entry and send an SMS about it.
+ *
+ * That helper is deliberately gone rather than merely unused. While it existed,
+ * the cheapest way to write the next admin action was to copy the wrong one.
+ * Every action in this file starts here instead, and the pattern is: gate,
+ * validate, write with count:"exact", refuse on zero rows, then audit.
  */
 async function requireAdminActor() {
   const supabase = await getSupabaseServerClient();
@@ -77,6 +81,39 @@ async function requireAdminActor() {
   if (profile?.role !== "admin") return { ok: false as const, error: "Admin access required." };
   if (profile?.is_active === false) return { ok: false as const, error: "This admin account is deactivated." };
   return { ok: true as const, supabase, user };
+}
+
+/**
+ * The two money percentages as they stand RIGHT NOW.
+ *
+ * Read straight off platform_settings with the admin's own session client
+ * (platform_settings_admin_read allows it) rather than through the public
+ * get_commission_percent / get_public_payment_settings RPCs. Those helpers
+ * swallow a failed read and hand back the compile-time default, which is the
+ * right behaviour for a customer-facing price but exactly wrong here: the pair
+ * below is validated against each other, and silently substituting 25 for a
+ * live 5% advance would approve a commission that bricks every checkout.
+ *
+ * The constants remain the fallback for a row or column that genuinely is not
+ * there yet (pre-0012 / pre-0017 database), which is the same value the booking
+ * engine itself would use in that state.
+ */
+async function readMoneyPercents(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  db: any,
+): Promise<{ commission: number; advance: number }> {
+  const { data } = await db
+    .from("platform_settings")
+    .select("commission_percent, default_advance_percentage")
+    .eq("id", true)
+    .maybeSingle();
+
+  const commission = Number(data?.commission_percent);
+  const advance    = Number(data?.default_advance_percentage);
+  return {
+    commission: Number.isFinite(commission) ? commission : DEFAULT_COMMISSION_PERCENT,
+    advance:    Number.isFinite(advance)    ? advance    : DEFAULT_ADVANCE_PERCENT,
+  };
 }
 
 /** Moderation reason: trimmed, length-capped, plain text. */
@@ -553,20 +590,32 @@ function normalizeAdInput(input: AdInput): { row: Record<string, unknown> } | { 
 }
 
 export async function createAdvertisement(input: AdInput): Promise<ActionResult> {
-  const { supabase, user } = await getAuthUser();
-  if (!user) return { error: "Not authenticated" };
+  // requireAdminActor, not getAuthUser — this publishes a clickable third-party
+  // banner on the public homepage, and "signed in" is not "admin". Server
+  // actions are directly invocable, so without a role check the ads_write RLS
+  // policy was the only thing standing between any customer session and the
+  // ad slots. Matches updateAdvertisement / deleteAdvertisement below.
+  const actor = await requireAdminActor();
+  if (!actor.ok) return { error: actor.error };
 
   const norm = normalizeAdInput(input);
   if ("error" in norm) return { error: norm.error };
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const db = supabase as any;
-  const { error } = await db.from("advertisements").insert(norm.row);
+  const db = actor.supabase as any;
+  // count:"exact" for the same reason every other write here carries it. An
+  // ads_write refusal on INSERT does raise 42501 rather than reporting zero
+  // rows — the silent-zero trap is an UPDATE/DELETE one — so this is the
+  // belt to that policy's braces, and it means no caller can ever be told an
+  // ad was created when nothing was written.
+  const { error, count } = await db
+    .from("advertisements").insert(norm.row, { count: "exact" });
 
   if (error) {
     if (error.code === "42703") return { error: "Database not migrated — apply migration 0014." };
     return { error: sanitizeError(error, "createAdvertisement") };
   }
+  if ((count ?? 0) === 0) return { error: "The advertisement was not created. Reload and try again." };
 
   revalidatePath("/admin/advertisements");
   revalidatePath("/");
@@ -638,12 +687,19 @@ export async function deleteAdvertisement(adId: string): Promise<ActionResult> {
 // ── Premium listings ──────────────────────────────────────────────────────────
 
 export async function togglePremiumActive(listingId: string, isActive: boolean): Promise<ActionResult> {
-  const { supabase, user } = await getAuthUser();
-  if (!user) return { error: "Not authenticated" };
+  // The count check below has been here all along; the ROLE check had not, and
+  // one without the other is a half-guard. premium_admin_write (0022) is
+  // `for all using (is_admin())`, so a non-admin invoking this server action
+  // directly matched zero rows — and this function then correctly refused. What
+  // it could not refuse was the audit entry and the owner SMS that a genuine
+  // admin's toggle triggers, or the reconnaissance of a "not permitted" reply
+  // that confirms the listing id exists. Authorize first, then write.
+  const actor = await requireAdminActor();
+  if (!actor.ok) return { error: actor.error };
   const idErr = requireUuid(listingId, "listing id");
   if (idErr) return { error: idErr };
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const db = supabase as any;
+  const db = actor.supabase as any;
 
   const { data: before } = await db
     .from("premium_listings").select("hall_id, is_active, plan_slug").eq("id", listingId).maybeSingle();
@@ -683,10 +739,16 @@ export async function togglePremiumActive(listingId: string, isActive: boolean):
 export async function cleanupExpiredBookings(): Promise<
   { success: true; cleaned: number } | { error: string }
 > {
-  const { supabase, user } = await getAuthUser();
-  if (!user) return { error: "Not authenticated" };
+  // This cancels other people's bookings in bulk, so it is admin-gated like
+  // every other privileged write here. getAuthUser() proved only that SOMEONE
+  // was signed in, and neither branch below could tell an unauthorized caller
+  // apart from a quiet night: the RPC is SECURITY DEFINER (it does not care who
+  // called it), and the fallback UPDATE is RLS-filtered to zero rows WITHOUT
+  // raising — which this function then reported as `cleaned: 0`, i.e. success.
+  const actor = await requireAdminActor();
+  if (!actor.ok) return { error: actor.error };
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const db = supabase as any;
+  const db = actor.supabase as any;
 
   // Fallback path: if the cleanup RPC isn't deployed, do it inline through
   // a regular UPDATE — admins satisfy the validate_booking_transition trigger
@@ -727,16 +789,25 @@ export async function createPremiumListing(input: {
   endDate:   string; // YYYY-MM-DD
   amount:    number;
 }): Promise<ActionResult> {
-  const { supabase, user } = await getAuthUser();
-  if (!user) return { error: "Not authenticated" };
+  // The block above says owners cannot call this — that was a statement about
+  // the DATABASE, not about this function. getAuthUser() let any signed-in
+  // session in and left premium_admin_write / guard_premium_listing_writes as
+  // the only defence, which is precisely the arrangement that grants a paid
+  // placement on the homepage if either one is ever loosened. Gate it here too.
+  const actor = await requireAdminActor();
+  if (!actor.ok) return { error: actor.error };
 
   const parsed = parseSafe(premiumListingSchema, input);
   if (!parsed.ok) return { error: parsed.error };
   const v = parsed.data;
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const db = supabase as any;
+  const db = actor.supabase as any;
 
+  // .select("id").single() IS the zero-row check on this path: an insert that
+  // wrote nothing comes back as PGRST116 and lands in the `if (error)` below,
+  // so there is no count:"exact" variant to add here. Reading the id back is
+  // also what notifyPremiumChanged needs, so it cannot be dropped.
   const { data: listing, error } = await db.from("premium_listings").insert({
     hall_id:    v.hallId,
     plan_slug:  v.planSlug,
@@ -800,24 +871,41 @@ export async function updatePremiumPlan(input: {
 export async function updateCommissionPercent(
   percent: number,
 ): Promise<ActionResult> {
-  const { supabase, user } = await getAuthUser();
-  if (!user) return { error: "Not authenticated" };
+  // requireAdminActor, not getAuthUser: this sets the rate every venue in the
+  // country is charged. Same reasoning as updatePremiumPlan.
+  const actor = await requireAdminActor();
+  if (!actor.ok) return { error: actor.error };
 
   const parsed = parseSafe(commissionPercentSchema, percent);
   if (!parsed.ok) return { error: parsed.error };
   const clean = Math.round(parsed.data * 100) / 100; // 2-decimal precision
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const db = supabase as any;
+  const db = actor.supabase as any;
 
-  const { error } = await db
+  // THE RANGE CHECK ALONE WAS NOT A VALIDATION. commissionPercentSchema accepts
+  // anything in [0,100], but the commission is charged on the full hall price
+  // and retained out of the advance, so a rate that is fine in isolation can be
+  // impossible against the live advance percentage — and calculateBookingPayment
+  // THROWS on that pair. Typing 40 here used to save cleanly and then fail every
+  // single checkout, sitewide, with the settings page still showing 40% as
+  // accepted. Checked against what the advance actually is right now, not
+  // against the constant.
+  const live = await readMoneyPercents(db);
+  const bound = checkCommissionAgainstAdvance(clean, live.advance, "commission");
+  if (!bound.ok) return { error: bound.error };
+
+  const { error, count } = await db
     .from("platform_settings")
     .upsert(
-      { id: true, commission_percent: clean, updated_by: user.id },
-      { onConflict: "id" },
+      { id: true, commission_percent: clean, updated_by: actor.user.id },
+      { onConflict: "id", count: "exact" },
     );
 
   if (error) return { error: sanitizeError(error, "admin") };
+  // Never report a rate change that touched no row — the admin would go on
+  // believing venues are charged what they typed. Same guard as updatePremiumPlan.
+  if ((count ?? 0) === 0) return { error: "The commission rate could not be saved. Reload and try again." };
   revalidatePath("/admin/settings");
   revalidatePath("/admin/commissions");
   revalidatePath("/admin/dashboard");
@@ -922,12 +1010,20 @@ export async function updatePlatformPaymentSettings(input: {
   const { supabase, user } = { supabase: actor.supabase, user: actor.user };
 
   const advancePct = Number(input.defaultAdvancePercentage ?? DEFAULT_ADVANCE_PERCENT);
-  if (!Number.isFinite(advancePct) || advancePct < 0 || advancePct > 100) {
-    return { error: "Default advance percentage must be between 0 and 100." };
-  }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = supabase as any;
+
+  // THE MIRROR OF updateCommissionPercent, and it breaks the catalogue from the
+  // other end. The old check was `0 <= advance <= 100` with no reference to the
+  // commission, so lowering the advance under the live rate — or to 0, which
+  // advanceFromTotal() rejects outright — saved happily and then threw a
+  // RangeError on every booking of every hall. The bound is symmetric and lives
+  // in one place, so the two settings screens can never disagree about it.
+  const liveRates = await readMoneyPercents(db);
+  const bound = checkCommissionAgainstAdvance(liveRates.commission, advancePct, "advance");
+  if (!bound.ok) return { error: bound.error };
+
   const { error } = await db.from("platform_settings").upsert(
     {
       id: true,

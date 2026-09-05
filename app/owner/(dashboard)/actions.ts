@@ -1054,8 +1054,39 @@ export async function startPlanPurchaseAction(
 }
 
 /**
+ * Does this hall_owners row belong to the signed-in user?
+ *
+ * Read with the service-role client and compared explicitly, rather than
+ * leaning on the caller's RLS view: these checks decide whether a plan order
+ * may be acted on at all, and a policy or column-grant change elsewhere must
+ * not be able to turn the gate into a no-op. Deliberately two plain reads with
+ * no PostgREST embed — an embed whose FK hint stops resolving fails as "no
+ * row", which here would lock every legitimate owner out of their own receipt.
+ */
+async function ownerRowBelongsToUser(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  db: any,
+  ownerId: string | null | undefined,
+  userId: string,
+): Promise<boolean> {
+  if (!ownerId) return false;
+  const { data } = await db
+    .from("hall_owners").select("profile_id").eq("id", ownerId).maybeSingle();
+  return Boolean(data?.profile_id) && data.profile_id === userId;
+}
+
+/**
  * Server-verified status for a plan order. The owner's browser calls this after
  * returning from Cashfree — the URL's claim of success is never trusted.
+ *
+ * SIGNED IN IS NOT THE SAME AS ENTITLED. This used to check only that SOMEONE
+ * was authenticated and that the id carried the HNP_ prefix, then hand the id
+ * straight to verifyAndApplyPlanPurchase — which talks to Cashfree, activates
+ * the listing and writes the purchase row. Any owner could therefore drive
+ * another owner's order to completion (and read back its state) by pasting
+ * their order id, over a flow that moves money. The row is resolved and its
+ * owner confirmed FIRST, and an id that is not the caller's is indistinguish-
+ * able from one that does not exist.
  */
 export async function checkPlanPurchaseStatus(
   orderId: string,
@@ -1063,6 +1094,19 @@ export async function checkPlanPurchaseStatus(
   const { user } = await getAuthUser();
   if (!user) return { state: "not_found" };
   if (!orderId || !orderId.startsWith("HNP_")) return { state: "not_found" };
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const adminDb = getSupabaseAdminClient() as any;
+  const { data: purchase } = await adminDb
+    .from("plan_purchases")
+    .select("id, owner_id")
+    .eq("cashfree_order_id", orderId)
+    .maybeSingle();
+
+  if (!purchase) return { state: "not_found" };
+  if (!(await ownerRowBelongsToUser(adminDb, purchase.owner_id, user.id))) {
+    return { state: "not_found" };
+  }
 
   const { verifyAndApplyPlanPurchase } = await import("@/lib/plan-payments");
   const result = await verifyAndApplyPlanPurchase(orderId);
@@ -1260,13 +1304,29 @@ export async function startPlanSubscriptionAction(
 }
 
 /** Server-verified subscription state after the owner returns from the mandate
- *  screen. The URL's claim is never trusted. */
+ *  screen. The URL's claim is never trusted — and neither is the caller's claim
+ *  on the subscription: as with checkPlanPurchaseStatus above, the row is
+ *  resolved and its owner confirmed before syncSubscription touches Cashfree,
+ *  cancels charges or grants a month of boost against it. */
 export async function checkPlanSubscriptionStatus(
   subscriptionId: string,
 ): Promise<{ state: "active" | "pending" | "cancelled" | "failed" | "not_found" }> {
   const { user } = await getAuthUser();
   if (!user) return { state: "not_found" };
   if (!subscriptionId || !subscriptionId.startsWith("HNS_")) return { state: "not_found" };
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const adminDb = getSupabaseAdminClient() as any;
+  const { data: sub } = await adminDb
+    .from("plan_subscriptions")
+    .select("id, owner_id")
+    .eq("cf_subscription_id", subscriptionId)
+    .maybeSingle();
+
+  if (!sub) return { state: "not_found" };
+  if (!(await ownerRowBelongsToUser(adminDb, sub.owner_id, user.id))) {
+    return { state: "not_found" };
+  }
 
   const { syncSubscription } = await import("@/lib/plan-subscriptions");
   const result = await syncSubscription(subscriptionId);

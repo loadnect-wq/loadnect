@@ -1173,7 +1173,19 @@ const NOTIF_CATEGORY_PREFIXES: Record<string, string[]> = {
 };
 
 export async function fetchNotifications(opts: {
-  status?:    string;
+  /**
+   * One status, or a SET of them.
+   *
+   * The set is not a convenience. 'pending' (queued, never claimed) and
+   * 'processing' (claimed by a sender that never came back) are two halves of
+   * the same operational state — "this message has not gone out yet" — and
+   * fetchNotificationStats counts them together as totalPending. While this was
+   * a bare .eq() the Pending chip could only ever match the first half, so a
+   * message stranded in 'processing' by a crash between claim and result was
+   * counted on the tile and reachable from no filter on the page. The retry
+   * button for exactly that row lives on the row.
+   */
+  status?:    string | string[];
   unread?:    boolean;
   search?:    string;
   page?:      number;
@@ -1199,7 +1211,14 @@ export async function fetchNotifications(opts: {
     .order("created_at", { ascending: false })
     .range(from, from + NOTIF_PAGE_SIZE - 1);
 
-  if (opts.status) q = q.eq("status", opts.status);
+  // An EMPTY array must mean "no status filter", not .in("status", []) — which
+  // PostgREST answers with zero rows and would render as "no notifications".
+  if (Array.isArray(opts.status)) {
+    if (opts.status.length === 1) q = q.eq("status", opts.status[0]);
+    else if (opts.status.length > 1) q = q.in("status", opts.status);
+  } else if (opts.status) {
+    q = q.eq("status", opts.status);
+  }
   if (opts.unread) q = q.eq("is_read", false);
 
   // Whitelisted, never interpolated: both values index fixed maps, so a crafted
@@ -1240,6 +1259,9 @@ export type NotificationStats = {
   totalSent:   number;
   totalFailed: number;
   totalSkipped: number;
+  /** Queued AND in-flight — status 'pending' plus status 'processing'. The
+   *  Pending filter on /admin/notifications MUST select the same two, or the
+   *  tile counts rows the page cannot open. */
   totalPending: number;
   /** Accepted by MSG91, then reported as not delivered by the operator. */
   undelivered: number;

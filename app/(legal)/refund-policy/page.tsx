@@ -35,21 +35,28 @@ export default function RefundPolicyPage() {
             </tr>
           </thead>
           <tbody className="divide-y divide-border text-charcoal-600">
+            {/* These cells used to read "Up to 100% (subject to owner policy)" and so on.
+                That contradicted section 1 and the footnote directly below, both of which
+                promise one Hallnect-wide schedule with no owner-set terms — and there is no
+                per-owner refund rule anywhere in the code to be "subject to". A customer
+                reading "up to" and "subject to owner policy" would reasonably expect to be
+                offered less than the table says. State the single figure that actually
+                applies; do not reintroduce a hedge the product cannot honour. */}
             <tr>
               <td className="px-4 py-3">More than 30 days before event</td>
-              <td className="px-4 py-3 font-medium text-green-700">Up to 100% (subject to owner policy)</td>
+              <td className="px-4 py-3 font-medium text-green-700">100% of the advance</td>
             </tr>
             <tr>
               <td className="px-4 py-3">15–30 days before event</td>
-              <td className="px-4 py-3 font-medium text-amber-700">Up to 75% (subject to owner policy)</td>
+              <td className="px-4 py-3 font-medium text-amber-700">75% of the advance</td>
             </tr>
             <tr>
               <td className="px-4 py-3">7–14 days before event</td>
-              <td className="px-4 py-3 font-medium text-amber-700">Up to 50% (subject to owner policy)</td>
+              <td className="px-4 py-3 font-medium text-amber-700">50% of the advance</td>
             </tr>
             <tr>
               <td className="px-4 py-3">Less than 7 days before event</td>
-              <td className="px-4 py-3 font-medium text-red-700">No refund (standard policy)</td>
+              <td className="px-4 py-3 font-medium text-red-700">No refund</td>
             </tr>
           </tbody>
         </table>
@@ -78,19 +85,28 @@ export default function RefundPolicyPage() {
 
       <Section title="7. How to Request a Refund">
         Log in to your Hallnect account and go to My Bookings. Select the booking and use the Cancel Booking option (if within the cancellation window). Alternatively, email{" "}
-        <a href="mailto:hallnect@gmail.com" className="text-maroon-600 hover:underline">hallnect@gmail.com</a> with your booking reference number. We will confirm the eligible refund amount based on the schedule below and the timing of your request.
+        <a href="mailto:hallnect@gmail.com" className="text-maroon-600 hover:underline">hallnect@gmail.com</a> with your booking reference number. We will confirm the eligible refund amount based on the schedule above and the timing of your request.
       </Section>
 
-      <Section title="7. Refund Processing Time">
+      {/* "How to Request a Refund" above and this section were both numbered 7, which
+          left Disputes and Changes one short at 8 and 9. Everything from here down was
+          shifted up by one so the numbering is contiguous and a citation to "section 9"
+          of this policy resolves to a single section. */}
+      <Section title="8. Refund Processing Time">
         Approved refunds are processed within <strong>7–10 business days</strong> to the original payment method. Bank processing times may add additional delays beyond our control.
       </Section>
 
-      <Section title="8. Disputes">
+      {/* The response window here and in the Cancellation Policy's dispute section must
+          stay the same number. They said 5 and 7 business days respectively for the same
+          dispute, so whichever page a customer read set a different expectation. Aligned
+          on 7 business days — the slower of the two, because promising the faster one and
+          missing it is the failure that actually costs us. Change both or neither. */}
+      <Section title="9. Disputes">
         If you believe a refund was incorrectly denied, raise a support ticket through your account or email{" "}
-        <a href="mailto:hallnect@gmail.com" className="text-maroon-600 hover:underline">hallnect@gmail.com</a> within 7 days of the cancellation decision. We will review and respond within 5 business days. Hallnect&apos;s decision on refund disputes, after review, is final.
+        <a href="mailto:hallnect@gmail.com" className="text-maroon-600 hover:underline">hallnect@gmail.com</a> within 7 days of the cancellation decision. We will review and respond within 7 business days. Hallnect&apos;s decision on refund disputes, after review, is final within Hallnect&apos;s internal process; this does not affect your rights under the Consumer Protection Act, 2019.
       </Section>
 
-      <Section title="9. Changes to This Policy">
+      <Section title="10. Changes to This Policy">
         We may update this Refund Policy at any time. The policy applicable to your booking is the one in effect at the time the booking was confirmed.
       </Section>
     </article>
@@ -111,7 +127,14 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   return (
     <section className="mb-8">
       <h2 className="font-serif text-lg font-semibold text-charcoal-900">{title}</h2>
-      <p className="mt-2 text-sm leading-relaxed text-charcoal-600">{children}</p>
+      {/* This wrapper is a <div>, not a <p>, and must stay one. Sections on the sibling
+          legal pages pass block content (Terms 7 passes a <ul>, Privacy 4 passes <p>s)
+          and a <p> cannot legally contain those — the browser closes the paragraph early
+          and reparents them, so the DOM it builds no longer matches the server HTML and
+          React throws a hydration error on pages the checkout consent checkbox links to.
+          Every legal page carries its own copy of this helper; keep them identical.
+          Tailwind's preflight zeroes paragraph margins, so div and p render the same. */}
+      <div className="mt-2 text-sm leading-relaxed text-charcoal-600">{children}</div>
     </section>
   );
 }

@@ -132,10 +132,22 @@ export async function checkVerificationOtp(
   if (res.ok) return { ok: true, approved: true };
 
   // "OTP not match" / "OTP expired" — MSG91 answered, the answer was no.
-  if (res.kind === "invalid_request" || res.kind === "rejected") {
+  // ONLY invalid_request earns approved:false. classifyMessage recognises both
+  // of those phrases explicitly, so this branch is the answer we actually
+  // understood.
+  if (res.kind === "invalid_request") {
     return { ok: true, approved: false };
   }
 
-  // Auth, network, timeout, 5xx: we do not know, so we do not guess.
+  // Everything else — auth, network, timeout, 5xx, and "rejected", which is
+  // merely classifyMessage's DEFAULT for text it did not recognise: we do not
+  // know, so we do not guess.
+  //
+  // "rejected" used to land above, and that was a bug with two victims. A novel
+  // refusal ("service temporarily unavailable", a new MSG91 wording) burned one
+  // of the user's five attempts in the 15-minute window AND told them their code
+  // was wrong, so a provider hiccup could lock someone out of their own account
+  // while they were typing the right digits. An unrecognised message is not a
+  // verdict on the code; only a message we can read as one is.
   return { ok: false, error: "service_error" };
 }

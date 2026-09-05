@@ -77,7 +77,9 @@ export type NotificationRequest = {
 //     more than this many messages in a day without an admin noticing. Each
 //     one is a billed SMS, so this is a real rupee ceiling, not a soft limit.
 // Counts include 'processing' (in-flight, claimed) rows so concurrent
-// dispatches see each other — pure status='sent' counting was a race.
+// dispatches see each other — pure status='sent' counting was a race — and are
+// keyed on provider_message_id rather than on the current status, so a
+// delivery report arriving later cannot refund an already-billed message.
 const MAX_PER_PHONE_PER_HOUR  = 15;
 const MAX_PER_ACCOUNT_PER_DAY = 30;
 const MAX_GLOBAL_PER_DAY      = 500;
@@ -364,34 +366,77 @@ export async function attemptSend(
       return { sent: false, error: msg };
     };
 
-    const inFlight = ["processing", "sent"];
-    const { count: perPhone } = await db
+    // WHAT THESE CEILINGS COUNT: MONEY ALREADY SPENT, NOT ROWS STILL LOOKING
+    // HOPEFUL. Counting status in ('processing','sent') was a hole, because a
+    // row does not stay 'sent': /api/webhooks/msg91 flips it to 'failed' the
+    // moment the operator reports a DND block or a rejection. That message was
+    // BILLED — MSG91 accepted it and charged for it — yet the status change
+    // handed its slot back, so a number that cannot receive anything (a DND
+    // handset, a dead operator route) would refill the allowance and let the
+    // platform keep paying to text it.
+    //
+    // provider_message_id is set only when MSG91 accepted a send, and is never
+    // cleared, so "ever reached the provider" is exactly the billed set. Plus
+    // 'processing': a claim in flight that we may be about to be billed for,
+    // which is what makes concurrent dispatches see each other.
+    // DO NOT narrow this back to status alone without changing the webhook too.
+    const billed = "status.eq.processing,provider_message_id.not.is.null";
+
+    // The two RECIPIENT-scoped ceilings FAIL OPEN on a read error, deliberately:
+    // an unreadable notifications table must not stop every booking
+    // confirmation on the platform. The global fuse below does the opposite,
+    // for the reason written out there.
+    const { count: perPhone, error: perPhoneErr } = await db
       .from("notifications")
       .select("id", { count: "exact", head: true })
       .eq("recipient_phone", phone)
-      .in("status", inFlight)
+      .or(billed)
       .gte("created_at", hourAgo);
-    if ((perPhone ?? 0) > MAX_PER_PHONE_PER_HOUR) {
+    if (perPhoneErr) {
+      console.error("[notifications] per-phone ceiling unreadable:",
+        perPhoneErr.code, perPhoneErr.message);
+    } else if ((perPhone ?? 0) > MAX_PER_PHONE_PER_HOUR) {
       return failRate("Rate limit: too many messages to this number in the last hour");
     }
 
     if (current.recipient_user_id) {
-      const { count: perAccount } = await db
+      const { count: perAccount, error: perAccountErr } = await db
         .from("notifications")
         .select("id", { count: "exact", head: true })
         .eq("recipient_user_id", current.recipient_user_id)
-        .in("status", inFlight)
+        .or(billed)
         .gte("created_at", dayAgo);
-      if ((perAccount ?? 0) > MAX_PER_ACCOUNT_PER_DAY) {
+      if (perAccountErr) {
+        console.error("[notifications] per-account ceiling unreadable:",
+          perAccountErr.code, perAccountErr.message);
+      } else if ((perAccount ?? 0) > MAX_PER_ACCOUNT_PER_DAY) {
         return failRate("Rate limit: too many messages for this account in 24 hours");
       }
     }
 
-    const { count: globalCount } = await db
+    // THE COST FUSE FAILS CLOSED, unlike its two siblings above. Supabase
+    // returns count === null on a query error, which is indistinguishable from
+    // a genuine zero — so reading `count ?? 0` let the send proceed precisely
+    // when nothing was counting it. That is the same argument
+    // app/verify-phone/actions.ts writes out for its own global fuse: an
+    // unreadable counter means the guard rails are down, not that the platform
+    // is quiet, and every send below is real money out of a prepaid wallet.
+    //
+    // Recorded as 'failed' WITHOUT permanent_failure, so the row stays
+    // retryable: this is our outage, not the recipient's, and an admin can
+    // resend once the table reads again.
+    const { count: globalCount, error: globalErr } = await db
       .from("notifications")
       .select("id", { count: "exact", head: true })
-      .in("status", inFlight)
+      .or(billed)
       .gte("created_at", dayAgo);
+    if (globalErr) {
+      console.error("[notifications] global cost fuse unreadable:",
+        globalErr.code, globalErr.message);
+      return failRate(
+        "Could not read the platform-wide message ceiling — not sent. Retry once it reads again.",
+      );
+    }
     if ((globalCount ?? 0) > MAX_GLOBAL_PER_DAY) {
       return failRate("Rate limit: platform-wide daily message ceiling reached");
     }

@@ -174,6 +174,14 @@ export async function POST(request: Request) {
         // the admin dashboard reports a message the recipient never got. It is
         // marked permanent: the operator's verdict will not change on a retry
         // of the identical message, and a DND/NDNC block never will.
+        //
+        // THIS WRITE MUST NOT HAND BACK RATE-LIMIT CAPACITY. The message was
+        // already billed; only its fate changed. The ceilings in
+        // lib/notifications/service.ts therefore count rows whose
+        // provider_message_id is set, NOT rows whose status still reads 'sent'
+        // — otherwise every DND block here would free a slot and the platform
+        // would keep paying to text a handset that can never receive it.
+        // provider_message_id is deliberately left untouched below.
         update.status = "failed";
         update.permanent_failure = true;
         update.failed_at = now;

@@ -172,12 +172,30 @@ export async function payOwnerOnAcceptance(bookingId: string): Promise<PayoutOut
     });
 
     const vendorId: string | null = commission?.hall_owners?.cashfree_vendor_id ?? null;
-    const ownerAmount = share.ok ? share.ownerAmount : 0;
+
+    // UNKNOWN IS NOT ZERO, and this column is read as if it were exact.
+    //
+    // computeOwnerShare refuses rather than guessing, and the refusal was then
+    // flattened to 0 and written into split_owner_amount anyway. That column is
+    // the FIRST source ownerShareOf() trusts (lib/admin.ts), so a stored 0 beat
+    // the booking's own owner_net_advance snapshot and the advance−commission
+    // fallback, and isEstimatedShare() saw a value present and dropped the
+    // "estimated — check before paying" flag. The manual-payout screen then
+    // presented an unknown share as a confident ₹0 — on the screen an admin
+    // uses to decide what to wire to a venue while Easy Split is still off.
+    //
+    // So the column is left NULL when we could not compute it. Null is what
+    // makes the estimate path run and the warning appear.
+    const ownerAmount: number | null = share.ok ? share.ownerAmount : null;
 
     // 3. Record WHY a payout cannot happen, rather than failing silently.
     const note = async (status: string, error: string | null) => {
       await db.from("payments")
-        .update({ split_status: status, split_error: error, split_owner_amount: ownerAmount })
+        .update({
+          split_status: status,
+          split_error: error,
+          ...(ownerAmount != null ? { split_owner_amount: ownerAmount } : {}),
+        })
         .eq("id", payment.id)
         .neq("split_status", "done");
     };
@@ -189,7 +207,10 @@ export async function payOwnerOnAcceptance(bookingId: string): Promise<PayoutOut
     // the acceptance must survive a broken notification pipeline.
     const failAndAlert = async (reason: string): Promise<PayoutOutcome> => {
       await note("failed", reason);
-      await notifyOwnerPayoutFailed({ bookingId, ownerAmount, reason }).catch(() => {});
+      // The alert quotes an amount, and there may not be one. `reason` always
+      // says why in that case ("Commission for this booking is unknown…"), so
+      // the admin reading it is not left thinking ₹0 was the owner's share.
+      await notifyOwnerPayoutFailed({ bookingId, ownerAmount: ownerAmount ?? 0, reason }).catch(() => {});
       return { state: "failed", reason };
     };
 
@@ -208,9 +229,12 @@ export async function payOwnerOnAcceptance(bookingId: string): Promise<PayoutOut
 
     // 4. CLAIM the split before calling the gateway. A concurrent Accept sees
     //    'pending' and matches 0 rows, so only one caller can dispatch.
+    // share.ownerAmount, not the nullable alias above: everything from here on
+    // is past the !share.ok guard, so the figure is known and is the one we
+    // both claim and dispatch.
     const { count: claimed } = await db
       .from("payments")
-      .update({ split_status: "pending", split_owner_amount: ownerAmount, split_vendor_id: vendorId }, { count: "exact" })
+      .update({ split_status: "pending", split_owner_amount: share.ownerAmount, split_vendor_id: vendorId }, { count: "exact" })
       .eq("id", payment.id)
       .in("split_status", ["none", "failed", "not_applicable"]);
 
@@ -222,7 +246,7 @@ export async function payOwnerOnAcceptance(bookingId: string): Promise<PayoutOut
     const result = await splitOrderToVendor({
       cashfreeOrderId: payment.cashfree_order_id,
       vendorId,
-      amountToOwner: ownerAmount,
+      amountToOwner: share.ownerAmount,
     });
 
     if (!result.ok) {

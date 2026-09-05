@@ -25,6 +25,7 @@ import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import { getAdminNotificationPhone, dispatchAll } from "@/lib/notifications/service";
 import { sanitizeNotificationText } from "@/lib/notifications/phone";
+import { gsm7OrFallback } from "@/lib/notifications/sms-templates";
 
 const MAX_MESSAGES_PER_HOUR = 20;
 
@@ -85,10 +86,21 @@ export async function submitContactMessage(input: {
 
   // Admin SMS alert — best-effort, never fails the submission. The
   // visitor-supplied subject is sanitised before entering a branded message.
+  //
+  // ONE ALERT PER HOUR, NOT ONE PER SUBMISSION. The dedupe key used to carry
+  // Date.now(), which made it unique by construction and defeated the outbox's
+  // idempotency entirely: twenty enquiries in an hour meant twenty billed SMS
+  // to the admin's phone, and MAX_PER_PHONE_PER_HOUR (15) is shared with the
+  // alerts that actually need waking someone up — a failed payout, a payment
+  // mismatch. A contact-form flood, which any bot can produce, would silence
+  // those. Bucketing by UTC hour collapses the flood into one nudge; the
+  // messages themselves are all in /admin/support-tickets, which is the source
+  // of truth. The suffix is the recipient type, added by the outbox.
+  const hourBucket = new Date().toISOString().slice(0, 13); // YYYY-MM-DDTHH
   try {
     const adminPhone = await getAdminNotificationPhone();
     await dispatchAll([{
-      eventKey: `contact.message:${v.email}:${Date.now()}`,
+      eventKey: `contact.message:${hourBucket}`,
       eventType: "contact.message",
       recipientType: "admin",
       recipientUserId: null,
@@ -96,8 +108,17 @@ export async function submitContactMessage(input: {
       templateKey: "ADMIN_ALERT",
       templateVariables: [
         "New contact message",
-        sanitizeNotificationText(`${v.name}: ${v.subject}`, 160) ?? "New contact message",
-        "See /admin/support-tickets",
+        // gsm7OrFallback, not `?? fallback`: a name and subject written in
+        // Tamil sanitise to a perfectly good non-empty string here and then
+        // vanish at GSM-7 encoding, so the fallback has to be chosen AFTER the
+        // encoding, not before it. Otherwise the alert reads "Details: .".
+        gsm7OrFallback(
+          sanitizeNotificationText(`${v.name}: ${v.subject}`, 160),
+          "New contact message",
+        ),
+        // "all", because this one SMS may now stand for several messages in
+        // the same hour — the alert is a nudge, the dashboard is the record.
+        "See all in /admin/support-tickets",
       ],
       bookingId: null,
       hallId: null,

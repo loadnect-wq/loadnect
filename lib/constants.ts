@@ -1,6 +1,22 @@
 export const APP_NAME = "Hallnect";
+
+// THE WORD "VERIFIED" MUST NOT COME BACK HERE.
+//
+// This string is the site-wide meta description (app/layout.tsx feeds it to
+// <meta name="description">, Open Graph and Twitter) and it is repeated
+// verbatim in the footer of every page. It used to read "Discover and book
+// verified wedding halls…", which directly contradicts Terms section 5:
+// "Hallnect displays venue information as provided by owners and does not
+// independently verify every listing detail."
+//
+// One of the two had to be false, and the Terms are the accurate one — nobody
+// visits a venue before it goes live. A marketplace-wide "verified" claim that
+// the operator's own contract disclaims is a misleading advertisement under
+// section 2(28) of the Consumer Protection Act 2019, and it is the first thing
+// a complainant would quote. "Owner-submitted" is what the homepage trust strip
+// already says and it is what actually happens.
 export const APP_DESCRIPTION =
-  "Discover and book verified wedding halls and event venues across Tamil Nadu — secure booking, owner-approved listings.";
+  "Discover and book wedding halls and event venues across Tamil Nadu — owner-submitted listings, secure booking, and a clear answer from the venue.";
 
 // Single source of truth for public business contact details. Update here and
 // every surface (contact page, footer, support copy) stays in sync.

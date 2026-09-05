@@ -478,11 +478,116 @@ export const premiumPlanUpdateSchema = z.object({
     .refine((n) => Number.isInteger(n) && n > 0, "Duration must be a positive integer."),
 });
 
+/**
+ * SHAPE AND RANGE ONLY — this is not the whole rule.
+ *
+ * A commission percent that is well-formed and inside [0,100] can still be
+ * unusable, because it is not independent of the advance percentage. Anything
+ * writing this value must ALSO run checkCommissionAgainstAdvance() below; the
+ * range check on its own is what let a rate through that throws at checkout.
+ */
 export const commissionPercentSchema = z
   .union([z.number(), z.string()])
   .transform((v) => (typeof v === "number" ? v : parseFloat(String(v))))
   .refine((n) => Number.isFinite(n), "Enter a valid number.")
   .refine((n) => n >= 0 && n <= 100, "Rate must be between 0 and 100.");
+
+/**
+ * The commission may take at most HALF the advance.
+ *
+ * WHY THE TWO PERCENTAGES ARE NOT INDEPENDENT. Hallnect charges its commission
+ * on the FULL HALL PRICE but retains it out of the (much smaller) ADVANCE, so
+ * the base and the source are different numbers and they can cross. When they
+ * do, calculateBookingPayment() throws a RangeError rather than emit a negative
+ * owner payout — and that throw lands at CHECKOUT, on every hall, for every
+ * customer, with nothing on the settings screen to say what broke. Two fields
+ * that each look individually reasonable brick the whole catalogue.
+ *
+ * WHY HALF, AND NOT SIMPLY `commission < advance`. `commission < advance` is
+ * the invariant the engine asserts, but it is not a safe bound on the RATES,
+ * because the two amounts are rounded differently: the advance is rounded to
+ * whole rupees (advanceFromTotal) while the commission is floored to paise. A
+ * pair a hair apart still crosses — a 2.51% advance against a 2.50% commission
+ * on a ₹1,000 hall gives an advance that rounds down to ₹25.00 and a commission
+ * of exactly ₹25.00, which is not less than it, so that hall cannot be booked.
+ *
+ * Half is the bound that is PROVABLE for every hall price T, including the
+ * pathological ones nothing currently stops an owner listing. Writing a for the
+ * advance percent and c for the commission percent, in paise:
+ *     commissionPaise = floor(T·c)            ≤ T·a/2        (given c ≤ a/2)
+ *     advancePaise    = 100·max(1, round(T·a/100)) ≥ max(100, T·a − 50)
+ *   • T·a ≤ 100 → the ₹1 advance floor gives ≥ 100, and T·a/2 ≤ 50 < 100.
+ *   • T·a > 100 → T·a − 50 > T·a/2, so the advance strictly exceeds it.
+ *
+ * BE HONEST ABOUT WHAT HALF IS: sufficient, not necessary. Swept against the
+ * real engine, the ratio where hall prices actually start breaking is about
+ * two-thirds — at c/a = 0.7 a 25% advance with a 17.5% commission already
+ * bricks a ₹5.72 hall, while c/a = 0.6 breaks nothing. Half is the round number
+ * below that tipping point which the two lines above actually prove, and it
+ * leaves the margin that makes the rule checkable HERE, from the two rates
+ * alone, without knowing what any hall costs. Do not "tighten" it to
+ * `commission < advance`; that is the engine's per-booking assertion, and it is
+ * not a safe bound on the rates.
+ *
+ * At the live rates — 2.5% commission against a 25% advance — this leaves a
+ * factor of five of headroom, so it binds only on a misconfiguration. Raising
+ * the commission past half the advance is a real business decision (it needs
+ * the advance raised with it), not a validation to relax.
+ */
+export const MAX_COMMISSION_SHARE_OF_ADVANCE = 0.5;
+
+/** Trims a percent for display: 12.5 → "12.5", 12.00 → "12". */
+function fmtPercent(n: number): string {
+  return String(Math.round(n * 100) / 100);
+}
+
+/**
+ * The cross-field rule, checked at the point of write by BOTH admin actions —
+ * the one that sets the commission and the one that sets the advance. Pure, so
+ * the same rule is available to a client-side preview without a database read.
+ *
+ * `editing` only chooses the wording: an admin who just typed a commission
+ * needs to be told to raise the advance, and vice versa. Telling them the rule
+ * without telling them which number to move is how a launch-day settings change
+ * becomes a support ticket.
+ */
+export function checkCommissionAgainstAdvance(
+  commissionPercent: number,
+  advancePercent: number,
+  editing: "commission" | "advance",
+): { ok: true } | { ok: false; error: string } {
+  if (!Number.isFinite(commissionPercent) || commissionPercent < 0 || commissionPercent > 100) {
+    return { ok: false, error: "Commission rate must be between 0 and 100." };
+  }
+  // Strictly positive: advanceFromTotal() throws on a 0% advance, so a zero here
+  // is the same brick-the-catalogue outcome by a different route.
+  if (!Number.isFinite(advancePercent) || advancePercent <= 0 || advancePercent > 100) {
+    return {
+      ok: false,
+      error: "Default advance percentage must be more than 0 and at most 100.",
+    };
+  }
+
+  const ceiling = advancePercent * MAX_COMMISSION_SHARE_OF_ADVANCE;
+  if (commissionPercent <= ceiling) return { ok: true };
+
+  const floorForAdvance = commissionPercent / MAX_COMMISSION_SHARE_OF_ADVANCE;
+  return {
+    ok: false,
+    error:
+      editing === "commission"
+        ? `A ${fmtPercent(commissionPercent)}% commission cannot be retained from a ` +
+          `${fmtPercent(advancePercent)}% advance — the commission is charged on the full hall ` +
+          `price but taken out of the advance, so bookings would fail at checkout. Enter ` +
+          `${fmtPercent(ceiling)}% or less, or raise the advance to ` +
+          `${fmtPercent(floorForAdvance)}% first.`
+        : `A ${fmtPercent(advancePercent)}% advance is too small to cover the current ` +
+          `${fmtPercent(commissionPercent)}% commission, which is charged on the full hall price ` +
+          `but taken out of the advance — bookings would fail at checkout. Enter ` +
+          `${fmtPercent(floorForAdvance)}% or more, or lower the commission to ` +
+          `${fmtPercent(ceiling)}% first.`,
+  };
+}
 
 // ── Coupons ─────────────────────────────────────────────────────────────────
 

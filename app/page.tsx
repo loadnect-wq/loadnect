@@ -13,7 +13,7 @@ import { getAdvancePercent } from "@/lib/platform-settings";
 import { AdSlot } from "@/components/ads/AdSlot";
 import { HeroSearch } from "@/components/sections/HeroSearch";
 import { HallCard } from "@/app/halls/_components/HallCard";
-import { fetchHalls, type HallListing } from "@/lib/halls";
+import { countActivePremiumHalls, fetchHalls, type HallListing } from "@/lib/halls";
 import type { Metadata } from "next";
 import { buildMetadata } from "@/lib/seo/metadata";
 import { JsonLd } from "@/components/seo/JsonLd";
@@ -43,6 +43,10 @@ const CATEGORY_ICONS: Record<string, React.ReactNode> = {
   zap:      <Zap className="h-5 w-5" />,
 };
 
+// Used when a city has real inventory but no hand-picked gradient in
+// POPULAR_CITIES — a tile still has to look like the others.
+const CITY_GRADIENT_FALLBACK = "linear-gradient(135deg,#6B1525 0%,#9B2038 100%)";
+
 const HOW_IT_WORKS = [
   { step: "01", title: "Discover", body: "Browse wedding halls across Tamil Nadu with photos, capacity, pricing and amenities, as listed by each venue." },
   { step: "02", title: "Compare",  body: "Filter by city, capacity, budget, and amenities. Check availability instantly." },
@@ -62,11 +66,15 @@ const FAQ_ITEMS = [
     a: "Register as an owner, complete your business profile, and submit your venue for approval. Listings are reviewed within 48 hours." },
 ];
 
+// "verified" was removed here for the same reason it was removed from
+// APP_DESCRIPTION: Terms section 5 says Hallnect does not independently verify
+// every listing detail, so the homepage cannot advertise that it does. See the
+// comment on APP_DESCRIPTION in lib/constants.ts before reinstating it.
 export const metadata: Metadata = buildMetadata({
   title: "Wedding Halls & Marriage Halls in Tamil Nadu",
   description:
-    "Find and book verified wedding halls, marriage halls and event venues across Tamil Nadu. " +
-    "Compare real photos, capacity, pricing and availability, then reserve your date online.",
+    "Find and book wedding halls, marriage halls and event venues across Tamil Nadu. " +
+    "Compare owner-submitted photos, capacity, pricing and availability, then reserve your date online.",
   path: "/",
 });
 
@@ -79,12 +87,49 @@ export default async function HomePage() {
   // plan is sold on. Sorting by rating alone quietly ignored premium tier, so
   // owners paid Rs9,999/month for placement the homepage never gave them.
   const featured: HallListing[] = (await fetchHalls({})).slice(0, 6);
-  const cities = POPULAR_CITIES.slice(0, 8);
   // Real approved-venue counts, so the city links below point at pages that
   // actually have something on them (lib/seo/cities.ts).
   const advancePercent = await getAdvancePercent();
   const cityInventory = await fetchCityInventory();
   const citiesWithVenues = cityInventory.filter((c) => c.venueCount > 0);
+
+  // ── Truth gates ───────────────────────────────────────────────────────────
+  // Three things on this page used to assert facts the database did not back.
+
+  // 1. THE PROMOTED SECTION. `featured` is the plain approved list — the
+  //    default sort puts pro → premium first, but with nothing premium in the
+  //    database it is simply "every hall we have". Calling that "Promoted" and
+  //    "Halls promoted by their owners" advertises the exact slot /premium
+  //    sells for Rs4,999–9,999 a month, above halls that paid nothing. The
+  //    Promoted framing is now used only when the section really does contain
+  //    a paid listing.
+  //    Tested against the PAID tiers by name, not `!= null`: PremiumTier's TS
+  //    union also contains "free", and only "premium" and "pro" are bought.
+  const hasPromoted = featured.some(
+    (h) => h.premium_tier === "premium" || h.premium_tier === "pro",
+  );
+
+  // 2. PREMIUM ENTRY POINTS. The quick action and the category tile linked to
+  //    /halls?category=premium, which returns nothing while no hall holds a
+  //    tier. Hidden until there is inventory; they return on their own the
+  //    moment an owner buys a plan.
+  const premiumCount = await countActivePremiumHalls();
+  const visibleCategories = premiumCount > 0
+    ? [...CATEGORIES]
+    : CATEGORIES.filter((c) => c.key !== "premium");
+  const popularSearches = visibleCategories.filter((c) => c.key !== "today").slice(0, 6);
+
+  // 3. POPULAR CITIES. This strip rendered POPULAR_CITIES — a static list of
+  //    eight ambitions — so seven of the eight tiles led to an empty search.
+  //    It is now driven by the same live inventory as the "Browse by city"
+  //    links, and the whole section disappears when nothing is listed
+  //    anywhere. POPULAR_CITIES survives only as the gradient palette.
+  const cities = citiesWithVenues.slice(0, 8).map((c) => ({
+    name:     c.city,
+    state:    "Tamil Nadu",
+    gradient: POPULAR_CITIES.find((p) => p.name === c.city)?.gradient ?? CITY_GRADIENT_FALLBACK,
+    slug:     c.slug,
+  }));
 
   return (
     <div className="bg-ivory-100">
@@ -117,7 +162,9 @@ export default async function HomePage() {
               </h1>
             </div>
           </div>
-          <HomeLocation />
+          {/* Real service areas that actually have venues, and the picker now
+              navigates. See app/_components/HomeLocation.tsx. */}
+          <HomeLocation cities={citiesWithVenues} />
         </section>
 
         <section className="container-app mt-4">
@@ -128,20 +175,29 @@ export default async function HomePage() {
           <AdSlot placement="homepage_banner" limit={1} />
         </section>
 
+        {/* Column count follows the number of tiles: a grid-cols-3 holding one
+            or two tiles left a visible hole once the Premium action was gated. */}
         <section className="container-app mt-5">
-          <div className="grid grid-cols-3 gap-2">
+          <div className={`grid gap-2 ${premiumCount > 0 ? "grid-cols-3" : "grid-cols-2"}`}>
             <QuickAction href="/halls" label="Browse" Icon={Search} />
-            <QuickAction href="/halls?category=premium" label="Premium" Icon={Crown} />
+            <QuickAction href="/halls?available=today" label="Free today" Icon={Zap} />
+            {premiumCount > 0 && (
+              <QuickAction href="/halls?category=premium" label="Premium" Icon={Crown} />
+            )}
           </div>
         </section>
 
         <section className="mt-7">
           <MobileSectionTitle title="Categories" />
-          <CategoryRow categories={CATEGORIES.map((c) => ({ ...c, iconNode: CATEGORY_ICONS[c.icon] }))} />
+          <CategoryRow categories={visibleCategories.map((c) => ({ ...c, iconNode: CATEGORY_ICONS[c.icon] }))} />
         </section>
 
         <section className="mt-7">
-          <MobileSectionTitle title="Featured Venues" linkLabel="See all" linkHref="/halls" />
+          <MobileSectionTitle
+            title={hasPromoted ? "Featured Venues" : "Venues on Hallnect"}
+            linkLabel="See all"
+            linkHref="/halls"
+          />
           {featured.length === 0 ? (
             <div className="container-app"><EmptyVenues /></div>
           ) : (
@@ -157,10 +213,12 @@ export default async function HomePage() {
           )}
         </section>
 
-        <section className="mt-7 pb-6">
-          <MobileSectionTitle title="Popular Cities" linkLabel="See all" linkHref="/halls" />
-          <CitiesRow cities={cities} />
-        </section>
+        {cities.length > 0 && (
+          <section className="mt-7 pb-6">
+            <MobileSectionTitle title="Cities with venues" linkLabel="See all" linkHref="/halls" />
+            <CitiesRow cities={cities} />
+          </section>
+        )}
       </div>
 
       {/* ════════════════════════════════════════════════════════
@@ -194,9 +252,13 @@ export default async function HomePage() {
                   unforgettable
                 </span>
               </p>
+              {/* Not "verified" — the trust strip six lines below has said
+                  "Owner-submitted listings" all along, and Terms section 5 says
+                  we do not independently verify every listing detail. The hero
+                  and the strip now agree. */}
               <p className="mx-auto mt-5 max-w-xl text-base text-ivory-300/90">
-                Discover, compare, and book verified wedding halls across Tamil Nadu.
-                Transparent pricing, real photos, and a clear answer from the venue.
+                Discover, compare, and book wedding halls across Tamil Nadu.
+                Owner-submitted listings, transparent pricing, and a clear answer from the venue.
               </p>
             </div>
 
@@ -218,7 +280,7 @@ export default async function HomePage() {
         {/* ── Categories strip ─────────────────────────────────── */}
         <section className="container-page py-12">
           <div className="grid grid-cols-4 gap-4 xl:grid-cols-8">
-            {CATEGORIES.map((c) => (
+            {visibleCategories.map((c) => (
               <Link
                 key={c.key}
                 href={c.href}
@@ -240,10 +302,18 @@ export default async function HomePage() {
 
         {/* ── Featured venues grid ─────────────────────────────── */}
         <section className="container-page py-12">
+          {/* The "Promoted" eyebrow is an advertising disclosure, not a
+              decoration: it may only appear when this section actually holds a
+              hall someone paid to place there. Otherwise it says what the
+              section is — the approved list, ranked by rating. */}
           <DesktopSectionHeader
-            eyebrow="Promoted"
-            title="Featured Venues"
-            blurb="Halls promoted by their owners, with transparent pricing."
+            eyebrow={hasPromoted ? "Promoted" : "Now on Hallnect"}
+            title={hasPromoted ? "Featured Venues" : "Venues on Hallnect"}
+            blurb={
+              hasPromoted
+                ? "Halls promoted by their owners, with transparent pricing."
+                : "Approved venues listed on Hallnect, top-rated first, with transparent pricing."
+            }
             linkLabel="Browse all venues →"
             linkHref="/halls"
           />
@@ -258,18 +328,24 @@ export default async function HomePage() {
           )}
         </section>
 
-        {/* ── Popular cities ───────────────────────────────────── */}
+        {/* ── Cities with venues ───────────────────────────────── */}
+        {/* Was "Popular Cities" over a static list of eight Tamil Nadu cities,
+            seven of which had no inventory — every tile promised venues and
+            delivered an empty search. Driven by the live count now, and gone
+            entirely when nothing is listed. The blurb also claimed "India's
+            most-loved wedding destinations" while Hallnect serves one state. */}
+        {cities.length > 0 && (
         <section className="container-page py-12">
           <DesktopSectionHeader
             eyebrow="By location"
-            title="Popular Cities"
-            blurb="Explore wedding venues in India's most-loved wedding destinations."
+            title="Cities with venues"
+            blurb="Tamil Nadu cities where halls are listed and taking bookings today."
           />
           <div className="mt-8 grid grid-cols-4 gap-4">
             {cities.map((c) => (
               <Link
                 key={c.name}
-                href={`/halls?city=${encodeURIComponent(c.name)}`}
+                href={`/wedding-halls/${c.slug}`}
                 className="group relative h-44 overflow-hidden rounded-2xl shadow-card transition-transform hover:-translate-y-1 hover:shadow-card-hover"
                 style={{ background: c.gradient }}
               >
@@ -285,6 +361,7 @@ export default async function HomePage() {
             ))}
           </div>
         </section>
+        )}
 
         {/* ── How it works ─────────────────────────────────────── */}
         <section className="bg-white">
@@ -320,8 +397,13 @@ export default async function HomePage() {
                 <h2 className="mt-4 font-serif text-3xl font-bold text-ivory-100 xl:text-4xl">
                   List your wedding hall on Hallnect
                 </h2>
+                {/* "verified bookings" read as though Hallnect vetted the
+                    customer. What is actually verified is the payment: the
+                    Cashfree webhook signature is checked before a booking moves
+                    to payment_success. Say that instead. */}
                 <p className="mt-3 max-w-lg text-sm text-ivory-300/90">
-                  List your hall in minutes. Get verified bookings with secure payments and a dedicated owner dashboard.
+                  List your hall in minutes. Get bookings backed by gateway-verified payments
+                  and a dedicated owner dashboard.
                 </p>
                 <div className="mt-6 flex flex-wrap items-center gap-3">
                   <Link
@@ -393,11 +475,20 @@ export default async function HomePage() {
           Wedding halls and marriage halls across Tamil Nadu
         </h2>
         <div className="mt-3 space-y-3 text-sm leading-relaxed text-charcoal-600">
+          {/* "Every venue is reviewed by our team before it goes live" claimed
+              more than Hallnect does. An admin does approve each listing before
+              it publishes — that part is real — but Terms section 5 states we
+              do not independently verify every listing detail, and nobody
+              visits the venue. Saying so here is also the sentence that makes
+              the "check before you commit" advice on the venue page make sense.
+              Do not restore the old wording without changing the Terms first. */}
           <p>
             Hallnect is a booking platform for wedding halls, marriage halls, reception
-            venues and banquet halls in Tamil Nadu. Every venue is reviewed by our team
-            before it goes live, so the photos, seating capacity and pricing you compare
-            are the venue&apos;s own — not a stock listing.
+            venues and banquet halls in Tamil Nadu. Listings are written and submitted by
+            the venue owners themselves and checked by our team before they go live, so
+            the photos, seating capacity and pricing you compare are the venue&apos;s own —
+            not a stock listing. We do not independently verify every listing detail, so
+            confirm the specifics with the venue before you commit.
           </p>
           <p>
             Check which dates are free, see the advance payable before you commit, and
@@ -427,7 +518,7 @@ export default async function HomePage() {
         <div className="mt-6">
           <h3 className="text-sm font-semibold text-charcoal-900">Popular searches</h3>
           <ul className="mt-2 flex flex-wrap gap-2 text-xs">
-            {CATEGORIES.slice(0, 6).map((c) => (
+            {popularSearches.map((c) => (
               <li key={c.key}>
                 <Link href={c.href} className="text-maroon-700 underline-offset-2 hover:underline">
                   {c.label} in Tamil Nadu

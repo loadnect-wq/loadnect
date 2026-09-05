@@ -25,6 +25,7 @@ import "server-only";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import { calculateRefund } from "@/lib/booking-payment";
 import { daysBetweenInclusive, todayInBusinessTz } from "@/lib/dates";
+import { toPaise, PAISE_PER_RUPEE } from "@/lib/money";
 
 /**
  * The published customer-cancellation schedule (see /refund-policy). Percent of
@@ -38,6 +39,35 @@ import { daysBetweenInclusive, todayInBusinessTz } from "@/lib/dates";
 export { CUSTOMER_REFUND_SCHEDULE, customerRefundPercent } from "@/lib/refund-schedule";
 // A re-export does not bind the name locally, and this module calls it.
 import { customerRefundPercent } from "@/lib/refund-schedule";
+
+/**
+ * The commission Hallnect KEEPS when a booking is cancelled, in rupees.
+ *
+ * The commission is retained out of the advance, so it is only earned on the
+ * part of the advance that stays. Reverse it in the same proportion the advance
+ * is refunded in: 100% back → nothing kept; 0% back (a customer cancelling
+ * inside 7 days) → the whole commission stays earned, because Hallnect still
+ * holds every rupee of that advance.
+ *
+ * Integer paise, and FLOORED like every other commission calculation
+ * (lib/money.ts) — the fraction of a paisa goes to the part being given back,
+ * never to the platform.
+ */
+export function retainedCommission(
+  commissionRupees: number,
+  refundPercentOfAdvance: number,
+): number {
+  const charged = Number(commissionRupees);
+  if (!Number.isFinite(charged) || charged <= 0) return 0;
+
+  const pct = Number(refundPercentOfAdvance);
+  if (!Number.isFinite(pct) || pct < 0 || pct > 100) {
+    throw new RangeError(`retainedCommission: refund percent ${pct} out of [0,100]`);
+  }
+
+  const keptPaise = Math.floor((toPaise(charged) * Math.round((100 - pct) * 100)) / 10_000);
+  return keptPaise / PAISE_PER_RUPEE;
+}
 
 /** Who caused the cancellation — this decides the platform fee's fate. */
 export type CancellationInitiator =
@@ -141,7 +171,8 @@ export async function recordBookingRefund(
       ...(breakdown.refundableAmount > 0 ? { refund_state: "owed" } : {}),
     };
 
-    // THE COMMISSION IS NOT EARNED ON A CANCELLED BOOKING.
+    // THE COMMISSION IS EARNED ON THE MONEY HALLNECT ACTUALLY KEEPS — NO MORE,
+    // AND NO LESS.
     //
     // createCommission writes status 'collected' the moment payment lands —
     // before the venue has even accepted. Nothing ever wrote it back, so a
@@ -151,14 +182,85 @@ export async function recordBookingRefund(
     // happened. The 'refunded' badge on that page was dead code with nothing
     // to trigger it.
     //
+    // The correction then over-corrected: it marked the row 'refunded'
+    // UNCONDITIONALLY, ungated on how much actually went back. The schedule
+    // above refunds 100 / 75 / 50 / 0 percent of the advance, so a customer
+    // cancelling inside 7 days gets nothing back — Hallnect keeps the entire
+    // advance, commission and all — and the ledger recorded zero earnings on
+    // it. Every partial cancellation understated revenue the same way.
+    //
+    // So the reversal follows the refund: keep the commission earned on the
+    // portion of the advance that was RETAINED, reverse the rest. 100% back
+    // (every owner- and platform-caused cancellation, and an early customer
+    // one) still reverses in full and still lands on 'refunded', which is what
+    // every revenue query filters on. A partial keeps the row EARNED at the
+    // reduced figure, so it goes on counting for exactly what it is worth.
+    //
+    // owner_payout_amount moves with it. It was written as "hall price −
+    // commission", i.e. what the venue collects across the advance and the
+    // balance on the day — and there is no day any more. What the venue is
+    // actually left holding is its share of the retained advance, and leaving
+    // the old figure on an EARNED row would have the admin dashboard counting
+    // the full price of a booking that never happened.
+    //
     // Best-effort and deliberately BEFORE the payment write is checked: a
     // ledger correction must never be the reason a customer's refund fails to
     // be recorded.
     try {
-      await db.from("commissions")
-        .update({ status: "refunded" })
-        .eq("booking_id", bookingId)
-        .neq("status", "refunded");
+      // select("*") for the same reason the reads above use it: the 0017
+      // columns are absent on an older database rather than an error.
+      const { data: commission } = await db
+        .from("commissions").select("*").eq("booking_id", bookingId).maybeSingle();
+
+      // Applied ONCE. The reversal scales the stored figure, so re-running it
+      // on an already-reduced row would shrink the commission again — and this
+      // function IS re-enterable on a 0%-refund booking, where refund_amount
+      // is 0 and the idempotency check at the top does not fire.
+      const alreadyReversed =
+        commission != null &&
+        (commission.status === "refunded" ||
+          ["adjusted", "reversed"].includes(String(commission.settlement_adjustment_status ?? "")));
+
+      if (commission && !alreadyReversed) {
+        const charged = Number(commission.commission_amount);
+        const commissionPaise = Number.isFinite(charged) && charged > 0 ? toPaise(charged) : 0;
+
+        const kept = retainedCommission(charged, percent);
+        const keptPaise = toPaise(kept);
+        const ownerKeptPaise = Math.max(0, toPaise(breakdown.advanceWithheld) - keptPaise);
+
+        const movement =
+          keptPaise === 0                ? `Commission ₹${charged} reversed in full.`
+          : keptPaise === commissionPaise ? `Commission ₹${charged} retained in full.`
+          :                                 `Commission ₹${charged} reduced to ₹${kept}.`;
+
+        const reversal: Record<string, unknown> = {
+          commission_amount:   kept,
+          owner_payout_amount: ownerKeptPaise / PAISE_PER_RUPEE,
+          settlement_adjustment_status: keptPaise > 0 ? "adjusted" : "reversed",
+          // The original figure survives here, and in booking_amount ×
+          // commission_rate, so a reduced row can always be explained.
+          admin_note:
+            `Booking cancelled (${initiator}) — ${percent}% of the advance refunded. ${movement}`,
+          // Only a FULL reversal is 'refunded'; a partial row is still earned.
+          ...(keptPaise > 0 ? {} : { status: "refunded" }),
+        };
+
+        let { error: commErr } = await db
+          .from("commissions").update(reversal).eq("id", commission.id).neq("status", "refunded");
+
+        if (commErr && (commErr.code === "42703" || commErr.code === "PGRST204")) {
+          // Pre-0017 database: no admin_note / settlement_adjustment_status.
+          const { settlement_adjustment_status: _s, admin_note: _n, ...legacy } = reversal;
+          void _s; void _n;
+          ({ error: commErr } = await db
+            .from("commissions").update(legacy).eq("id", commission.id).neq("status", "refunded"));
+        }
+
+        if (commErr) {
+          console.error("[recordBookingRefund] commission reversal failed:", commErr.message);
+        }
+      }
     } catch (e) {
       console.error("[recordBookingRefund] commission reversal failed:",
         e instanceof Error ? e.message : e);

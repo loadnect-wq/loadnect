@@ -46,6 +46,37 @@ export type HallsFilters = {
 // Availability statuses that make a hall fully unavailable for the day
 const FULL_BLOCK_STATUSES = ["booked", "blocked", "full_day_booked", "maintenance"];
 
+/** Columns the free-text `q` filter searches, in one PostgREST or-group. */
+const FREE_TEXT_COLUMNS = ["name", "city", "address"] as const;
+
+/**
+ * Builds the `or=` group for a free-text search, with the term QUOTED.
+ *
+ * PostgREST's `or` filter is a string grammar and postgrest-js escapes NOTHING
+ * you interpolate into it. The previous form —
+ *   q.or(`name.ilike.%${t}%,city.ilike.%${t}%,address.ilike.%${t}%`)
+ * — meant a comma in the term split the group into extra members and a
+ * parenthesis opened a nested one, so ordinary searches like
+ *   "Sri Krishna, Madurai"   "Grand Hall (AC)"   "Anna Nagar, Chennai"
+ * produced a malformed filter. The request failed with PGRST100, fetchHalls
+ * logged it and returned [], and the page rendered "No halls found" — telling
+ * the visitor we have no venues when in fact we had broken the query.
+ *
+ * PostgREST's own remedy is to double-quote the value: inside quotes a comma,
+ * dot, colon and parenthesis are literal. Only `"` and `\` still need escaping,
+ * and the backslash MUST be escaped first or the escapes double up.
+ *
+ * Do not "simplify" this back to a bare interpolation. Exported so
+ * lib/__tests__/halls-search.test.ts can pin the escaping.
+ */
+export function buildFreeTextOrFilter(
+  term: string,
+  columns: readonly string[] = FREE_TEXT_COLUMNS,
+): string {
+  const quoted = term.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+  return columns.map((c) => `${c}.ilike."%${quoted}%"`).join(",");
+}
+
 // ── Detail types ─────────────────────────────────────────────────────────────
 
 export type HallImage = {
@@ -78,6 +109,22 @@ export type HallReview = {
   created_at:         string;
 };
 
+/**
+ * The seller behind a listing, as published on the venue page.
+ *
+ * EXACTLY THREE FIELDS, AND THEY ARE THE THREE THE LAW ASKS FOR. Rule 5(3)(a)
+ * of the Consumer Protection (E-Commerce) Rules 2020 obliges a marketplace to
+ * display each seller's business name and geographic address. Everything else
+ * on hall_owners — gst_number, pan_number, payout_upi, payout_account_number,
+ * payout_ifsc, cashfree_vendor_id — is collected at onboarding and must NEVER
+ * reach a public page. Widening this type is how that happens by accident.
+ */
+export type HallSeller = {
+  business_name: string;
+  address:       string | null;
+  city:          string | null;
+};
+
 export type HallDetail = {
   id:             string;
   slug:           string;
@@ -104,6 +151,8 @@ export type HallDetail = {
   custom_amenities: string[];
   availability:   AvailabilityRow[];
   reviews:        HallReview[];
+  /** Published seller identity; null when it cannot be read (see fetchHallSeller). */
+  seller:         HallSeller | null;
 };
 
 // ── Main query ────────────────────────────────────────────────────────────────
@@ -169,8 +218,7 @@ export async function fetchHalls(filters: HallsFilters): Promise<HallListing[]> 
     let q = db.from("halls").select(select).eq("status", "approved");
 
     if (filters.q?.trim()) {
-      const t = filters.q.trim();
-      q = q.or(`name.ilike.%${t}%,city.ilike.%${t}%,address.ilike.%${t}%`);
+      q = q.or(buildFreeTextOrFilter(filters.q.trim()));
     }
     if (filters.city) q = q.eq("city", filters.city);
     if (filters.area) q = q.ilike("address", `%${filters.area.trim()}%`);
@@ -283,7 +331,115 @@ export async function fetchHalls(filters: HallsFilters): Promise<HallListing[]> 
   });
 }
 
+// ── Premium inventory gate ────────────────────────────────────────────────────
+
+/**
+ * How many APPROVED halls currently hold a paid premium tier.
+ *
+ * WHY THIS EXISTS. The homepage "Premium" quick action, the "Premium Halls"
+ * category tile and the "✦ Premium" filter chip on /halls were all rendered
+ * unconditionally. premium_listings is empty and every approved hall has
+ * premium_tier null, so all three advertised a shelf that does not exist and
+ * dead-ended on "No halls found". Gate them on this count and they come back by
+ * themselves the moment an owner buys a plan — no code change, no stale flag.
+ *
+ * IT COUNTS halls, NOT premium_listings, and that is deliberate: RLS on
+ * premium_listings is owner-or-admin (0007), so an anonymous visitor's client
+ * sees zero rows there no matter how many exist. halls.premium_tier is kept in
+ * sync from premium_listings by recompute_hall_premium() (0013) and IS publicly
+ * readable for approved halls, which makes it the only correct public source.
+ */
+export async function countActivePremiumHalls(): Promise<number> {
+  try {
+    const supabase = await getSupabaseServerClient();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const db = supabase as any;
+
+    // head:true — we want the number, not the rows.
+    let { count, error } = await db
+      .from("halls")
+      .select("id", { count: "exact", head: true })
+      .eq("status", "approved")
+      .in("premium_tier", ["premium", "pro"]);
+
+    // Pre-0013 fallback, same as fetchHalls: the column may not exist yet.
+    if (error?.code === "42703") {
+      ({ count, error } = await db
+        .from("halls")
+        .select("id", { count: "exact", head: true })
+        .eq("status", "approved")
+        .eq("is_premium", true));
+    }
+
+    // FAIL CLOSED. If we cannot prove premium inventory exists we advertise
+    // none of it: a hidden entry point is a far smaller failure than a paid-
+    // placement promise that lands the visitor on an empty page.
+    if (error) return 0;
+    return count ?? 0;
+  } catch {
+    return 0;
+  }
+}
+
 // ── Hall detail ───────────────────────────────────────────────────────────────
+
+/**
+ * The seller identity Hallnect is obliged to publish for one listing.
+ *
+ * Rule 5(3)(a) of the Consumer Protection (E-Commerce) Rules 2020: a
+ * marketplace must display the seller's business name and geographic address on
+ * the listing. The venue page previously showed only the venue's own street
+ * address, so a customer could not tell who they were contracting with.
+ *
+ * WHY THE SERVICE ROLE, AND WHY NOT JUST EMBED hall_owners(...).
+ * The obvious fix — adding `hall_owners(business_name, address, city)` to the
+ * select above — silently returns null for the public. hall_owners_select (0007)
+ * is `profile_id = auth.uid() or is_admin()`, so an anonymous visitor's client
+ * reads no rows and PostgREST embeds nothing without erroring. The block would
+ * render for admins in testing and for nobody in production.
+ *
+ * AND WIDENING THAT POLICY WOULD BE A LEAK, NOT A FIX. RLS is row-level, and
+ * hall_owners has no column-level SELECT grants — a public select policy would
+ * hand every visitor gst_number, pan_number, payout_upi, payout_account_number
+ * and payout_ifsc off the same row. So the three published fields, and only
+ * those three, are read with the service role and an explicit projection.
+ *
+ * DO NOT ADD A COLUMN TO THIS SELECT. Read HallSeller's comment first; the rest
+ * of that row is onboarding data that must never reach a page.
+ */
+async function fetchHallSeller(ownerId: string | null | undefined): Promise<HallSeller | null> {
+  if (!ownerId) return null;
+  try {
+    // Imported lazily so lib/halls.ts keeps no static edge to the service-role
+    // module, and so a deployment without SUPABASE_SERVICE_ROLE_KEY (requireEnv
+    // throws) degrades to "no seller block" instead of a 500 on every venue.
+    const { getSupabaseAdminClient } = await import("@/lib/supabase/admin");
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const admin = getSupabaseAdminClient() as any;
+
+    const { data, error } = await admin
+      .from("hall_owners")
+      .select("business_name, address, city")
+      .eq("id", ownerId)
+      .maybeSingle();
+
+    if (error || !data?.business_name) {
+      if (error) console.error("[fetchHallSeller]", error.message);
+      return null;
+    }
+    return {
+      business_name: data.business_name as string,
+      address:       (data.address as string | null) ?? null,
+      city:          (data.city    as string | null) ?? null,
+    };
+  } catch (e) {
+    console.info(
+      "[fetchHallSeller] seller details unavailable — check SUPABASE_SERVICE_ROLE_KEY:",
+      e instanceof Error ? e.message : e,
+    );
+    return null;
+  }
+}
 
 // SECURITY: uses getSupabaseServerClient() (session-aware, anon key).
 // RLS on halls:  status='approved' OR owns_hall() OR is_admin()
@@ -297,11 +453,14 @@ export async function fetchHallBySlug(slug: string): Promise<HallDetail | null> 
   const db = supabase as any;
 
   // Forwards-compat: try with premium_tier; fall back if column missing.
+  // owner_id is selected so the published seller identity can be resolved
+  // below. It is a hall_owners PK, not a person's id, and it never leaves the
+  // server — HallDetail carries `seller`, not `owner_id`.
   const SELECT_WITH_TIER = `
       id, slug, name, city, state, address, pincode,
       latitude, longitude, capacity_min, capacity_max,
       price_per_day, price_morning, price_evening,
-      description, status, is_premium, premium_tier,
+      description, status, is_premium, premium_tier, owner_id,
       rating_average, rating_count,
       hall_images(url, is_cover, alt_text, sort_order),
       hall_amenities(amenities(name, slug, icon)),
@@ -334,6 +493,10 @@ export async function fetchHallBySlug(slug: string): Promise<HallDetail | null> 
   }
 
   if (!hall) return null;
+
+  // Published seller identity (Rule 5(3)(a)). Fetched alongside availability
+  // rather than embedded — see fetchHallSeller for why an embed cannot work.
+  const seller = await fetchHallSeller(hall.owner_id as string | null);
 
   // Availability for next 30 days (separate query — embedding with date filter
   // is cleaner here since we don't want to pull years of rows)
@@ -447,6 +610,7 @@ export async function fetchHallBySlug(slug: string): Promise<HallDetail | null> 
     custom_amenities: customAmenities,
     availability,
     reviews,
+    seller,
   };
 }
 

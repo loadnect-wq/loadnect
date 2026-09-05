@@ -76,7 +76,13 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   return (
     <section className="mb-8">
       <h2 className="font-serif text-lg font-semibold text-charcoal-900">{title}</h2>
-      <p className="mt-2 text-sm leading-relaxed text-charcoal-600">{children}</p>
+      {/* A <div>, not a <p>, and it must stay one: the sibling legal pages pass block
+          content (Terms 7 a <ul>, Privacy 4 <p> elements) into their identical copy of
+          this helper, and a <p> wrapper makes the browser reparent those — server and
+          client trees diverge and React throws a hydration error. Kept the same here so
+          the five copies do not drift. Tailwind's preflight zeroes paragraph margins, so
+          this renders identically to the old <p>. */}
+      <div className="mt-2 text-sm leading-relaxed text-charcoal-600">{children}</div>
     </section>
   );
 }
