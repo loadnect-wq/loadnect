@@ -4,12 +4,12 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import {
   ArrowLeft, CalendarDays, CheckCircle2, Clock,
-  CreditCard, MapPin, MessageSquare, Users, XCircle,
+  CreditCard, FileText, MapPin, MessageSquare, Users, XCircle,
 } from "lucide-react";
 import { AppHeader } from "@/components/app/AppHeader";
 import { Badge } from "@/components/ui/Badge";
 import {
-  fetchBookingById, fetchMyReviewForHall,
+  fetchBookingById, fetchMyReviewForHall, fetchInvoiceForBooking,
   CANCELLABLE_STATUSES, type CustomerBooking,
 } from "@/lib/customer";
 import { formatPrice } from "@/lib/mock-data";
@@ -70,10 +70,12 @@ export default async function BookingDetailPage({ params }: Props) {
   const booking = await fetchBookingById(id);
   if (!booking) notFound();
 
-  const existingReview =
+  const [existingReview, invoice] = await Promise.all([
     booking.status === "completed"
-      ? await fetchMyReviewForHall(booking.hall_id)
-      : null;
+      ? fetchMyReviewForHall(booking.hall_id)
+      : Promise.resolve(null),
+    fetchInvoiceForBooking(booking.id),
+  ]);
 
   const cfg = STATUS_CFG[booking.status] ?? {
     label: booking.status, variant: "secondary" as BadgeV, description: "",
@@ -256,6 +258,12 @@ export default async function BookingDetailPage({ params }: Props) {
               amount={booking.platform_fee_amount}
             />
           )}
+          {/* Only when tax was actually charged. Bookings that predate GST
+              registration carry null here, and a ₹0 tax line on them would
+              imply a charge that was never made. */}
+          {booking.platform_fee_gst != null && booking.platform_fee_gst > 0 && (
+            <AmountRow label="GST on platform fee" amount={booking.platform_fee_gst} />
+          )}
           <div className="border-t border-border px-4 py-3 bg-ivory-50">
             <div className="flex items-center justify-between">
               <span className="text-sm font-bold text-charcoal-900">Hall total</span>
@@ -273,6 +281,26 @@ export default async function BookingDetailPage({ params }: Props) {
               </p>
             )}
           </div>
+
+          {/* The GST invoice for Hallnect's fee. Rendered only when one has
+              actually been issued — a link to a document that does not exist is
+              worse than no link, and bookings that predate GST registration
+              legitimately have none. */}
+          {invoice ? (
+            <div className="border-t border-border px-4 py-3">
+              <Link
+                href={`/invoice/${invoice.id}`}
+                className="inline-flex items-center gap-1.5 text-sm font-medium text-maroon-700 hover:underline"
+              >
+                <FileText className="h-4 w-4" aria-hidden="true" />
+                Tax invoice {invoice.invoice_number}
+              </Link>
+              <p className="mt-1 text-[11px] text-charcoal-500">
+                Covers the platform fee and its GST. The advance is the venue&apos;s
+                supply and is not invoiced by Hallnect.
+              </p>
+            </div>
+          ) : null}
         </div>
 
         {/* ── Payment ──────────────────────────────────────────────── */}

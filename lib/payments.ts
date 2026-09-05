@@ -40,6 +40,7 @@ import {
   DEFAULT_COMMISSION_PERCENT,
   PLATFORM_FEE_RUPEES,
 } from "@/lib/booking-payment";
+import { issueTaxInvoice } from "@/lib/tax-invoice";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -481,6 +482,43 @@ export async function verifyAndApplyPayment(orderId: string): Promise<ApplyPayme
       })
       .eq("id", payment.id)
       .neq("status", "payment_success");
+
+    // a2) Issue the tax invoice for Hallnect's own supply — the platform fee.
+    //
+    // NOT the advance: that is the venue's supply, collected as agent, and
+    // invoicing it would claim someone else's turnover. See lib/tax-invoice.ts.
+    //
+    // Deliberately not awaited into the failure path: issueTaxInvoice returns
+    // null and logs rather than throwing, and nothing below depends on it. The
+    // payment is already captured, so a booking must not fail because its
+    // paperwork did — a missing invoice is fixable afterwards, a lost capture
+    // is not. Idempotent on payment_id, so a replayed webhook returns the
+    // invoice that already exists instead of minting a second one.
+    {
+      const feeCharged = Number(payment.platform_fee_amount ?? 0);
+      if (feeCharged > 0) {
+        const { data: invoiceBooking } = await db
+          .from("bookings")
+          .select("id, gst_rate, contact_phone, halls(name), profiles:customer_id(full_name, email)")
+          .eq("id", payment.booking_id)
+          .maybeSingle();
+
+        const hallName = invoiceBooking?.halls?.name ?? "a venue";
+        await issueTaxInvoice({
+          kind:           "platform_fee",
+          bookingId:      payment.booking_id,
+          paymentId:      payment.id,
+          recipientName:  invoiceBooking?.profiles?.full_name ?? "Customer",
+          recipientEmail: invoiceBooking?.profiles?.email ?? null,
+          recipientPhone: invoiceBooking?.contact_phone ?? null,
+          description:    `Booking platform fee — ${hallName}`,
+          taxableValue:   feeCharged,
+          // The rate this booking was CHARGED at, not today's. A rate change
+          // must not restate a document that has already been issued.
+          gstRate:        Number(invoiceBooking?.gst_rate ?? 0),
+        });
+      }
+    }
 
     // b) Move the booking pending_payment → booking_requested.
     //    The admin (service-role) client is a trusted backend, so the

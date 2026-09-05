@@ -44,6 +44,8 @@ export type CustomerBooking = {
    *  Deliberately EXCLUDES the internal commission: never a customer figure. */
   advance_amount:        number | null;
   platform_fee_amount:   number | null;
+  /** GST charged on the platform fee (0049). Null on bookings predating registration. */
+  platform_fee_gst:      number | null;
   /** The promo code applied at booking, or null. Readable by the customer —
    *  they typed it — unlike the internal commission columns 0032 withholds. */
   coupon_code:           string | null;
@@ -112,7 +114,7 @@ function handleErr(label: string, error: { code?: string; message: string }) {
 const BOOKING_SELECT = `
   id, hall_id, event_date, end_date, slot, guest_count,
   base_amount, platform_fee, total_amount,
-  advance_amount, platform_fee_amount, customer_total_amount,
+  advance_amount, platform_fee_amount, platform_fee_gst, customer_total_amount,
   coupon_code,
   status, customer_notes, owner_notes, cancel_reason,
   created_at, updated_at,
@@ -150,6 +152,7 @@ function mapBooking(row: any): CustomerBooking {
     total_amount:   Number(row.total_amount),
     advance_amount:        row.advance_amount        == null ? null : Number(row.advance_amount),
     platform_fee_amount:   row.platform_fee_amount   == null ? null : Number(row.platform_fee_amount),
+    platform_fee_gst:      row.platform_fee_gst      == null ? null : Number(row.platform_fee_gst),
     coupon_code:           row.coupon_code ?? null,
     customer_total_amount: row.customer_total_amount == null ? null : Number(row.customer_total_amount),
     status:         row.status,
@@ -224,6 +227,38 @@ export async function fetchBookingById(id: string): Promise<CustomerBooking | nu
   if (error) { handleErr("fetchBookingById", error); return null; }
   if (!data) return null;
   return mapBooking(data);
+}
+
+/**
+ * The GST invoice issued for a booking's platform fee, if one exists.
+ *
+ * Read through the SESSION client on purpose: tax_invoices carries an RLS
+ * policy admitting an admin or the booking's own customer, so that policy is
+ * the authorisation check. A service-role read would bypass it and make this
+ * function's correctness depend on re-implementing the same rule here.
+ *
+ * Returns null when no invoice was issued — a waived fee is not a supply, and
+ * bookings taken before GST registration have none. The caller renders nothing
+ * rather than linking to a document that does not exist.
+ */
+export async function fetchInvoiceForBooking(
+  bookingId: string,
+): Promise<{ id: string; invoice_number: string } | null> {
+  const supabase = await getSupabaseServerClient();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const db = supabase as any;
+
+  const { data, error } = await db
+    .from("tax_invoices")
+    .select("id, invoice_number")
+    .eq("booking_id", bookingId)
+    .order("issued_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  // A missing table (un-migrated environment) must not break the booking page.
+  if (error) { handleErr("fetchInvoiceForBooking", error); return null; }
+  return data ?? null;
 }
 
 export async function fetchMyReviewForHall(hallId: string): Promise<{ id: string } | null> {
