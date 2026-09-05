@@ -16,8 +16,18 @@ describe("fiscal year — April to March, not January to December", () => {
   it("puts January through March in the year that started the PREVIOUS April", () => {
     // The boundary that silently restarts an invoice series if it is wrong.
     expect(fiscalYearOf(new Date("2027-01-01T00:00:00Z"))).toBe("2026-27");
-    expect(fiscalYearOf(new Date("2027-03-31T23:59:59Z"))).toBe("2026-27");
-    expect(fiscalYearOf(new Date("2027-04-01T00:00:00Z"))).toBe("2027-28");
+  });
+
+  it("turns the year over at IST midnight, not UTC midnight", () => {
+    // India is UTC+05:30. Reading the month off a UTC date files the first five
+    // and a half hours of every financial year into the previous one — a
+    // document dated in the wrong year, in a series whose job is to be unique
+    // per year. These two instants are one second apart across IST midnight.
+    expect(fiscalYearOf(new Date("2027-03-31T18:29:59Z"))).toBe("2026-27"); // 23:59:59 IST, 31 Mar
+    expect(fiscalYearOf(new Date("2027-03-31T18:30:00Z"))).toBe("2027-28"); // 00:00:00 IST, 1 Apr
+
+    // The naive UTC reading would have called this one 2026-27.
+    expect(fiscalYearOf(new Date("2027-03-31T23:59:59Z"))).toBe("2027-28"); // 05:29 IST, 1 Apr
   });
 
   it("handles the decade rollover in the short year", () => {

@@ -15,6 +15,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { CONTACT } from "@/lib/constants";
+import { formatDateInBusinessTz } from "@/lib/dates";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import { PAISE_PER_RUPEE, toPaise } from "@/lib/money";
 
@@ -53,17 +54,26 @@ export const SUPPLIER_STATE = "Tamil Nadu";
 export const SUPPLIER_STATE_CODE = "33";
 
 /**
- * The Indian financial year containing a date, as "2026-27".
+ * The Indian financial year containing an instant, as "2026-27".
  *
  * April to March, not January to December. An invoice series is unique per
  * financial year under Rule 46(b), so getting this boundary wrong silently
  * restarts or fails to restart the numbering.
+ *
+ * RESOLVED IN THE BUSINESS TIMEZONE, NOT UTC. This is the bug lib/dates.ts was
+ * written to stamp out, and an invoice date is exactly where it bites: India is
+ * UTC+05:30, so an invoice issued at 02:00 IST on 1 April is still 31 March in
+ * UTC. Reading the month off a UTC date would file the first five and a half
+ * hours of every financial year into the PREVIOUS one — a document dated in the
+ * wrong year, in a numbering series whose whole job is to be unique per year.
  */
 export function fiscalYearOf(date: Date): string {
-  const year = date.getUTCFullYear();
-  const month = date.getUTCMonth(); // 0 = January
+  // YYYY-MM-DD as it reads in Asia/Kolkata.
+  const [yearStr, monthStr] = formatDateInBusinessTz(date).split("-");
+  const year = Number(yearStr);
+  const month = Number(monthStr); // 1 = January
   // Jan/Feb/Mar belong to the financial year that STARTED the previous April.
-  const startYear = month >= 3 ? year : year - 1;
+  const startYear = month >= 4 ? year : year - 1;
   const endShort = String((startYear + 1) % 100).padStart(2, "0");
   return `${startYear}-${endShort}`;
 }
