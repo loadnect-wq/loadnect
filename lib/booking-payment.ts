@@ -72,6 +72,49 @@ export const PLATFORM_FEE_PAISE = PLATFORM_FEE_RUPEES * PAISE_PER_RUPEE;
 export const PLATFORM_FEE_GST_PERCENT = 18;
 
 /**
+ * Ceiling on the platform fee, as a percent of the ADVANCE.
+ *
+ * PLATFORM_FEE_RUPEES is flat, and a flat fee stops being a fee and starts
+ * being the price when the booking is small enough. Before this cap, the only
+ * bound on the fee was against ITSELF — a coupon could take it down and nothing
+ * could take it down — so a ₹100 morning slot was advance ₹25 + fee ₹200 + GST
+ * ₹36 = ₹261 to reserve, and the customer was then told the balance due at the
+ * venue was ₹75. The fee was 236% of the thing being booked.
+ *
+ * 25% of the advance, which is itself 25% of the hall price, so the fee can
+ * never exceed ~6.25% of what is being booked. Above roughly a ₹3,200 hall the
+ * flat ₹200 is the lower of the two and nothing changes — which is every real
+ * venue in the catalogue. This binds only where the flat fee was absurd.
+ *
+ * Floored, like the commission, so the ceiling can never round up in Hallnect's
+ * favour.
+ *
+ * NOT a substitute for a minimum hall price. At ₹40 a hall this yields a ₹2.50
+ * fee, which no longer overcharges the customer but may not cover the gateway's
+ * own cost. Bounding what a listing may charge is a separate, still-open fix.
+ */
+export const PLATFORM_FEE_MAX_PERCENT_OF_ADVANCE = 25;
+
+/**
+ * The fee actually chargeable on an advance — the requested fee, capped.
+ *
+ * ONE function, called by the engine AND by the checkout preview, for the same
+ * reason platformFeeGstRupees exists: a preview that shows ₹200 while the
+ * server charges ₹6.25 is worse than no preview at all.
+ */
+export function cappedPlatformFeeRupees(
+  advanceRupees: number,
+  requestedFeeRupees: number = PLATFORM_FEE_RUPEES,
+): number {
+  const advancePaise = toPaise(advanceRupees);
+  const requestedPaise = toPaise(requestedFeeRupees);
+  const ceilingPaise = Math.floor(
+    (advancePaise * Math.round(PLATFORM_FEE_MAX_PERCENT_OF_ADVANCE * 100)) / 10_000,
+  );
+  return Math.min(requestedPaise, ceilingPaise) / PAISE_PER_RUPEE;
+}
+
+/**
  * GST on a platform fee, in rupees — for the CHECKOUT PREVIEW.
  *
  * Exists so the browser and the server cannot round differently. The preview
@@ -236,7 +279,13 @@ export function calculateBookingPayment(input: {
       `calculateBookingPayment: platform fee ${feeRupees} out of [0, ${PLATFORM_FEE_RUPEES}]`,
     );
   }
-  const feePaise = toPaise(feeRupees);
+
+  // THE SECOND CEILING, and the one that was missing: the fee is bounded
+  // against the ADVANCE, not only against itself. Applied AFTER the coupon so
+  // the two compose as a floor race rather than fighting — a coupon that waives
+  // the fee to 0 still yields 0, because min(0, ceiling) is 0. A cap can only
+  // ever take the fee further DOWN, so it cannot be used to overcharge.
+  const feePaise = toPaise(cappedPlatformFeeRupees(advancePaise / PAISE_PER_RUPEE, feeRupees));
 
   // THE BASE IS THE HALL TOTAL, not the advance. The platform fee is NOT part
   // of it — waiving the fee must never move the owner's money.

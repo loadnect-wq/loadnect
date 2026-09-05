@@ -19,6 +19,7 @@ import { todayInBusinessTz, addDaysToIsoDate, isoDateToLabelDate, isoDateRange, 
 import { isValidPhoneNumber } from "@/lib/notifications/phone";
 import {
   advanceFromTotal,
+  cappedPlatformFeeRupees,
   platformFeeGstRupees,
   PLATFORM_FEE_GST_PERCENT,
   PLATFORM_FEE_RUPEES,
@@ -173,8 +174,21 @@ export function BookingFlow({ hall, availability, windowDays, onlinePaymentEnabl
   const advance     = totalAmount > 0 ? advanceFromTotal(totalAmount, advancePercent) : 0;
   // Server figures first, preview second, standard fee last. The browser never
   // decides what a coupon is worth — it only echoes what the server returned.
+  // The fee the server would START from — flat, or whatever a coupon reduced it
+  // to — before the advance-based ceiling is applied.
+  const requestedPlatformFee = appliedCoupon?.platformFee ?? DISPLAY_PLATFORM_FEE;
+  // Then capped by the SAME helper the engine uses, so a cheap hall previews the
+  // fee it will actually be charged rather than the flat ₹200.
+  //
+  // The advance > 0 guard is for the pre-selection state: with no dates chosen
+  // the advance is 0, the ceiling would be 0, and the summary would announce a
+  // waived fee for a booking that does not exist yet. Nothing is charged in that
+  // state, so it shows the standard fee.
   const effectivePlatformFee =
-    charged?.platformFee ?? appliedCoupon?.platformFee ?? DISPLAY_PLATFORM_FEE;
+    charged?.platformFee
+    ?? (advance > 0
+      ? cappedPlatformFeeRupees(advance, requestedPlatformFee)
+      : requestedPlatformFee);
   // GST is charged on Hallnect's fee only — never on the advance, which is the
   // venue's money. Computed by the SAME helper the server uses, so the previewed
   // total and the charged total cannot round apart.
@@ -699,8 +713,17 @@ export function BookingFlow({ hall, availability, windowDays, onlinePaymentEnabl
                     <div className="flex items-center justify-between py-1 text-sm">
                       <span className="text-charcoal-600">Platform Fee</span>
                       <span className="flex items-center gap-1.5">
+                        {/* The struck-through figure is what this customer
+                            would have paid without the coupon — the CAPPED fee,
+                            not the flat ₹200. On a small booking the flat
+                            figure would advertise a discount that was never
+                            available. */}
                         <span className="text-charcoal-400 line-through">
-                          {formatPrice(DISPLAY_PLATFORM_FEE)}
+                          {formatPrice(
+                            advance > 0
+                              ? cappedPlatformFeeRupees(advance, DISPLAY_PLATFORM_FEE)
+                              : DISPLAY_PLATFORM_FEE,
+                          )}
                         </span>
                         <span className="font-semibold text-green-700">₹0</span>
                       </span>

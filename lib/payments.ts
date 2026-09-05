@@ -36,6 +36,7 @@ import { notifyBookingEvent, notifyAdminOperational } from "@/lib/notifications/
 import {
   calculateBookingPayment,
   advanceFromTotal,
+  cappedPlatformFeeRupees,
   DEFAULT_COMMISSION_PERCENT,
   PLATFORM_FEE_RUPEES,
 } from "@/lib/booking-payment";
@@ -234,7 +235,12 @@ export async function startPaymentForBooking(
     ? 0
     : hasBreakdown && booking.platform_fee_amount != null && Number.isFinite(storedFee)
       ? storedFee
-      : PLATFORM_FEE_RUPEES;
+      // No stored fee — a pre-0031 booking whose fee is being decided NOW.
+      // That is a fresh calculation, so it takes the advance-based ceiling like
+      // any other; charging an uncapped flat ₹200 here would reintroduce the
+      // exact overcharge on precisely the oldest, least-examined bookings.
+      // A row WITH a stored fee is never recapped: it was already charged.
+      : cappedPlatformFeeRupees(advance, PLATFORM_FEE_RUPEES);
   // GST ON THE FEE (0049). Read from the row, NEVER recomputed at today's rate.
   //
   // NULL is not zero-by-accident here, it is a fact about the booking: rows

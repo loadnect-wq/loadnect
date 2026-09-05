@@ -13,7 +13,9 @@ import {
   calculateBookingPayment,
   calculateRefund,
   advanceFromTotal,
+  cappedPlatformFeeRupees,
   platformFeeGstRupees,
+  PLATFORM_FEE_MAX_PERCENT_OF_ADVANCE,
   PLATFORM_FEE_RUPEES,
   PLATFORM_FEE_GST_PERCENT,
   DEFAULT_COMMISSION_PERCENT,
@@ -77,6 +79,56 @@ describe("calculateBookingPayment — spec acceptance cases", () => {
     expect(b.platformFee).toBe(0);
     expect(b.platformFeeGst).toBe(0);
     expect(b.customerTotal).toBe(25_000);
+  });
+
+  it("never lets the fee exceed a quarter of the advance", () => {
+    // The bug this cap exists for: a ₹100 morning slot was advance ₹25 + fee
+    // ₹200 + GST ₹36 = ₹261 to reserve, while the UI told the customer the
+    // balance due at the venue was ₹75. The fee was 236% of the booking.
+    const tiny = calculateBookingPayment({ hallTotal: 100, commissionRate: 2.5 });
+    expect(tiny.advanceAmount).toBe(25);
+    expect(tiny.platformFee).toBe(6.25);          // was 200
+    expect(tiny.platformFeeGst).toBe(1.13);       // tax follows the capped fee
+    expect(tiny.customerTotal).toBe(32.38);       // was 261
+
+    // The ceiling holds across the whole range, including the values where the
+    // flat fee is the lower of the two and nothing changes.
+    for (const total of [40, 100, 200, 1_500, 3_200, 4_000, 20_000, 999_999]) {
+      const b = calculateBookingPayment({ hallTotal: total, commissionRate: 2.5 });
+      expect(b.paise.platformFee).toBeLessThanOrEqual(
+        Math.floor((b.paise.advance * PLATFORM_FEE_MAX_PERCENT_OF_ADVANCE * 100) / 10_000),
+      );
+      expect(b.paise.platformFee).toBeLessThanOrEqual(toPaise(PLATFORM_FEE_RUPEES));
+    }
+  });
+
+  it("leaves every real venue untouched — the cap binds only where the flat fee was absurd", () => {
+    // Above roughly a ₹3,200 hall the flat ₹200 is the lower bound, so this
+    // change must be invisible to actual inventory.
+    for (const total of [4_000, 20_000, 40_000, 60_000, 100_000, 999_999]) {
+      expect(calculateBookingPayment({ hallTotal: total, commissionRate: 2.5 }).platformFee)
+        .toBe(PLATFORM_FEE_RUPEES);
+    }
+  });
+
+  it("composes with a coupon as a race to the bottom, never upward", () => {
+    // Both bounds take the fee DOWN, so whichever is lower wins and neither can
+    // be used to charge more. A waiver still wins on a tiny booking.
+    const waived = calculateBookingPayment({
+      hallTotal: 100, commissionRate: 2.5, platformFeeRupees: 0,
+    });
+    expect(waived.platformFee).toBe(0);
+    expect(waived.platformFeeGst).toBe(0);
+
+    // A coupon reducing the fee to ₹50 loses to the ₹6.25 ceiling on a ₹100 hall…
+    expect(calculateBookingPayment({
+      hallTotal: 100, commissionRate: 2.5, platformFeeRupees: 50,
+    }).platformFee).toBe(6.25);
+
+    // …and wins on a hall large enough for the ceiling not to bind.
+    expect(calculateBookingPayment({
+      hallTotal: 100_000, commissionRate: 2.5, platformFeeRupees: 50,
+    }).platformFee).toBe(50);
   });
 
   it("refunds the tax with the fee, so a cancelled customer is made whole", () => {
@@ -313,11 +365,14 @@ describe("checkout preview matches the actual charge", () => {
     for (const total of hallPrices) {
       it(`hall total ₹${total} at a ₹${fee} fee: previewed total equals the charged total`, () => {
         const advance = advanceFromTotal(total);
-        // Mirrors BookingFlow exactly, including its GST line. Both sides call
-        // platformFeeGstRupees rather than each doing their own fee * 0.18,
-        // which is what keeps a float in the browser from disagreeing with the
-        // paise-integer charge.
-        const previewed = advance + fee + platformFeeGstRupees(fee);
+        // Mirrors BookingFlow exactly: cap the fee against the advance, then tax
+        // the capped figure. Both sides call cappedPlatformFeeRupees and
+        // platformFeeGstRupees rather than each doing their own arithmetic —
+        // that shared call is what keeps a float in the browser from disagreeing
+        // with the paise-integer charge. The two smallest hall prices here are
+        // the ones where the cap actually bites.
+        const previewFee = cappedPlatformFeeRupees(advance, fee);
+        const previewed = advance + previewFee + platformFeeGstRupees(previewFee);
         const charged = calculateBookingPayment({
           hallTotal: total, advanceAmount: advance, commissionRate: 2.5,
           platformFeeRupees: fee,
