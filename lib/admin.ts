@@ -80,6 +80,9 @@ export type AdminBookingRow = {
   total_amount:   number;
   status:         string;
   created_at:     string;
+  /** The published policy version this customer accepted (0052). Null on
+   *  bookings taken before it was recorded — see the column comment. */
+  terms_version:  string | null;
 };
 
 export type AdminPaymentRow = {
@@ -485,7 +488,7 @@ export async function fetchAllBookings(statusFilter?: string): Promise<AdminBook
 
   let query = db
     .from("bookings")
-    .select("id, hall_id, event_date, end_date, slot, total_amount, status, created_at, halls(name), profiles!bookings_customer_id_fkey(full_name, email)")
+    .select("id, hall_id, event_date, end_date, slot, total_amount, status, created_at, terms_version, halls(name), profiles!bookings_customer_id_fkey(full_name, email)")
     .order("created_at", { ascending: false })
     .limit(200);
 
@@ -507,6 +510,7 @@ export async function fetchAllBookings(statusFilter?: string): Promise<AdminBook
     total_amount:   Number(row.total_amount),
     status:         row.status,
     created_at:     row.created_at,
+    terms_version:  row.terms_version ?? null,
   }));
 }
 

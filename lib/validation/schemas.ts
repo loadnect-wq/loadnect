@@ -96,6 +96,28 @@ export const pincodeSchema = z
   });
 
 // Money — accepts number or numeric string, must be non-negative.
+/**
+ * The least a venue may be listed for, in rupees.
+ *
+ * moneySchema accepted any n >= 0, so nothing stopped a ₹40 listing — and the
+ * platform fee is flat. Capping the fee against the advance (0.25 × advance,
+ * see lib/booking-payment.ts) stopped the CUSTOMER being overcharged on a
+ * listing like that, but it left the other end open: at ₹40 the capped fee is
+ * ₹2.50, which does not cover the payment gateway's own per-transaction cost,
+ * so every such booking loses money.
+ *
+ * ₹2,000 is set where the flat fee is still a sane fraction of the booking
+ * (₹200 on a ₹500 advance) rather than where it merely stops being absurd. It
+ * is also a floor on what a real wedding venue plausibly charges for a day —
+ * the listings below it in practice are tests, typos and placeholders.
+ *
+ * Existing rows are NOT retro-validated: this bites on create and on edit, so a
+ * hall already in the catalogue keeps its price until someone touches it. That
+ * is deliberate — silently rejecting an owner's next unrelated edit because of
+ * a rule introduced afterwards is a worse failure than a grandfathered price.
+ */
+export const MIN_HALL_PRICE_RUPEES = 2_000;
+
 export const moneySchema = z
   .union([z.number(), z.string()])
   .transform((v) => (typeof v === "number" ? v : parseFloat(v)))
@@ -215,7 +237,10 @@ export const hallSchema = z
     pincode:      pincodeSchema,
     capacityMin:  optionalCapacitySchema,
     capacityMax:  capacitySchema,
-    pricePerDay:  moneySchema,
+    pricePerDay:  moneySchema.refine(
+      (n) => n >= MIN_HALL_PRICE_RUPEES,
+      `A venue must be priced at least ₹${MIN_HALL_PRICE_RUPEES} per day.`,
+    ),
     priceMorning: optionalMoneySchema,
     priceEvening: optionalMoneySchema,
     description:  optionalTrimmed(4000),
@@ -231,6 +256,18 @@ export const hallSchema = z
   .refine(
     (d) => d.capacityMin == null || d.capacityMin <= d.capacityMax,
     { message: "Min capacity cannot exceed max.", path: ["capacityMin"] },
+  )
+  // A half-day cannot cost more than the whole day. Not pedantry: the booking
+  // engine derives the advance from whichever price the chosen slot resolves
+  // to, so an inverted pair quietly charges more for less and the customer sees
+  // it only at checkout.
+  .refine(
+    (d) => d.priceMorning == null || d.priceMorning <= d.pricePerDay,
+    { message: "The morning rate cannot exceed the full-day rate.", path: ["priceMorning"] },
+  )
+  .refine(
+    (d) => d.priceEvening == null || d.priceEvening <= d.pricePerDay,
+    { message: "The evening rate cannot exceed the full-day rate.", path: ["priceEvening"] },
   );
 
 export type HallInput = z.input<typeof hallSchema>;

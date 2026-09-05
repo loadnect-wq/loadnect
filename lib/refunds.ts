@@ -168,7 +168,15 @@ export async function recordBookingRefund(
       // the money is sent later by issueRefund(). Marking the payment refunded
       // here told every dashboard, receipt and message that a customer had been
       // paid back when nothing had left the account.
-      ...(breakdown.refundableAmount > 0 ? { refund_state: "owed" } : {}),
+      // refund_owed_at starts the clock the published SLA is measured against
+      // (5–7 business days, /refund-policy §8). Without it the overdue sweep has
+      // to age rows by updated_at, which is only a proxy — any later touch to
+      // the row resets it and the refund looks younger than it is, which is the
+      // wrong direction for a promise. Stamped in the same write that sets
+      // 'owed' so the two can never disagree.
+      ...(breakdown.refundableAmount > 0
+        ? { refund_state: "owed", refund_owed_at: new Date().toISOString() }
+        : {}),
     };
 
     // THE COMMISSION IS EARNED ON THE MONEY HALLNECT ACTUALLY KEEPS — NO MORE,
@@ -268,10 +276,25 @@ export async function recordBookingRefund(
 
     let { error } = await db
       .from("payments").update(update).eq("id", payment.id).is("refund_amount", null);
+
+    // Pre-0053 database: refund_owed_at does not exist. Drop ONLY that and
+    // retry — this rung sits ahead of the pre-0031 one because that one drops
+    // refund_amount, and losing the figure the customer is owed to work around
+    // a missing SLA timestamp trades the important column for the cosmetic one.
+    // The refund is still recorded; only its clock is unset, and the overdue
+    // sweep falls back to updated_at for exactly these rows.
+    if (error && (error.code === "42703" || error.code === "PGRST204")) {
+      const { refund_owed_at: _o, ...withoutOwedAt } = update;
+      void _o;
+      console.warn("[refunds] payments.refund_owed_at missing — apply migration 0053");
+      ({ error } = await db
+        .from("payments").update(withoutOwedAt).eq("id", payment.id).is("refund_amount", null));
+    }
+
     if (error && (error.code === "42703" || error.code === "PGRST204")) {
       // Pre-0031 database — record what we can.
-      const { refund_amount: _r, ...legacy } = update;
-      void _r;
+      const { refund_amount: _r, refund_owed_at: _o2, ...legacy } = update;
+      void _r; void _o2;
       ({ error } = await db.from("payments").update(legacy).eq("id", payment.id));
     }
     if (error) {

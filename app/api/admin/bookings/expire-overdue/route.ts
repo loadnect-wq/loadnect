@@ -14,6 +14,7 @@ import { NextResponse } from "next/server";
 import { getProfile } from "@/lib/auth";
 import { hasValidCronSecret } from "@/lib/cron-auth";
 import { expireOverdueBookingRequests } from "@/lib/booking-expiry";
+import { reportOverdueRefunds } from "@/lib/refund-sla";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -52,8 +53,24 @@ async function run(via: "cron" | "admin") {
   try {
     const summary = await expireOverdueBookingRequests();
     const otpPruned = await pruneOtpAttempts();
-    console.info("[bookings:expire-overdue]", JSON.stringify({ via, ...summary, otpPruned }));
-    return NextResponse.json({ ok: true, summary, otpPruned });
+
+    // The overdue-refund report runs LAST, and deliberately so: the sweep above
+    // cancels unanswered bookings and records their refunds, so running the
+    // report after it means this morning's new refunds are counted in this
+    // morning's report rather than waiting a day to be noticed.
+    //
+    // Piggy-backed here rather than given its own schedule — the same reasoning
+    // as pruneOtpAttempts above, plus a hard constraint: this project is on the
+    // Vercel Hobby plan, which caps it at TWO cron jobs, and vercel.json already
+    // holds exactly two. A third entry is rejected at BUILD time, so adding one
+    // would not add a report, it would fail the deployment.
+    const refundSla = await reportOverdueRefunds();
+
+    console.info(
+      "[bookings:expire-overdue]",
+      JSON.stringify({ via, ...summary, otpPruned, refundSla }),
+    );
+    return NextResponse.json({ ok: true, summary, otpPruned, refundSla });
   } catch (err) {
     console.error("[bookings:expire-overdue] failed", err);
     return NextResponse.json({ error: "Expiry sweep failed" }, { status: 500 });

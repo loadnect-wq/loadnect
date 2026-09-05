@@ -391,7 +391,7 @@ export async function countActivePremiumHalls(): Promise<number> {
  * the listing. The venue page previously showed only the venue's own street
  * address, so a customer could not tell who they were contracting with.
  *
- * WHY THE SERVICE ROLE, AND WHY NOT JUST EMBED hall_owners(...).
+ * WHY AN RPC, AND WHY NOT JUST EMBED hall_owners(...).
  * The obvious fix — adding `hall_owners(business_name, address, city)` to the
  * select above — silently returns null for the public. hall_owners_select (0007)
  * is `profile_id = auth.uid() or is_admin()`, so an anonymous visitor's client
@@ -401,44 +401,46 @@ export async function countActivePremiumHalls(): Promise<number> {
  * AND WIDENING THAT POLICY WOULD BE A LEAK, NOT A FIX. RLS is row-level, and
  * hall_owners has no column-level SELECT grants — a public select policy would
  * hand every visitor gst_number, pan_number, payout_upi, payout_account_number
- * and payout_ifsc off the same row. So the three published fields, and only
- * those three, are read with the service role and an explicit projection.
+ * and payout_ifsc off the same row.
  *
- * DO NOT ADD A COLUMN TO THIS SELECT. Read HallSeller's comment first; the rest
- * of that row is onboarding data that must never reach a page.
+ * So the three published fields are returned by hall_seller_public(uuid)
+ * (migration 0054): a SECURITY DEFINER function whose PROJECTION is the whole
+ * allow-list, so there is no column list on this side that a later edit could
+ * widen by accident. It also gates on halls.status = 'approved', so seller
+ * identity is published only for a listing that is itself public rather than
+ * being enumerable through a draft or suspended hall.
+ *
+ * This replaced a service-role read. That worked, but it made a statutory
+ * disclosure depend on SUPABASE_SERVICE_ROLE_KEY being present — and its
+ * absence degraded to "no seller block", i.e. the Rule 5(3)(a) obligation
+ * silently unmet on every venue page, with only an info-level log to say so.
  */
-async function fetchHallSeller(ownerId: string | null | undefined): Promise<HallSeller | null> {
-  if (!ownerId) return null;
-  try {
-    // Imported lazily so lib/halls.ts keeps no static edge to the service-role
-    // module, and so a deployment without SUPABASE_SERVICE_ROLE_KEY (requireEnv
-    // throws) degrades to "no seller block" instead of a 500 on every venue.
-    const { getSupabaseAdminClient } = await import("@/lib/supabase/admin");
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const admin = getSupabaseAdminClient() as any;
+async function fetchHallSeller(hallId: string): Promise<HallSeller | null> {
+  const supabase = await getSupabaseServerClient();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const db = supabase as any;
 
-    const { data, error } = await admin
-      .from("hall_owners")
-      .select("business_name, address, city")
-      .eq("id", ownerId)
-      .maybeSingle();
+  const { data, error } = await db.rpc("hall_seller_public", { _hall_id: hallId });
 
-    if (error || !data?.business_name) {
-      if (error) console.error("[fetchHallSeller]", error.message);
-      return null;
+  // A database without 0054 (42883 = undefined_function) must not 500 a venue
+  // page — the listing is still perfectly usable without the block.
+  if (error) {
+    if (error.code === "42883" || error.code === "PGRST202") {
+      console.info("[fetchHallSeller] hall_seller_public missing — apply migration 0054");
+    } else {
+      console.error("[fetchHallSeller]", error.code, error.message);
     }
-    return {
-      business_name: data.business_name as string,
-      address:       (data.address as string | null) ?? null,
-      city:          (data.city    as string | null) ?? null,
-    };
-  } catch (e) {
-    console.info(
-      "[fetchHallSeller] seller details unavailable — check SUPABASE_SERVICE_ROLE_KEY:",
-      e instanceof Error ? e.message : e,
-    );
     return null;
   }
+
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row?.business_name) return null;
+
+  return {
+    business_name: row.business_name as string,
+    address:       (row.address as string | null) ?? null,
+    city:          (row.city    as string | null) ?? null,
+  };
 }
 
 // SECURITY: uses getSupabaseServerClient() (session-aware, anon key).
@@ -496,7 +498,7 @@ export async function fetchHallBySlug(slug: string): Promise<HallDetail | null> 
 
   // Published seller identity (Rule 5(3)(a)). Fetched alongside availability
   // rather than embedded — see fetchHallSeller for why an embed cannot work.
-  const seller = await fetchHallSeller(hall.owner_id as string | null);
+  const seller = await fetchHallSeller(hall.id as string);
 
   // Availability for next 30 days (separate query — embedding with date filter
   // is cleaner here since we don't want to pull years of rows)

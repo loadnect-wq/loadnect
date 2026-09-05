@@ -85,80 +85,52 @@ per day each**. Both slots are used. Two consequences worth knowing:
   live account — team `loadnect-wqs-projects`, plan `hobby`. So "just add
   another cron" is never a safe edit here; check the plan first.
 
-## Not scheduled yet — the refund SLA has no timer
+## Overdue refunds — folded into the nightly booking sweep
 
-**This job does not exist.** It is written down here because the promise it
-would keep is already published, and the gap is worth being explicit about
-rather than rediscovering during a complaint.
+**No separate cron, and that is deliberate.** This project is on the Vercel
+Hobby plan, which caps a project at **two** cron jobs, and `vercel.json` already
+holds exactly two. Vercel rejects an over-cap `vercel.json` at BUILD time, so a
+third entry does not add a job — it fails the deployment. The report therefore
+runs inside `/api/admin/bookings/expire-overdue`, the job that already runs
+daily and that already creates the refunds being counted.
 
-`/refund-policy` tells customers that approved refunds are "processed within
-7–10 business days". Nothing in the system counts those days. `recordBookingRefund`
-(lib/refunds.ts) marks `payments.refund_state = 'owed'` and stops there —
-deliberately, because it records what is due rather than moving money — and
-sending it is `issueRefund()`, a **button an admin has to remember to press**.
-There is no queue, no ageing, no reminder. A refund missed on the day it is
-owed is missed silently and indefinitely, and the customer is the only party
-who notices.
+It runs **last** in that route, after the expiry sweep. That ordering matters:
+the sweep cancels unanswered bookings and records their refunds, so reporting
+afterwards counts this morning's new refunds in this morning's report instead of
+letting them wait a day to be noticed.
 
-### What the job should do
+**What it does:** `reportOverdueRefunds()` in `lib/refund-sla.ts` reads payments
+with `refund_state in ('owed','failed')` and `refund_amount > 0`, and flags
 
-A route at `app/api/admin/refunds/report-overdue/route.ts`, modelled on
-`app/api/admin/premium/expire-listings/route.ts` — same shape, same two verbs,
-same `hasValidCronSecret` split (GET = secret only; POST = secret or an admin
-session), `runtime = "nodejs"`, `dynamic = "force-dynamic"`.
+- anything owed longer than `REFUND_OVERDUE_DAYS` (4 calendar days), and
+- every `failed` row **at any age** — a failed refund is not waiting on a clock,
+  it is one that was attempted and did not land, so each day it sits is a day
+  nobody knows the customer has not been paid.
 
-It **reports; it must not pay.** Sending money without a human is a much larger
-decision than closing this gap, and `issueRefund()` stays the only path that
-calls Cashfree.
+`REFUND_OVERDUE_DAYS` is derived from the published window, not picked.
+`/refund-policy` §8 promises **5–7 business days**, roughly 7–11 calendar days
+depending on where the weekend falls. The alarm has to fire while that window
+can still be kept — an alert on day 12 is a post-mortem, not a warning. Four
+calendar days is about three business days, leaving two to four business days of
+the promise still available. **If §8 changes, this changes.**
 
-1. Read, with the service-role client, `payments` where
-   `refund_state in ('owed','failed')` and `refund_amount > 0`, joined to the
-   booking for the customer and hall.
-2. Age each row. `payments` has no `refund_owed_at`, so the workable proxy is
-   `updated_at`: `recordBookingRefund` is the write that sets `'owed'`, and
-   nothing else touches the row until `issueRefund` moves it to `'processing'`.
-   A dedicated `refund_owed_at` column would be exact, and is the right
-   follow-up if this ever needs to be defensible rather than merely useful.
-3. Flag anything owed for **more than 5 calendar days** (`REFUND_OVERDUE_DAYS`),
-   plus every `'failed'` row regardless of age — a failed refund is already
-   past its promise and needs a human either way. Five is chosen to fire
-   *before* the published window closes, not after: 7 business days is 9–11
-   calendar days, so a five-day alarm leaves several days to act while the
-   promise can still be kept.
-4. If nothing is overdue, send nothing and log the zero. An alert that arrives
-   daily saying "all clear" is an alert nobody reads.
-5. Otherwise send ONE `ADMIN_ALERT` via `notifyAdminOperational`
-   (lib/notifications/events.ts) — one summary, never one message per refund,
-   because MSG91 is billed per SMS and a backlog of twenty would send twenty:
+**It reports and never pays.** `issueRefund()` remains the only code that calls
+Cashfree, because it is the only place with the double-spend guard and the audit
+trail. A sweep that could move money on a timer is a different risk profile, and
+not one worth taking to save a click.
 
-   ```ts
-   // formatAmount from "@/lib/notifications/templates"
-   await notifyAdminOperational({
-     // Date in the key so the outbox dedupe allows one alert per day and
-     // suppresses retries within it.
-     key: `refunds.overdue:${todayInBusinessTz()}`,
-     eventType: "refunds.overdue",
-     event: "Refunds overdue",
-     details: `${count} refund(s) totalling ${formatAmount(total)} owed for more than ${REFUND_OVERDUE_DAYS} days`,
-     reference: "See /admin/payments",
-   });
-   ```
+**One SMS, never one per refund.** Every message is billed, and a backlog of
+twenty would otherwise send twenty and exhaust the admin's own per-phone hourly
+ceiling — which the payout-failure alerts share. The alert is keyed
+`refunds.overdue:<date in IST>`, so a retry within the day is a no-op. When
+nothing is overdue it sends nothing and logs the zero.
 
-6. Log a one-line JSON summary as `[refunds:report-overdue]`, matching the
-   other two sweeps.
-
-### How to schedule it
-
-Not by adding a third `crons` entry — see the plan limit above; that fails the
-deploy. Two options, both an owner decision:
-
-* **Free, and preferred.** Fold the check into
-  `/api/admin/bookings/expire-overdue`, which already runs daily at a civil
-  hour and already creates the refunds in question. Run the sweep first and the
-  report second, so refunds created by this morning's expiries are counted in
-  this morning's report. `vercel.json` needs no change at all.
-* **Upgrade to Pro**, then add the entry — `0 4 * * *` (09:30 IST), half an hour
-  after the booking sweep, for the same ordering reason.
+**Ageing accuracy.** `payments.refund_owed_at` (migration 0053) is stamped in
+the same write that sets `refund_state='owed'`, so the clock starts exactly when
+the debt does. Rows written before 0053 have no stamp and fall back to
+`updated_at`, which is a **proxy**: any later touch resets it, so those refunds
+read younger than they are. That errs toward under-reporting, which is the wrong
+direction — but it is bounded to pre-0053 rows and beats not checking them.
 
 ## Running one now
 

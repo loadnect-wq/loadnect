@@ -2,7 +2,7 @@ import { Suspense } from "react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Building2 } from "lucide-react";
-import { fetchHalls } from "@/lib/halls";
+import { fetchHalls, countActivePremiumHalls } from "@/lib/halls";
 import { todayInBusinessTz } from "@/lib/dates";
 import { getAdvancePercent } from "@/lib/platform-settings";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -113,7 +113,12 @@ export default async function HallsPage({
       {/* ── Controls (sticky on mobile) ───────────────────────────── */}
       <div className="sticky top-14 z-20 border-b border-border bg-white/95 backdrop-blur lg:top-16">
         <Suspense fallback={<div className="h-24" />}>
+          {/* premiumCount: the Premium chip hides itself while there is no
+              premium inventory, so it has to be told the live count — otherwise
+              it stays hidden forever and does not come back when an owner
+              actually buys a plan. */}
           <SearchControls
+            premiumCount={await countActivePremiumHalls()}
             defaultCity={city}
             defaultArea={area}
             defaultCapacity={capacity}

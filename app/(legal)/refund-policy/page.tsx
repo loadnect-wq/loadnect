@@ -80,7 +80,7 @@ export default function RefundPolicyPage() {
       </Section>
 
       <Section title="6. Owner-Initiated Cancellations">
-        If a hall owner cancels a confirmed booking, you are entitled to a full refund of the advance payment including the platform fee. Refunds in this case are processed within 7–10 business days. Repeated owner cancellations may result in suspension of the venue from the platform.
+        If a hall owner cancels a confirmed booking, you are entitled to a full refund of the advance payment including the platform fee. Refunds in this case are processed within 5–7 business days. Repeated owner cancellations may result in suspension of the venue from the platform.
       </Section>
 
       <Section title="7. How to Request a Refund">
@@ -92,8 +92,18 @@ export default function RefundPolicyPage() {
           left Disputes and Changes one short at 8 and 9. Everything from here down was
           shifted up by one so the numbering is contiguous and a citation to "section 9"
           of this policy resolves to a single section. */}
+      {/* THE REFUND WINDOW IS PUBLISHED IN FIVE PLACES AND THEY MUST AGREE.
+          Here, section 7 (owner-cancelled) above, Cancellation Policy section 4,
+          and twice in the cancel dialog (CancelButton.tsx) — which is the one a
+          customer actually reads, at the moment they are deciding. Change one
+          and you have published two different promises about the same money.
+
+          It is also the number REFUND_OVERDUE_DAYS in the nightly sweep is
+          derived from: the alarm has to fire while this window can still be
+          kept, so tightening this without tightening that leaves the promise
+          unwatched. */}
       <Section title="8. Refund Processing Time">
-        Approved refunds are processed within <strong>7–10 business days</strong> to the original payment method. Bank processing times may add additional delays beyond our control.
+        Approved refunds are processed within <strong>5–7 business days</strong> to the original payment method. Bank processing times may add additional delays beyond our control.
       </Section>
 
       {/* The response window here and in the Cancellation Policy's dispute section must

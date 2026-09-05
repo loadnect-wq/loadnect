@@ -94,6 +94,17 @@ export default async function AdminBookingsPage({ searchParams }: Props) {
                       <Td>
                         <p className="font-mono text-[11px] text-charcoal-500">#{b.id.slice(0, 8).toUpperCase()}</p>
                         <p className="text-[10px] text-charcoal-400">{fmtDate(b.created_at)}</p>
+                        {/* WHICH POLICY BINDS THIS BOOKING. /refund-policy says
+                            the version applicable is the one in force when the
+                            booking was made, so in a dispute "they accepted the
+                            terms" is worth nothing without saying which terms.
+                            Stored since 0052; blank on older rows, and shown as
+                            such rather than guessed. */}
+                        <p className="text-[10px] text-charcoal-400">
+                          {b.terms_version
+                            ? <>Terms <span className="font-mono">{b.terms_version}</span></>
+                            : <span className="italic">Terms version not recorded</span>}
+                        </p>
                       </Td>
                       <Td className="font-medium">{b.hall_name}</Td>
                       <Td>

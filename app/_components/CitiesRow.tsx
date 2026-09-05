@@ -13,7 +13,7 @@ export function CitiesRow({ cities }: { cities: readonly City[] }) {
         {cities.map((c) => (
           <li key={c.name}>
             <Link
-              href={`/halls?city=${c.name}`}
+              href={`/halls?city=${encodeURIComponent(c.name)}`}
               className="relative block h-32 w-40 overflow-hidden rounded-2xl shadow-card transition-transform active:scale-95"
             >
               <div className="absolute inset-0" style={{ background: c.gradient }} aria-hidden />

@@ -73,7 +73,7 @@ export function CancelButton({
         {refund === null ? (
           <p className="mt-1 text-xs text-red-700 leading-relaxed">
             This action cannot be undone. Any refund follows our cancellation policy and
-            reaches you within 7–10 business days.
+            reaches you within 5–7 business days.
           </p>
         ) : refund.amount > 0 ? (
           <p className="mt-1 text-xs text-red-700 leading-relaxed">
@@ -81,7 +81,7 @@ export function CancelButton({
             your {formatPrice(refund.advance)} advance, because your event is {refund.days} day
             {refund.days === 1 ? "" : "s"} away.
             {refund.fee > 0 && <> The {formatPrice(refund.fee)} platform fee is not refunded.</>}{" "}
-            It reaches you within 7–10 business days. This cannot be undone.
+            It reaches you within 5–7 business days. This cannot be undone.
           </p>
         ) : (
           <p className="mt-1 text-xs font-semibold text-red-800 leading-relaxed">

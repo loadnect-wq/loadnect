@@ -29,7 +29,7 @@ export default function CancellationPolicyPage() {
       </Section>
 
       <Section title="4. Cancellation by Hall Owners">
-        Hall owners may cancel a confirmed booking only in exceptional circumstances such as force majeure, venue damage, or regulatory closure. Owner-cancelled bookings trigger a full refund (including the platform fee) to the customer within 7–10 business days. Owners who repeatedly cancel confirmed bookings may have their listings suspended or permanently removed.
+        Hall owners may cancel a confirmed booking only in exceptional circumstances such as force majeure, venue damage, or regulatory closure. Owner-cancelled bookings trigger a full refund (including the platform fee) to the customer within 5–7 business days. Owners who repeatedly cancel confirmed bookings may have their listings suspended or permanently removed.
       </Section>
 
       <Section title="5. Booking Statuses Eligible for Cancellation">
