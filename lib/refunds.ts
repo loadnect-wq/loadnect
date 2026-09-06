@@ -235,12 +235,41 @@ export async function recordBookingRefund(
 
         const kept = retainedCommission(charged, percent);
         const keptPaise = toPaise(kept);
-        const ownerKeptPaise = Math.max(0, toPaise(breakdown.advanceWithheld) - keptPaise);
+
+        // WHO OWNS A FORFEITED ADVANCE: HALLNECT.
+        //
+        // This used to record owner_payout_amount = advanceWithheld − commission,
+        // i.e. it said the venue was owed the non-commission part of an advance
+        // the customer did not get back. Nothing ever paid it:
+        // payOwnerOnAcceptance only pays owner_confirmed or completed bookings,
+        // and this booking is cancelled. So the figure sat on the ledger owed to
+        // someone who would never receive it, inflating every "owed to owners"
+        // total, while the money itself sat in the Cashfree balance attributed
+        // to nobody.
+        //
+        // The published policy now says plainly that Hallnect retains it (see
+        // /cancellation-policy §3 and /refund-policy §3), so the ledger says the
+        // same thing: the owner is owed NOTHING out of a customer cancellation.
+        //
+        // This only ever bites on a CUSTOMER cancellation. Owner- and
+        // platform-initiated ones refund 100%, so advanceWithheld is zero and
+        // there is nothing to attribute either way.
+        const withheldPaise = toPaise(breakdown.advanceWithheld);
+        const ownerKeptPaise = 0;
+        const hallnectRetainedPaise = Math.max(0, withheldPaise - keptPaise);
 
         const movement =
           keptPaise === 0                ? `Commission ₹${charged} reversed in full.`
           : keptPaise === commissionPaise ? `Commission ₹${charged} retained in full.`
           :                                 `Commission ₹${charged} reduced to ₹${kept}.`;
+
+        // The retained remainder is stated in words rather than left implied.
+        // commission_amount is the COMMISSION and must not be inflated to carry
+        // it — an admin reading this row has to be able to tell the two apart.
+        const retention =
+          hallnectRetainedPaise > 0
+            ? ` Hallnect retains ₹${hallnectRetainedPaise / PAISE_PER_RUPEE} of the withheld advance beyond commission; the venue is owed nothing on this booking.`
+            : "";
 
         const reversal: Record<string, unknown> = {
           commission_amount:   kept,
@@ -249,7 +278,7 @@ export async function recordBookingRefund(
           // The original figure survives here, and in booking_amount ×
           // commission_rate, so a reduced row can always be explained.
           admin_note:
-            `Booking cancelled (${initiator}) — ${percent}% of the advance refunded. ${movement}`,
+            `Booking cancelled (${initiator}) — ${percent}% of the advance refunded. ${movement}${retention}`,
           // Only a FULL reversal is 'refunded'; a partial row is still earned.
           ...(keptPaise > 0 ? {} : { status: "refunded" }),
         };

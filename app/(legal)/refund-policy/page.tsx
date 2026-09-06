@@ -23,7 +23,12 @@ export default function RefundPolicyPage() {
       </Section>
 
       <Section title="3. Customer-Initiated Cancellations">
-        Refunds depend on how far in advance you cancel relative to the event date:
+        Refunds depend on how far in advance you cancel relative to the event date. Whatever
+        the schedule does not return to you is <strong>retained by Hallnect</strong> — it is not
+        passed on to the venue. It covers the date held exclusively for you, the payment
+        processing already incurred, and the bookings the venue declined while your date was
+        blocked. If the venue or Hallnect cancels, none of this applies and you are refunded
+        in full, platform fee included.
       </Section>
 
       <div className="my-6 overflow-hidden rounded-xl border border-border bg-white shadow-card">
@@ -60,9 +65,13 @@ export default function RefundPolicyPage() {
             </tr>
           </tbody>
         </table>
+        {/* The schedule says what comes BACK. It has to say where the rest goes,
+            or the most contested figure on the page is the unstated one — see
+            /cancellation-policy §3 and lib/refunds.ts, which must agree. */}
         <p className="px-4 py-3 text-[11px] text-charcoal-400 border-t border-border">
           This schedule applies to every booking on Hallnect. Venues do not set their own
-          cancellation terms.
+          cancellation terms. Any part of the advance not refunded to you is retained by
+          Hallnect and is not paid to the venue.
         </p>
       </div>
 

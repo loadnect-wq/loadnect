@@ -22,10 +22,19 @@ export default function CancellationPolicyPage() {
         <a href="/refund-policy" className="text-maroon-600 hover:underline">Refund Policy</a> for the full schedule. You will be shown the expected refund amount before you confirm the cancellation.
       </Section>
 
+      {/* WHO KEEPS A FORFEITED ADVANCE — SAY IT, BECAUSE THE MONEY IS REAL.
+          This paragraph used to say only "the advance is held by Hallnect on
+          behalf of the venue owner", which is true right up until the customer
+          cancels late and is refunded nothing. At that point the sentence
+          implied the venue got it, no code paid the venue anything (a cancelled
+          booking never pays out), and the amount sat attributed to no one. The
+          rule is now stated: Hallnect retains it. lib/refunds.ts records the
+          same thing — owner_payout_amount goes to zero and the retention is
+          spelled out in the ledger note. Change one and you must change both. */}
       <Section title="3. Advance Payment and Cancellation">
         The venue has <strong>48 hours</strong> to accept a booking request. If they do not respond in
         that time the booking is cancelled automatically and you are refunded in full — the entire
-        advance <em>and</em> the platform fee. All bookings require an advance payment to secure the venue, plus a flat ₹200 platform fee collected with it at checkout, unless a valid promotional code waives it. The advance is held by Hallnect on behalf of the venue owner. Upon a customer-initiated cancellation, the refundable portion of the <strong>advance</strong> is returned based on the timeline in the Refund Policy; the ₹200 platform fee is non-refundable on customer cancellations.
+        advance <em>and</em> the platform fee. All bookings require an advance payment to secure the venue, plus a flat ₹200 platform fee collected with it at checkout, unless a valid promotional code waives it. While a booking is live, the advance is held by Hallnect on behalf of the venue owner and is paid to them once the booking is confirmed. Upon a customer-initiated cancellation, the refundable portion of the <strong>advance</strong> is returned based on the timeline in the Refund Policy; the ₹200 platform fee is non-refundable on customer cancellations. <strong>Any part of the advance that is not refunded to you under that timeline is retained by Hallnect</strong>, not passed to the venue — it covers the cost of holding the date exclusively for you, the payment processing already incurred, and the booking the venue turned away in the meantime.
       </Section>
 
       <Section title="4. Cancellation by Hall Owners">

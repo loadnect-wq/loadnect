@@ -12,6 +12,7 @@ import crypto from "node:crypto";
 
 import { retainedCommission, customerRefundPercent } from "@/lib/refunds";
 import { computeOwnerShare } from "@/lib/owner-payout";
+import { calculateRefund } from "@/lib/booking-payment";
 import {
   isUnauthorisedPlaceholder,
   subscriptionChargeAmount,
@@ -167,5 +168,77 @@ describe("what a monthly charge is recorded at", () => {
 
   it("ignores a debit amount that is not a number", () => {
     expect(subscriptionChargeAmount(Number.NaN, 699)).toBe(699);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// WHO OWNS A FORFEITED ADVANCE.
+//
+// Settled 2026-09-06: Hallnect keeps it. /cancellation-policy §3 and
+// /refund-policy §3 now say so in as many words, and lib/refunds.ts records the
+// same thing — owner_payout_amount goes to zero on a customer cancellation.
+//
+// Before that the money belonged to nobody in code AND to the venue in the
+// contract: the ledger recorded the venue as owed the non-commission part of an
+// advance the customer never got back, nothing ever paid it (a cancelled
+// booking does not pay out), and the amount sat in the gateway balance
+// attributed to no one.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("a forfeited advance is Hallnect's, and the three shares still reconcile", () => {
+  const ADVANCE = 25_000;
+  const COMMISSION = 2_500;   // 2.5% of a ₹1,00,000 hall
+
+  it("gives the venue nothing when the customer cancels, at every refund tier", () => {
+    for (const percent of [100, 75, 50, 0]) {
+      const refunded = calculateRefund({
+        advanceAmount: ADVANCE,
+        platformFee: 200,
+        platformFeeGst: 36,
+        refundPercentOfAdvance: percent,
+        refundPlatformFee: false,          // customer-initiated
+      });
+
+      const kept      = retainedCommission(COMMISSION, percent);
+      const withheld  = refunded.advanceWithheld;
+      const hallnect  = withheld - kept;   // the retained remainder
+      const owner     = 0;                 // the rule, stated
+
+      // Nothing is created or lost: what the customer keeps back plus what
+      // Hallnect retains plus what the owner gets equals the whole advance.
+      expect(refunded.refundableAmount - 0 + withheld).toBeCloseTo(ADVANCE, 2);
+      expect(owner + kept + hallnect).toBeCloseTo(withheld, 2);
+      expect(hallnect).toBeGreaterThanOrEqual(0);
+    }
+  });
+
+  it("keeps the whole advance when the customer cancels inside 7 days", () => {
+    const refunded = calculateRefund({
+      advanceAmount: ADVANCE, platformFee: 200, platformFeeGst: 36,
+      refundPercentOfAdvance: customerRefundPercent(3),   // < 7 days => 0%
+      refundPlatformFee: false,
+    });
+    expect(refunded.refundableAmount).toBe(0);
+    expect(refunded.advanceWithheld).toBe(ADVANCE);
+
+    // The commission stays fully earned, and the rest is Hallnect's retention —
+    // not the venue's.
+    const kept = retainedCommission(COMMISSION, 0);
+    expect(kept).toBe(COMMISSION);
+    expect(refunded.advanceWithheld - kept).toBe(ADVANCE - COMMISSION);
+  });
+
+  it("retains nothing when the VENUE cancels — that path refunds in full", () => {
+    // The rule is about customer cancellations only. An owner- or
+    // platform-initiated cancellation returns everything, so there is no
+    // forfeiture to attribute to anyone.
+    const refunded = calculateRefund({
+      advanceAmount: ADVANCE, platformFee: 200, platformFeeGst: 36,
+      refundPercentOfAdvance: 100,
+      refundPlatformFee: true,
+    });
+    expect(refunded.advanceWithheld).toBe(0);
+    expect(retainedCommission(COMMISSION, 100)).toBe(0);
+    expect(refunded.refundableAmount).toBe(ADVANCE + 200 + 36);
   });
 });
