@@ -40,7 +40,12 @@ import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import { msg91WebhookSecret } from "@/lib/msg91";
 
 export const runtime = "nodejs";        // node:crypto for the constant-time compare
-export const dynamic = "force-dynamic"; // never cache a webhook
+export const dynamic = "force-dynamic";
+
+// See app/api/webhooks/cashfree/route.ts for why this is declared
+// explicitly: after() runs inside the route budget, it does not extend it.
+export const maxDuration = 60;
+ // never cache a webhook
 
 /** The header MSG91 must send. Configured on the webhook's Headers tab. */
 const SECRET_HEADER = "x-hallnect-webhook-secret";

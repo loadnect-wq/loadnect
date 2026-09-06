@@ -36,7 +36,28 @@ import { verifyAndApplyPayment } from "@/lib/payments";
 import { isPlanOrderId, verifyAndApplyPlanPurchase } from "@/lib/plan-payments";
 
 export const runtime = "nodejs";       // crypto + raw body
-export const dynamic = "force-dynamic"; // never cache a webhook
+export const dynamic = "force-dynamic";
+
+/**
+ * WHY THIS IS DECLARED AT ALL.
+ *
+ * Nothing set maxDuration anywhere in this app, so every route ran on the
+ * platform default. That was survivable while notification sends were the only
+ * slow thing and nobody had measured them; it stopped being survivable when
+ * MSG91 went live, because dispatch now makes a real provider round trip per
+ * message and dispatchAll is sequential.
+ *
+ * Sends are deferred with after() (lib/notifications/service.ts), which does
+ * NOT buy extra time — after() runs inside this route's max duration. So the
+ * budget has to be stated rather than inherited: without it, deferring merely
+ * moves the timeout from "the user waits" to "the send is killed silently
+ * after the response looked fine".
+ *
+ * 60 is the ceiling on the Vercel Hobby plan this project is on. Asking for
+ * more is a deployment error, not a slower function.
+ */
+export const maxDuration = 60;
+ // never cache a webhook
 
 export async function POST(request: Request) {
   // 1. Read the RAW body exactly as sent (signature is computed over these bytes).

@@ -5,6 +5,7 @@ import { fetchAllBookings } from "@/lib/admin";
 import { formatPrice } from "@/lib/mock-data";
 import { Badge } from "@/components/ui/Badge";
 import { AdminPageHeader } from "../_components/AdminPageHeader";
+import { RunBookingExpiry } from "./_components/RunBookingExpiry";
 import { CancelBookingButton } from "./_components/CancelBookingButton";
 
 export const metadata: Metadata = { title: "Bookings — Admin" };
@@ -48,6 +49,10 @@ export default async function AdminBookingsPage({ searchParams }: Props) {
   return (
     <div>
       <AdminPageHeader title="Bookings" description={`${bookings.length} booking${bookings.length !== 1 ? "s" : ""}`} />
+
+      <div className="px-4 pt-4 sm:px-6 lg:px-8">
+        <RunBookingExpiry />
+      </div>
 
       <div className="px-4 py-4 sm:px-6 lg:px-8 space-y-4">
 

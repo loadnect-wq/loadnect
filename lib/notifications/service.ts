@@ -25,6 +25,8 @@
 
 import "server-only";
 
+import { after } from "next/server";
+
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import { normalizePhoneE164 } from "@/lib/notifications/phone";
 import {
@@ -154,6 +156,43 @@ export async function resolveAdminNotificationPhone(): Promise<{
 }
 
 /**
+ * Runs `work` after the response has been sent, if there is a response to be
+ * after. Returns whether it was deferred.
+ *
+ * next/server's after() only works inside a request scope — a Server Component,
+ * Server Function, Route Handler or Proxy — and THROWS outside one. That is
+ * most of how notifications are dispatched, but not all of it: a script or a
+ * test has no request to trail, and there the caller must fall back to
+ * awaiting rather than silently dropping the send.
+ *
+ * The callback is wrapped so a rejection cannot become an unhandled rejection
+ * after the response has already gone out. Failures belong on the outbox row,
+ * which attemptSend writes for itself.
+ *
+ * NOTE ON DURATION: after() runs inside the ROUTE's max duration, not on top of
+ * it. Routes that dispatch notifications therefore carry an explicit
+ * maxDuration — deferring the work does not make the platform wait longer for
+ * it, it only stops the user waiting.
+ */
+function runAfterResponse(work: () => Promise<unknown>): boolean {
+  try {
+    after(async () => {
+      try {
+        await work();
+      } catch (e) {
+        console.error(
+          "[notifications] deferred send failed:",
+          e instanceof Error ? e.message : e,
+        );
+      }
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Records one notification in the outbox and attempts delivery.
  * Never throws; every outcome lands on the row's status.
  */
@@ -233,7 +272,24 @@ export async function dispatchNotification(req: NotificationRequest): Promise<vo
 
     if (row.status !== "pending") return; // cancelled / failed-at-insert — done.
 
-    await attemptSend(db, row.id, /* isRetry */ false);
+    // THE OUTBOX ROW IS ALREADY WRITTEN, SO THE SEND NEED NOT BLOCK THE USER.
+    //
+    // Everything above is fast local DB work and it is the DURABLE record: the
+    // row exists, carries the rendered message and its variables, and the admin
+    // centre can retry from it. The provider round trip is the slow part, and
+    // until now the customer waited through it — dispatchAll is sequential, so
+    // a booking that notifies the customer, the owner and the admin waited
+    // through three of them before checkout returned. With MSG91 live, a slow
+    // provider became a slow checkout.
+    //
+    // after() runs the send once the response has been sent. If it fails, the
+    // row stays 'pending' or lands on 'failed' exactly as before — the outbox
+    // is what makes deferring safe, because nothing is lost by not waiting.
+    if (!runAfterResponse(() => attemptSend(db, row.id, /* isRetry */ false))) {
+      // No request scope to defer into (a script, a test, a non-route caller).
+      // Await it, which is precisely the old behaviour.
+      await attemptSend(db, row.id, /* isRetry */ false);
+    }
   } catch (e) {
     console.error("[notifications] dispatch error:", e instanceof Error ? e.message : e);
   }

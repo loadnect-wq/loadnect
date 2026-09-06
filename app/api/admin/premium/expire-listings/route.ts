@@ -24,6 +24,11 @@ import { expirePremiumListings } from "@/lib/premium-expiry";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+// See app/api/webhooks/cashfree/route.ts for why this is declared
+// explicitly: after() runs inside the route budget, it does not extend it.
+export const maxDuration = 60;
+
+
 /** Runs the sweep and reports it. Shared by both verbs. */
 async function run(via: "cron" | "admin") {
   try {

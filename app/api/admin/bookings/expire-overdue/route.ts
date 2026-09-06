@@ -19,6 +19,11 @@ import { reportOverdueRefunds } from "@/lib/refund-sla";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+// See app/api/webhooks/cashfree/route.ts for why this is declared
+// explicitly: after() runs inside the route budget, it does not extend it.
+export const maxDuration = 60;
+
+
 /**
  * Discards OTP rate-limit rows older than the longest window the limiter looks
  * back over.
@@ -66,11 +71,29 @@ async function run(via: "cron" | "admin") {
     // would not add a report, it would fail the deployment.
     const refundSla = await reportOverdueRefunds();
 
-    console.info(
-      "[bookings:expire-overdue]",
-      JSON.stringify({ via, ...summary, otpPruned, refundSla }),
+    // ok REFLECTS WHAT HAPPENED TO THE ROWS, not merely that the function
+    // returned. This reported ok:true even when every booking it touched
+    // failed, because the summary's per-row error list was never consulted —
+    // so a run that cancelled nothing and recorded no refunds looked, to a cron
+    // dashboard and to anyone reading the response, exactly like a quiet night.
+    //
+    // These rows are customers owed money. A sweep that silently fails on all
+    // of them is the case most worth surfacing, so it is logged at error level
+    // and answered with 500: a monitored cron retries a 500 and ignores a 200.
+    const failures = summary.errors ?? [];
+    const ok = failures.length === 0;
+    const payload = { ok, summary, otpPruned, refundSla };
+
+    if (ok) {
+      console.info("[bookings:expire-overdue]", JSON.stringify({ via, ...payload }));
+      return NextResponse.json(payload);
+    }
+
+    console.error(
+      "[bookings:expire-overdue] completed with failures",
+      JSON.stringify({ via, ...payload }),
     );
-    return NextResponse.json({ ok: true, summary, otpPruned, refundSla });
+    return NextResponse.json(payload, { status: 500 });
   } catch (err) {
     console.error("[bookings:expire-overdue] failed", err);
     return NextResponse.json({ error: "Expiry sweep failed" }, { status: 500 });

@@ -29,6 +29,11 @@ import { syncSubscription } from "@/lib/plan-subscriptions";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+// See app/api/webhooks/cashfree/route.ts for why this is declared
+// explicitly: after() runs inside the route budget, it does not extend it.
+export const maxDuration = 60;
+
+
 export async function POST(request: Request) {
   const rawBody = await request.text();
 
