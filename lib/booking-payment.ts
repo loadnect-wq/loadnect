@@ -129,6 +129,36 @@ export function platformFeeGstRupees(
   return gstPaiseOn(toPaise(feeRupees), gstPercent) / PAISE_PER_RUPEE;
 }
 
+/**
+ * THE FIGURE A CUSTOMER IS QUOTED. Fee plus its GST, ₹236 today.
+ *
+ * Every public page, every policy page and every FAQ must quote THIS, not
+ * PLATFORM_FEE_RUPEES. They quoted the bare ₹200 while checkout charged ₹236,
+ * so the advertised price and the charged price disagreed on the homepage, the
+ * city pages, the venue page, the Terms, the Refund Policy and the Cancellation
+ * Policy simultaneously — a discrepancy a consumer forum reads literally, and
+ * one that appeared the moment GST was introduced because the copy restated the
+ * number instead of importing it.
+ *
+ * Derived, never typed. A rate or fee change moves every disclosure with it.
+ */
+export const PLATFORM_FEE_GST_RUPEES = platformFeeGstRupees(PLATFORM_FEE_RUPEES);
+export const PLATFORM_FEE_TOTAL_RUPEES = PLATFORM_FEE_RUPEES + PLATFORM_FEE_GST_RUPEES;
+
+/**
+ * The canonical one-line disclosure, so eight surfaces cannot word it eight
+ * ways. Reads "₹200 platform fee plus 18% GST (₹236)".
+ *
+ * NOTE it describes the STANDARD fee. On a small booking the real charge is
+ * lower — cappedPlatformFeeRupees bounds it at 25% of the advance — so anywhere
+ * the actual advance is known, show the capped figure instead of this sentence.
+ */
+export function platformFeeDisclosure(): string {
+  const r = (n: number) =>
+    `₹${n.toLocaleString("en-IN", { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
+  return `${r(PLATFORM_FEE_RUPEES)} platform fee plus ${PLATFORM_FEE_GST_PERCENT}% GST (${r(PLATFORM_FEE_TOTAL_RUPEES)})`;
+}
+
 /** Default commission percent of the FULL HALL PRICE. The live rate is read
  *  from platform_settings (admin-editable); this is the fallback when the
  *  settings row is missing. */

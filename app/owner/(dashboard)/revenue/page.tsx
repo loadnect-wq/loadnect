@@ -120,7 +120,7 @@ export default async function OwnerRevenuePage() {
         <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-xs text-blue-800">
           Hallnect&apos;s commission is {commissionPercent}% of the hall price, retained from the
           customer&apos;s advance when you accept — you are never billed separately, and the
-          customer&apos;s ₹200 platform fee is never deducted from you. The venue balance is
+          customer&apos;s platform fee is never deducted from you. The venue balance is
           collected by you directly.
           {/* Keyed on what a payout ACTUALLY needs. This used to check
               payout_upi, which no payout uses: Cashfree settles owner payouts

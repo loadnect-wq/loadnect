@@ -31,7 +31,7 @@ export default async function AdminCouponsPage() {
     <div>
       <AdminPageHeader
         title="Coupons"
-        description="Codes customers type at checkout to waive the ₹200 platform fee. The fee is Hallnect's own revenue — the venue's commission and payout are never affected, so every waiver costs Hallnect ₹200 and the owner nothing."
+        description="Codes customers type at checkout to waive the platform fee. The customer saves the fee AND its GST; Hallnect forgoes only the fee, since the tax was never its money. The venue's commission and payout are untouched, so a waiver costs the owner nothing."
       />
 
       <div className="space-y-4 px-4 py-4 sm:px-6 lg:px-8">

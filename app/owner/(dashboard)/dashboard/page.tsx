@@ -159,7 +159,7 @@ export default async function OwnerDashboardPage() {
           </dl>
           <p className="mt-2 text-[11px] text-charcoal-500">
             The commission is retained from the advance — you are never billed for it, and the
-            customer&apos;s ₹200 platform fee is never deducted from you. The venue balance is
+            customer&apos;s platform fee is never deducted from you. The venue balance is
             collected by you directly.
           </p>
 

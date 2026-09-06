@@ -216,7 +216,7 @@ export async function createBookingRequest(
   if (rawCoupon) {
     const res = await resolveCoupon(rawCoupon);
     if (!res.ok) {
-      return { error: `${res.error} Remove the code to continue at the standard ₹200 platform fee.` };
+      return { error: `${res.error} Remove the code to continue at the standard platform fee.` };
     }
     coupon = res.coupon;
   }

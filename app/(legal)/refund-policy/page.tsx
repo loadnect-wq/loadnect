@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
+import { platformFeeDisclosure } from "@/lib/booking-payment";
 import { buildMetadata } from "@/lib/seo/metadata";
 
 export const metadata: Metadata = buildMetadata({
   title: "Refund Policy",
   description:
-    "When a Hallnect booking advance is refundable, the cancellation refund schedule, and how the flat platform fee is treated on customer and venue cancellations.",
+    "When a Hallnect booking advance is refundable, the cancellation refund schedule, and how the platform fee and its GST are treated on customer and venue cancellations.",
   path: "/refund-policy",
 });
 
@@ -76,7 +77,7 @@ export default function RefundPolicyPage() {
       </div>
 
       <Section title="4. Platform Fee">
-        Hallnect charges a flat <strong>₹200 platform fee</strong> on each booking, collected together with the advance and disclosed at checkout before payment is confirmed. A promotional code may reduce this fee to ₹0, in which case there is no platform fee to refund or retain. This fee is <strong>non-refundable for customer-initiated cancellations</strong> — the refund schedule above applies to the advance only. For owner-initiated cancellations (see section 6), the platform fee is refunded in full.
+        Hallnect charges a <strong>{platformFeeDisclosure()}</strong> on each booking, collected together with the advance and disclosed at checkout before payment is confirmed. On a small booking the fee is capped at 25% of the advance, so it may be less. A promotional code may reduce it to ₹0, in which case there is nothing to refund or retain. The fee and its GST are <strong>non-refundable for customer-initiated cancellations</strong> — the refund schedule above applies to the advance only. For owner-initiated cancellations (see section 6), the platform fee is refunded in full.
       </Section>
 
       <Section title="5. Venue Owner Subscriptions">

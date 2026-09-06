@@ -626,3 +626,51 @@ describe("cancel preview matches the server's refund", () => {
     expect(daysUntilEventFromToday("2026-08-01", "2026-09-01")).toBe(0);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// What the PUBLIC PAGES are allowed to say the fee is.
+//
+// Every policy page, FAQ and marketing line quoted a bare "₹200 platform fee"
+// while checkout charged ₹236, because each surface restated the number instead
+// of importing it. The discrepancy appeared the moment GST was introduced and
+// nothing failed — copy has no type checker. These pin the disclosure to the
+// engine, so a fee or rate change breaks a test rather than a promise.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("the fee a customer is quoted", () => {
+  it("is the fee plus its GST, not the bare fee", async () => {
+    const m = await import("@/lib/booking-payment");
+    expect(m.PLATFORM_FEE_RUPEES).toBe(200);
+    expect(m.PLATFORM_FEE_GST_RUPEES).toBe(36);
+    expect(m.PLATFORM_FEE_TOTAL_RUPEES).toBe(236);
+  });
+
+  it("derives the total rather than hardcoding it", async () => {
+    const m = await import("@/lib/booking-payment");
+    // The relationship, not the literal — this is what survives a rate change.
+    expect(m.PLATFORM_FEE_TOTAL_RUPEES).toBe(
+      m.PLATFORM_FEE_RUPEES + m.platformFeeGstRupees(m.PLATFORM_FEE_RUPEES),
+    );
+  });
+
+  it("states both halves, so nobody can quote only the ₹200", async () => {
+    const m = await import("@/lib/booking-payment");
+    const s = m.platformFeeDisclosure();
+    expect(s).toContain("₹200");
+    expect(s).toContain("₹236");
+    expect(s).toContain("18% GST");
+  });
+
+  it("never quotes more than the customer is actually charged", async () => {
+    const m = await import("@/lib/booking-payment");
+    // On a small booking the cap bites, so the headline figure is an UPPER
+    // bound and the venue page must show the capped one instead. A ₹100 slot:
+    // advance ₹25 → fee ₹6.25, not ₹200.
+    const smallAdvance = 25;
+    const capped = m.cappedPlatformFeeRupees(smallAdvance);
+    expect(capped).toBeLessThan(m.PLATFORM_FEE_RUPEES);
+    expect(capped + m.platformFeeGstRupees(capped)).toBeLessThan(m.PLATFORM_FEE_TOTAL_RUPEES);
+    // And on any real venue the flat fee is the binding one.
+    expect(m.cappedPlatformFeeRupees(800)).toBe(m.PLATFORM_FEE_RUPEES);
+  });
+});

@@ -8,7 +8,7 @@ import { cancelBookingAsAdmin } from "../../actions";
  *
  * The initiator choice is the whole point and is deliberately explicit rather
  * than defaulted: it decides the refund. "The venue cancelled" and "we
- * cancelled" both return the customer 100% of the advance AND the ₹200 fee,
+ * cancelled" both return the customer 100% of the advance AND the fee plus its GST,
  * whereas the customer's own cancel button applies the penalty schedule — which
  * can be ₹0 back. Picking the wrong one here takes real money off a customer
  * who did nothing wrong.
@@ -38,8 +38,8 @@ export function CancelBookingButton({ bookingId }: { bookingId: string }) {
         Cancel this booking and refund the customer in full
       </p>
       <p className="mt-0.5 text-[11px] text-red-800">
-        Both options return the whole advance <strong>and</strong> the ₹200 platform fee,
-        as the refund policy promises for cancellations the customer did not cause.
+        Both options return the whole advance <strong>and</strong> the platform fee with its
+        GST, as the refund policy promises for cancellations the customer did not cause.
       </p>
 
       <div className="mt-2 flex gap-2">

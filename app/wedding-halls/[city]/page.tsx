@@ -19,6 +19,7 @@ import { fetchHalls } from "@/lib/halls";
 import { getAdvancePercent } from "@/lib/platform-settings";
 import { HallCard } from "@/app/halls/_components/HallCard";
 import { AppHeader } from "@/components/app/AppHeader";
+import { platformFeeDisclosure } from "@/lib/booking-payment";
 import { buildMetadata } from "@/lib/seo/metadata";
 import { JsonLd } from "@/components/seo/JsonLd";
 import { jsonLdGraph, breadcrumbJsonLd, cityCollectionJsonLd, faqJsonLd } from "@/lib/seo/jsonld";
@@ -103,7 +104,7 @@ export default async function CityPage({ params }: Props) {
       // fetches it above — the hardcoded "25%" quoted a figure the customer
       // would not actually be asked for the moment an admin changed it, on the
       // one page Google shows for "book wedding hall in <city>".
-      a: `Yes. Choose your date and slot, then pay the ${advancePercent}% advance plus a flat ₹200 platform fee through Cashfree, or ₹0 if you have a promotional code. The booking is confirmed once the venue owner accepts it, and the balance is paid directly to the venue.`,
+      a: `Yes. Choose your date and slot, then pay the ${advancePercent}% advance plus a ${platformFeeDisclosure()} through Cashfree — or ₹0 with a promotional code. On a small booking the fee is capped at a quarter of the advance. The booking is confirmed once the venue owner accepts it, and the balance is paid directly to the venue.`,
     },
     ...(largest
       ? [{

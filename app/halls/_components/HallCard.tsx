@@ -10,8 +10,9 @@ import { SaveHeart } from "@/app/_components/SaveHeart";
 // Booking advance — the same central calculation the checkout uses
 // (lib/booking-payment.ts). Shown with "≈" because the authoritative amount is
 // always recomputed server-side at booking time.
-// (The customer additionally pays the flat ₹200 platform fee at checkout,
-// which is disclosed there — a card estimate stays the venue's price.)
+// (The customer additionally pays the platform fee plus its GST at checkout,
+// capped at 25% of the advance on small bookings and disclosed there — a card
+// estimate stays the venue's price.)
 //
 // The percentage is passed IN rather than assumed: it is an admin setting, and
 // a card advertising a different advance from the one checkout charges is the
