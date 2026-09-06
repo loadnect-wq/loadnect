@@ -86,6 +86,7 @@ export default async function AdminOwnersPage({ searchParams }: Props) {
                       <Field label="City" value={o.city} />
                       <Field label="UPI" value={o.payout_upi} />
                     </div>
+                    <BankPayout accountNumber={o.payout_account_number} ifsc={o.payout_ifsc} />
                     <p className="mt-1 text-[10px] text-charcoal-400">Registered {fmtDate(o.created_at)}</p>
                   </div>
 
@@ -118,5 +119,69 @@ function Field({ label, value }: { label: string; value: string | null }) {
       <span className="text-charcoal-400 mr-1">{label}:</span>
       <span className="font-medium">{value ?? "—"}</span>
     </div>
+  );
+}
+
+/** Last four only, same rule the owner's own payout screen uses. */
+function maskAccount(v: string | null): string {
+  if (!v) return "—";
+  return v.length <= 4 ? v : `${"•".repeat(Math.min(v.length - 4, 8))}${v.slice(-4)}`;
+}
+
+/**
+ * Payout bank details — the account an admin actually types into their banking
+ * app, because a manual transfer is the only payout route that works today.
+ * Until this was here the number existed nowhere in the product and the admin
+ * had to go to the database to pay anyone.
+ *
+ * Collapsed to the last four by default. This is a LIST: a whole screen of
+ * legible account numbers is one screen-share, screenshot or over-the-shoulder
+ * glance away from being somebody else's, and an admin needs exactly one of
+ * them at a time. <details> keeps that per-owner and costs no client bundle.
+ *
+ * Being honest about what the mask is worth: the full value is in the HTML this
+ * admin has already been served, so this defends against a visible screen, not
+ * against the admin — who is authorised to see it. What keeps it off everyone
+ * else's screen is the layout's requireRole(["admin"]) gate and the fact that
+ * AdminOwnerRow is not rendered, logged or exported anywhere outside /admin.
+ */
+function BankPayout({ accountNumber, ifsc }: { accountNumber: string | null; ifsc: string | null }) {
+  // BOTH are required to make a transfer, so a half-filled record is still
+  // "cannot be paid". Testing for neither would show a reveal panel for an
+  // account number with no IFSC and quietly imply it was payable.
+  if (!accountNumber || !ifsc) {
+    return (
+      <p className="mt-2 text-[11px] text-charcoal-500">
+        <span className="text-charcoal-400 mr-1">Bank:</span>
+        <span className="font-medium">
+          {!accountNumber && !ifsc
+            ? "not provided"
+            : !accountNumber
+              ? "IFSC on file, account number missing"
+              : "account number on file, IFSC missing"}
+        </span>{" "}
+        — this owner cannot be paid by transfer yet.
+      </p>
+    );
+  }
+
+  return (
+    <details className="mt-2 rounded-lg border border-border bg-charcoal-50 px-2 py-1 text-[11px]">
+      <summary className="flex cursor-pointer list-none items-center gap-1 text-charcoal-600 [&::-webkit-details-marker]:hidden">
+        <span className="text-charcoal-400">Bank:</span>
+        <span className="font-mono font-medium text-charcoal-800">{maskAccount(accountNumber)}</span>
+        <span className="ml-1 font-semibold text-maroon-700 underline">reveal</span>
+      </summary>
+      <dl className="mt-1 space-y-0.5 border-t border-border pt-1">
+        <div className="flex gap-2">
+          <dt className="w-10 shrink-0 text-charcoal-400">A/C</dt>
+          <dd className="font-mono font-medium text-charcoal-800 break-all">{accountNumber ?? "—"}</dd>
+        </div>
+        <div className="flex gap-2">
+          <dt className="w-10 shrink-0 text-charcoal-400">IFSC</dt>
+          <dd className="font-mono font-medium text-charcoal-800">{ifsc ?? "—"}</dd>
+        </div>
+      </dl>
+    </details>
   );
 }

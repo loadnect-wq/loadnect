@@ -71,11 +71,16 @@ const FAQ_ITEMS = [
 // APP_DESCRIPTION: Terms section 5 says Hallnect does not independently verify
 // every listing detail, so the homepage cannot advertise that it does. See the
 // comment on APP_DESCRIPTION in lib/constants.ts before reinstating it.
+//
+// Kept under 158 characters, which is where buildMetadata's clamp() cuts. This
+// was 178 and arrived in the SERP clipped mid-sentence with an ellipsis — the
+// homepage snippet is the one line most people ever read about Hallnect, and it
+// was ending on a word we did not choose. Count before you lengthen it.
 export const metadata: Metadata = buildMetadata({
   title: "Wedding Halls & Marriage Halls in Tamil Nadu",
   description:
     "Find and book wedding halls, marriage halls and event venues across Tamil Nadu. " +
-    "Compare owner-submitted photos, capacity, pricing and availability, then reserve your date online.",
+    "Compare owner-submitted photos, capacity and pricing, then reserve online.",
   path: "/",
 });
 
@@ -240,8 +245,13 @@ export default async function HomePage() {
 
           <div className="container-page relative py-20 xl:py-24">
             <div className="mx-auto max-w-3xl text-center">
+              {/* Not "India's Premium Wedding Venue Marketplace". The trust
+                  strip 29 lines below says "Launching in Tamil Nadu", and the
+                  sitemap lists one state's cities — so the badge claimed a
+                  national footprint the same screen contradicts. Say what the
+                  page can actually show. */}
               <span className="inline-flex items-center gap-1.5 rounded-full border border-gold-400/40 bg-white/5 px-3 py-1 text-[11px] font-semibold uppercase tracking-widest text-gold-300 backdrop-blur">
-                <Sparkles className="h-3 w-3" /> India&apos;s Premium Wedding Venue Marketplace
+                <Sparkles className="h-3 w-3" /> Wedding Venues across Tamil Nadu
               </span>
               {/* Visually the desktop hero headline, but NOT an <h1>: the
                   homepage already emits its H1 in the mobile tree above, and
@@ -430,37 +440,15 @@ export default async function HomePage() {
           </div>
         </section>
 
-        {/* ── FAQ ──────────────────────────────────────────────── */}
-        <section className="bg-white">
-          <div className="container-page py-16">
-            <div className="mx-auto grid max-w-5xl grid-cols-5 gap-12">
-              <div className="col-span-2">
-                <span className="text-xs font-semibold uppercase tracking-widest text-gold-600">Help</span>
-                <h2 className="mt-2 font-serif text-3xl font-bold text-charcoal-900">Frequently asked questions</h2>
-                <p className="mt-3 text-sm text-charcoal-600">
-                  Still have questions?{" "}
-                  <Link href="/contact" className="text-maroon-600 underline underline-offset-2 hover:text-maroon-800">
-                    Contact our team
-                  </Link>.
-                </p>
-              </div>
-              <div className="col-span-3 space-y-3">
-                {FAQ_ITEMS.map((f) => (
-                  <details
-                    key={f.q}
-                    className="group rounded-xl border border-border bg-ivory-50 px-5 py-4 transition-colors hover:border-maroon-300"
-                  >
-                    <summary className="flex cursor-pointer items-center justify-between gap-3 text-sm font-semibold text-charcoal-900 marker:hidden">
-                      {f.q}
-                      <span className="text-maroon-600 transition-transform group-open:rotate-45">+</span>
-                    </summary>
-                    <p className="mt-3 text-sm leading-relaxed text-charcoal-600">{f.a}</p>
-                  </details>
-                ))}
-              </div>
-            </div>
-          </div>
-        </section>
+        {/* THE FAQ IS NOT HERE. A desktop-only accordion used to sit at this
+            point AND the shared SEO block below rendered the same FAQ_ITEMS,
+            so a desktop visitor scrolled past all five questions twice — and
+            because both trees ship in one document, every crawler received two
+            copies of the FAQPage answers no matter the viewport. The shared
+            block won because it renders at every viewport with the answers
+            open, which is what makes the FAQPage markup above eligible; a
+            closed <details> is a weaker basis for it. The "Contact our team"
+            line moved down with it. */}
       </div>
 
       {/* ════════════════════════════════════════════════════════
@@ -471,7 +459,11 @@ export default async function HomePage() {
           crawler. This block sits outside both, so the copy that explains what
           Hallnect is — and the links into the city pages — are always crawlable.
           ════════════════════════════════════════════════════════ */}
-      <section className="container-app border-t border-border py-10">
+      {/* container-app expanded inline so the lg override can widen it. This
+          block is now the desktop FAQ as well as the crawlable copy, and
+          container-app's max-w-lg left five questions in a 512px column on a
+          1440px screen. Same measure on mobile, more room once there is room. */}
+      <section className="mx-auto w-full max-w-lg border-t border-border px-4 py-10 sm:px-6 lg:max-w-3xl">
         <h2 className="font-serif text-xl font-bold text-charcoal-900">
           Wedding halls and marriage halls across Tamil Nadu
         </h2>
@@ -529,8 +521,10 @@ export default async function HomePage() {
           </ul>
         </div>
 
-        {/* The FAQ answers that the FAQPage JSON-LD above declares. Visible at
-            every viewport, which is what makes the markup eligible. */}
+        {/* The ONLY rendering of FAQ_ITEMS on this page, and the answers the
+            FAQPage JSON-LD above declares. Visible at every viewport, which is
+            what makes the markup eligible — do not move it back inside either
+            the mobile or the desktop tree, and do not add a second copy. */}
         <div className="mt-8">
           <h3 className="font-serif text-lg font-bold text-charcoal-900">
             Frequently asked questions
@@ -543,6 +537,12 @@ export default async function HomePage() {
               </div>
             ))}
           </dl>
+          <p className="mt-4 text-sm text-charcoal-600">
+            Still have questions?{" "}
+            <Link href="/contact" className="text-maroon-600 underline underline-offset-2 hover:text-maroon-800">
+              Contact our team
+            </Link>.
+          </p>
         </div>
       </section>
     </div>

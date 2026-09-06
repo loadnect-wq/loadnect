@@ -104,6 +104,32 @@ export type HallImage = {
   sort_order:   number;
 };
 
+/**
+ * Has Hallnect actually sent the owner the advance for this booking?
+ *
+ * DELIBERATELY NOT the same figure as RevenueBooking.payout_amount. That one
+ * is the hall price less commission — most of which the venue collects itself
+ * at the event. This is only the part that MOVES: the customer's advance minus
+ * the commission retained from it.
+ *
+ * `amount` is whatever the payout run recorded in payments.split_owner_amount
+ * and nothing else. It is never re-derived here: computeOwnerShare refuses to
+ * guess a share it cannot compute precisely because a wrong payout figure is
+ * worse than a missing one, and this screen would be quoting that guess back
+ * to the person waiting for the money.
+ */
+export type AdvancePayout = {
+  /** paid = the transfer is recorded as made. pending = not sent yet.
+   *  refunding = a refund is owed or already sent, so this advance is the
+   *  CUSTOMER's money and no payout is coming. */
+  state:   "paid" | "pending" | "refunding";
+  amount:  number | null;
+  /** Only an Easy Split payout stamps split_at. A transfer an admin made by
+   *  hand records the reference but no timestamp, so this is null and the UI
+   *  must not print a date it does not have. */
+  paid_at: string | null;
+};
+
 export type RevenueBooking = {
   id:           string;
   hall_id:      string;
@@ -114,6 +140,9 @@ export type RevenueBooking = {
   total_amount: number;
   status:       string;
   payout_amount: number | null; // from commissions
+  /** Null when no successful gateway payment funded this booking — there is
+   *  no advance to transfer, so there is nothing to say about a payout. */
+  advance_payout: AdvancePayout | null;
 };
 
 export type PremiumListing = {
@@ -402,6 +431,39 @@ export async function fetchOwnerBookings(
 
 // ── Fetch revenue (confirmed + completed bookings) ────────────────────────────
 
+// A refund in flight means the advance belongs to the customer again — the
+// same three states payOwnerOnAcceptance and fetchStuckPayouts refuse to pay
+// out on. Without this the screen would tell an owner they are "awaiting
+// transfer" for money that is on its way back to the person who paid it.
+const REFUND_IN_FLIGHT = new Set(["owed", "processing", "completed"]);
+
+/** The payout state of the payment that funded a booking, or null if none did. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function mapAdvancePayout(row: any): AdvancePayout | null {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const payments: any[] = Array.isArray(row.payments) ? row.payments : [];
+  const paid = payments.find((p) => p?.status === "payment_success") ?? null;
+  if (!paid) return null;
+
+  if (REFUND_IN_FLIGHT.has(String(paid.refund_state ?? "none"))) {
+    return { state: "refunding", amount: null, paid_at: null };
+  }
+
+  const amount = paid.split_owner_amount == null ? null : Number(paid.split_owner_amount);
+
+  // 'done' is the ONLY value that means the money left, and it is written by
+  // both routes that can send it: an Easy Split dispatch, and an admin
+  // recording a transfer they made by hand (markPayoutSettledManually).
+  // Everything else — 'none' (never attempted), 'not_applicable' (the payout
+  // ran while Easy Split was switched off, so a person has to send it),
+  // 'pending', 'failed' — means one thing to the owner: not sent yet. Which of
+  // them it is, and why, is Hallnect's problem to fix, so split_error is
+  // deliberately not surfaced to the owner.
+  return String(paid.split_status ?? "none") === "done"
+    ? { state: "paid",    amount, paid_at: paid.split_at ?? null }
+    : { state: "pending", amount, paid_at: null };
+}
+
 export async function fetchOwnerRevenue(hallIds: string[]): Promise<RevenueBooking[]> {
   if (hallIds.length === 0) return [];
 
@@ -409,12 +471,38 @@ export async function fetchOwnerRevenue(hallIds: string[]): Promise<RevenueBooki
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = supabase as any;
 
-  const { data, error } = await db
+  // The payments embed is readable by the owner: payments_select admits
+  // `owns_hall(b.hall_id)` for the booking.
+  //
+  // THE GRANT IS NO LONGER TABLE-WIDE, and this list depends on that. Migration
+  // 0065 revoked table-level SELECT on payments — an owner could otherwise read
+  // raw_response, which carries the customer's email — and re-granted a named
+  // column list. Every column embedded below is in that list; adding one that
+  // is not returns 42501 and blanks this page. Check 0065 before extending it.
+  //
+  // The split_* columns arrived in migration 0028, so a database that has not
+  // run it yet falls back to the original column list rather than rendering an
+  // empty revenue page.
+  const SELECT_WITH_PAYOUT =
+    "id, hall_id, event_date, slot, base_amount, total_amount, status, halls(name), commissions(owner_payout_amount), payments(status, refund_state, split_status, split_owner_amount, split_at)";
+  const SELECT_LEGACY =
+    "id, hall_id, event_date, slot, base_amount, total_amount, status, halls(name), commissions(owner_payout_amount)";
+
+  let { data, error } = await db
     .from("bookings")
-    .select("id, hall_id, event_date, slot, base_amount, total_amount, status, halls(name), commissions(owner_payout_amount)")
+    .select(SELECT_WITH_PAYOUT)
     .in("hall_id", hallIds)
     .in("status", ["owner_confirmed", "completed"])
     .order("event_date", { ascending: false });
+
+  if (error?.code === "42703") {
+    ({ data, error } = await db
+      .from("bookings")
+      .select(SELECT_LEGACY)
+      .in("hall_id", hallIds)
+      .in("status", ["owner_confirmed", "completed"])
+      .order("event_date", { ascending: false }));
+  }
 
   if (error) { handleError("fetchOwnerRevenue", error); return []; }
 
@@ -431,6 +519,7 @@ export async function fetchOwnerRevenue(hallIds: string[]): Promise<RevenueBooki
     payout_amount: row.commissions?.owner_payout_amount != null
       ? Number(row.commissions.owner_payout_amount)
       : null,
+    advance_payout: mapAdvancePayout(row),
   }));
 }
 

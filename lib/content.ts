@@ -20,6 +20,52 @@
 // dashboard rendered it, and that now reads fetchPremiumPlans() + PLAN_FEATURES
 // like every other plan surface, so there is one catalogue again.
 
+// ─── Legal page dates ────────────────────────────────────────────────────────
+//
+// Each legal page prints "Last updated: <month year>" and each has an entry in
+// the sitemap carrying a lastModified. Those are two statements about the same
+// fact, and when they were written separately they disagreed: the pages said
+// August while sitemap.ts stamped `new Date()`, so every crawl claimed all six
+// policies had been rewritten that morning. A sitemap date a crawler can see is
+// contradicted on the page itself is worse than no date at all.
+//
+// One entry per page here, read by both. Move a date only when the page's WORDS
+// change — a refactor that leaves the rendered text identical is not an update,
+// and telling a customer their binding terms changed when they did not is the
+// same lie in the other direction.
+export const LEGAL_LAST_UPDATED = {
+  "/terms":                "2026-09-06",
+  "/privacy":              "2026-09-06",
+  "/refund-policy":        "2026-09-06",
+  "/cancellation-policy":  "2026-09-06",
+  "/grievance-redressal":  "2026-09-04",
+  "/disclaimer":           "2026-08-28",
+} as const;
+
+export type LegalPath = keyof typeof LEGAL_LAST_UPDATED;
+
+const MONTH_NAMES = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+] as const;
+
+/**
+ * "2026-09-06" → "September 2026", for the header line on the page.
+ *
+ * Read off the string rather than through Date on purpose: `new Date("2026-09-01")`
+ * is UTC midnight, which is the previous month wherever the renderer sits west of
+ * Greenwich — so a policy updated on the 1st would print the wrong month.
+ */
+export function legalUpdatedLabel(path: LegalPath): string {
+  const [year, month] = LEGAL_LAST_UPDATED[path].split("-");
+  return `${MONTH_NAMES[Number(month) - 1]} ${year}`;
+}
+
+/** The same date as a Date, for sitemap lastModified. */
+export function legalLastModified(path: LegalPath): Date {
+  return new Date(`${LEGAL_LAST_UPDATED[path]}T00:00:00Z`);
+}
+
 // Tamil Nadu only. No fabricated venue counts — tiles link to the real search.
 export const POPULAR_CITIES = [
   { name: "Madurai",          state: "Tamil Nadu", gradient: "linear-gradient(135deg,#6B1525 0%,#9B2038 100%)" },

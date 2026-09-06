@@ -24,7 +24,7 @@
 
 import Link from "next/link";
 import {
-  Gem, IndianRupee, ShieldCheck, CalendarCheck, Images, BadgeCheck,
+  Gem, IndianRupee, ClipboardCheck, CalendarCheck, Images, BadgeCheck,
   ArrowRight, Wallet,
 } from "lucide-react";
 import { getCommissionPercent } from "@/lib/platform-settings";
@@ -48,10 +48,16 @@ export default async function OwnerRegisterPage() {
       title: "Register and add your hall",
       body: "Photos, capacity, pricing and the dates you are free. It takes one sitting, and you can edit anything later.",
     },
+    // NOT "We verify it". Terms section 5 says in writing that Hallnect
+    // "does not independently verify every listing detail", and nobody visits
+    // the hall — so promising an owner we vouch for their venue's existence
+    // sells them a service the binding terms disclaim, and the first owner to
+    // read both would catch it. What admin approval actually is: a read of the
+    // submission for completeness and plausibility before it publishes.
     {
-      Icon: ShieldCheck,
-      title: "We verify it",
-      body: "Our team checks every hall before it goes live, so couples browsing Hallnect are only seeing real venues.",
+      Icon: ClipboardCheck,
+      title: "We review your listing",
+      body: "Before your hall goes live, we check the listing is complete and makes sense — photos, capacity, pricing and address. We do not visit the venue, so its details stay yours to stand behind.",
     },
     {
       Icon: CalendarCheck,

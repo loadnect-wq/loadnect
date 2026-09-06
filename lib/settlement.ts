@@ -6,7 +6,8 @@
 //     trust) using integer-paise math (lib/money.ts),
 //   • records/settles the ledger rows (payment_transactions, commission_transactions,
 //     settlement_transactions),
-//   • provides the webhook idempotency helper (payment_webhook_events).
+//   • provides the webhook audit/idempotency helpers (payment_webhook_events),
+//     which app/api/webhooks/cashfree/route.ts writes on every verified event.
 //
 // LIVE Cashfree Easy Split ORDER + SETTLEMENT calls are FEATURE-FLAGGED. Until
 // `CASHFREE_EASY_SPLIT_ENABLED=true` AND vendor credentials exist, `submitSplitOrder`
@@ -38,9 +39,22 @@ export type RecordWebhookResult =
   | { ok: false; error: string };
 
 /**
- * Records a provider webhook event for idempotency. Relies on the
- * UNIQUE(provider, event_id) constraint: a re-delivered event returns
- * `{ duplicate: true }` and MUST be treated as a no-op by the caller.
+ * Records a provider webhook event: the durable evidence of what the gateway
+ * told us, when, and how it ended. Relies on the UNIQUE(provider, event_id)
+ * constraint, so a re-delivered event returns `{ duplicate: true }`.
+ *
+ * DUPLICATE MEANS "SEEN BEFORE", NOT "ALREADY DONE" — the caller decides, and
+ * the answer is not automatically "skip". This used to say the caller MUST
+ * treat a duplicate as a no-op; that is only safe when the first delivery is
+ * known to have succeeded, and it is not. The Cashfree receiver answers 503 on
+ * an event it could not apply precisely so that Cashfree redelivers it, and
+ * skipping THAT redelivery would strand a paid booking. Its apply paths are
+ * idempotent, so it records the duplicate and re-applies. A caller whose work
+ * is not idempotent must check processing_status before deciding.
+ *
+ * Callers are expected to keep the payload free of anything they would not want
+ * a second copy of — the receiver strips the customer's contact details before
+ * handing it over.
  */
 export async function recordWebhookEvent(input: {
   provider?: string;
@@ -74,6 +88,11 @@ export async function recordWebhookEvent(input: {
   return { ok: true, duplicate: false, id: data.id };
 }
 
+/**
+ * Stamps how an already-recorded event ended. Matches on (provider, event_id),
+ * so it is a silent no-op when the insert above never landed — the outcome is
+ * bookkeeping, and losing it must never be worth failing a webhook over.
+ */
 export async function markWebhookProcessed(
   eventId: string,
   status: "PROCESSED" | "FAILED" | "IGNORED",

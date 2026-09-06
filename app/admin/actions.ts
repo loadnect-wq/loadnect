@@ -350,6 +350,16 @@ export async function verifyOwnerRow(ownerRowId: string): Promise<ActionResult> 
 
 // ── User management ───────────────────────────────────────────────────────────
 
+/**
+ * How long a suspended account is banned for in GoTrue.
+ *
+ * There is no "forever": the ban duration is a Go duration string and the
+ * largest unit it accepts is hours, so an indefinite ban has to be spelled as a
+ * very long one. ~100 years. Reactivation lifts it explicitly with 'none'
+ * rather than waiting for it.
+ */
+const SUSPENSION_BAN_DURATION = "876000h";
+
 export async function toggleUserActive(
   profileId: string,
   active: boolean,
@@ -385,6 +395,88 @@ export async function toggleUserActive(
   if (error) return { error: sanitizeError(error, "admin") };
   if (count === 0) return { error: "You do not have permission to change this account." };
 
+  // ── The half that actually enforces it ──────────────────────────────────────
+  // profiles.is_active stops the Next.js layer and NOTHING BELOW IT. Verified
+  // against the live database: no RLS policy anywhere references is_active, so
+  // a suspended user's existing JWT still satisfies every policy when it is
+  // sent straight to PostgREST with the public anon key — no requireAuth(), no
+  // server action, no gate. Their refresh token also keeps minting new ones, so
+  // the flag alone expires never. Banning the auth user is the part that bites.
+  //
+  // What the ban does and does not do, so nobody reads more into it than is
+  // there: GoTrue refuses sign-in and refresh for a banned user, so the session
+  // dies when the access token in hand expires (one hour on the default
+  // setting), not the instant this runs. auth.admin.signOut() needs the user's
+  // own JWT, which an admin does not have, so that last hour is not closable
+  // from here. Every profiles row has an auth user to ban — profiles.id is a
+  // FK to auth.users with ON DELETE CASCADE.
+  //
+  // The flag goes first because it is the revertible half and its update is
+  // count-checked, so an admin who may not touch this row is turned away before
+  // anything happens in auth.
+  // CONSTRUCTED INSIDE THE TRY, not just called there. getSupabaseAdminClient()
+  // runs requireEnv("SUPABASE_SERVICE_ROLE_KEY"), which THROWS rather than
+  // returning an error — and by this line the flag has already moved. An
+  // uncaught throw would leave is_active changed, no ban applied and no revert
+  // run: exactly the silent disagreement the block below exists to prevent.
+  let banErr: { status?: number; message: string } | null = null;
+  try {
+    const { error } = await getSupabaseAdminClient().auth.admin.updateUserById(profileId, {
+      ban_duration: active ? "none" : SUSPENSION_BAN_DURATION,
+    });
+    banErr = error;
+  } catch (e) {
+    banErr = { message: e instanceof Error ? e.message : String(e) };
+  }
+
+  if (banErr) {
+    // The flag and the ban must not disagree quietly. An admin told "suspended"
+    // while the account can still refresh a token has been lied to, and the
+    // person on the other end of a failed reactivation is still locked out
+    // while the screen says they are back. So put the flag back the way it was,
+    // report the failure, and send no notification about a change that did not
+    // happen.
+    //
+    // Reverting restores the state this action started from, in BOTH
+    // directions — it does not "fail suspended". On a failed suspension the
+    // account goes back to fully active, which is the honest outcome: nothing
+    // was revoked, so nothing should claim to be. The messages below say so
+    // per direction rather than implying a safe default that does not exist.
+    // status is absent on the thrown path (requireEnv), so it is not printed
+    // as a bare `undefined` next to a message that does explain itself.
+    console.error(
+      "[admin] auth ban toggle failed:",
+      banErr.status !== undefined ? `status ${banErr.status}` : "threw before the call",
+      banErr.message,
+    );
+    const { error: revertErr, count: revertCount } = await db
+      .from("profiles")
+      .update({ is_active: before.is_active }, { count: "exact" })
+      .eq("id", profileId);
+
+    // An RLS-filtered UPDATE affects 0 rows WITHOUT raising, so the error check
+    // alone would report a clean revert that never happened — the same trap the
+    // forward update guards against a few lines above.
+    if (revertErr || revertCount === 0) {
+      // revertErr is null on the zero-rows path, so it cannot be dereferenced.
+      console.error(
+        "[admin] is_active revert failed:",
+        revertErr ? `${revertErr.code} ${revertErr.message}` : "0 rows matched (filtered by RLS)",
+      );
+      return {
+        error: active
+          ? "Could not restore this account's sign-in, and could not undo the profile change either — it now shows active but cannot sign in. Retry; if it fails again the ban must be lifted in Supabase Auth."
+          : "Suspended the profile but could not revoke this account's sign-in, and could not undo the profile change either — they can still reach the database directly. Retry; if it fails again ban the user in Supabase Auth.",
+      };
+    }
+
+    return {
+      error: active
+        ? "Could not restore this account's sign-in. Nothing was changed — please retry."
+        : "Could not revoke this account's sign-in, so suspending it would not have stopped them. Nothing was changed — please retry.",
+    };
+  }
+
   await recordAdminAction({
     action:         active ? "user.reactivate" : "user.suspend",
     entityType:     "user",
@@ -392,11 +484,14 @@ export async function toggleUserActive(
     previousStatus: before.is_active ? "active" : "suspended",
     newStatus:      active ? "active" : "suspended",
     reason:         cleanReason(reason),
-    metadata:       { role: before.role },
+    // auth_ban records that the enforcing half ran, not just the flag — the
+    // audit trail is where a later "were they really locked out?" is settled.
+    metadata:       { role: before.role, auth_ban: active ? "lifted" : "applied" },
   });
 
-  // Suspension locks them out immediately — requireAuth() bounces a deactivated
-  // profile to /login?error=account_disabled — while their halls stay live and
+  // Suspension locks them out — requireAuth() bounces a deactivated profile to
+  // /login?error=account_disabled and the ban above stops them signing back in
+  // to get a fresh session — while their halls stay live and
   // any pending booking request keeps counting down to auto-cancel, which they
   // can no longer answer. The reason the admin typed goes into an audit log
   // only admins can read, so without this the person is locked out with no
@@ -1564,13 +1659,22 @@ export async function syncRefundStatus(paymentId: string): Promise<ActionResult>
   if (!res.ok) return { error: res.error };
 
   const outcome = classifyRefundStatus(res.data.refund_status);
+
+  // NEVER MOVES A REFUND BACK OUT OF 'completed'. The webhook path guards this
+  // the same way, and the three writers of refund_state have to agree or the
+  // guard reads as arbitrary and the next person deletes it.
+  //
+  // `completed` is the one state backed by an event that already happened —
+  // the money left. If Cashfree later reports something else for the same
+  // refund, that is worth an admin looking at it, not worth the row quietly
+  // flipping to "in progress" on a customer who has already been repaid.
   await db.from("payments").update({
     refund_state: outcome.state,
     refund_error: outcome.state === "failed" ? outcome.reason : null,
     ...(outcome.state === "completed"
       ? { refund_completed_at: new Date().toISOString(), status: "refunded" }
       : {}),
-  }).eq("id", payment.id);
+  }).eq("id", payment.id).neq("refund_state", "completed");
 
   revalidatePath("/admin/payments");
   return { success: true };

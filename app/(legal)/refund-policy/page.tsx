@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { platformFeeDisclosure } from "@/lib/booking-payment";
 import { buildMetadata } from "@/lib/seo/metadata";
+import { legalUpdatedLabel } from "@/lib/content";
 
 export const metadata: Metadata = buildMetadata({
   title: "Refund Policy",
@@ -12,7 +13,7 @@ export const metadata: Metadata = buildMetadata({
 export default function RefundPolicyPage() {
   return (
     <article>
-      <LegalHeader title="Refund Policy" updated="August 2026" />
+      <LegalHeader title="Refund Policy" updated={legalUpdatedLabel("/refund-policy")} />
 
       <Section title="1. Overview">
         Hallnect is a marketplace connecting customers with venue owners. All bookings require an{" "}

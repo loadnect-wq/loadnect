@@ -3,6 +3,12 @@
 // POST — cancel booking requests the owner never answered within 48 hours,
 // record the customer's refund, and release the dates. Idempotent.
 //
+// It is also the project's ONLY nightly maintenance slot for bookings, so it
+// carries the abandoned-checkout cleanup, the OTP retention prune and the
+// refund-SLA report as well — see run(). Every run writes one row to
+// admin_audit_log, because Hobby keeps runtime logs for about an hour and a
+// job whose only trace is a log line cannot be shown to have run at all.
+//
 // AUTHORIZATION mirrors the commission sweep exactly (either is sufficient):
 //   1. a logged-in ADMIN (role checked server-side), or
 //   2. a machine caller presenting CRON_SECRET as a bearer token.
@@ -53,10 +59,132 @@ async function pruneOtpAttempts(): Promise<number | null> {
   }
 }
 
+/**
+ * Cancels checkouts a customer started and never paid for.
+ *
+ * cleanup_expired_pending_bookings() has been in the database since migration
+ * 0011 and was reachable from exactly ONE place: the on-demand button in
+ * /admin/bookings. So it ran when somebody remembered, which is to say almost
+ * never — one booking had been sitting in pending_payment since 2026-08-30
+ * against an expires_at that lapsed twenty minutes after it was created.
+ *
+ * It cancels the booking and nothing else, which is correct for this status: a
+ * pending_payment booking holds no availability row (applyPaidSideEffects
+ * writes those on PAYMENT) and is owed no refund (the Cashfree order is created
+ * with the booking's own expires_at as its expiry, so it cannot be paid after
+ * the hold lapses). That is why this is a bare RPC and not a second expiry
+ * pipeline like the one above.
+ *
+ * Best-effort like every other step here — see run(). Returns null when the
+ * step itself failed, which is deliberately distinct from 0 ("ran, nothing to
+ * cancel"): the audit row below has to be able to tell those apart.
+ */
+async function cancelAbandonedCheckouts(): Promise<number | null> {
+  try {
+    const { getSupabaseAdminClient } = await import("@/lib/supabase/admin");
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const db = getSupabaseAdminClient() as any;
+    const { data, error } = await db.rpc("cleanup_expired_pending_bookings");
+    if (error) {
+      console.error("[bookings:cleanup-pending] failed", error.code, error.message);
+      return null;
+    }
+    return typeof data === "number" ? data : 0;
+  } catch (err) {
+    console.error(
+      "[bookings:cleanup-pending] failed",
+      err instanceof Error ? err.message : "unknown",
+    );
+    return null;
+  }
+}
+
+/**
+ * Who set this run going. A cron has nobody behind it; an admin pressing the
+ * button does, and is attributed — taken from the SESSION, never from the
+ * request, for the same reason lib/audit.ts takes no actor parameter.
+ */
+type SweepActor =
+  | { via: "cron" }
+  | { via: "admin"; id: string; email: string | null };
+
+/**
+ * Writes ONE durable row per run into admin_audit_log.
+ *
+ * WHY A TABLE AND NOT THE LOG LINE ABOVE. Vercel's Hobby plan keeps runtime
+ * logs for about an hour, so a sweep that quietly started failing — or stopped
+ * being invoked at all — left nothing anybody could find the next morning. It
+ * had to be reconstructed from the state of the bookings themselves. A row per
+ * run puts both failures and ABSENCES in /admin/audit-logs: a bad night shows
+ * as a row saying so, and a missing night shows as a gap in the dates.
+ *
+ * SERVICE ROLE ON PURPOSE. admin_audit_log's INSERT policy is
+ * (is_admin() OR is_trusted_backend()), and the cron path has no session to
+ * satisfy either — which is also why lib/audit.ts cannot be reused here: it
+ * reads the actor from the session and returns early when there is none. The
+ * admin client bypasses RLS, which is what a scheduled job needs and why it is
+ * confined to trusted server code.
+ *
+ * NEVER THROWS AND NEVER CHANGES THE RESPONSE. A sweep that cancelled bookings
+ * and recorded refunds must not be reported as failed because the write
+ * recording it hiccuped — that turns the observability into the outage.
+ */
+async function recordSweepRun(
+  actor: SweepActor,
+  outcome: { ok: boolean; reason: string; metadata: Record<string, unknown> },
+): Promise<void> {
+  try {
+    const { getSupabaseAdminClient } = await import("@/lib/supabase/admin");
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const db = getSupabaseAdminClient() as any;
+
+    const { error } = await db.from("admin_audit_log").insert({
+      actor_id:    actor.via === "admin" ? actor.id : null,
+      actor_email: actor.via === "admin" ? actor.email : null,
+      action:      "cron.expire_overdue",
+      // No single row is the subject — the run is. entity_id stays null rather
+      // than naming one arbitrary booking out of the batch.
+      entity_type: "cron",
+      new_status:  outcome.ok ? "ok" : "failed",
+      // The audit page renders `reason` but not `metadata`, so the summary has
+      // to be legible here; the counts are repeated in metadata for anyone
+      // querying the table. The column's CHECK caps it at 1000 characters.
+      reason:      outcome.reason.slice(0, 1000),
+      metadata:    { via: actor.via, ...outcome.metadata },
+    });
+
+    if (error) {
+      console.error(
+        "[bookings:expire-overdue] audit write failed",
+        error.code,
+        error.message,
+      );
+    }
+  } catch (err) {
+    console.error(
+      "[bookings:expire-overdue] audit write failed",
+      err instanceof Error ? err.message : "unknown",
+    );
+  }
+}
+
+/** null means the step failed; a number means it ran. See cancelAbandonedCheckouts. */
+function stepResult(n: number | null): string {
+  return n === null ? "failed" : String(n);
+}
+
 /** Runs the sweep and reports it. Shared by both verbs. */
-async function run(via: "cron" | "admin") {
+async function run(actor: SweepActor) {
+  const via = actor.via;
   try {
     const summary = await expireOverdueBookingRequests();
+
+    // Each step swallows its own failure, so one failing step is RECORDED and
+    // the rest still run. That isolation is load-bearing here: these are
+    // unrelated jobs sharing one schedule only because the Hobby plan caps this
+    // project at two crons, so letting one throw would silently retire jobs
+    // nobody chose to retire — and it would do so on the night they first broke.
+    const pendingCancelled = await cancelAbandonedCheckouts();
     const otpPruned = await pruneOtpAttempts();
 
     // The overdue-refund report runs LAST, and deliberately so: the sweep above
@@ -82,7 +210,23 @@ async function run(via: "cron" | "admin") {
     // and answered with 500: a monitored cron retries a 500 and ignores a 200.
     const failures = summary.errors ?? [];
     const ok = failures.length === 0;
-    const payload = { ok, summary, otpPruned, refundSla };
+    const payload = { ok, summary, pendingCancelled, otpPruned, refundSla };
+
+    // The tidy-up steps deliberately do NOT feed `ok`: it drives the status
+    // code, and a failed OTP prune is not worth making a monitored cron retry a
+    // refund sweep for. They are carried by the audit row instead, where a
+    // failed step reads "failed" rather than disappearing into a 200.
+    await recordSweepRun(actor, {
+      ok,
+      reason:
+        `Expired ${summary.expired} of ${summary.found} unanswered request(s), ` +
+        `${summary.refundsRecorded} refund(s) recorded. ` +
+        `Abandoned checkouts cancelled: ${stepResult(pendingCancelled)}. ` +
+        `OTP rows pruned: ${stepResult(otpPruned)}. ` +
+        `Refunds past SLA: ${refundSla ? refundSla.overdue : "failed"}.` +
+        (failures.length > 0 ? ` ${failures.length} booking(s) failed.` : ""),
+      metadata: payload,
+    });
 
     if (ok) {
       console.info("[bookings:expire-overdue]", JSON.stringify({ via, ...payload }));
@@ -96,6 +240,15 @@ async function run(via: "cron" | "admin") {
     return NextResponse.json(payload, { status: 500 });
   } catch (err) {
     console.error("[bookings:expire-overdue] failed", err);
+    // A run that died before finishing is exactly the run worth a durable
+    // record, so the audit write happens on this path too. It is awaited: the
+    // response ends the invocation, and work left unawaited after it may never
+    // be executed.
+    await recordSweepRun(actor, {
+      ok: false,
+      reason: `Sweep threw before completing: ${err instanceof Error ? err.message : "unknown"}`,
+      metadata: { fatal: true },
+    });
     return NextResponse.json({ error: "Expiry sweep failed" }, { status: 500 });
   }
 }
@@ -109,21 +262,19 @@ export async function GET(request: Request) {
   if (!hasValidCronSecret(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  return run("cron");
+  return run({ via: "cron" });
 }
 
 export async function POST(request: Request) {
-  const cronAuthorized = hasValidCronSecret(request);
+  // Unchanged authorization, written as an early return so the admin's identity
+  // survives the check: the audit row records WHO pressed the button, and a
+  // boolean `adminAuthorized` had already thrown that away by this point.
+  if (hasValidCronSecret(request)) return run({ via: "cron" });
 
-  let adminAuthorized = false;
-  if (!cronAuthorized) {
-    const profile = await getProfile();
-    adminAuthorized = profile?.role === "admin";
-  }
-
-  if (!cronAuthorized && !adminAuthorized) {
+  const profile = await getProfile();
+  if (profile?.role !== "admin") {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  return run(cronAuthorized ? "cron" : "admin");
+  return run({ via: "admin", id: profile.id, email: profile.email });
 }

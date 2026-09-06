@@ -24,6 +24,25 @@ function fmtDateTime(iso: string) {
   });
 }
 
+/**
+ * A reference a person can actually quote — "my ticket is HN-3F9A21C0" — on a
+ * call or in a follow-up email. The list showed only a subject and a
+ * timestamp, so there was nothing to cite and no way to tell two tickets with
+ * the same subject apart.
+ *
+ * DERIVED, never generated: it is the ticket's own uuid, so it is identical on
+ * every render, on both the customer and owner support screens, and after any
+ * reload — a random or sequential number would need a column to store it and
+ * would drift from the row it names. The eight characters are the same prefix
+ * the "New support ticket" admin alert already quotes as its reference
+ * (lib/notifications/events.ts), so a quoted ref and the alert line up.
+ * Dashes are stripped first so a non-canonical id can never yield a ref that
+ * ends in one.
+ */
+function ticketRef(id: string): string {
+  return `HN-${id.replace(/-/g, "").slice(0, 8).toUpperCase()}`;
+}
+
 export function TicketList({ tickets }: { tickets: MyTicket[] }) {
   if (tickets.length === 0) {
     return (
@@ -44,7 +63,11 @@ export function TicketList({ tickets }: { tickets: MyTicket[] }) {
             <div className="flex flex-wrap items-start justify-between gap-2">
               <div className="min-w-0">
                 <p className="font-serif text-sm font-semibold text-charcoal-900">{t.subject}</p>
-                <p className="text-[10px] text-charcoal-400 mt-0.5">{fmtDateTime(t.created_at)}</p>
+                <p className="text-[10px] text-charcoal-400 mt-0.5">
+                  <span className="font-mono tracking-wide text-charcoal-600">{ticketRef(t.id)}</span>
+                  {" · "}
+                  {fmtDateTime(t.created_at)}
+                </p>
               </div>
               <div className="flex flex-wrap items-center gap-1.5">
                 <span className={`rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-wide ${prioStyle}`}>

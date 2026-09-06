@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { buildMetadata } from "@/lib/seo/metadata";
+import { legalUpdatedLabel } from "@/lib/content";
 import { CONTACT } from "@/lib/constants";
 
 // WHY THIS PAGE EXISTS
@@ -34,7 +35,7 @@ export const metadata: Metadata = buildMetadata({
 export default function GrievanceRedressalPage() {
   return (
     <article>
-      <LegalHeader title="Grievance Redressal" updated="September 2026" />
+      <LegalHeader title="Grievance Redressal" updated={legalUpdatedLabel("/grievance-redressal")} />
 
       <Section title="1. Raise it with us first">
         Most problems — a venue that does not match its listing, a refund that has not

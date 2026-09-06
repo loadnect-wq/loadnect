@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { platformFeeDisclosure } from "@/lib/booking-payment";
 import { buildMetadata } from "@/lib/seo/metadata";
+import { legalUpdatedLabel } from "@/lib/content";
 
 export const metadata: Metadata = buildMetadata({
   title: "Cancellation Policy",
@@ -12,7 +13,7 @@ export const metadata: Metadata = buildMetadata({
 export default function CancellationPolicyPage() {
   return (
     <article>
-      <LegalHeader title="Cancellation Policy" updated="August 2026" />
+      <LegalHeader title="Cancellation Policy" updated={legalUpdatedLabel("/cancellation-policy")} />
 
       <Section title="1. General">
         This Cancellation Policy applies to all bookings made through Hallnect. By confirming a booking and paying the advance, you agree to these cancellation terms. One schedule applies to every booking on Hallnect — venues do not set their own cancellation terms.

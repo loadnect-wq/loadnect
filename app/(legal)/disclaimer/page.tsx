@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { buildMetadata } from "@/lib/seo/metadata";
+import { legalUpdatedLabel } from "@/lib/content";
 
 export const metadata: Metadata = buildMetadata({
   title: "Disclaimer",
@@ -11,7 +12,7 @@ export const metadata: Metadata = buildMetadata({
 export default function DisclaimerPage() {
   return (
     <article>
-      <LegalHeader title="Disclaimer" updated="August 2026" />
+      <LegalHeader title="Disclaimer" updated={legalUpdatedLabel("/disclaimer")} />
 
       <Section title="1. Marketplace Platform">
         Hallnect is an online marketplace that facilitates connections between customers and venue owners. We do not own, operate, manage, or inspect any of the venues listed on this platform. The booking contract is directly between the customer and the venue owner. Hallnect is <strong>not responsible</strong> for the quality, safety, fitness for purpose, or legal compliance of any venue listed on the platform.

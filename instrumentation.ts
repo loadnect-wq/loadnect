@@ -11,9 +11,21 @@
 //
 // register() runs ONCE per server instance and must finish before the first
 // request is served, so throwing here turns "the checkout is broken for
-// everyone and nobody knows why" into "the deployment did not go live". That is
-// the trade being made deliberately: a loud boot failure is cheaper than a
-// quiet runtime one, particularly on a plan that does not retain logs.
+// everyone and nobody knows why" into one loud, named failure. That is the
+// trade being made deliberately: a loud boot failure is cheaper to diagnose
+// than a quiet runtime one, particularly on a plan that does not retain logs.
+//
+// KNOW WHAT THAT TRADE COSTS BEFORE ADDING TO validateEnv(). Throwing here does
+// NOT stop a bad deployment going live, and the older wording here said it did.
+// Next skips register() during phase-production-build (verified in the
+// installed next@16.3.1, server/lib/router-utils/instrumentation-globals
+// .external.js), so `next build` never runs this and the deployment builds and
+// promotes clean; the throw happens when a SERVER instance boots, and every
+// request it touches then fails. So a variable added to validateEnv() takes the
+// WHOLE SITE down when it is absent, not just the feature that needs it. That
+// is the right call for a variable the site genuinely cannot serve without, and
+// the wrong one for anything that degrades safely — lib/env.ts lists which is
+// which, and why, next to the production set.
 //
 // NO SDK, NO DEPENDENCY. There is still no Sentry and no error-tracking
 // service; onRequestError below writes structured lines to stdout, which is all

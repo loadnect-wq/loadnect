@@ -42,6 +42,12 @@ export type AdminOwnerRow = {
   gst_number:     string | null;
   pan_number:     string | null;
   payout_upi:     string | null;
+  // Bank details. The only payout route that actually works today is a manual
+  // transfer, so an admin has to be able to read these — but this shape must
+  // stay inside the admin subtree: it is rendered masked by
+  // app/admin/owners/page.tsx and belongs in no log, export or CSV.
+  payout_account_number: string | null;
+  payout_ifsc:           string | null;
   city:           string | null;
   state:          string | null;
   is_verified:    boolean;
@@ -396,7 +402,19 @@ export async function fetchAllOwners(verifiedFilter?: "verified" | "unverified")
     // profiles!profile_id — hall_owners has TWO FKs to profiles (profile_id and
     // verified_by), so the embed must name which one, or PostgREST errors with
     // "more than one relationship was found" and the page shows no owners.
-    .select("id, profile_id, business_name, business_email, business_phone, gst_number, pan_number, payout_upi, city, state, is_verified, created_at, profiles!profile_id(full_name, email, role)")
+    //
+    // payout_account_number / payout_ifsc read fine through the session client,
+    // and per this file's header that was checked as a GRANT and not just a
+    // policy: information_schema.column_privileges on the live database shows
+    // SELECT on both to `authenticated`, and hall_owners_select is
+    // `profile_id = auth.uid() or is_admin()`. So no service-role read is
+    // needed here.
+    //
+    // NOT from 0046, despite the obvious guess — that migration grants UPDATE
+    // on the payout block (so an owner can maintain their own details) and says
+    // nothing about SELECT. The read grant predates it. Attributing a privilege
+    // to the wrong migration is how the next person "fixes" the wrong file.
+    .select("id, profile_id, business_name, business_email, business_phone, gst_number, pan_number, payout_upi, payout_account_number, payout_ifsc, city, state, is_verified, created_at, profiles!profile_id(full_name, email, role)")
     .order("created_at", { ascending: false });
 
   if (verifiedFilter === "verified")   query = query.eq("is_verified", true);
@@ -418,6 +436,8 @@ export async function fetchAllOwners(verifiedFilter?: "verified" | "unverified")
     gst_number:     row.gst_number     ?? null,
     pan_number:     row.pan_number     ?? null,
     payout_upi:     row.payout_upi     ?? null,
+    payout_account_number: row.payout_account_number ?? null,
+    payout_ifsc:           row.payout_ifsc           ?? null,
     city:           row.city           ?? null,
     state:          row.state          ?? null,
     is_verified:    row.is_verified,

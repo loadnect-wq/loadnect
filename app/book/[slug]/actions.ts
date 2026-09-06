@@ -11,6 +11,7 @@ import { getAdvancePercent, getCommissionPercent } from "@/lib/platform-settings
 import { calculateBookingPayment, advanceFromTotal, PENDING_PAYMENT_TIMEOUT_MIN } from "@/lib/booking-payment";
 import { bookingSchema, paymentSessionSchema, uuidSchema, parseSafe } from "@/lib/validation/schemas";
 import { sanitizeError } from "@/lib/errors";
+import { LEGAL_LAST_UPDATED } from "@/lib/content";
 import { normalizePhoneE164 } from "@/lib/notifications/phone";
 import { notifyBookingEvent } from "@/lib/notifications/events";
 import { resolveCoupon, type ResolvedCoupon } from "@/lib/coupons";
@@ -53,16 +54,32 @@ import { resolveCoupon, type ResolvedCoupon } from "@/lib/coupons";
  * survive the policy changing underneath it.
  *
  * The value tracks the "Last updated" stamp rendered on /terms,
- * /cancellation-policy and /refund-policy (currently "August 2026" on all
- * three). BUMP THIS IN THE SAME COMMIT that edits any of those pages — a
- * changed policy served under an unchanged version is worse than no version at
- * all, because it looks like evidence.
+ * /cancellation-policy and /refund-policy — and it is now DERIVED from the same
+ * constant those pages render, instead of being a second copy of the date.
+ *
+ * IT HAD ALREADY DRIFTED. This read "2026-08" while all three pages were moved
+ * to September 2026 in the same working tree, so every booking taken in between
+ * would have recorded consent to August terms while September terms were on
+ * screen — precisely the "looks like evidence" failure the paragraph above
+ * warns about, arriving through the one route nobody watches: an edit to a
+ * different file. A hand-bumped constant only works while everyone remembers,
+ * and the page edit and the bump live in different directories.
+ *
+ * The latest of the three is taken rather than /terms alone, because consent
+ * covers all three documents and the newest is the one a dispute turns on.
  *
  * NOT exported: this is a "use server" module, and Next only permits async
- * function exports from one. If another module ever needs this value, it moves
- * to lib/ — it does not get an `export` here.
+ * function exports from one. If another module needs it, it moves to lib/.
  */
-const POLICY_VERSION = "2026-08";
+const POLICY_VERSION = [
+  LEGAL_LAST_UPDATED["/terms"],
+  LEGAL_LAST_UPDATED["/cancellation-policy"],
+  LEGAL_LAST_UPDATED["/refund-policy"],
+]
+  .slice()
+  .sort()          // ISO dates sort lexicographically
+  .at(-1)!
+  .slice(0, 7);    // "2026-09-06" -> "2026-09"
 
 export type CreateBookingInput = {
   hallId:       string;

@@ -26,8 +26,9 @@
 import "server-only";
 
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
+import { todayInBusinessTz } from "@/lib/dates";
 import { isEasySplitEnabled, splitOrderToVendor } from "@/lib/easy-split";
-import { notifyOwnerPayoutFailed } from "@/lib/notifications/events";
+import { notifyOwnerPayoutFailed, notifyAdminOperational } from "@/lib/notifications/events";
 
 export type ShareResult =
   | { ok: true; commission: number; ownerAmount: number }
@@ -214,8 +215,58 @@ export async function payOwnerOnAcceptance(bookingId: string): Promise<PayoutOut
       return { state: "failed", reason };
     };
 
+    // EASY SPLIT BEING OFF IS NOT THE SAME AS NOTHING BEING OWED.
+    //
+    // The booking is accepted, the advance is captured, and the owner's share
+    // now has to leave Hallnect's account by hand — but the only trace of that
+    // was split_status='not_applicable' on a row whose only reader is an admin
+    // who happens to open the payout queue. Money owed to a venue was queued
+    // for a transfer nobody had been told to make.
+    //
+    // Deliberately NOT failAndAlert: this is the configuration this deployment
+    // runs in today, not a fault, and dressing it as a failure would train the
+    // admin to ignore the alert that means a real one. Distinct event, distinct
+    // wording, and it says what to do rather than what broke.
+    //
+    // Keyed on the BOOKING, not the day. A day key would report the first
+    // acceptance of the morning and silently swallow every later one — the same
+    // silence in a smaller costume. One per booking, deduped by the outbox, so
+    // a double-tapped Accept or an admin pressing "Retry payout" does not
+    // repeat it.
+    const alertManualTransferOwed = async (): Promise<void> => {
+      // ONCE A DAY, NOT ONCE A BOOKING.
+      //
+      // Easy Split being off is not an incident, it is this deployment's
+      // permanent state — so a per-booking key would fire on every accepted
+      // booking, forever. The admin already receives two SMS per booking
+      // (booking.requested and payment.success); a third that never stops is
+      // not an alert. Worse, it is billed, and it competes for the same
+      // per-phone hourly ceiling as the alerts that DO mean something, so the
+      // steady-state noise would be the thing that drops a real one.
+      //
+      // The day-scoped key means later bookings on the same day do not ring.
+      // That is the intended trade and it is safe here precisely because
+      // nothing is being lost: /admin/payments lists every one of these rows
+      // with the owner's exact share (fetchStuckPayouts deliberately includes
+      // 'not_applicable'). The message therefore points at the queue rather
+      // than naming one booking's amount, because by the time it is read the
+      // queue is the accurate answer and a single figure is not.
+      const day = todayInBusinessTz();
+      await notifyAdminOperational({
+        key:       `payout.manual:${day}`,
+        eventType: "payout.manual",
+        event:     "Payouts are waiting to be sent by hand",
+        // Under MAX_VARIABLE_LENGTH (60) — a DLT variable longer than that is
+        // truncated mid-sentence, so the closing words never reach the phone.
+        details:   "Easy Split is off - these settle by bank transfer.",
+        reference: "Clear them from the payout queue in /admin/payments",
+        bookingId,
+      }).catch(() => {});
+    };
+
     if (!isEasySplitEnabled()) {
       await note("not_applicable", "Easy Split is not enabled");
+      await alertManualTransferOwed();
       return { state: "skipped", reason: "Easy Split is not enabled" };
     }
     if (!vendorId) {

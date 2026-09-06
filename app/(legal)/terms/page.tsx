@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { platformFeeDisclosure } from "@/lib/booking-payment";
 import { buildMetadata } from "@/lib/seo/metadata";
+import { legalUpdatedLabel } from "@/lib/content";
 
 export const metadata: Metadata = buildMetadata({
   title: "Terms and Conditions",
@@ -12,7 +13,7 @@ export const metadata: Metadata = buildMetadata({
 export default function TermsPage() {
   return (
     <article>
-      <LegalHeader title="Terms and Conditions" updated="August 2026" />
+      <LegalHeader title="Terms and Conditions" updated={legalUpdatedLabel("/terms")} />
 
       <Section title="1. About Hallnect">
         Hallnect is an online marketplace operated by <strong>HALLNECT LLP</strong> that connects customers looking to book wedding halls and event venues with venue owners listing their properties. Hallnect is a technology platform and{" "}
@@ -112,11 +113,20 @@ export default function TermsPage() {
         These Terms are governed by the laws of India. Any disputes shall be subject to the exclusive jurisdiction of the courts of <strong>Madurai, Tamil Nadu</strong>.
       </Section>
 
+      {/* These timelines must be the SHORTER pair, and must match
+          /grievance-redressal word for word. Two clocks were published at once:
+          48 hours / one month here, 24 hours / 15 days there. A customer
+          chasing a refund reads whichever page they landed on, and the slower
+          promise is the one we would have been held to having advertised. The
+          Grievance page explains why the shorter pair governs — Hallnect is
+          both an e-commerce entity and an intermediary, and the intermediary
+          clock is tighter. Change one of these two pages and you change both. */}
       <Section title="16. Grievance Redressal">
-        We have appointed a grievance officer under Rule 4(5) of the Consumer Protection
-        (E-Commerce) Rules, 2020. Their name, designation and contact details, along with
-        the timelines we commit to — acknowledgement within 48 hours and resolution within
-        one month — are published on our{" "}
+        We have appointed a grievance officer under Rule 4(4) of the Consumer Protection
+        (E-Commerce) Rules, 2020 and Rule 3(2)(a) of the Information Technology
+        (Intermediary Guidelines and Digital Media Ethics Code) Rules, 2021. Their name,
+        designation and contact details, along with the timelines we commit to —
+        acknowledgement within 24 hours and resolution within 15 days — are published on our{" "}
         <a href="/grievance-redressal" className="text-maroon-600 hover:underline">Grievance Redressal</a>{" "}
         page. Nothing in these Terms limits your rights under the Consumer Protection Act, 2019.
       </Section>

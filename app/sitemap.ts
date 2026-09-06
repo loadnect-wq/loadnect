@@ -19,12 +19,18 @@ import type { MetadataRoute } from "next";
 import { absoluteUrl, isPublishableUrl } from "@/lib/seo/config";
 import { fetchIndexableVenues } from "@/lib/seo/sitemap-data";
 import { fetchIndexableCities } from "@/lib/seo/cities";
+import { legalLastModified } from "@/lib/content";
 
 // Always reflect current inventory: a hall approved an hour ago should be
 // discoverable today, not at the next deploy.
 export const revalidate = 3600;
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
+  // Honest for the inventory-driven pages — / and /halls really do change as
+  // halls are approved. /premium, /owner/register and /contact are copy pages
+  // and still overstate it: nothing in the tree records when their copy last
+  // changed, and inventing a date would be the same lie the legal entries
+  // below were just cured of. Give them a real source and they can join.
   const now = new Date();
 
   const staticEntries: MetadataRoute.Sitemap = [
@@ -40,12 +46,20 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: absoluteUrl("/contact"), lastModified: now, changeFrequency: "yearly", priority: 0.3 },
     // Legal pages: low priority, but genuine, unique, indexable content that
     // Google likes to see on a marketplace handling payments.
-    { url: absoluteUrl("/terms"), lastModified: now, changeFrequency: "yearly", priority: 0.2 },
-    { url: absoluteUrl("/privacy"), lastModified: now, changeFrequency: "yearly", priority: 0.2 },
-    { url: absoluteUrl("/refund-policy"), lastModified: now, changeFrequency: "yearly", priority: 0.2 },
-    { url: absoluteUrl("/cancellation-policy"), lastModified: now, changeFrequency: "yearly", priority: 0.2 },
-    { url: absoluteUrl("/disclaimer"), lastModified: now, changeFrequency: "yearly", priority: 0.2 },
-    { url: absoluteUrl("/grievance-redressal"), lastModified: now, changeFrequency: "yearly", priority: 0.2 },
+    //
+    // Their dates come from LEGAL_LAST_UPDATED, the same constant that prints
+    // the "Last updated" line on the page itself. They used to be `now` like
+    // everything else, which told Google all six policies were rewritten on
+    // every crawl while the pages themselves said August — a lastModified a
+    // crawler can check and find wrong is worth less than none, and these are
+    // exactly the pages where a stale-looking date matters least and a false
+    // one matters most.
+    { url: absoluteUrl("/terms"), lastModified: legalLastModified("/terms"), changeFrequency: "yearly", priority: 0.2 },
+    { url: absoluteUrl("/privacy"), lastModified: legalLastModified("/privacy"), changeFrequency: "yearly", priority: 0.2 },
+    { url: absoluteUrl("/refund-policy"), lastModified: legalLastModified("/refund-policy"), changeFrequency: "yearly", priority: 0.2 },
+    { url: absoluteUrl("/cancellation-policy"), lastModified: legalLastModified("/cancellation-policy"), changeFrequency: "yearly", priority: 0.2 },
+    { url: absoluteUrl("/disclaimer"), lastModified: legalLastModified("/disclaimer"), changeFrequency: "yearly", priority: 0.2 },
+    { url: absoluteUrl("/grievance-redressal"), lastModified: legalLastModified("/grievance-redressal"), changeFrequency: "yearly", priority: 0.2 },
   ];
 
   const [venues, cities] = await Promise.all([

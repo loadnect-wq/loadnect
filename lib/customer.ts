@@ -111,6 +111,13 @@ function handleErr(label: string, error: { code?: string; message: string }) {
   }
 }
 
+// payments.refund_state IS NOT OPTIONAL IN THIS LIST. mapBooking reads it and
+// the booking page picks its label from it ("Refunded" / "Refund in progress" /
+// "Refund due"). While the column was missing here the mapped value was always
+// undefined, so all three branches collapsed onto "Refund due" — a customer
+// whose money had already been sent back was told, forever, that it had not
+// been. Anything the mapping reads has to be requested here; nothing warns you
+// when it is not.
 const BOOKING_SELECT = `
   id, hall_id, event_date, end_date, slot, guest_count,
   base_amount, platform_fee, total_amount,
@@ -119,7 +126,7 @@ const BOOKING_SELECT = `
   status, customer_notes, owner_notes, cancel_reason,
   created_at, updated_at,
   halls(id, name, slug, city, state, address, hall_images(url, is_cover)),
-  payments(id, amount, currency, status, payment_method, created_at, advance_amount, platform_fee_amount, refund_amount)
+  payments(id, amount, currency, status, payment_method, created_at, advance_amount, platform_fee_amount, refund_amount, refund_state)
 `;
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

@@ -12,13 +12,24 @@ import {
   SITE_NAME, SITE_LOCALE, absoluteUrl, DEFAULT_OG_IMAGE,
 } from "./config";
 
-/** Trims to a length without cutting a word in half. */
+/**
+ * Trims to a length without cutting a word in half.
+ *
+ * The ellipsis stands in for what was dropped, so any punctuation left sitting
+ * at the cut point goes with it. Without that strip, a description clipped just
+ * after a sentence rendered as "…and a swimming pool.…" — the SERP snippet is
+ * the one line of Hallnect a stranger reads, and it was reading as a typo.
+ */
 export function clamp(text: string, max: number): string {
   const clean = text.replace(/\s+/g, " ").trim();
   if (clean.length <= max) return clean;
   const cut = clean.slice(0, max - 1);
   const lastSpace = cut.lastIndexOf(" ");
-  return `${(lastSpace > max * 0.6 ? cut.slice(0, lastSpace) : cut).trimEnd()}…`;
+  const kept = lastSpace > max * 0.6 ? cut.slice(0, lastSpace) : cut;
+  // Falls back to the raw slice when the tail was punctuation all the way
+  // down, so this can never hand Google a bare "…".
+  const tidy = kept.replace(/[\s.,;:!?…·|/\\\-–—([{"'“”‘’]+$/u, "");
+  return `${tidy || kept.trimEnd()}…`;
 }
 
 export type SeoImage = { url: string; alt: string; width?: number; height?: number };

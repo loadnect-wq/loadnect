@@ -3,6 +3,8 @@ import Link from "next/link";
 import { IndianRupee, TrendingUp } from "lucide-react";
 import { requireRole } from "@/lib/auth";
 import { fetchOwnerRow, fetchOwnerHalls, fetchOwnerRevenue, fetchOwnerCommissions } from "@/lib/owner";
+import type { AdvancePayout } from "@/lib/owner";
+import { isEasySplitEnabled } from "@/lib/easy-split";
 import { getCommissionPercent } from "@/lib/platform-settings";
 import { formatPrice } from "@/lib/mock-data";
 import { Badge } from "@/components/ui/Badge";
@@ -71,6 +73,17 @@ export default async function OwnerRevenuePage() {
     .filter((c) => SETTLED_STATUSES.includes(c.status))
     .reduce((s, c) => s + c.commission_amount, 0);
 
+  // Has Hallnect actually paid this owner? Counts only — deliberately no rupee
+  // total. A transfer an admin makes by hand records no amount, so summing
+  // what IS recorded would quietly under-report the money already sent, and an
+  // owner reconciling against their bank statement would come up short. The
+  // exact figures sit on the bookings that have them.
+  const payouts        = bookings
+    .map((b) => b.advance_payout)
+    .filter((p): p is AdvancePayout => p !== null);
+  const paidCount      = payouts.filter((p) => p.state === "paid").length;
+  const awaitingCount  = payouts.filter((p) => p.state === "pending").length;
+
   return (
     <div className="min-h-screen bg-ivory-100">
       <AppHeader title="Revenue" notificationsHref="/owner/notifications" />
@@ -117,6 +130,53 @@ export default async function OwnerRevenuePage() {
           </p>
         </div>
 
+        {/* Payouts — the question this page could not answer before: has
+            Hallnect actually sent me my money?
+
+            The HOW is read from the same flag the payout code obeys, not
+            written as a constant, because the two sentences describe genuinely
+            different mechanics and the wrong one is a lie either way. With
+            automatic settlement off — which is how it runs today — every payout
+            is a transfer a person makes by hand, and saying "we'll settle it
+            automatically" would describe something that never happens.
+
+            Neither branch names a date. Nothing in the system knows one: a hand
+            transfer has no schedule at all, and a gateway settlement lands on
+            the gateway's own cycle. A booking reads "paid" only once the
+            transfer has actually been recorded against it. */}
+        {payouts.length > 0 && (
+          <div className="rounded-2xl bg-white p-4 shadow-card">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-charcoal-500">
+              Payouts to you
+            </p>
+            <p className="mt-0.5 text-sm font-semibold text-charcoal-900">
+              <span className="text-emerald-700">{paidCount} paid</span>
+              {" · "}
+              <span className={awaitingCount > 0 ? "text-amber-700" : "text-charcoal-500"}>
+                {awaitingCount} awaiting transfer
+              </span>
+            </p>
+            <p className="mt-2 text-[11px] text-charcoal-500">
+              Your advance becomes payable once you accept a booking.{" "}
+              {isEasySplitEnabled() ? (
+                <>
+                  Hallnect assigns it to your payout account through the payment gateway; when it
+                  reaches your bank is the gateway&apos;s settlement cycle, which Hallnect cannot
+                  promise here.
+                </>
+              ) : (
+                <>
+                  Hallnect pays it by bank or UPI transfer to the payout account on your profile.
+                  These transfers are made by hand, not on an automatic schedule, so no transfer
+                  date is promised here — a booking below reads as paid only once its transfer has
+                  been made.
+                </>
+              )}{" "}
+              The venue balance is not part of this: you collect that yourself at the event.
+            </p>
+          </div>
+        )}
+
         <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-xs text-blue-800">
           Hallnect&apos;s commission is {commissionPercent}% of the hall price, retained from the
           customer&apos;s advance when you accept — you are never billed separately, and the
@@ -143,25 +203,28 @@ export default async function OwnerRevenuePage() {
           <div className="space-y-2.5">
             <h2 className="font-serif text-sm font-semibold text-charcoal-900">Booking History</h2>
             {bookings.map((b) => (
-              <div key={b.id} className="flex items-center gap-3 rounded-2xl bg-white p-3 shadow-card">
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-semibold text-charcoal-900 truncate">{b.hall_name}</p>
-                  <p className="text-xs text-charcoal-500">{fmtDate(b.event_date)} · {SLOT_LABELS[b.slot] ?? b.slot}</p>
+              <div key={b.id} className="rounded-2xl bg-white p-3 shadow-card">
+                <div className="flex items-center gap-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold text-charcoal-900 truncate">{b.hall_name}</p>
+                    <p className="text-xs text-charcoal-500">{fmtDate(b.event_date)} · {SLOT_LABELS[b.slot] ?? b.slot}</p>
+                  </div>
+                  <div className="shrink-0 text-right space-y-0.5">
+                    <p className="text-sm font-bold text-charcoal-900">{formatPrice(b.total_amount)}</p>
+                    {b.payout_amount != null && (
+                      <p className="text-[11px] font-semibold text-emerald-700">
+                        Your share {formatPrice(b.payout_amount)}
+                      </p>
+                    )}
+                    <Badge
+                      variant={b.status === "completed" ? "success" : "warning"}
+                      size="sm"
+                    >
+                      {b.status === "completed" ? "Completed" : "Confirmed"}
+                    </Badge>
+                  </div>
                 </div>
-                <div className="shrink-0 text-right space-y-0.5">
-                  <p className="text-sm font-bold text-charcoal-900">{formatPrice(b.total_amount)}</p>
-                  {b.payout_amount != null && (
-                    <p className="text-[11px] font-semibold text-emerald-700">
-                      Your share {formatPrice(b.payout_amount)}
-                    </p>
-                  )}
-                  <Badge
-                    variant={b.status === "completed" ? "success" : "warning"}
-                    size="sm"
-                  >
-                    {b.status === "completed" ? "Completed" : "Confirmed"}
-                  </Badge>
-                </div>
+                <PayoutLine payout={b.advance_payout} />
               </div>
             ))}
           </div>
@@ -174,6 +237,60 @@ export default async function OwnerRevenuePage() {
         )}
       </div>
     </div>
+  );
+}
+
+/**
+ * Whether Hallnect has sent the advance for THIS booking.
+ *
+ * Two things it must never do, because both are how a payout screen turns into
+ * a phone call:
+ *   • say "paid" on anything but a recorded transfer. lib/owner.ts maps every
+ *     not-yet-sent payout state onto "pending" for exactly this reason — while
+ *     automatic settlement is off, a booking whose payout has "run" has still
+ *     had no money moved.
+ *   • print a date that is not in the data. Only an automatic split stamps
+ *     one; a bank transfer made by hand does not, so it is simply omitted
+ *     rather than replaced with "today" or an estimate.
+ */
+function PayoutLine({ payout }: { payout: AdvancePayout | null }) {
+  if (!payout) {
+    return (
+      <p className="mt-2 border-t border-ivory-200 pt-2 text-[11px] text-charcoal-400">
+        No online advance recorded for this booking.
+      </p>
+    );
+  }
+
+  // "owed or already sent" covers all three refund states this maps from.
+  // "Refunded" alone would claim the money had reached the customer when it may
+  // still be sitting with Hallnect; "refund in progress" alone would deny that
+  // it had, when it may already be gone. Either way the owner's answer is the
+  // same, and it is the answer they need: this one is not yours.
+  if (payout.state === "refunding") {
+    return (
+      <p className="mt-2 border-t border-ivory-200 pt-2 text-[11px] text-charcoal-500">
+        A refund is owed or already sent on this booking — the advance is the customer&apos;s,
+        so no payout is due to you.
+      </p>
+    );
+  }
+
+  if (payout.state === "paid") {
+    return (
+      <p className="mt-2 border-t border-ivory-200 pt-2 text-[11px] font-semibold text-emerald-700">
+        Advance paid to you
+        {payout.amount != null && <> · {formatPrice(payout.amount)}</>}
+        {payout.paid_at != null && <> · {fmtDate(payout.paid_at)}</>}
+      </p>
+    );
+  }
+
+  return (
+    <p className="mt-2 border-t border-ivory-200 pt-2 text-[11px] font-semibold text-amber-700">
+      Advance not transferred yet
+      {payout.amount != null && <> · {formatPrice(payout.amount)}</>}
+    </p>
   );
 }
 

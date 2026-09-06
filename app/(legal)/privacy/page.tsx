@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { buildMetadata } from "@/lib/seo/metadata";
+import { legalUpdatedLabel } from "@/lib/content";
 import { CONTACT } from "@/lib/constants";
 
 export const metadata: Metadata = buildMetadata({
@@ -12,7 +13,7 @@ export const metadata: Metadata = buildMetadata({
 export default function PrivacyPage() {
   return (
     <article>
-      <LegalHeader title="Privacy Policy" updated="August 2026" />
+      <LegalHeader title="Privacy Policy" updated={legalUpdatedLabel("/privacy")} />
 
       <Section title="1. Who We Are">
         Hallnect is operated by <strong>{CONTACT.legalName}</strong> (LLPIN {CONTACT.llpin}), a limited liability partnership registered in India under the Limited Liability Partnership Act, 2008, with its registered office at {CONTACT.address}. We act as the data fiduciary for personal information collected through this platform. For privacy concerns, contact us at{" "}
