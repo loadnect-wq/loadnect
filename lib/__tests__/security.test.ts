@@ -7,8 +7,7 @@
 
 import { describe, it, expect } from "vitest";
 import { safeHttpUrl } from "@/lib/utils";
-import { OWNER_EDITABLE_AVAIL_STATUSES } from "@/lib/validation/schemas";
-import { availabilityBatchSchema, parseSafe } from "@/lib/validation/schemas";
+
 
 describe("safeHttpUrl — owner-supplied links rendered in the ADMIN dashboard", () => {
   it("passes ordinary http(s) links through", () => {
@@ -40,37 +39,51 @@ describe("safeHttpUrl — owner-supplied links rendered in the ADMIN dashboard",
 });
 
 describe("availability — an owner may not rewrite booking-owned dates", () => {
-  it("accepts every status the calendar can post back", () => {
-    // The schema allowed only 3 of the 8 enum values, so the moment a hall had
-    // one confirmed booking the calendar echoed back 'full_day_booked' and the
-    // WHOLE batch failed validation — the owner could never save again.
-    for (const status of [
-      "available", "blocked", "booked", "partially_booked",
-      "morning_booked", "evening_booked", "full_day_booked", "maintenance",
-    ]) {
-      const r = parseSafe(availabilityBatchSchema, {
-        hallId: "13baf0ec-2e24-40d7-8c02-d985a7c6da08",
-        entries: [{ date: "2026-12-01", slot: "full_day", status }],
-      });
-      expect(r.ok, `status ${status} should parse`).toBe(true);
-    }
+  // THIS USED TO TEST setAvailability's status filter: the batch schema, the
+  // three owner-editable statuses, and the rule that a client could not post
+  // status='available' over a date a customer had paid for.
+  //
+  // All three are gone, and not because the risk went away. The risk is now
+  // handled a layer down: migration 0063 revokes INSERT/UPDATE/DELETE on
+  // `availability` from anon and authenticated outright, so there is no request
+  // for an application-level filter to get right. Deleting these cases without
+  // saying that would look like a guard was quietly dropped.
+  //
+  // What survives, and is tested here, is the rule the derivation depends on —
+  // which the SQL re-encodes independently, and where a drift is silent.
+
+  it("a half-day claim also takes the full day", async () => {
+    const { occupySlot } = await import("@/lib/availability");
+    // The one that is easy to get wrong. A day with a morning booking cannot
+    // still be sold whole; forgetting the second line here would offer a
+    // full-day booking on top of an existing morning one, and nothing would
+    // error until two parties turned up.
+    const free = { morning: true, evening: true, full_day: true };
+    occupySlot(free, "morning");
+    expect(free).toEqual({ morning: false, evening: true, full_day: false });
   });
 
-  it("names only the three statuses an owner may actually set", () => {
-    // The action filters writes to this list, so a client cannot flip a
-    // booked date back to 'available' and free a confirmed booking's dates.
-    expect([...OWNER_EDITABLE_AVAIL_STATUSES].sort()).toEqual(["available", "blocked", "maintenance"]);
-    for (const bookingOwned of ["booked", "full_day_booked", "morning_booked", "evening_booked", "partially_booked"]) {
-      expect(OWNER_EDITABLE_AVAIL_STATUSES).not.toContain(bookingOwned);
-    }
+  it("a full-day claim takes everything", async () => {
+    const { occupySlot } = await import("@/lib/availability");
+    const free = { morning: true, evening: true, full_day: true };
+    occupySlot(free, "full_day");
+    expect(free).toEqual({ morning: false, evening: false, full_day: false });
   });
 
-  it("still rejects a status that is not in the database enum at all", () => {
-    const r = parseSafe(availabilityBatchSchema, {
-      hallId: "13baf0ec-2e24-40d7-8c02-d985a7c6da08",
-      entries: [{ date: "2026-12-01", slot: "full_day", status: "definitely_not_a_status" }],
-    });
-    expect(r.ok).toBe(false);
+  it("two half-day claims exhaust the day", async () => {
+    const { occupySlot } = await import("@/lib/availability");
+    const free = { morning: true, evening: true, full_day: true };
+    occupySlot(free, "morning");
+    occupySlot(free, "evening");
+    expect(free).toEqual({ morning: false, evening: false, full_day: false });
+  });
+
+  it("no owner-writable availability schema remains", async () => {
+    // If someone re-adds one, this fails and they have to come and read the
+    // comment above before shipping a write path the database will refuse.
+    const schemas = await import("@/lib/validation/schemas");
+    expect(schemas).not.toHaveProperty("availabilityBatchSchema");
+    expect(schemas).not.toHaveProperty("OWNER_EDITABLE_AVAIL_STATUSES");
   });
 });
 

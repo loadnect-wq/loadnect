@@ -6,21 +6,26 @@
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { todayInBusinessTz, isoDateRange, daysBetweenInclusive } from "@/lib/dates";
 
-export type BookingSlot = "morning" | "evening" | "full_day";
+// The status vocabulary lives in lib/availability-status.ts — one copy, no
+// imports, usable from the browser too. It was duplicated in four places and
+// three of them had gone stale on `offline_booked`; re-exported here so the
+// existing call sites keep working without a second definition appearing.
+export {
+  HARD_BLOCK_STATUSES,
+  MORNING_BLOCK_STATUSES,
+  EVENING_BLOCK_STATUSES,
+  FULL_BLOCK_STATUSES,
+  PARTIAL_BLOCK_STATUSES,
+  occupySlot,
+} from "@/lib/availability-status";
+export type { BookingSlot, SlotFreedom } from "@/lib/availability-status";
 
-// Availability-table statuses that fully block ANY booking on this date+slot.
-// (booked/blocked/full_day_booked/maintenance block any slot;
-//  morning_booked/evening_booked/partially_booked block the matching slot or full_day)
-export const HARD_BLOCK_STATUSES = new Set([
-  "booked",
-  "blocked",
-  "full_day_booked",
-  "maintenance",
-]);
-
-// Slot-specific availability statuses.
-export const MORNING_BLOCK_STATUSES  = new Set(["morning_booked", "partially_booked"]);
-export const EVENING_BLOCK_STATUSES  = new Set(["evening_booked", "partially_booked"]);
+import {
+  HARD_BLOCK_STATUSES,
+  MORNING_BLOCK_STATUSES,
+  EVENING_BLOCK_STATUSES,
+  type BookingSlot,
+} from "@/lib/availability-status";
 
 // Active booking statuses — these reserve a slot.
 // Matches the partial unique index `uq_booking_active_slot` in migration 0003.

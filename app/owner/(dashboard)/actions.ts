@@ -11,8 +11,6 @@ import {
   hallCreateSchema,
   hallSchema,
   addHallImageSchema,
-  availabilityBatchSchema,
-  OWNER_EDITABLE_AVAIL_STATUSES,
   uuidSchema,
   offlineBookingSchema,
   parseSafe,
@@ -726,74 +724,20 @@ export async function deleteHallImage(hallId: string, imageId: string): Promise<
 }
 
 // ── Availability ──────────────────────────────────────────────────────────────
-// Security: RLS availability_write USING: owns_hall(hall_id)
-
-export async function setAvailability(
-  hallId: string,
-  entries: { date: string; slot: string; status: string }[],
-): Promise<ActionResult> {
-  const { supabase, user } = await getAuthUser();
-  if (!user) return { error: "Not authenticated" };
-
-  const parsed = parseSafe(availabilityBatchSchema, { hallId, entries });
-  if (!parsed.ok) return { error: parsed.error };
-  const v = parsed.data;
-
-  if (v.entries.length === 0) return { success: true };
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const db = supabase as any;
-
-  // BOOKING-OWNED ROWS ARE NOT THE OWNER'S TO CHANGE.
-  //
-  // The calendar posts back every row it loaded, so the batch legitimately
-  // contains statuses the payment flow wrote. Upserting them verbatim was two
-  // problems in one: a client could send status='available' for a date held by
-  // a CONFIRMED booking and free it for someone else to book, and an owner
-  // could silently overwrite the record of their own bookings.
-  //
-  // So: read what the booking flow currently owns, and drop those cells from
-  // the write. What remains is filtered to the owner-editable statuses.
-  const OWNER_EDITABLE = new Set<string>(OWNER_EDITABLE_AVAIL_STATUSES);
-  const BOOKING_OWNED = new Set([
-    "booked", "partially_booked", "morning_booked", "evening_booked", "full_day_booked",
-  ]);
-
-  const { data: existing } = await db
-    .from("availability")
-    .select("date, slot, status")
-    .eq("hall_id", v.hallId)
-    .in("date", Array.from(new Set(v.entries.map((e) => e.date))));
-
-  const lockedCells = new Set(
-    ((existing ?? []) as { date: string; slot: string; status: string }[])
-      .filter((r) => BOOKING_OWNED.has(String(r.status)))
-      .map((r) => `${r.date}::${r.slot}`),
-  );
-
-  const rows = v.entries
-    .filter((e) => !lockedCells.has(`${e.date}::${e.slot}`))
-    .filter((e) => OWNER_EDITABLE.has(e.status))
-    .map((e) => ({
-      hall_id: v.hallId,
-      date:    e.date,
-      slot:    e.slot,
-      status:  e.status,
-    }));
-
-  if (rows.length === 0) {
-    revalidatePath(`/owner/halls/${hallId}/availability`);
-    return { success: true };
-  }
-
-  const { error } = await db
-    .from("availability")
-    .upsert(rows, { onConflict: "hall_id,date,slot" });
-
-  if (error) return { error: sanitizeError(error, "owner") };
-  revalidatePath(`/owner/halls/${hallId}/availability`);
-  return { success: true };
-}
+//
+// setAvailability WAS HERE, and it is gone on purpose.
+//
+// It backed a grid where an owner hand-set every date's status and pressed a
+// global Save. That asked them to maintain by hand an answer the database
+// already held, and it had to spend thirty lines defending itself from its own
+// UI — re-reading which rows the payment flow owned so a client could not post
+// status='available' over a date a customer had paid for.
+//
+// The calendar is now DERIVED (lib/owner-calendar.ts) and the only write an
+// owner makes is an offline booking, below. Migration 0063 revokes
+// INSERT/UPDATE/DELETE on `availability` from anon and authenticated, so the
+// defence is no longer a filter in application code that has to be right every
+// time — the request is refused before it reaches a policy.
 
 // ── Booking actions ───────────────────────────────────────────────────────────
 // Security:
@@ -1388,6 +1332,7 @@ export async function addOfflineBooking(input: {
   customerPhone?: string;
   notes?: string;
   reference?: string;
+  clientToken?: string;
 }): Promise<{ success: true; id: string } | { error: string }> {
   const { user } = await getAuthUser();
   if (!user) return { error: "Not authenticated" };
@@ -1406,6 +1351,7 @@ export async function addOfflineBooking(input: {
     customerPhone: v.customerPhone || null,
     notes:         v.notes         || null,
     reference:     v.reference     || null,
+    clientToken:   v.clientToken    ?? null,
   });
 
   if (!result.ok) return { error: result.error };

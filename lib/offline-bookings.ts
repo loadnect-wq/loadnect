@@ -86,6 +86,8 @@ export async function createOfflineBooking(input: {
   customerPhone?: string | null;
   notes?: string | null;
   reference?: string | null;
+  /** Idempotency key — a retry with the same value returns the original id. */
+  clientToken?: string | null;
 }): Promise<OfflineBookingResult> {
   const supabase = await getSupabaseServerClient();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -100,6 +102,7 @@ export async function createOfflineBooking(input: {
     _customer_phone: input.customerPhone ?? null,
     _notes:          input.notes ?? null,
     _reference:      input.reference ?? null,
+    _client_token:   input.clientToken ?? null,
   });
 
   if (error) return { ok: false, error: friendlyError(error) };

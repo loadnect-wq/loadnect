@@ -27,6 +27,19 @@ import { getSupabaseClient } from "@/lib/supabase/client";
 // receives only that venue's changes and not the whole table. `availability`
 // carries no personal data at all — the private half of an offline booking is
 // in offline_bookings, which is not published.
+//
+// BOTH DIRECTIONS, ONE SUBSCRIPTION. The customer's booking page and the owner's
+// calendar both use this hook, and both learn about each other through the same
+// table, because `availability` is where every kind of claim lands:
+//
+//   owner blocks a date   → create_offline_booking inserts availability rows
+//   customer pays         → blockAvailability() upserts availability rows
+//   booking is cancelled  → releaseAvailabilityForBooking() deletes them
+//
+// So an owner watching their calendar sees a customer's booking appear without
+// touching anything, and vice versa. Publishing `bookings` would have been the
+// obvious way to carry the second case and a data leak: every subscriber would
+// receive customer_id, contact_phone and the amounts on every change.
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** Collapses a burst of changes (a 3-day block writes 3 rows) into one re-read. */
@@ -35,23 +48,20 @@ const REFRESH_DEBOUNCE_MS = 400;
 /**
  * A re-read floor, independent of the socket delivering anything.
  *
- * MEASURED, NOT PRECAUTIONARY. Subscribed from a real browser against
- * production: DELETE events arrive, INSERT events do NOT — even with no filter
- * at all. Supabase evaluates the SELECT policy against the candidate row before
- * delivering an INSERT, and `availability_select` joins `halls` and calls
- * owns_hall()/is_admin(); that evaluation fails for an anonymous subscriber, so
- * the row is dropped. DELETEs get through precisely because RLS CANNOT be
- * evaluated on a deleted row, so only the primary key is broadcast.
+ * THIS ONCE COVERED A REAL DEFECT, AND NO LONGER HAS TO. Subscribed from a real
+ * browser against production, an anonymous client received DELETEs but NOT
+ * INSERTs — even with no filter. Supabase evaluates the SELECT policy against
+ * the candidate row before delivering an insert, and `availability_select` was a
+ * correlated subquery into `halls` plus two SECURITY DEFINER calls; that does
+ * not survive Realtime's evaluation context, so the row was dropped. Exactly the
+ * wrong half worked: a RELEASED date appeared, a newly BLOCKED one did not.
  *
- * The practical effect without this poll would be the wrong half working: a
- * released date would appear, a newly BLOCKED one would not — and a date
- * becoming unavailable is the one a customer must not miss.
- *
- * The booking page requires sign-in, so real subscribers are authenticated and
- * may well receive INSERTs where anon does not. That is untested, and a
- * calendar's correctness should not rest on an untested assumption about
- * someone else's RLS evaluator. Sixty seconds is cheap — one cached server
- * render — and it makes convergence independent of the socket entirely.
+ * Migration 0062 made the policy row-local (`is_public`, denormalised from
+ * halls.status by trigger) and INSERT, UPDATE and DELETE were then all measured
+ * arriving. The poll is kept anyway, at a much cheaper price than the defect it
+ * used to paper over: sockets still drop, phones still suspend them, and a
+ * sixty-second floor makes convergence independent of the transport rather than
+ * dependent on someone else's evaluator continuing to behave.
  */
 const POLL_MS = 60_000;
 

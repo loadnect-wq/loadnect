@@ -104,14 +104,6 @@ export type HallImage = {
   sort_order:   number;
 };
 
-export type AvailabilityEntry = {
-  id:     string;
-  date:   string;
-  slot:   string;
-  status: string;
-  note:   string | null;
-};
-
 export type RevenueBooking = {
   id:           string;
   hall_id:      string;
@@ -345,35 +337,10 @@ export async function fetchHallImages(hallId: string): Promise<HallImage[]> {
 }
 
 // ── Fetch availability ────────────────────────────────────────────────────────
-
-export async function fetchHallAvailability(
-  hallId: string,
-  from:   string,
-  to:     string,
-): Promise<AvailabilityEntry[]> {
-  const supabase = await getSupabaseServerClient();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const db = supabase as any;
-
-  const { data, error } = await db
-    .from("availability")
-    .select("id, date, slot, status, note")
-    .eq("hall_id", hallId)
-    .gte("date", from)
-    .lte("date", to)
-    .order("date")
-    .order("slot");
-
-  if (error) { handleError("fetchHallAvailability", error); return []; }
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return (data ?? []).map((r: any): AvailabilityEntry => ({
-    id:     r.id,
-    date:   r.date,
-    slot:   r.slot,
-    status: r.status,
-    note:   r.note ?? null,
-  }));
-}
+//
+// fetchHallAvailability WAS HERE. It read raw availability rows for the owner's
+// hand-maintained grid, which no longer exists. The owner calendar is derived
+// from the records that actually create a claim — see lib/owner-calendar.ts.
 
 // ── Fetch bookings for owner's halls ─────────────────────────────────────────
 

@@ -85,7 +85,12 @@ describe("slot conflict semantics — the SQL and the TS must agree", () => {
   // to one side and not the other, a date silently becomes double-bookable, so
   // the membership is pinned here explicitly rather than assumed.
   it("blocks every slot on the hard statuses, including an offline booking", () => {
-    for (const s of ["booked", "blocked", "full_day_booked", "maintenance"]) {
+    // THIS TEST WAS A LIE. Its name said "including an offline booking" and the
+    // list below did not contain offline_booked, so it passed while the
+    // application treated an offline-blocked date as free everywhere except the
+    // database. Confirmed against a live block: the public venue page painted
+    // two offline_booked dates green.
+    for (const s of ["booked", "blocked", "full_day_booked", "maintenance", "offline_booked"]) {
       expect(HARD_BLOCK_STATUSES.has(s), `${s} must block any slot`).toBe(true);
     }
   });

@@ -2,6 +2,8 @@
 // Import only from Server Components, Route Handlers, or Server Actions.
 
 import { getSupabaseServerClient } from "@/lib/supabase/server";
+import { todayInBusinessTz, addDaysToIsoDate } from "@/lib/dates";
+import { FULL_BLOCK_STATUSES } from "@/lib/availability-status";
 import type { PremiumTier } from "@/lib/premium-plans";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -43,8 +45,11 @@ export type HallsFilters = {
   ids?:       string[];
 };
 
-// Availability statuses that make a hall fully unavailable for the day
-const FULL_BLOCK_STATUSES = ["booked", "blocked", "full_day_booked", "maintenance"];
+// Availability statuses that make a hall fully unavailable for the day.
+//
+// This WAS a fourth hardcoded copy, and it had gone stale: `offline_booked` was
+// added in 0056 and never added here, so a venue that blocked a date for a
+// phone booking still appeared in a customer's search for that exact date.
 
 /** Columns the free-text `q` filter searches, in one PostgREST or-group. */
 const FREE_TEXT_COLUMNS = ["name", "city", "address"] as const;
@@ -502,8 +507,14 @@ export async function fetchHallBySlug(slug: string): Promise<HallDetail | null> 
 
   // Availability for next 30 days (separate query — embedding with date filter
   // is cleaner here since we don't want to pull years of rows)
-  const today   = new Date().toISOString().split("T")[0];
-  const in30    = new Date(Date.now() + 30 * 86_400_000).toISOString().split("T")[0];
+  //
+  // IN IST, not UTC. toISOString() here resolved to YESTERDAY for the five and
+  // a half hours between 00:00 and 05:30 India time, so early-morning visitors
+  // got a window starting on a day that had already passed and ending one short
+  // — the same drift lib/dates.ts exists to eliminate, and the same one already
+  // fixed in the owner calendar.
+  const today = todayInBusinessTz();
+  const in30  = addDaysToIsoDate(today, 30);
   const { data: availRows } = await db
     .from("availability")
     .select("date, slot, status")

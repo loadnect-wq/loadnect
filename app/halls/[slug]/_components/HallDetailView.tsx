@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect } from "react";
+import { HARD_BLOCK_STATUSES, PARTIAL_BLOCK_STATUSES } from "@/lib/availability-status";
+import { useLiveAvailability } from "@/lib/useLiveAvailability";
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
@@ -59,15 +61,20 @@ const VENUE_RULES = [
 
 type DayStatus = "available" | "partial" | "unavailable";
 
-const FULL_BLOCK = new Set(["booked", "blocked", "full_day_booked", "maintenance"]);
-const PARTIAL    = new Set(["morning_booked", "evening_booked", "partially_booked"]);
+// Imported, not redeclared. These two Sets were a stale copy: `offline_booked`
+// (migration 0056) was missing from FULL_BLOCK, so a date a venue had blocked
+// for a phone booking rendered GREEN on the public page — measured, with live
+// offline_booked rows sitting in the table.
+//
+// lib/availability-status.ts deliberately imports nothing, so a client
+// component can share the vocabulary with the server instead of restating it.
 
 function getDayStatus(dateStr: string, rows: AvailabilityRow[]): DayStatus {
   const matching = rows.filter((r) => r.date === dateStr);
   if (matching.length === 0) return "available";
   const statuses = matching.map((r) => r.status);
-  if (statuses.some((s) => FULL_BLOCK.has(s))) return "unavailable";
-  if (statuses.some((s) => PARTIAL.has(s)))    return "partial";
+  if (statuses.some((s) => HARD_BLOCK_STATUSES.has(s)))    return "unavailable";
+  if (statuses.some((s) => PARTIAL_BLOCK_STATUSES.has(s))) return "partial";
   return "available";
 }
 
@@ -96,6 +103,15 @@ export function HallDetailView({ hall, similar, isPreview, sidebarAd, advancePer
   const router = useRouter();
 
   useEffect(() => { recordRecentlyViewed(hall.id); }, [hall.id]);
+
+  // This page SHOWS a 30-day availability strip, so it has to watch it. Only the
+  // booking flow subscribed before, which meant the first screen a customer
+  // actually looks at was the one most likely to be stale — someone comparing
+  // venues for ten minutes was reading a snapshot from when they arrived.
+  //
+  // Cheap: the hook never applies the payload, it just re-reads. `availability`
+  // carries no personal data, and the subscription is filtered to this hall.
+  useLiveAvailability(hall.id);
 
   // The live advance percentage, not a hardcoded 0.25. Checkout charges the
   // configurable rate, so a page that always said "25%" would quote a figure

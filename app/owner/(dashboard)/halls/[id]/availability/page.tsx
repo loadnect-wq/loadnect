@@ -3,87 +3,132 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { requireRole } from "@/lib/auth";
-import { fetchOwnerHall, fetchHallAvailability } from "@/lib/owner";
+import { fetchOwnerHall } from "@/lib/owner";
+import { fetchOwnerCalendar } from "@/lib/owner-calendar";
 import { fetchOfflineBookings } from "@/lib/offline-bookings";
-import { todayInBusinessTz, addDaysToIsoDate } from "@/lib/dates";
+import { todayInBusinessTz, addDaysToIsoDate, formatBookingDates } from "@/lib/dates";
 import { AppHeader } from "@/components/app/AppHeader";
-import { AvailabilityCalendar } from "./_components/AvailabilityCalendar";
-import { OfflineBookings } from "./_components/OfflineBookings";
+import { InventoryCalendar } from "./_components/InventoryCalendar";
 
-export const metadata: Metadata = { title: "Manage Availability" };
+export const metadata: Metadata = { title: "Availability" };
 
-type Props = { params: Promise<{ id: string }> };
+type Props = {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ m?: string }>;
+};
 
-// Build a 45-day window, IN THE BUSINESS TIMEZONE.
-//
-// This used to take `iso` from d.toISOString() while taking the visible label
-// from toLocaleDateString("en-IN"). Those two disagree for five and a half hours
-// every day: India is UTC+05:30, so between 00:00 and 05:30 IST the UTC date is
-// still yesterday. An owner blocking "15 Oct" in that window wrote 14 Oct — they
-// blocked the wrong day and left the real one on sale. This is the exact bug
-// lib/dates.ts was written to eliminate, and its header says so.
-//
-// Both the value and the label now come from the same IST-resolved date.
-function buildDays(count = 45) {
-  const today = todayInBusinessTz();
-  return Array.from({ length: count }, (_, i) => {
-    const iso = addDaysToIsoDate(today, i);
-    // Parsed as UTC midnight purely for FORMATTING, with timeZone:"UTC" so the
-    // weekday and day-of-month printed are the ones in the string — never
-    // shifted back into another calendar day by the server's own timezone.
-    const d = new Date(`${iso}T00:00:00Z`);
-    return {
-      iso,
-      label: d.toLocaleDateString("en-IN", { day: "numeric", month: "short", timeZone: "UTC" }),
-      wkd:   d.toLocaleDateString("en-IN", { weekday: "short", timeZone: "UTC" }),
-    };
-  });
+// ── Month arithmetic on the ISO string itself ────────────────────────────────
+// Never via Date: `new Date(y, m, 1)` is constructed in the SERVER's timezone,
+// and every date this page renders has to be the one an owner in India sees.
+// lib/dates.ts exists because that mistake was already shipped once here.
+
+const MONTH_KEY = /^\d{4}-(0[1-9]|1[0-2])$/;
+
+function addMonths(key: string, n: number): string {
+  const [y, m] = key.split("-").map(Number);
+  const total = y * 12 + (m - 1) + n;
+  return `${Math.floor(total / 12)}-${String((total % 12) + 1).padStart(2, "0")}`;
 }
 
-const SLOTS = ["morning", "evening", "full_day"];
+/** Last day of a month, found by stepping back one day from the next month. */
+function monthEnd(key: string): string {
+  return addDaysToIsoDate(`${addMonths(key, 1)}-01`, -1);
+}
 
-export default async function AvailabilityPage({ params }: Props) {
+// One month back so a venue can reconcile last month's diary, twelve forward
+// because that is how far ahead weddings are actually booked. Bounded so the
+// month parameter cannot be walked to year 9999 and made to fetch nothing
+// expensive but pointless.
+const MONTHS_BACK = 1;
+const MONTHS_FORWARD = 11;
+
+export default async function AvailabilityPage({ params, searchParams }: Props) {
   await requireRole(["owner_approved"]);
   const { id } = await params;
+  const { m } = await searchParams;
 
   const hall = await fetchOwnerHall(id);
   if (!hall) notFound();
 
-  const days = buildDays();
-  const from = days[0].iso;
-  const to   = days[days.length - 1].iso;
+  const today = todayInBusinessTz();
+  const thisMonth = today.slice(0, 7);
+  const earliest = addMonths(thisMonth, -MONTHS_BACK);
+  const latest = addMonths(thisMonth, MONTHS_FORWARD);
 
-  const [availability, offline] = await Promise.all([
-    fetchHallAvailability(id, from, to),
+  // Clamped rather than 404'd: a bookmarked link to a month that has since
+  // scrolled out of range should land the owner somewhere useful.
+  let month = m && MONTH_KEY.test(m) ? m : thisMonth;
+  if (month < earliest) month = earliest;
+  if (month > latest) month = latest;
+
+  const [days, offline] = await Promise.all([
+    fetchOwnerCalendar(id, `${month}-01`, monthEnd(month)),
     fetchOfflineBookings(id),
   ]);
+
+  const upcoming = offline.filter((o) => o.end_date >= today).slice(0, 12);
 
   return (
     <div className="min-h-screen bg-ivory-100">
       <AppHeader title="Availability" notificationsHref="/owner/notifications" />
 
-      <div className="px-4 py-5 sm:px-6 lg:px-8 max-w-3xl space-y-4">
+      <div className="max-w-2xl space-y-4 px-4 py-5 sm:px-6 lg:px-8">
         <div>
           <h1 className="font-serif text-xl font-bold text-charcoal-900">{hall.name}</h1>
-          <p className="text-sm text-charcoal-500">
-            Set availability for the next 45 days. Customers cannot book blocked or maintenance dates.
+          <p className="mt-0.5 text-sm text-charcoal-500">
+            Every date is bookable unless something holds it. You only need to come
+            here when you take a booking off Hallnect — tap the date and block it.
           </p>
         </div>
 
-        <OfflineBookings hallId={id} rows={offline} />
-
-        <AvailabilityCalendar
+        <InventoryCalendar
           hallId={id}
+          monthStart={`${month}-01`}
           days={days}
-          slots={SLOTS}
-          initial={availability}
+          today={today}
+          prevMonth={month > earliest ? addMonths(month, -1) : null}
+          nextMonth={month < latest ? addMonths(month, 1) : null}
         />
+
+        {upcoming.length > 0 && (
+          <section className="rounded-2xl bg-white p-4 shadow-card">
+            <h2 className="text-sm font-bold text-charcoal-900">Your offline bookings</h2>
+            <p className="mt-0.5 text-xs text-charcoal-500">
+              Everything you have blocked from today onwards. Open the month to release one.
+            </p>
+            <ul className="mt-3 divide-y divide-border">
+              {upcoming.map((o) => (
+                <li key={o.id} className="py-2">
+                  <Link
+                    href={`/owner/halls/${id}/availability?m=${o.event_date.slice(0, 7)}`}
+                    className="flex items-baseline justify-between gap-3 hover:underline"
+                  >
+                    <span className="text-sm font-semibold text-charcoal-900">
+                      {formatBookingDates(o.event_date, o.end_date)}
+                    </span>
+                    <span className="shrink-0 text-xs text-charcoal-500">
+                      {o.customer_name || "No name"}
+                    </span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+
+        <p className="rounded-2xl bg-white p-4 text-xs leading-relaxed text-charcoal-500 shadow-card">
+          <strong className="text-charcoal-700">A green date is not a reservation.</strong>{" "}
+          It means nothing held that date when this page was drawn. If a customer is
+          paying for it at this moment, Hallnect will refuse whichever of you is second —
+          the database decides, not this screen. That is also why there is nothing to
+          save here: every change takes effect the instant you make it.
+        </p>
 
         <Link
           href={`/owner/halls/${id}/edit`}
           className="flex items-center gap-1 text-sm text-charcoal-500 hover:text-charcoal-800"
         >
-          <ArrowLeft className="h-4 w-4" /> Back to edit
+          <ArrowLeft className="h-4 w-4" aria-hidden /> Back to edit
         </Link>
       </div>
     </div>
