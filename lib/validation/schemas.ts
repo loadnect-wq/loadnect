@@ -392,6 +392,46 @@ export const availabilityBatchSchema = z.object({
   entries: z.array(availabilityEntrySchema).max(500, "Too many entries in one update."),
 });
 
+// ── Offline booking ──────────────────────────────────────────────────────────
+
+/**
+ * A booking the venue took off-platform.
+ *
+ * Every customer field is OPTIONAL by design. The point of the feature is that
+ * the date stops being sellable; requiring a name and phone before an owner can
+ * protect their own calendar would mean an owner who took a booking on a noisy
+ * phone line either invents details or leaves the date open to a double
+ * booking. The identifying fields improve the record; they do not gate it.
+ *
+ * The dates are NOT bounded to the future here. A venue reconciling last
+ * month's diary is a real thing, and the database is what actually decides
+ * whether the inventory is free — see assert_inventory_free. A UI-level "no
+ * past dates" rule would only stop someone recording history they already have.
+ */
+export const offlineBookingSchema = z
+  .object({
+    hallId:        uuidSchema,
+    eventDate:     dateStringSchema,
+    endDate:       dateStringSchema,
+    slot:          z.enum(ALLOWED_SLOTS),
+    customerName:  optionalTrimmed(120),
+    customerPhone: optionalTrimmed(20),
+    notes:         optionalTrimmed(1000),
+    reference:     optionalTrimmed(80),
+  })
+  .refine((d) => d.endDate >= d.eventDate, {
+    message: "The end date cannot be before the start date.",
+    path: ["endDate"],
+  })
+  // Mirrors the RPC's own ceiling. Checked here too so an owner gets a field
+  // error rather than a database exception surfaced as a generic failure.
+  .refine(
+    (d) => (Date.parse(d.endDate) - Date.parse(d.eventDate)) / 86_400_000 <= 30,
+    { message: "An offline booking cannot span more than 31 days.", path: ["endDate"] },
+  );
+
+export type OfflineBookingInput = z.input<typeof offlineBookingSchema>;
+
 // ── Booking ──────────────────────────────────────────────────────────────────
 
 /**

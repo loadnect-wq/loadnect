@@ -14,6 +14,7 @@ import {
   availabilityBatchSchema,
   OWNER_EDITABLE_AVAIL_STATUSES,
   uuidSchema,
+  offlineBookingSchema,
   parseSafe,
   normalizeAmenityName,
   CUSTOM_AMENITY_LIMITS,
@@ -1363,4 +1364,80 @@ export async function cancelPlanSubscriptionAction(
   revalidatePath("/owner/premium");
   revalidatePath("/owner/premium/upgrade");
   return { success: true, until: result.until };
+}
+
+// ── Offline bookings ──────────────────────────────────────────────────────────
+//
+// A venue that takes a booking over the phone must be able to say so, or
+// Hallnect will sell the same date online. Both actions delegate to
+// lib/offline-bookings, which calls the RPCs that hold the inventory lock —
+// see migration 0057 for why that lock is the only thing making this safe
+// against a customer paying for the same date in the same moment.
+//
+// AUTHORISATION IS THE DATABASE'S. The RPCs are SECURITY DEFINER and check
+// owns_hall(hall_id) OR is_admin() from auth.uid(), so a second ownership test
+// here would be a copy that can drift. getAuthUser only establishes that
+// SOMEONE is signed in, which is what makes the RPC's own check load-bearing.
+
+export async function addOfflineBooking(input: {
+  hallId: string;
+  eventDate: string;
+  endDate: string;
+  slot: string;
+  customerName?: string;
+  customerPhone?: string;
+  notes?: string;
+  reference?: string;
+}): Promise<{ success: true; id: string } | { error: string }> {
+  const { user } = await getAuthUser();
+  if (!user) return { error: "Not authenticated" };
+
+  const parsed = parseSafe(offlineBookingSchema, input);
+  if (!parsed.ok) return { error: parsed.error };
+  const v = parsed.data;
+
+  const { createOfflineBooking } = await import("@/lib/offline-bookings");
+  const result = await createOfflineBooking({
+    hallId:        v.hallId,
+    eventDate:     v.eventDate,
+    endDate:       v.endDate,
+    slot:          v.slot as "morning" | "evening" | "full_day",
+    customerName:  v.customerName  || null,
+    customerPhone: v.customerPhone || null,
+    notes:         v.notes         || null,
+    reference:     v.reference     || null,
+  });
+
+  if (!result.ok) return { error: result.error };
+
+  // The audit entry is written INSIDE create_offline_booking, not here.
+  // admin_audit_log's INSERT policy is (is_admin() OR is_trusted_backend()), so
+  // a recordAdminAction() call from an owner's session is refused — and that
+  // helper swallows its errors, so this would have looked fine while recording
+  // nothing for the exact role it is meant to watch. See migration 0062.
+
+  revalidatePath(`/owner/halls/${v.hallId}/availability`);
+  revalidatePath(`/halls`);
+  return { success: true, id: result.id };
+}
+
+export async function releaseOfflineBooking(
+  id: string,
+  hallId: string,
+): Promise<ActionResult> {
+  const { user } = await getAuthUser();
+  if (!user) return { error: "Not authenticated" };
+
+  const idErr = parseSafe(uuidSchema, id);
+  if (!idErr.ok) return { error: "Invalid booking id." };
+
+  const { cancelOfflineBooking } = await import("@/lib/offline-bookings");
+  const result = await cancelOfflineBooking(idErr.data);
+  if (!result.ok) return { error: result.error };
+
+  // Audited inside cancel_offline_booking — see addOfflineBooking above.
+
+  revalidatePath(`/owner/halls/${hallId}/availability`);
+  revalidatePath(`/halls`);
+  return { success: true };
 }

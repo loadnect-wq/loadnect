@@ -14,6 +14,7 @@ import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import { formatPrice } from "@/lib/mock-data";
 import type { DaySlotAvailability } from "@/lib/availability";
+import { useLiveAvailability } from "@/lib/useLiveAvailability";
 import { createBookingRequest, createPaymentSession, submitManualBookingRequest, previewCoupon, type CreateBookingResult } from "../actions";
 import { todayInBusinessTz, addDaysToIsoDate, isoDateToLabelDate, isoDateRange, daysBetweenInclusive } from "@/lib/dates";
 import { isValidPhoneNumber } from "@/lib/notifications/phone";
@@ -137,6 +138,14 @@ export function BookingFlow({ hall, availability, windowDays, onlinePaymentEnabl
   const [expiresAt,     setExpiresAt]     = useState<string | null>(null);
   const [serverError,   setServerError]   = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+
+  // Keeps this calendar in step with the venue's own diary: an offline booking
+  // the owner adds while this page is open removes those dates here, without a
+  // refresh. It re-READS rather than patching from the event — see the hook.
+  //
+  // It is a convenience, not the guard. A stale screen is still refused at
+  // checkout by assert_inventory_free under a lock.
+  useLiveAvailability(hall.id);
 
   // Index availability by date for O(1) lookup
   const availabilityByDate = new Map(availability.map((a) => [a.date, a]));

@@ -1,0 +1,11 @@
+-- 0056 — a distinct availability status for "the venue took this off-platform".
+--
+-- NOT reusing 'blocked': the two mean different things to everyone who reads the
+-- calendar. 'blocked' is the venue making a date unavailable for its own reasons
+-- (a repair, a private event, a hold); 'offline_booked' is a real customer
+-- booking that did not come through Hallnect. An owner needs to tell them apart
+-- to run their diary; an admin needs to tell them apart to investigate a clash.
+--
+-- Its own migration because Postgres forbids USING a new enum value in the same
+-- transaction that adds it.
+alter type public.availability_status add value if not exists 'offline_booked';
