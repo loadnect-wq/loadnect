@@ -10,9 +10,15 @@
 // because grants are checked before row security and have no notion of
 // is_admin(). Migration 0046 moved `bookings` to per-column grants and withheld
 // the commission columns, which silently broke every admin query that touched
-// them. fetchStuckPayouts is the only one; it uses the service role behind an
-// explicit admin check. Before adding a query here, check the GRANT as well as
-// the policy — a "permission denied for table X" is this, never RLS.
+// them. Migration 0065 then did the same to `payments`, withholding the gateway
+// handles and raw_response so a venue owner could not read the customer's email
+// off a payment at their hall — and broke two more. THREE queries here now run
+// as the service role behind an explicit admin check that fails closed:
+// fetchStuckPayouts, fetchAllPayments and fetchRefundQueue.
+//
+// Before adding a query here, check the GRANT as well as the policy. A
+// "permission denied for table X" is always this, never RLS — RLS filters rows
+// silently and returns an empty list instead.
 
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
@@ -260,9 +266,22 @@ export async function fetchAdminStats(): Promise<AdminStats> {
     db.from("commissions").select("commission_amount, owner_payout_amount, advance_amount, status"),
     db.from("support_tickets").select("status"),
     db.from("advertisements").select("status"),
-    // Platform fees + refunds live on payments (0031). select("*") keeps this
-    // working on a pre-0031 database, where the columns simply come back absent.
-    db.from("payments").select("*").in("status", ["payment_success", "refunded"]),
+    // Platform fees + refunds live on payments (0031).
+    //
+    // NAMED COLUMNS, NOT select("*"). The star was there so a pre-0031 database
+    // would simply return the columns it had — but migration 0065 replaced
+    // table-wide SELECT on payments with a named grant list, and SELECT *
+    // requires privilege on EVERY column, so the star now raises 42501 for
+    // everyone including admins (verified against production as an admin
+    // session). It failed into this function's catch, which means the dashboard
+    // would have reported Rs 0 revenue rather than an error — a silent wrong
+    // number on the one screen that exists to state the numbers.
+    //
+    // These four are what the arithmetic below actually reads, and all four are
+    // in 0065's grant list. Any column added here must be added there too.
+    db.from("payments")
+      .select("amount, status, platform_fee_amount, refund_amount")
+      .in("status", ["payment_success", "refunded"]),
   ]);
 
   if (usersRes.error) { handleError("fetchAdminStats(users)", usersRes.error); return empty; }
@@ -537,9 +556,24 @@ export async function fetchAllBookings(statusFilter?: string): Promise<AdminBook
 // ── Payments ──────────────────────────────────────────────────────────────────
 
 export async function fetchAllPayments(statusFilter?: string): Promise<AdminPaymentRow[]> {
-  const supabase = await getSupabaseServerClient();
+    // SERVICE ROLE, for the same reason fetchStuckPayouts uses it — and this time
+  // the withheld columns are on `payments`, not `bookings`.
+  //
+  // Migration 0065 replaced table-wide SELECT on payments with a named column
+  // list, because `authenticated` could otherwise read raw_response (which
+  // carries the CUSTOMER'S EMAIL) and payment_session_id for any booking at
+  // their venue. The gateway handles were deliberately withheld — and this
+  // query embeds one, so it began throwing "permission denied for table
+  // payments" for everyone, admins included. Observed in production runtime
+  // errors at 2026-09-06T17:13Z, from /admin/payments.
+  //
+  // Granting the handles back to `authenticated` would undo exactly what 0065
+  // closed. So this read runs as the service role behind an explicit admin
+  // check that fails closed — a read, not a write, so no audit trail is lost.
+  const viewer = await getProfile();
+  if (viewer?.role !== "admin") return [];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const db = supabase as any;
+  const db = getSupabaseAdminClient() as any;
 
   let query = db
     .from("payments")
@@ -726,9 +760,24 @@ export type RefundQueueRow = {
 };
 
 export async function fetchRefundQueue(): Promise<RefundQueueRow[]> {
-  const supabase = await getSupabaseServerClient();
+    // SERVICE ROLE, for the same reason fetchStuckPayouts uses it — and this time
+  // the withheld columns are on `payments`, not `bookings`.
+  //
+  // Migration 0065 replaced table-wide SELECT on payments with a named column
+  // list, because `authenticated` could otherwise read raw_response (which
+  // carries the CUSTOMER'S EMAIL) and payment_session_id for any booking at
+  // their venue. The gateway handles were deliberately withheld — and this
+  // query embeds one, so it began throwing "permission denied for table
+  // payments" for everyone, admins included. Observed in production runtime
+  // errors at 2026-09-06T17:13Z, from /admin/payments.
+  //
+  // Granting the handles back to `authenticated` would undo exactly what 0065
+  // closed. So this read runs as the service role behind an explicit admin
+  // check that fails closed — a read, not a write, so no audit trail is lost.
+  const viewer = await getProfile();
+  if (viewer?.role !== "admin") return [];
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const db = supabase as any;
+  const db = getSupabaseAdminClient() as any;
 
   const { data, error } = await db
     .from("payments")
