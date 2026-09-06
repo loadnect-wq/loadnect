@@ -38,6 +38,7 @@
 import "server-only";
 
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
+import { SUSPENSION_BAN_DURATION } from "@/lib/constants";
 
 export type DeleteAccountOutcome =
   | { ok: true }
@@ -152,11 +153,32 @@ export async function deleteCustomerAccount(userId: string): Promise<DeleteAccou
   // the part that matters legally; a lingering auth row is a support fix. Doing
   // it first would risk an account that cannot sign in but still carries a name
   // and a phone number.
+  // BAN FIRST, THEN DELETE. The delete used to stand alone and swallow its
+  // error, which left the one state this whole function exists to avoid: a
+  // profile scrubbed and is_active=false, with a LIVE, unbanned auth user
+  // behind it. profiles.is_active is invisible to RLS — verified against the
+  // live database, no policy anywhere references it — so the person's existing
+  // refresh token keeps minting JWTs and PostgREST keeps serving them. The
+  // account would read as closed on every Hallnect screen while still being a
+  // working API credential.
+  //
+  // A ban is cheap, is the same mechanism the admin suspension uses, and is
+  // redundant the moment the delete below succeeds. Its whole value is the path
+  // where the delete does NOT.
+  const { error: banErr } = await db.auth.admin.updateUserById(userId, {
+    ban_duration: SUSPENSION_BAN_DURATION,
+  });
+  if (banErr) {
+    console.error("[account-deletion] auth ban failed:", banErr.message);
+  }
+
   const { error: authErr } = await db.auth.admin.deleteUser(userId);
   if (authErr) {
     console.error("[account-deletion] auth user delete failed:", authErr.message);
-    // Not surfaced as a failure: from the person's point of view their data is
-    // gone, which is what they asked for and what the policy promises.
+    // Still not surfaced as a failure: the identity is already gone, which is
+    // what the person asked for and what the policy promises. The difference
+    // now is that a lingering auth row is inert — banned above — rather than a
+    // usable credential waiting for someone to notice.
   }
 
   return { ok: true };

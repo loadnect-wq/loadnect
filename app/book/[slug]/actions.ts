@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
+import { getCashfreeMode } from "@/lib/cashfree";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import { checkRangeAvailability, type BookingSlot } from "@/lib/availability";
 import { todayInBusinessTz, daysBetweenInclusive } from "@/lib/dates";
@@ -616,7 +617,9 @@ export async function createPaymentSession(
 
   if (!result.ok) return { error: result.error };
 
-  const mode = (process.env.CASHFREE_ENV === "production" ? "production" : "sandbox") as
+  // getCashfreeMode(), not a raw read: it trims, so a stray space in the env
+  // var cannot make the SDK mode disagree with the base URL the server used.
+  const mode = getCashfreeMode() as
     | "sandbox"
     | "production";
 

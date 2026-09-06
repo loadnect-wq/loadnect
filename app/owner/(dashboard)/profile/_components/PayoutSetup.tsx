@@ -12,6 +12,28 @@ import { savePayoutDetails, refreshPayoutStatus } from "@/app/owner/(dashboard)/
 // Cashfree has verified the account no money can move, so this card states the
 // real status rather than implying it is ready.
 //
+// "CONNECTED" MEANS A CASHFREE VENDOR EXISTS, NOT THAT DETAILS WERE TYPED IN,
+// and the two are not the same state — which is what this card used to get
+// wrong. `vendorId`/`kycStatus` are hall_owners.cashfree_vendor_id and
+// .vendor_kyc_status, and app/owner/(dashboard)/actions.ts writes them ONLY
+// after upsertVendor() succeeds — savePayoutDetails returns 'saved_not_live'
+// before that call when Easy Split is off, and refreshPayoutStatus refuses
+// outright. So an owner can have all four details saved and still have no
+// vendor: their bank details are on file, and nobody is paid by machine.
+//
+// That was the whole not-connected branch's copy: "Add the account you want to
+// be paid into" — printed directly above the masked account it was asking for,
+// with no word about how the owner actually gets their money — for an owner
+// whose vendor call never failed. One who HAD hit the platform error did see it
+// persistently, from the amber vendor_last_error block further down, which is
+// DB-backed and survives a reload; and the one-time save notice said it too,
+// though that is React state and is gone on the next one. The gap was the
+// quiet case: details saved, nothing attempted, nothing said.
+// Hence the fourth state below. Nothing here names a schedule or a date: a
+// transfer a person makes by hand has neither, and /owner/revenue marks a
+// booking paid only once its transfer has been recorded (lib/owner.ts
+// mapAdvancePayout treats every state but 'done' as not sent).
+//
 // WHAT THIS REPLACED. The four details Cashfree needs lived in the Business
 // Details form BELOW this card, behind a different submit button, among GST and
 // address fields. This card's button did not save anything: when something was
@@ -43,20 +65,46 @@ function maskAccount(v: string | null): string {
 
 export function PayoutSetup({
   vendorId,
+  easySplitEnabled,
   kycStatus,
   lastError,
   hasBusinessName,
   saved,
 }: {
   vendorId: string | null;
+  /** Whether Hallnect's merchant account has Easy Split switched on at all. */
+  easySplitEnabled: boolean;
   kycStatus: string | null;
   lastError: string | null;
   hasBusinessName: boolean;
   saved: Saved;
 }) {
-  const verified    = kycStatus === "VERIFIED";
-  const awaitingKyc = !!vendorId && !verified;
+  // BOTH HALVES, not just the owner's. A verified vendor is only half of an
+  // automatic payout: lib/owner-payout.ts checks isEasySplitEnabled() FIRST and
+  // takes the not_applicable branch when it is off, whatever the vendor's KYC
+  // says. Gating on kycStatus alone told an owner "paid to you automatically"
+  // for money that a person was in fact going to transfer by hand — and
+  // /owner/revenue, which already gates on all three, said the opposite on the
+  // next screen. Latent today (no owner has a vendor id) and wrong the moment
+  // one does.
+  const kycVerified = kycStatus === "VERIFIED";
+  const verified    = easySplitEnabled && kycVerified;
+  // Tracks the OWNER's KYC only. Deriving it from `verified` would make an
+  // owner Cashfree has already verified read as "awaiting verification" the
+  // moment the platform flag is off — blaming them for our configuration.
+  const awaitingKyc = !!vendorId && !kycVerified;
   const hasAll = Boolean(saved.accountNumber && saved.ifsc && saved.pan && saved.phone);
+  /** Details saved, but no Cashfree vendor was ever created for this owner —
+   *  so no accepted booking can pay out on its own, whatever the reason. Both
+   *  reasons end in a hand transfer: with Easy Split off payOwnerOnAcceptance
+   *  records split_status='not_applicable' and alerts an admin, and with it on
+   *  but no vendor it records 'failed' (lib/owner-payout.ts). Both land in the
+   *  admin payout queue — fetchStuckPayouts drops only rows already 'done', a
+   *  refund in flight, or a booking no longer payable (lib/admin.ts) — where
+   *  the transfer is made by hand and recorded against the booking. */
+  // Also covers the vendor-verified-but-flag-off case, which is a hand transfer
+  // for a platform reason rather than anything the owner still has to do.
+  const savedNotConnected = hasAll && !verified && !awaitingKyc;
 
   // Open straight away when there is nothing on file — the whole point is that
   // the owner does not have to go looking for the fields.
@@ -85,7 +133,11 @@ export function PayoutSetup({
           ? "Payout account connected. Accepted bookings now pay out to you automatically."
           : result.state === "pending_kyc"
             ? "Saved and submitted. Cashfree is verifying your account — nothing more is needed from you."
-            : "Your details are saved. Hallnect is still finishing payout setup with our payment provider; we will switch this on and nothing further is needed from you.",
+            // saved_not_live. Says how the money reaches them meanwhile, because
+            // that is the question this answer used to leave open: "we will
+            // switch this on" told an owner what will happen one day, not how
+            // they get paid for the booking they accept tomorrow.
+            : "Your details are saved. Automatic payouts are not switched on yet — Hallnect transfers your share to this account by hand in the meantime, and nothing further is needed from you.",
       );
     });
   }
@@ -114,14 +166,22 @@ export function PayoutSetup({
           : <Banknote className="mt-0.5 h-5 w-5 shrink-0 text-charcoal-400" />}
 
         <div className="min-w-0 flex-1">
-          <h3 className="font-serif text-sm font-semibold text-charcoal-900">Automatic payouts</h3>
+          {/* The card is named after what it currently DOES. Calling it
+              "Automatic payouts" while no vendor exists advertised a mechanism
+              this owner is not on — and it is the heading, so it is the part
+              that gets believed. */}
+          <h3 className="font-serif text-sm font-semibold text-charcoal-900">
+            {verified || awaitingKyc ? "Automatic payouts" : "Payout account"}
+          </h3>
 
           <p className="mt-0.5 text-xs leading-relaxed text-charcoal-600">
             {verified
               ? "Connected. When you accept a booking, the customer's advance is paid to you automatically — minus Hallnect's commission (2.5% of the hall price), which is deducted at the same time. You never receive a separate commission bill."
               : awaitingKyc
                 ? "Your payout account is registered and awaiting verification by Cashfree. Once verified, accepted bookings pay out automatically."
-                : "Add the account you want to be paid into. Hallnect's commission (2.5% of the hall price) is deducted from the advance, so you never get a separate bill."}
+                : savedNotConnected
+                  ? "Your details are on file. Automatic payouts are not switched on for you yet, so nothing pays out on its own: when you accept a booking, Hallnect transfers your share of the advance to this account by hand. There is no fixed schedule and no promised date — Revenue shows a booking as paid only once its transfer has been made. Hallnect's commission (2.5% of the hall price) is deducted from that advance, so you never get a separate bill."
+                  : "Add the account you want to be paid into. Hallnect's commission (2.5% of the hall price) is deducted from the advance, so you never get a separate bill."}
           </p>
 
           {!hasBusinessName && (

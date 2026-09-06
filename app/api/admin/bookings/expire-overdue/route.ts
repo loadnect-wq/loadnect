@@ -70,10 +70,45 @@ async function pruneOtpAttempts(): Promise<number | null> {
  *
  * It cancels the booking and nothing else, which is correct for this status: a
  * pending_payment booking holds no availability row (applyPaidSideEffects
- * writes those on PAYMENT) and is owed no refund (the Cashfree order is created
- * with the booking's own expires_at as its expiry, so it cannot be paid after
- * the hold lapses). That is why this is a bare RPC and not a second expiry
- * pipeline like the one above.
+ * writes those on PAYMENT), and the SWEEP has no refund to make because the
+ * raced capture is owned by verifyAndApplyPayment on its own path, described
+ * below. Note the careful wording: it is not that no money can exist, only that
+ * settling it is not this function's job. That is why this is a bare RPC and
+ * not a second expiry pipeline like the one above.
+ *
+ * IT DOES NOT FOLLOW THAT A SWEPT BOOKING CAN NEVER BE PAID AFTERWARDS, and
+ * this comment used to say exactly that — that the Cashfree order carries the
+ * booking's own expires_at, so it dies with the hold. Read lib/payments.ts: it
+ * does not. gatewayExpiryFor clamps the order expiry to a FLOOR of now + 20
+ * minutes, because Cashfree rejects outright any order expiring inside 15
+ * minutes. The hold is 20 minutes too (PENDING_PAYMENT_TIMEOUT_MIN), so an
+ * order minted the instant the booking is created does expire with it — but one
+ * minted partway through the hold outlives it by however long the customer took
+ * to reach the payment step. startPaymentForBooking refuses to mint an order at
+ * all once expires_at has passed, so that overhang is bounded by the hold
+ * length. It is not zero.
+ *
+ * SO SAY WHAT HAPPENS WHEN THIS SWEEP LOSES THAT RACE, because it can. The
+ * customer pays, Cashfree captures, and verifyAndApplyPayment finds its
+ * pending_payment → booking_requested update matching zero rows. It re-reads
+ * the booking, sees 'cancelled', and takes the orphaned branch: the FULL
+ * capture (platform fee included) is stamped refund_state='owed' with the
+ * payment left at payment_success — which is what puts the row in the admin
+ * refund queue at all.
+ *
+ * THE CUSTOMER IS CHARGED, AND STAYS CHARGED. Cashfree captured the money and
+ * payments.status is left at payment_success, so it sits with Hallnect until an
+ * admin refunds it by hand from /admin — there is no automatic return.
+ *
+ * AND THEY ARE NOT TOLD A REFUND IS COMING. The only message they receive is
+ * booking.cancelled. refund.initiated is ADMIN-ONLY by design
+ * (lib/notifications/events.ts) because the approved customer template promises
+ * the money in 5-7 working days, which is not true while it is still in
+ * Hallnect's account; the customer-facing template fires on refund.sent, once
+ * the money has actually left. So a customer caught by this race has paid, has
+ * no booking, and has been told nothing about their money — which is precisely
+ * why the manual step must not be forgotten, and why the sweep must never be
+ * made to expire a booking any earlier than the booking's own expires_at.
  *
  * Best-effort like every other step here — see run(). Returns null when the
  * step itself failed, which is deliberately distinct from 0 ("ran, nothing to

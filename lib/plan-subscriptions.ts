@@ -25,6 +25,7 @@ import "server-only";
 
 import crypto from "node:crypto";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
+import { getCashfreeMode } from "@/lib/cashfree";
 import { getCanonicalAppUrl } from "@/lib/app-url";
 import {
   createCashfreeSubscription,
@@ -101,7 +102,8 @@ function planLabelFor(slug: string): string {
 }
 
 function gatewayMode(): "sandbox" | "production" {
-  return process.env.CASHFREE_ENV === "production" ? "production" : "sandbox";
+  // Shared resolver — trims, unlike a raw process.env read.
+  return getCashfreeMode();
 }
 
 export type StartSubscriptionResult =

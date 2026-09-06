@@ -59,6 +59,55 @@ credential (an `MSG91_TEMPLATE_*` id, a sender ID, a feature flag), so it can be
 read back later. `/admin/settings` and `/admin/notifications` surface the values
 the app actually resolved, which is the only way to check a Sensitive one.
 
+## Functions run in Mumbai (`bom1`) — the database does not
+
+`vercel.json` carries `"regions": ["bom1"]`. JSON takes no comments, so the
+reasoning lives here.
+
+**What changed.** Before commit `cc28452` the repo set no `regions` key, so the
+project default applied. Read back from the Vercel deployment API rather than
+assumed: the deployment of the preceding commit `b342161` reports
+`"regions": ["iad1"]` (Washington, D.C.); the deployment of `cc28452` reports
+`"regions": ["bom1"]` (Mumbai). The key sets where **server code** executes —
+route handlers, server components, server actions, the cron endpoints. Static
+assets are served from the global edge network either way; this does not change
+that.
+
+**This is not the co-location win it looks like.** Three locations are involved,
+and only two of them moved closer together:
+
+| | Where | Moved? |
+|---|---|---|
+| Users | Tamil Nadu | fixed |
+| Functions | Mumbai (`bom1`) | **was `iad1`, Washington D.C.** |
+| Postgres | `ap-southeast-2`, Sydney | fixed |
+
+The Supabase region is not a guess — project `kvcrqhmgthixhqrjytay` reports
+`ap-southeast-2`. So every server-to-database round trip still crosses an ocean;
+it crosses the Indian Ocean to Australia now instead of the Pacific and a
+continent to Virginia, but it crosses one.
+
+**Why it is still the right setting.** The user-to-function hop is now domestic
+— Tamil Nadu to Mumbai instead of Tamil Nadu to Virginia — and that hop is paid
+on *every* request, including the ones that touch no database at all. The
+function-to-database hop improves too, just far less dramatically, and a page
+that issues several sequential queries pays that remaining hop several times
+over. No latency figures are quoted here because none were measured; the claim
+is about geography, not milliseconds. If you want numbers, measure them and add
+them.
+
+**The real fix is moving the database.** Pinning the functions treats the
+symptom. A Supabase project in Mumbai itself (`ap-south-1`) would put
+users, functions and Postgres on one side of the world, and would matter more
+than this change did, because the query hop is the one paid repeatedly within a
+single request. That is a project migration with real downtime and is not
+scheduled — it is recorded here so the `bom1` line is not mistaken for the
+problem being solved.
+
+**Do not add a third `crons` entry while editing this file.** The Hobby plan
+caps the project at two and rejects an over-cap `vercel.json` at build time —
+the deployment fails outright. See `docs/SCHEDULED_JOBS.md`.
+
 ## If pushes stop triggering builds
 
 Confirm the git link and that the GitHub App can still see the repo:

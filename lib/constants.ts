@@ -144,3 +144,20 @@ export function getDashboardPath(role: string): string {
     default:               return "/";
   }
 }
+
+/**
+ * How long a suspended or closed account is banned from signing in.
+ *
+ * GoTrue takes a Go duration string whose largest unit is hours, so there is no
+ * "forever" to ask for — an indefinite ban is spelled as a very long one
+ * (~100 years). Reactivation lifts it explicitly with 'none' rather than
+ * waiting it out.
+ *
+ * SHARED ON PURPOSE. Two places ban a user — the admin suspension in
+ * app/admin/actions.ts and the self-service closure in lib/account-deletion.ts
+ * — and both are enforcing the same thing: profiles.is_active is invisible to
+ * RLS, so the ban is what actually stops an existing JWT reaching PostgREST.
+ * A security constant that exists twice is one that drifts, and the drift is
+ * invisible until someone tests the wrong half.
+ */
+export const SUSPENSION_BAN_DURATION = "876000h";

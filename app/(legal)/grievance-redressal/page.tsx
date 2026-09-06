@@ -81,6 +81,16 @@ export default function GrievanceRedressalPage() {
         </dl>
       </div>
 
+      {/* THESE TWO NUMBERS ARE PUBLISHED TWICE AND MUST AGREE. Terms section 16
+          restates them inline ("acknowledgement within 24 hours and resolution
+          within 15 days") rather than only linking here, so this is not the only
+          page a complainant can land on. Both clocks were once live at the same
+          time — 48 hours / one month in the Terms, 24 hours / 15 days here — and
+          a customer chasing a refund reads whichever page they landed on, so we
+          would have been held to the slower promise we had advertised. The
+          shorter pair governs for the reason set out at the top of this file:
+          the intermediary clock is tighter than the e-commerce one and satisfies
+          it by construction. Change one of these two pages and you change both. */}
       <Section title="3. How long we take">
         We will <strong>acknowledge your complaint within 24 hours</strong> of receiving it,
         and <strong>resolve it within 15 days</strong>. Our reply comes from the address

@@ -1,5 +1,6 @@
 import { MessageSquare } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
+import { bookingRef } from "@/lib/notifications/templates";
 import type { MyTicket } from "@/lib/tickets";
 
 type BadgeVar = "success" | "warning" | "secondary" | "destructive" | "default";
@@ -36,11 +37,20 @@ function fmtDateTime(iso: string) {
  * would drift from the row it names. The eight characters are the same prefix
  * the "New support ticket" admin alert already quotes as its reference
  * (lib/notifications/events.ts), so a quoted ref and the alert line up.
- * Dashes are stripped first so a non-canonical id can never yield a ref that
- * ends in one.
+ * bookingRef strips dashes first, so a non-canonical id can never yield a ref
+ * that ends in one; a canonical uuid has no dash in its first eight characters,
+ * which is why it still matches that alert's `id.slice(0, 8)`.
+ *
+ * ONE DERIVATION, AND ONE PREFIX. The eight characters come from bookingRef()
+ * in lib/notifications/templates.ts — pure, importable from anywhere, and kept
+ * that way so it can be shared. Exported because the admin queue prints this
+ * same string (app/admin/support-tickets/page.tsx): the ref is only useful if
+ * the caller reading it out and the admin searching for it are looking at
+ * characters that cannot drift apart, and a second copy of the slice — or of
+ * the "HN-" a caller says out loud — is exactly how they would.
  */
-function ticketRef(id: string): string {
-  return `HN-${id.replace(/-/g, "").slice(0, 8).toUpperCase()}`;
+export function ticketRef(id: string): string {
+  return `HN-${bookingRef(id)}`;
 }
 
 export function TicketList({ tickets }: { tickets: MyTicket[] }) {

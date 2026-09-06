@@ -30,7 +30,7 @@
 import "server-only";
 
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
-import { createCashfreeOrder, getCashfreeOrder } from "@/lib/cashfree";
+import { createCashfreeOrder, getCashfreeOrder, getCashfreeMode } from "@/lib/cashfree";
 import { getCanonicalAppUrl } from "@/lib/app-url";
 
 /** Plan orders are prefixed HNP_ so the shared Cashfree webhook can tell them
@@ -69,7 +69,8 @@ function planOrderExpiry(): string {
 
 /** Which Cashfree environment the browser SDK should open against. */
 function gatewayMode(): "sandbox" | "production" {
-  return process.env.CASHFREE_ENV === "production" ? "production" : "sandbox";
+  // Shared resolver — trims, unlike a raw process.env read.
+  return getCashfreeMode();
 }
 
 /** YYYY-MM-DD for a Date, in UTC. premium_listings.start/end_date are DATEs. */

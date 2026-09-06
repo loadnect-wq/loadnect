@@ -26,10 +26,16 @@
 //
 // AUDIT TRAIL:
 //   • Every VERIFIED event is written to payment_webhook_events before it is
-//     applied and stamped with its outcome afterwards (lib/settlement.ts). That
-//     table is the record of what the gateway said and when — the only evidence
-//     a redelivery happened at all, and the first thing to read when a booking
-//     and Cashfree disagree about money.
+//     applied and stamped with its outcome afterwards (lib/settlement.ts). It
+//     is the first thing to read when a booking and Cashfree disagree about
+//     money: what the gateway said, and what we did about it.
+//   • IT IS ONE ROW PER EVENT, NOT PER DELIVERY, and it holds only the LAST
+//     outcome. A redelivery of the same bytes hashes to the same event_id, so
+//     the insert is a no-op (UNIQUE(provider,event_id)) and the stamp overwrites
+//     what was there. So a first delivery that PROCESSED and a retry that then
+//     FAILED leaves the row reading FAILED, with no trace that it ever worked.
+//     The redelivery itself is visible only in the request log. Say so plainly
+//     rather than let someone read this table as a delivery history.
 //   • The write is strictly best-effort and never changes the response. See
 //     recordSafely() for why that direction is the safe one.
 //
@@ -102,8 +108,20 @@ function webhookEventId(rawBody: string): string {
  * Cashfree echoes customer_name / customer_email / customer_phone back in
  * data.customer_details. All three are already on the booking, so copying them
  * into a second table spreads the same personal data further and buys no
- * evidence: what a dispute turns on is the ids, the amounts and the status, and
- * those all stay.
+ * evidence: what a dispute turns on is the ids, the amounts and the status.
+ *
+ * THIS IS NOT A WHITELIST, and the difference matters. Only customer_details is
+ * removed; everything else Cashfree sends is stored verbatim, including
+ * data.payment.payment_method — which is a nested INSTRUMENT object, not a
+ * string (lib/payments.ts takes Object.keys(...)[0] from it precisely because
+ * of that shape), so whatever the gateway nests under upi / card / netbanking
+ * lands here unfiltered. That is duplication of data we already hold rather
+ * than exposure to a new audience — checked live: payment_webhook_events has
+ * RLS enabled and exactly one policy, wh_admin_all, whose USING and WITH CHECK
+ * are both is_admin(), so a customer or venue owner reads nothing here even
+ * though the table-level SELECT grant to anon/authenticated still exists — but
+ * a future reader must not take this docblock as a promise that the row is
+ * minimal.
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function auditablePayload(payload: any): any {
@@ -187,6 +205,11 @@ function refundIdsFrom(payload: any): { orderId?: string; refundId?: string } {
 type RefundEventOutcome =
   | { state: "applied"; refundState: "completed" | "processing" | "failed" }
   | { state: "untracked"; reason: string }
+  // A refund against an order that IS ours, carrying a refund id we never
+  // issued — i.e. somebody refunded from the Cashfree dashboard. Separated from
+  // 'untracked' because the two need opposite responses: one is genuinely not
+  // our business, the other is money leaving our order behind our back.
+  | { state: "foreign"; reason: string; paymentId: string; bookingId: string | null }
   | { state: "error"; reason: string };
 
 /**
@@ -224,8 +247,38 @@ async function applyRefundStatusEvent(ids: {
     .eq("cashfree_refund_id", refundId)
     .maybeSingle();
 
-  if (error)    return { state: "error", reason: error.message ?? "payment lookup failed" };
-  if (!payment) return { state: "untracked", reason: "no Hallnect refund with that id" };
+  if (error) return { state: "error", reason: error.message ?? "payment lookup failed" };
+
+  if (!payment) {
+    // NOT NECESSARILY SOMEONE ELSE'S REFUND. Before shrugging, ask whether the
+    // ORDER is ours. If it is, this is a refund raised outside Hallnect —
+    // almost certainly from the Cashfree dashboard — and it is the setup for
+    // paying the customer twice: our refund_state stays whatever it was, and
+    // issueRefund's double-spend guards only ever consult our OWN
+    // refund_state/split_status before minting a fresh refund id.
+    //
+    // The row is deliberately not updated from it. We did not issue this refund,
+    // do not know its amount relative to ours, and stamping 'completed' here
+    // would also set payments.status='refunded' on a stranger's say-so. An
+    // admin is told instead, because this needs a human to reconcile.
+    const orderId = ids.orderId;
+    if (orderId) {
+      const { data: byOrder } = await db
+        .from("payments")
+        .select("id, booking_id")
+        .eq("cashfree_order_id", orderId)
+        .maybeSingle();
+      if (byOrder) {
+        return {
+          state: "foreign",
+          reason: "refund raised outside Hallnect on one of our orders",
+          paymentId: byOrder.id,
+          bookingId: byOrder.booking_id ?? null,
+        };
+      }
+    }
+    return { state: "untracked", reason: "no Hallnect refund with that id" };
+  }
 
   // Our stored order id, not the body's: the row already knows which order this
   // refund belongs to, and that is one fewer field taken on the sender's word.
@@ -345,6 +398,24 @@ export async function POST(request: Request) {
         console.error(`[cashfree-webhook] refund not settled — asking Cashfree to retry`);
         await markSafely(eventId, "FAILED", outcome.reason);
         return NextResponse.json({ ok: false, state: "refund_unresolved" }, { status: 503 });
+      }
+      if (outcome.state === "foreign") {
+        // 200, because retrying changes nothing — but loudly, because this is
+        // the one refund event that can cost money twice.
+        console.error(
+          `[cashfree-webhook] refund on our order that we did not issue payment=${outcome.paymentId}`,
+        );
+        await notifyAdminOperational({
+          key:       `refund.foreign:${outcome.paymentId}`,
+          eventType: "refund.foreign",
+          event:     "A refund was issued outside Hallnect",
+          // Under MAX_VARIABLE_LENGTH (60) or DLT truncates the tail away.
+          details:   "Raised in Cashfree, not by us. Do not refund again.",
+          reference: "Reconcile it in /admin/payments",
+          bookingId: outcome.bookingId ?? undefined,
+        }).catch(() => {});
+        await markSafely(eventId, "IGNORED", outcome.reason);
+        return NextResponse.json({ ok: true, ignored: true, event: eventType });
       }
       if (outcome.state === "untracked") {
         // A refund Hallnect did not issue (e.g. raised in the Cashfree

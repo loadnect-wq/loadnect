@@ -459,11 +459,15 @@ export default async function HomePage() {
           crawler. This block sits outside both, so the copy that explains what
           Hallnect is — and the links into the city pages — are always crawlable.
           ════════════════════════════════════════════════════════ */}
-      {/* container-app expanded inline so the lg override can widen it. This
-          block is now the desktop FAQ as well as the crawlable copy, and
-          container-app's max-w-lg left five questions in a 512px column on a
-          1440px screen. Same measure on mobile, more room once there is room. */}
-      <section className="mx-auto w-full max-w-lg border-t border-border px-4 py-10 sm:px-6 lg:max-w-3xl">
+      {/* lg:max-w-3xl because this block is now the desktop FAQ as well as the
+          crawlable copy, and container-app's max-w-lg left five questions in the
+          mobile measure on a desktop screen. Same measure on mobile, more room
+          once there is room. Override the utility, never re-type it: the class
+          list lives in app/globals.css and a hand-copy silently stops tracking
+          it. halls (lg:max-w-7xl), wedding-halls/[city] (lg:max-w-7xl) and
+          booking/[id]/status (lg:max-w-xl) all override it the same way — every
+          one of them WIDENS, since max-w-lg is 32rem and even xl is 36rem. */}
+      <section className="container-app border-t border-border py-10 lg:max-w-3xl">
         <h2 className="font-serif text-xl font-bold text-charcoal-900">
           Wedding halls and marriage halls across Tamil Nadu
         </h2>

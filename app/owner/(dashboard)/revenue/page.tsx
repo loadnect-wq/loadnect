@@ -68,6 +68,27 @@ export default async function OwnerRevenuePage() {
     ownerRow.payout_account_number && ownerRow.payout_ifsc && ownerRow.pan_number,
   );
 
+  // THE FLAG ALONE IS NOT READINESS — this owner also has to be a vendor
+  // Cashfree will settle to. Both halves are required by the payout code
+  // itself: payOwnerOnAcceptance refuses with "Owner has not completed
+  // Cashfree vendor onboarding" when cashfree_vendor_id is null, and
+  // splitOrderToVendor refuses again ('vendor_not_active') unless Cashfree
+  // reports the vendor ACTIVE — which is exactly what vendor_kyc_status
+  // 'VERIFIED' records (lib/easy-split.ts readVendorStatus). /admin/settings
+  // states the same rule to admins.
+  //
+  // Keying the sentence below on the flag alone described a gateway settlement
+  // for owners no split can reach. Checked against production on 2026-09-06:
+  // no hall_owners row has a cashfree_vendor_id at all, and the one owner who
+  // has submitted bank details carries vendor_last_error "Merchant not enabled
+  // with easy splits" from their 2026-08-27 attempt — Cashfree has not
+  // switched the product on for Hallnect's merchant account. Every payout in
+  // that state is a transfer a person makes.
+  const automaticPayoutsLive =
+    isEasySplitEnabled() &&
+    Boolean(ownerRow.cashfree_vendor_id) &&
+    ownerRow.vendor_kyc_status === "VERIFIED";
+
   const SETTLED_STATUSES = ["paid", "paid_out", "collected"];
   const totalCommissionDeducted = commissions
     .filter((c) => SETTLED_STATUSES.includes(c.status))
@@ -133,12 +154,15 @@ export default async function OwnerRevenuePage() {
         {/* Payouts — the question this page could not answer before: has
             Hallnect actually sent me my money?
 
-            The HOW is read from the same flag the payout code obeys, not
-            written as a constant, because the two sentences describe genuinely
-            different mechanics and the wrong one is a lie either way. With
-            automatic settlement off — which is how it runs today — every payout
-            is a transfer a person makes by hand, and saying "we'll settle it
-            automatically" would describe something that never happens.
+            The HOW is read from the state the payout code obeys, not written
+            as a constant, because the two sentences describe genuinely
+            different mechanics and the wrong one is a lie either way. It takes
+            both halves — the Easy Split flag AND a Cashfree vendor this owner
+            can actually be settled to — because a split needs both to run
+            (see automaticPayoutsLive above). While either is missing, every
+            payout is a transfer a person makes by hand, and saying "we'll
+            settle it automatically" would describe something that never
+            happens.
 
             Neither branch names a date. Nothing in the system knows one: a hand
             transfer has no schedule at all, and a gateway settlement lands on
@@ -158,7 +182,7 @@ export default async function OwnerRevenuePage() {
             </p>
             <p className="mt-2 text-[11px] text-charcoal-500">
               Your advance becomes payable once you accept a booking.{" "}
-              {isEasySplitEnabled() ? (
+              {automaticPayoutsLive ? (
                 <>
                   Hallnect assigns it to your payout account through the payment gateway; when it
                   reaches your bank is the gateway&apos;s settlement cycle, which Hallnect cannot
@@ -186,8 +210,12 @@ export default async function OwnerRevenuePage() {
               payout_upi, which no payout uses: Cashfree settles owner payouts
               to a bank account, so an owner with a UPI id and no bank details
               saw no prompt at all and could not be paid. */}
+          {/* "so accepted bookings pay out to you" promised the automatic
+              mechanism as the reward for filling the form. It is not what
+              saving these details switches on — Hallnect needs the account to
+              transfer to it either way, which is the honest reason to add it. */}
           {!payoutReady && (
-            <> <Link href="/owner/profile" className="font-semibold underline">Set up your payout account</Link> so accepted bookings pay out to you.</>
+            <> <Link href="/owner/profile" className="font-semibold underline">Add your payout account</Link> so Hallnect can transfer your advance to you.</>
           )}
         </div>
 

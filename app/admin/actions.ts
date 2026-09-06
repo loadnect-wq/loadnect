@@ -19,6 +19,7 @@ import {
   parseSafe,
 } from "@/lib/validation/schemas";
 import { sanitizeError } from "@/lib/errors";
+import { SUSPENSION_BAN_DURATION } from "@/lib/constants";
 import { recordAdminAction } from "@/lib/audit";
 import { createCashfreeRefund, getCashfreeRefund, classifyRefundStatus } from "@/lib/cashfree";
 import { payOwnerOnAcceptance } from "@/lib/owner-payout";
@@ -353,12 +354,9 @@ export async function verifyOwnerRow(ownerRowId: string): Promise<ActionResult> 
 /**
  * How long a suspended account is banned for in GoTrue.
  *
- * There is no "forever": the ban duration is a Go duration string and the
- * largest unit it accepts is hours, so an indefinite ban has to be spelled as a
- * very long one. ~100 years. Reactivation lifts it explicitly with 'none'
- * rather than waiting for it.
+ * The duration itself lives in lib/constants.ts because lib/account-deletion.ts
+ * bans for the same reason, and a security constant kept in two places drifts.
  */
-const SUSPENSION_BAN_DURATION = "876000h";
 
 export async function toggleUserActive(
   profileId: string,

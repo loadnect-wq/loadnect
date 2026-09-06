@@ -101,6 +101,61 @@ describe("buildMetadata", () => {
   });
 });
 
+describe("clamp", () => {
+  // Written as an ESCAPE, not the character, so a reviewer can never confuse
+  // U+2026 with three periods — the whole point of these tests is which
+  // character lands last. (It said "written as an escape" while holding the
+  // raw glyph, which is the one place that lie costs something.)
+  const ELLIPSIS = "…";
+
+  // A real-shaped venue description: the sentence break falls mid-string, which
+  // is the arrangement that produced the reported bug.
+  const DESCRIPTION =
+    "A banquet hall with covered parking, a lawn and a pool. Seats 800 guests for a reception.";
+
+  it("does not leave the sentence's full stop sitting in front of the ellipsis", () => {
+    // The reported case. Clipping here lands exactly on "…a pool." and the
+    // naive result was "…a pool.…", which reads as a typo in the one line of
+    // Hallnect a stranger sees in the SERP. The stop goes with what was dropped.
+    const out = clamp(DESCRIPTION, 57);
+    expect(out).toBe(`A banquet hall with covered parking, a lawn and a pool${ELLIPSIS}`);
+    expect(out).not.toContain(`pool.${ELLIPSIS}`);
+  });
+
+  it("never returns more characters than asked for, at any cut point", () => {
+    // The strip runs AFTER the slice, so it can only shorten — but the ellipsis
+    // is appended after that, and it is the append that could push back over the
+    // limit. Sweeping every cut point covers the boundary rather than guessing
+    // which one is interesting. 158 is the description budget buildMetadata uses.
+    for (let max = 10; max <= 158; max++) {
+      expect(clamp(DESCRIPTION, max).length).toBeLessThanOrEqual(max);
+    }
+  });
+
+  it("never hands Google a bare ellipsis", () => {
+    // If the strip ate everything, returning "…" alone would be a description
+    // that says nothing at all. Punctuation-only input is the shape that gets
+    // closest to it.
+    for (const text of ["!".repeat(20), ".".repeat(20), "—".repeat(20)]) {
+      for (const max of [10, 12, 65, 158]) {
+        expect(clamp(text, max)).not.toBe(ELLIPSIS);
+      }
+    }
+  });
+
+  it("falls back to the raw slice when the tail was punctuation all the way down", () => {
+    // Covers the `tidy || kept.trimEnd()` fallback: every kept character is in
+    // the strip set, so `tidy` is "" and the raw slice is what must come back.
+    // Nine kept characters plus the ellipsis is the full budget of ten.
+    expect(clamp("!".repeat(20), 10)).toBe(`${"!".repeat(9)}${ELLIPSIS}`);
+  });
+
+  it("returns short text untouched, with no ellipsis bolted on", () => {
+    expect(clamp("Wedding halls in Madurai", 65)).toBe("Wedding halls in Madurai");
+    expect(clamp("  Wedding   halls  ", 65)).toBe("Wedding halls");
+  });
+});
+
 describe("noindexMetadata", () => {
   it("blocks indexing AND following for private pages", () => {
     const m = noindexMetadata("Admin");

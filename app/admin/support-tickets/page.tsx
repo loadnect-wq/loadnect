@@ -3,6 +3,7 @@ import Link from "next/link";
 import { MessageSquare, Mail } from "lucide-react";
 import { fetchAllTickets, fetchContactMessages } from "@/lib/admin";
 import { Badge } from "@/components/ui/Badge";
+import { ticketRef } from "@/components/support/TicketList";
 import { AdminPageHeader } from "../_components/AdminPageHeader";
 import { TicketReplyForm } from "./_components/TicketReplyForm";
 import { MarkContactReadButton } from "./_components/MarkContactReadButton";
@@ -129,7 +130,25 @@ export default async function AdminTicketsPage({ searchParams }: Props) {
                         From <strong className="text-charcoal-700">{t.user_name ?? "—"}</strong>
                         <span className="text-charcoal-400"> ({t.user_email ?? "—"})</span>
                       </p>
-                      <p className="text-[10px] text-charcoal-400">{fmtDateTime(t.created_at)}</p>
+                      {/* THE REF THE CALLER READS OUT. The customer sees this
+                          exact string on their own ticket
+                          (components/support/TicketList.tsx) and the "New
+                          support ticket" admin alert quotes the same eight
+                          characters (lib/notifications/events.ts),
+                          but this queue printed no id at all — an admin on the
+                          phone to "HN-3F9A21C0" had nothing to match it
+                          against, only a subject line two tickets can share.
+                          Imported rather than re-derived so the two screens
+                          cannot drift.
+                          There is still no search here: fetchAllTickets takes a
+                          status filter and nothing else, so this is matched by
+                          eye or by the browser's find within the 200 newest
+                          tickets of the selected filter. */}
+                      <p className="text-[10px] text-charcoal-400">
+                        <span className="font-mono tracking-wide text-charcoal-600">{ticketRef(t.id)}</span>
+                        {" · "}
+                        {fmtDateTime(t.created_at)}
+                      </p>
                     </div>
                     <div className="flex flex-wrap items-center gap-1.5">
                       <span className={`rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-wide ${prioStyle}`}>

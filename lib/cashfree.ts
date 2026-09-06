@@ -32,15 +32,34 @@ type CashfreeConfig = {
 };
 
 /**
+ * The gateway environment ALONE, without requiring the credentials.
+ *
+ * Three call sites decide which mode to hand the browser SDK — the booking
+ * checkout and both subscription paths — and all three USED TO read
+ * `process.env.CASHFREE_ENV === "production"` directly. Unlike getCashfreeConfig,
+ * which goes through optionalEnv and therefore TRIMS, a raw read is defeated by
+ * a trailing space. The consequence was not cosmetic: the server would talk to
+ * api.cashfree.com while telling the browser to open the sandbox SDK, so
+ * checkout fails with a session that SDK cannot use. They all call this now.
+ *
+ * Split out rather than reusing getCashfreeConfig because that one requires the
+ * app id and secret and throws without them, which is wrong for a caller that
+ * only wants to know which SDK to load.
+ */
+export function getCashfreeMode(): CashfreeEnv {
+  return (optionalEnv("CASHFREE_ENV", "sandbox") === "production"
+    ? "production"
+    : "sandbox") as CashfreeEnv;
+}
+
+/**
  * Reads + validates Cashfree credentials from the environment.
  * Throws a clear error if CASHFREE_APP_ID / CASHFREE_SECRET_KEY are missing.
  */
 export function getCashfreeConfig(): CashfreeConfig {
   const appId     = requireEnv("CASHFREE_APP_ID");
   const secretKey = requireEnv("CASHFREE_SECRET_KEY");
-  const env       = (optionalEnv("CASHFREE_ENV", "sandbox") === "production"
-    ? "production"
-    : "sandbox") as CashfreeEnv;
+  const env       = getCashfreeMode();
 
   const baseUrl = env === "production"
     ? "https://api.cashfree.com/pg"
