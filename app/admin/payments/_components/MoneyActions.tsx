@@ -59,11 +59,15 @@ const BTN =
   "inline-flex min-h-[36px] items-center justify-center gap-1.5 rounded-lg px-3 text-xs font-semibold transition-colors disabled:opacity-60";
 
 export function IssueRefundButton({
-  bookingId, amountLabel, state,
-}: { bookingId: string; amountLabel: string; state: string }) {
+  paymentId, bookingId, amountLabel, state,
+}: { paymentId: string; bookingId: string; amountLabel: string; state: string }) {
   const isRetry = state === "failed";
+  // paymentId, not bookingId: a booking can carry TWO captures — the customer
+  // was told the first had not landed and paid again — and only one of them is
+  // the one owed back. bookingId stays for the confirmation copy, which is what
+  // the admin recognises the row by.
   const { pending, error, done, fire } = useMoneyAction(
-    () => issueRefund(bookingId),
+    () => issueRefund(paymentId),
     `Send ${amountLabel} back to the customer for booking ${bookingId.slice(0, 8).toUpperCase()}?\n\nThis moves real money and cannot be undone from Hallnect.`,
   );
 
@@ -79,8 +83,8 @@ export function IssueRefundButton({
   );
 }
 
-export function SyncRefundButton({ bookingId }: { bookingId: string }) {
-  const { pending, error, done, fire } = useMoneyAction(() => syncRefundStatus(bookingId));
+export function SyncRefundButton({ paymentId }: { paymentId: string }) {
+  const { pending, error, done, fire } = useMoneyAction(() => syncRefundStatus(paymentId));
   return (
     <div>
       <button type="button" onClick={fire} disabled={pending}

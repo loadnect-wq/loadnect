@@ -1379,11 +1379,33 @@ function refundIdFor(bookingId: string): string {
  * The amount comes from payments.refund_amount, computed at cancellation time
  * by lib/refunds.ts from the published policy. This action cannot change it.
  */
-export async function issueRefund(bookingId: string): Promise<ActionResult> {
+/**
+ * Sends a refund for ONE payment row, identified by its own id.
+ *
+ * IT TAKES A PAYMENT ID, NOT A BOOKING ID, AND THAT IS THE WHOLE FIX.
+ *
+ * This used to resolve the row itself: newest payment on the booking with
+ * status='payment_success'. On a DOUBLE CAPTURE that finds the wrong one. When
+ * a customer is told their first payment did not land and pays again, both are
+ * captured; verifyAndApplyPayment stamps the duplicate refund_state='owed' with
+ * the full amount but CANNOT stamp it payment_success, because
+ * uq_payment_success_per_booking permits one per booking. So the duplicate sits
+ * at status='created'.
+ *
+ * fetchRefundQueue has no status filter, so the duplicate DID appear in the
+ * admin queue — and clicking Refund on it resolved the OTHER row, the
+ * legitimate payment_success one, which has nothing owed. The customer's second
+ * payment was visible, listed, clickable, and unrefundable from inside the
+ * product.
+ *
+ * Selecting by the id the queue already carries removes the guessing entirely:
+ * the row the admin clicked is the row that gets refunded.
+ */
+export async function issueRefund(paymentId: string): Promise<ActionResult> {
   const actor = await requireAdminActor();
   if (!actor.ok) return { error: actor.error };
 
-  const idErr = requireUuid(bookingId, "booking id");
+  const idErr = requireUuid(paymentId, "payment id");
   if (idErr) return { error: idErr };
 
   const admin = getSupabaseAdminClient();
@@ -1392,14 +1414,23 @@ export async function issueRefund(bookingId: string): Promise<ActionResult> {
 
   const { data: payment } = await db
     .from("payments")
-    .select("id, cashfree_order_id, refund_amount, refund_state, cashfree_refund_id, status, split_status, split_owner_amount")
-    .eq("booking_id", bookingId)
-    .eq("status", "payment_success")
-    .order("created_at", { ascending: false })
-    .limit(1)
+    .select("id, booking_id, cashfree_order_id, refund_amount, refund_state, cashfree_refund_id, status, split_status, split_owner_amount")
+    .eq("id", paymentId)
     .maybeSingle();
 
-  if (!payment) return { error: "No successful payment found for this booking." };
+  if (!payment) return { error: "That payment no longer exists. Reload the queue." };
+
+  // Derived from the row rather than trusted from the caller, so the audit
+  // entry and the customer notification below can never describe a different
+  // booking from the one whose money is actually moving.
+  const bookingId: string = payment.booking_id;
+
+  // A capture is required, but NOT status='payment_success' — see the docblock.
+  // A duplicate capture is real money that was taken and is genuinely owed
+  // back; refusing it here is what made it unrefundable in the first place.
+  if (!payment.cashfree_order_id) {
+    return { error: "That payment was never sent to the gateway, so there is nothing to refund." };
+  }
   if (payment.refund_state === "completed") return { error: "This refund has already been paid." };
 
   // THE OWNER'S SHARE MAY ALREADY BE GONE. A settled Easy Split cannot be
@@ -1504,26 +1535,29 @@ export async function issueRefund(bookingId: string): Promise<ActionResult> {
  * later, so without this a refund sits "processing" forever and an admin cannot
  * tell a slow one from a stuck one.
  */
-export async function syncRefundStatus(bookingId: string): Promise<ActionResult> {
+export async function syncRefundStatus(paymentId: string): Promise<ActionResult> {
   const actor = await requireAdminActor();
   if (!actor.ok) return { error: actor.error };
-  const idErr = requireUuid(bookingId, "booking id");
+  const idErr = requireUuid(paymentId, "payment id");
   if (idErr) return { error: idErr };
 
   const admin = getSupabaseAdminClient();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = admin as any;
 
+  // Keyed on the payment for the same reason issueRefund is: a booking can hold
+  // two captures, and "any row on this booking with a refund id" picks between
+  // them arbitrarily — so the admin could poll one refund's status and be shown
+  // the other's.
   const { data: payment } = await db
     .from("payments")
-    .select("id, cashfree_order_id, cashfree_refund_id, refund_state")
-    .eq("booking_id", bookingId)
-    .not("cashfree_refund_id", "is", null)
-    .limit(1)
+    .select("id, booking_id, cashfree_order_id, cashfree_refund_id, refund_state")
+    .eq("id", paymentId)
     .maybeSingle();
 
-  if (!payment?.cashfree_refund_id || !payment.cashfree_order_id) {
-    return { error: "No refund has been issued for this booking." };
+  if (!payment) return { error: "That payment no longer exists. Reload the queue." };
+  if (!payment.cashfree_refund_id || !payment.cashfree_order_id) {
+    return { error: "No refund has been issued for this payment." };
   }
 
   const res = await getCashfreeRefund(payment.cashfree_order_id, payment.cashfree_refund_id);

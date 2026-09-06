@@ -52,6 +52,19 @@ export type StartPaymentInput = {
   customerPhone: string;
 };
 
+/**
+ * How long a payment_session_id is treated as reusable, in minutes.
+ *
+ * Matches lib/plan-payments.ts, and for the same reason: a session goes stale
+ * well before its Cashfree order leaves ACTIVE, so "the order is still active"
+ * is NOT sufficient grounds to hand the session back. Past this window a new
+ * order is minted instead.
+ *
+ * It also sits comfortably inside PENDING_PAYMENT_TIMEOUT_MIN (20), so a reused
+ * session can never outlive the booking hold it is paying for.
+ */
+const SESSION_REUSE_WINDOW_MIN = 10;
+
 export type StartPaymentResult =
   | { ok: true; paymentSessionId: string; orderId: string; amount: number }
   | { ok: false; error: string };
@@ -283,6 +296,78 @@ export async function startPaymentForBooking(
   const phone = normalisePhone(input.customerPhone);
   if (phone.length < 10) {
     return { ok: false, error: "A valid 10-digit phone number is required for payment." };
+  }
+
+  // 5b. REUSE AN IN-FLIGHT ORDER RATHER THAN MINTING A SECOND PAYABLE ONE.
+  //
+  // This path checked only that the booking was still pending_payment and then
+  // unconditionally built a new order id (salted with Date.now()) and inserted a
+  // new payments row. So every retry — a double-click, a back button, a customer
+  // who closed the Cashfree tab and pressed Pay again — opened another payable
+  // order against the same booking. Two live orders, either payable, and the
+  // duplicate-capture handling further down exists precisely because both
+  // sometimes are.
+  //
+  // lib/plan-payments.ts already solved this for the subscription path. Same
+  // shape here, and the same three outcomes, because the same three things can
+  // be true of an order we did not finish watching.
+  const { data: inFlight } = await db
+    .from("payments")
+    .select("id, cashfree_order_id, payment_session_id, created_at")
+    .eq("booking_id", input.bookingId)
+    .eq("status", "created")
+    .not("payment_session_id", "is", null)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (inFlight?.cashfree_order_id && inFlight.payment_session_id) {
+    const ageMs = Date.now() - Date.parse(inFlight.created_at);
+    const fresh = Number.isFinite(ageMs) && ageMs < SESSION_REUSE_WINDOW_MIN * 60_000;
+    const live = await getCashfreeOrder(inFlight.cashfree_order_id);
+
+    // ACTIVE and recent — hand back the same session.
+    //
+    // THE FRESHNESS CHECK IS LOAD-BEARING, and it is the trap this codebase has
+    // already been bitten by once: a payment_session_id goes stale long before
+    // its order leaves ACTIVE, and handing a stale one to the SDK looks exactly
+    // like a broken Pay button — checkout navigates to Cashfree, Cashfree
+    // answers payment_session_id_invalid, and nothing is logged here at all.
+    if (live.ok && live.data.order_status === "ACTIVE" && fresh) {
+      return {
+        ok: true,
+        paymentSessionId: inFlight.payment_session_id,
+        orderId:          inFlight.cashfree_order_id,
+        amount:           chargeTotal,
+      };
+    }
+
+    // ALREADY PAID and the webhook has not landed yet, so our row still says
+    // 'created' while the customer's money is gone. Minting a fresh order here
+    // is how a customer pays twice for one booking. Apply it instead.
+    if (live.ok && live.data.order_status === "PAID") {
+      await verifyAndApplyPayment(inFlight.cashfree_order_id);
+      return {
+        ok: false,
+        error: "This booking has already been paid for — we are confirming it now. Refresh in a moment.",
+      };
+    }
+
+    // COULD NOT READ THE STATUS of a RECENT order. We do not know whether it was
+    // paid, so we must not open another payable one: failing closed costs a
+    // retry, failing open can charge the customer twice.
+    //
+    // Bounded by freshness deliberately. Refusing on every unreadable order
+    // regardless of age would be a permanent dead end for that booking.
+    if (!live.ok && fresh) {
+      console.error("[payments] could not read in-flight order:", live.error);
+      return {
+        ok: false,
+        error: "We could not confirm your last payment attempt. Please wait a moment and try again.",
+      };
+    }
+    // Otherwise the order is dead (EXPIRED, TERMINATED, or unreadable and old
+    // enough that it cannot still be payable) — fall through and mint a new one.
   }
 
   // 6. Create the Cashfree order for the FULL customer total (advance + fee).

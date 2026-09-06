@@ -105,9 +105,10 @@ export default async function AdminPaymentsPage({ searchParams }: Props) {
                       {r.error && <p className="mt-0.5 text-red-700">{r.error}</p>}
                       <div className="mt-2 flex flex-wrap gap-2">
                         {r.state === "processing" ? (
-                          <SyncRefundButton bookingId={r.booking_id} />
+                          <SyncRefundButton paymentId={r.payment_id} />
                         ) : (
                           <IssueRefundButton
+                            paymentId={r.payment_id}
                             bookingId={r.booking_id}
                             amountLabel={formatPrice(r.amount)}
                             state={r.state}
