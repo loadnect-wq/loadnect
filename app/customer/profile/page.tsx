@@ -6,6 +6,7 @@ import { requireRole } from "@/lib/auth";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { AppHeader } from "@/components/app/AppHeader";
 import { ProfileEditForm } from "./_components/ProfileEditForm";
+import { CloseAccount } from "./_components/CloseAccount";
 
 export const metadata: Metadata = { title: "Profile" };
 
@@ -103,6 +104,11 @@ export default async function ProfilePage() {
             View full settings
           </Link>
         </div>
+
+        {/* Last on the page, and collapsed. It sits deliberately far from
+            "Sign out" — the two are one careless tap apart and only one of them
+            is reversible. */}
+        <CloseAccount />
       </div>
     </div>
   );

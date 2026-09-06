@@ -260,3 +260,39 @@ export async function updateProfile(data: {
   revalidatePath("/customer");
   return { success: true };
 }
+
+// ── Close account ─────────────────────────────────────────────────────────────
+
+/**
+ * Closes the caller's own account.
+ *
+ * Takes NO user id: it reads the caller from the session, so there is no
+ * parameter an attacker could point at somebody else's account. This is the one
+ * action in the app that destroys data, and the whole of its authorisation is
+ * "you are signed in as the person being deleted".
+ *
+ * The confirmation phrase is checked server-side too. The dialog asks for it,
+ * but a server action is directly invocable and a client-only check is
+ * decoration — this is irreversible, so the guard belongs where it cannot be
+ * skipped.
+ */
+export async function deleteMyAccount(confirmation: string): Promise<ActionResult> {
+  const supabase = await getSupabaseServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Not authenticated" };
+
+  if (confirmation.trim().toUpperCase() !== "DELETE") {
+    return { error: 'Type DELETE to confirm you want to close this account.' };
+  }
+
+  const { deleteCustomerAccount } = await import("@/lib/account-deletion");
+  const result = await deleteCustomerAccount(user.id);
+  if (!result.ok) return { error: result.error };
+
+  // Drop the session so the browser is not left holding a token for an account
+  // that no longer exists.
+  await supabase.auth.signOut();
+
+  revalidatePath("/");
+  return { success: true };
+}

@@ -56,20 +56,31 @@ export default function PrivacyPage() {
         We use <strong>essential cookies only</strong> — they keep you signed in and maintain your session while you browse and book. We do not use analytics, advertising or tracking cookies, and we do not run any third-party measurement or advertising scripts on this site. Because every cookie we set is strictly necessary, there is no cookie consent banner and nothing to opt out of. You can block or clear cookies in your browser settings, but doing so will sign you out and prevent you from booking.
       </Section>
 
-      {/* The old text said "after account deletion, account details are removed within 30
-          days" — which reads as if the platform has a delete-account button. It does not:
-          there is no such control in the customer or owner profile, and no code path
-          anywhere deletes a user. Describing the manual email route is the only honest
-          version until that feature is actually built. If you build it, say so here and
-          point at it; until then do not imply a self-service control exists. */}
+      {/* KEEP THIS IN STEP WITH THE PRODUCT. This section previously promised
+          "account details removed within 30 days", implying a self-service
+          control that did not exist; it was rewritten to describe the email
+          route, which was the only honest version at the time. The control now
+          exists (app/customer/profile/_components/CloseAccount.tsx), so the
+          stronger statement is true again — but if that control is ever removed
+          or broken, this text comes back down with it. */}
       <Section title="7. Data Retention and Deletion">
-        We retain your personal data for as long as your account is active. There is currently no delete-account button in the app — to close your account, email{" "}
+        We retain your personal data for as long as your account is active. You can close
+        your account yourself from <strong>Profile &rarr; Close my account</strong>: your name,
+        email, phone number and saved venues are permanently removed, you can no longer
+        sign in, and the account cannot be restored. If you would rather we did it, email{" "}
         <a href={`mailto:${CONTACT.email}`} className="text-maroon-600 hover:underline">{CONTACT.email}</a>{" "}
-        from the address registered on the account, and we will verify the request and remove your account details within 30 days. Booking and transaction records are retained for 7 years to comply with Indian financial recordkeeping laws; these survive account closure and cannot be deleted on request, because the law requires us to keep them.
+        from the address registered on the account and we will verify the request and act
+        on it within 30 days. Booking and transaction records are retained for 7 years to
+        comply with Indian financial recordkeeping laws; these survive account closure and
+        cannot be deleted on request, because the law requires us to keep them — but once
+        the account is closed nothing identifying you remains attached to them. Reviews you
+        left stay visible without your name. An account with a booking in progress or a
+        refund still being paid cannot be closed until those are settled, because both
+        need a reachable customer.
       </Section>
 
       <Section title="8. Your Rights">
-        Under the <strong>Digital Personal Data Protection Act, 2023</strong> you may ask us for a summary of the personal data we hold about you and the parties it has been shared with; ask us to correct, complete or update inaccurate data; ask us to erase personal data we no longer need for the purpose you gave it for; and nominate another person to exercise these rights on your behalf if you die or become incapacitated. Erasure does not extend to the booking and transaction records we are legally required to retain (see section 7). Except for the SMS updates toggle in your profile, which you can switch off yourself at any time, these requests are handled by email rather than by an in-app control: write to{" "}
+        Under the <strong>Digital Personal Data Protection Act, 2023</strong> you may ask us for a summary of the personal data we hold about you and the parties it has been shared with; ask us to correct, complete or update inaccurate data; ask us to erase personal data we no longer need for the purpose you gave it for; and nominate another person to exercise these rights on your behalf if you die or become incapacitated. Erasure does not extend to the booking and transaction records we are legally required to retain (see section 7). Closing your account and switching off SMS updates are both self-service in your profile; the remaining requests are handled by email: write to{" "}
         <a href={`mailto:${CONTACT.email}`} className="text-maroon-600 hover:underline">{CONTACT.email}</a>{" "}
         and we will respond within 30 days. If you are not satisfied with our response, you may escalate to our{" "}
         <a href="/grievance-redressal" className="text-maroon-600 hover:underline">Grievance Officer</a>, and after that to the Data Protection Board of India.
