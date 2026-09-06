@@ -201,7 +201,7 @@ export async function POST(request: Request) {
       applied += count ?? 0;
     }
 
-    console.log(`[msg91-webhook] ${reports.length} report(s), ${applied} row(s) updated`);
+    console.info(`[msg91-webhook] ${reports.length} report(s), ${applied} row(s) updated`);
   } catch (e) {
     // Never 500 at MSG91: it would retry this callback for hours. The report is
     // advisory — the outbox row is already correct about what WE did.

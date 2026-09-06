@@ -362,7 +362,7 @@ export async function attemptSend(
   // ── Not-configured modes: record precisely why, keep the app working ───────
   const templateId = templateIdFor(templateKey);
   const skip = async (reason: string) => {
-    console.log(`[sms] ${reason} — notification recorded, not sent`);
+    console.info(`[sms] ${reason} — notification recorded, not sent`);
     await db.from("notifications")
       .update({ status: "skipped", error_message: reason, provider_template_id: templateId })
       .eq("id", notificationId);
