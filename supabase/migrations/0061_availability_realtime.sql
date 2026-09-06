@@ -10,8 +10,25 @@
 -- notes on every change.
 alter publication supabase_realtime add table public.availability;
 
--- REPLICA IDENTITY FULL so a DELETE carries hall_id in the payload. Without it a
--- delete arrives with only the primary key — and releasing a date is exactly the
--- event a watching customer must not miss, with no way to tell whether the
--- deleted row belonged to the hall on screen.
+-- REPLICA IDENTITY FULL. The justification first written here was WRONG, and the
+-- live test disproved it: it does NOT make a DELETE carry hall_id in the
+-- payload. Supabase cannot evaluate RLS against a deleted row, so on an
+-- RLS-enabled table it broadcasts only the primary key on DELETE whatever the
+-- replica identity — confirmed from a real browser subscription.
+--
+-- It is kept because the alternative was measured and is worse: with DEFAULT
+-- replica identity the subscription received NOTHING at all. FULL is what makes
+-- the WAL record complete enough for Realtime to route the change; what payload
+-- it then hands the client is a separate question, and the client does not use
+-- the payload anyway (lib/useLiveAvailability.ts treats every event as a
+-- trigger to re-read, never as a source of truth).
+--
+-- KNOWN LIMITATION, measured against production. An ANONYMOUS subscriber gets
+-- DELETEs but NOT INSERTs, even with no filter. Realtime evaluates the SELECT
+-- policy against the candidate row before delivering an insert, and
+-- availability_select joins `halls` and calls owns_hall()/is_admin(); that
+-- evaluation fails for anon and the row is dropped. Authenticated subscribers
+-- may fare better — untested, since minting a user JWT was not available. The
+-- client does not depend on it either way: it re-reads on a 60s floor, and
+-- checkout refuses a taken date under the inventory lock.
 alter table public.availability replica identity full;

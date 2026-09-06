@@ -32,6 +32,29 @@ import { getSupabaseClient } from "@/lib/supabase/client";
 /** Collapses a burst of changes (a 3-day block writes 3 rows) into one re-read. */
 const REFRESH_DEBOUNCE_MS = 400;
 
+/**
+ * A re-read floor, independent of the socket delivering anything.
+ *
+ * MEASURED, NOT PRECAUTIONARY. Subscribed from a real browser against
+ * production: DELETE events arrive, INSERT events do NOT — even with no filter
+ * at all. Supabase evaluates the SELECT policy against the candidate row before
+ * delivering an INSERT, and `availability_select` joins `halls` and calls
+ * owns_hall()/is_admin(); that evaluation fails for an anonymous subscriber, so
+ * the row is dropped. DELETEs get through precisely because RLS CANNOT be
+ * evaluated on a deleted row, so only the primary key is broadcast.
+ *
+ * The practical effect without this poll would be the wrong half working: a
+ * released date would appear, a newly BLOCKED one would not — and a date
+ * becoming unavailable is the one a customer must not miss.
+ *
+ * The booking page requires sign-in, so real subscribers are authenticated and
+ * may well receive INSERTs where anon does not. That is untested, and a
+ * calendar's correctness should not rest on an untested assumption about
+ * someone else's RLS evaluator. Sixty seconds is cheap — one cached server
+ * render — and it makes convergence independent of the socket entirely.
+ */
+const POLL_MS = 60_000;
+
 export type LiveAvailabilityState = {
   /** False while the socket is down — the UI can say "reconnecting" if it wants. */
   live: boolean;
@@ -95,9 +118,17 @@ export function useLiveAvailability(hallId: string | null | undefined): LiveAvai
     }
     document.addEventListener("visibilitychange", onVisible);
 
+    // The floor. Only while the tab is actually being looked at — polling a
+    // backgrounded tab spends the customer's battery to refresh a calendar
+    // nobody is reading, and onVisible already covers their return.
+    const poll = setInterval(() => {
+      if (document.visibilityState === "visible") scheduleRefresh();
+    }, POLL_MS);
+
     return () => {
       cancelled = true;
       if (timer.current) clearTimeout(timer.current);
+      clearInterval(poll);
       document.removeEventListener("visibilitychange", onVisible);
       supabase.removeChannel(channel);
     };

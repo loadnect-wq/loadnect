@@ -122,9 +122,25 @@ Publishing `bookings` would have been the shortcut and a data leak: every
 subscriber would receive `customer_id`, `contact_phone`, the amounts and the
 notes on every change.
 
-`REPLICA IDENTITY FULL` is set on `availability` so a DELETE carries `hall_id`
-in the payload. Without it a delete arrives with only the primary key — and a
-date being *released* is exactly the event a watching customer must not miss.
+### What the live test actually showed
+
+`REPLICA IDENTITY FULL` is set, but **not** for the reason first written here. It
+does *not* make a DELETE carry `hall_id`: Supabase cannot evaluate RLS against a
+deleted row, so on an RLS-enabled table it broadcasts only the primary key
+whatever the replica identity. It is kept because the alternative was measured
+and is worse — with `DEFAULT`, the subscription received **nothing at all**.
+
+**Known limitation.** An *anonymous* subscriber receives DELETEs but **not**
+INSERTs, even with no filter. Realtime evaluates the SELECT policy against the
+candidate row before delivering an insert, and `availability_select` joins
+`halls` and calls `owns_hall()`/`is_admin()` — that evaluation fails for anon and
+the row is dropped. Authenticated subscribers may fare better; the booking page
+requires sign-in, so that is the real path, and it is **untested** because
+minting a user JWT was not available.
+
+This is why `useLiveAvailability` also re-reads on a **60-second floor** while the
+tab is visible. Convergence does not depend on the socket delivering anything,
+and a taken date is refused at checkout under the lock regardless.
 
 ---
 
