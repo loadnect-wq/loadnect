@@ -44,9 +44,13 @@ export function TicketReplyForm({ ticketId, currentStatus, initialResponse, init
   return (
     <form onSubmit={handleSave} className="space-y-2.5 border-t border-border pt-3">
       <div className="grid grid-cols-2 gap-2">
+        {/* aria-label rather than a wrapping label here only because this select
+            is a grid item that stretches to its column; a wrapper would collapse
+            it to its content width. "Status: Open" is option text, not a name. */}
         <select
           value={status}
           onChange={(e) => { setStatus(e.target.value); setSaved(false); }}
+          aria-label="Ticket status"
           className="rounded-lg border border-border bg-white px-2 py-1.5 text-xs font-semibold text-charcoal-700 focus:outline-none focus:ring-2 focus:ring-maroon-500"
         >
           {STATUS_OPTIONS.map((o) => (
@@ -63,10 +67,22 @@ export function TicketReplyForm({ ticketId, currentStatus, initialResponse, init
         </button>
       </div>
 
-      <div>
-        <label className="text-[10px] font-semibold uppercase tracking-wide text-charcoal-500">
+      {/* WHICH BOX IS PUBLIC MUST NOT BE A GUESS. Both labels sat beside their
+          textarea with no htmlFor and no id on the field, so nothing tied them
+          together: a screen reader fell back to the placeholders and announced
+          "Reply to the user…" and "Private note for your team…", while the
+          words that carry the actual warning — "(visible)" and "(admin only —
+          never shown to user)" — reached it through no route at all. Typing an
+          internal note into the box the customer reads is the one mistake this
+          form must not make easy.
+          The label wraps the control instead of using htmlFor/id because this
+          form is rendered once per ticket in the list on the page above; fixed
+          ids would repeat down the page and point every label at the first
+          ticket's boxes. */}
+      <label className="block">
+        <span className="text-[10px] font-semibold uppercase tracking-wide text-charcoal-500">
           Reply to user (visible)
-        </label>
+        </span>
         <textarea
           value={response}
           onChange={(e) => { setResponse(e.target.value); setSaved(false); }}
@@ -75,12 +91,12 @@ export function TicketReplyForm({ ticketId, currentStatus, initialResponse, init
           maxLength={4000}
           className="mt-1 block w-full rounded-lg border border-border bg-white px-2.5 py-2 text-xs text-charcoal-900 placeholder:text-charcoal-400 focus:outline-none focus:ring-2 focus:ring-maroon-500 resize-none"
         />
-      </div>
+      </label>
 
-      <div>
-        <label className="text-[10px] font-semibold uppercase tracking-wide text-amber-700">
+      <label className="block">
+        <span className="text-[10px] font-semibold uppercase tracking-wide text-amber-700">
           Internal notes (admin only — never shown to user)
-        </label>
+        </span>
         <textarea
           value={notes}
           onChange={(e) => { setNotes(e.target.value); setSaved(false); }}
@@ -89,7 +105,7 @@ export function TicketReplyForm({ ticketId, currentStatus, initialResponse, init
           maxLength={4000}
           className="mt-1 block w-full rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2 text-xs text-charcoal-900 placeholder:text-charcoal-400 focus:outline-none focus:ring-2 focus:ring-amber-400 resize-none"
         />
-      </div>
+      </label>
 
       {error && <p className="text-[11px] text-red-600">{error}</p>}
       {saved && <p className="text-[11px] text-green-700">✓ Saved</p>}

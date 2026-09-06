@@ -26,6 +26,45 @@ const EXT_BY_MIME: Record<string, string> = {
   "image/webp": "webp",
 };
 
+/**
+ * Turn a Supabase Storage failure into something the owner can act on.
+ *
+ * StorageError.message is whatever the storage API put in its response body —
+ * storage-js copies that field straight through (_getErrorMessage in
+ * @supabase/storage-js) — so it is written for whoever wired the bucket up, and
+ * a policy refusal can carry the rule and the table that guard the upload.
+ * Printing it in the owner's error box told them nothing they could act on and
+ * published how uploads are gated. The raw string goes to the browser console
+ * instead — the response it came from was already delivered to this browser, so
+ * nothing new is disclosed, and support can still ask for it — and the owner
+ * reads a message picked from the HTTP status.
+ *
+ * A StorageApiError always carries `status`; a transport failure does not, and
+ * falls to the generic line.
+ */
+function uploadErrorMessage(err: { message: string; status?: number; statusCode?: string }): string {
+  console.error(
+    `[hall-images] storage upload failed (status=${err.status ?? "none"}, code=${err.statusCode ?? "none"}):`,
+    err.message,
+  );
+
+  switch (err.status) {
+    case 401:
+      return "Your session has expired. Sign in again, then retry the upload.";
+    case 403:
+      return "You don't have permission to add photos to this hall.";
+    case 409:
+      // upsert:false against a fresh UUID path — a retry generates a new one.
+      return "That photo could not be saved under its generated name. Please try the upload again.";
+    case 413:
+      return "Storage rejected that photo for being too large. Try a smaller image.";
+    case 429:
+      return "Too many uploads at once. Wait a moment, then try again.";
+    default:
+      return "We couldn't upload that photo. Please try again — contact support if it keeps failing.";
+  }
+}
+
 type QueueItem = {
   key:     string;
   name:    string;
@@ -91,7 +130,7 @@ export function ImagesManager({ hallId, initial }: Props) {
         const { error: storageErr } = await supabase.storage
           .from("hall-images")
           .upload(path, file, { upsert: false, contentType: file.type });
-        if (storageErr) throw new Error(storageErr.message);
+        if (storageErr) throw new Error(uploadErrorMessage(storageErr));
 
         const { data: urlData } = supabase.storage.from("hall-images").getPublicUrl(path);
 

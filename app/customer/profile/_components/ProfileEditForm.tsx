@@ -35,10 +35,16 @@ export function ProfileEditForm({ initialName, initialPhone, email, initialNotif
     <form onSubmit={handleSubmit} className="space-y-4">
       {/* Email (read-only) */}
       <div>
-        <label className="mb-1.5 block text-xs font-semibold text-charcoal-700">
+        {/* htmlFor/id, like the Full name and Phone fields below. Without it
+            the label named nothing, and this field has no placeholder to fall
+            back on either, so it reached a screen reader with no name at all.
+            readOnly does not exempt it: unlike disabled, a readOnly input is
+            still focusable and still listed among the form's controls. */}
+        <label htmlFor="email" className="mb-1.5 block text-xs font-semibold text-charcoal-700">
           Email address
         </label>
         <input
+          id="email"
           type="email"
           value={email ?? ""}
           readOnly

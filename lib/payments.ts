@@ -18,11 +18,18 @@
 //   • verifyAndApplyPayment() is idempotent — safe to call from BOTH the
 //     return-url status page and the notify_url webhook, in any order, multiple
 //     times.
+//   • NOTHING UPSTREAM IS ECHOED TO THE BROWSER.  Postgres and Cashfree error
+//     text goes to the log through sanitizeError (lib/errors.ts); what leaves
+//     this module is a string written here.  A raw Supabase .message carries
+//     table, column and constraint names — a free map of the schema — and a
+//     gateway message can echo order and customer details back at whoever
+//     asked for it.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import "server-only";
 
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
+import { sanitizeError } from "@/lib/errors";
 import { releaseAvailabilityForBooking } from "@/lib/availability-release";
 import { isoDateRange } from "@/lib/dates";
 import {
@@ -80,6 +87,16 @@ export type ApplyPaymentState =
 export type ApplyPaymentResult = {
   state:      ApplyPaymentState;
   bookingId?: string;
+  /**
+   * Rendered verbatim to the CUSTOMER as the body of the status page
+   * (app/booking/[id]/status/page.tsx), so only text written here ever belongs
+   * in it — never an upstream .message.
+   *
+   * Leave it undefined when we simply do not know what happened: the status
+   * page's own copy for an unresolved payment tells the customer not to pay
+   * again, which is the one thing that has to be said to someone whose money
+   * may already be captured. A generic "something went wrong" would replace it.
+   */
   message?:   string;
 };
 
@@ -170,7 +187,13 @@ export async function startPaymentForBooking(
       .maybeSingle());
   }
 
-  if (bErr)        return { ok: false, error: bErr.message };
+  if (bErr) {
+    return {
+      ok: false,
+      error: sanitizeError(bErr, "startPaymentForBooking:loadBooking",
+        "We could not open this booking for payment. Please try again."),
+    };
+  }
   if (!booking)    return { ok: false, error: "Booking not found." };
 
   // 2. Ownership — the booking must belong to the authenticated caller.
@@ -391,7 +414,16 @@ export async function startPaymentForBooking(
     note:          `Advance + platform fee for booking ${input.bookingId}`,
   });
 
-  if (!order.ok) return { ok: false, error: order.error };
+  // order.error is Cashfree's own `message` field on a non-2xx (lib/cashfree.ts)
+  // — their wording, about our request, and the checkout page prints whatever
+  // comes back here verbatim. Log it, show ours.
+  if (!order.ok) {
+    return {
+      ok: false,
+      error: sanitizeError(order, "startPaymentForBooking:createOrder",
+        "We could not start this payment. Please try again in a moment."),
+    };
+  }
   if (!order.data.payment_session_id) {
     return { ok: false, error: "Cashfree did not return a payment session. Please retry." };
   }
@@ -417,7 +449,16 @@ export async function startPaymentForBooking(
   };
   const { error: pErr } = await db.from("payments").insert(paymentRow);
 
-  if (pErr) return { ok: false, error: pErr.message };
+  // The Cashfree order exists but we could not record it. The customer must not
+  // be sent to a checkout we cannot reconcile — and must not be handed the
+  // column names of the table that refused the write.
+  if (pErr) {
+    return {
+      ok: false,
+      error: sanitizeError(pErr, "startPaymentForBooking:insertPayment",
+        "We could not start this payment. Please try again in a moment."),
+    };
+  }
 
   return {
     ok:               true,
@@ -429,7 +470,23 @@ export async function startPaymentForBooking(
 
 // ── Verify with Cashfree + apply to booking (idempotent) ───────────────────────
 
-export async function verifyAndApplyPayment(orderId: string): Promise<ApplyPaymentResult> {
+/**
+ * Verify an order with Cashfree and apply it to its booking. Idempotent.
+ *
+ * `expectedBookingId` is an AUTHORISATION FENCE for callers that have already
+ * established whose booking they are acting on. The customer status page is
+ * reached with an order id lifted straight out of the query string; without
+ * this, a signed-in visitor could name a stranger's order and have it applied
+ * — the stamp, the refund_state='owed' write and that customer's cancellation
+ * and failure messages all landing on a booking that was never theirs.
+ *
+ * The webhook passes nothing, deliberately: Cashfree's signature is its
+ * authorisation, and it legitimately carries orders for every booking.
+ */
+export async function verifyAndApplyPayment(
+  orderId: string,
+  opts?: { expectedBookingId?: string },
+): Promise<ApplyPaymentResult> {
   if (!orderId) return { state: "not_found" };
 
   const admin = getSupabaseAdminClient();
@@ -445,8 +502,23 @@ export async function verifyAndApplyPayment(orderId: string): Promise<ApplyPayme
     .eq("cashfree_order_id", orderId)
     .maybeSingle();
 
-  if (pErr)      return { state: "error", message: pErr.message };
+  // sanitizeError is used here for its logging half — it redacts and writes the
+  // full error server-side. Its client-safe string is deliberately dropped: we
+  // do not know whether the money moved, and the status page's own "do NOT pay
+  // again" copy is what has to be shown when we do not. See
+  // ApplyPaymentResult.message.
+  if (pErr) {
+    sanitizeError(pErr, "verifyAndApplyPayment:loadPayment");
+    return { state: "error" };
+  }
   if (!payment)  return { state: "not_found" };
+
+  // The fence described on this function: refuse BEFORE any side effect runs,
+  // and report it as not_found because to a caller that named the wrong
+  // booking, that is exactly what this order is.
+  if (opts?.expectedBookingId && payment.booking_id !== opts.expectedBookingId) {
+    return { state: "not_found" };
+  }
 
   // The ADVANCE portion of this payment — what messages may call "advance
   // paid" and what the owner's split is based on. On new payments the ₹200
@@ -481,7 +553,13 @@ export async function verifyAndApplyPayment(orderId: string): Promise<ApplyPayme
 
   // 3. Ask Cashfree for the authoritative order status (the real verification).
   const order = await getCashfreeOrder(orderId);
-  if (!order.ok) return { state: "error", message: order.error };
+  // order.error is the gateway's own text (or a network message). Same reasoning
+  // as above: log it, and say nothing rather than something wrong — a customer
+  // who reached this page may already have been charged.
+  if (!order.ok) {
+    sanitizeError(order, "verifyAndApplyPayment:getOrder");
+    return { state: "error" };
+  }
 
   const status = (order.data.order_status ?? "").toUpperCase();
 
@@ -686,7 +764,12 @@ export async function verifyAndApplyPayment(orderId: string): Promise<ApplyPayme
           message:   "Payment succeeded but the slot was just taken. A refund will be initiated.",
         };
       }
-      return { state: "error", bookingId: payment.booking_id, message: upErr.message };
+      // Not a slot race, then — an unexpected failure to move a booking whose
+      // money is already captured. upErr.message names the table, the column and
+      // the constraint that refused it; the customer standing on the status page
+      // gets none of that, and the page's "do NOT pay again" copy instead.
+      sanitizeError(upErr, "verifyAndApplyPayment:confirmBooking");
+      return { state: "error", bookingId: payment.booking_id };
     }
 
     // A zero-row update means the booking was NOT in pending_payment — it had

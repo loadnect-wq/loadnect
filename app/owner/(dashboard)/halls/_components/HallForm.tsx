@@ -3,7 +3,6 @@
 import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { ImagePlus, Plus, Sparkles, Star, X } from "lucide-react";
-import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/Button";
 import { type OwnerAmenity, type OwnerHallDetail } from "@/lib/owner";
@@ -545,11 +544,28 @@ function FormSection({ title, children }: { title: string; children: React.React
   );
 }
 
+/**
+ * THE LABEL WRAPS THE CONTROL. It used to be a sibling <Label> with no htmlFor
+ * beside a control with no id, which ties the two to nothing. A screen reader
+ * then falls back to whatever it can find, and for these eleven fields that is
+ * the placeholder: "Hall Name *" was announced as "e.g. Grand Palace Banquet
+ * Hall" — an example value read out as the field's name. The City select has no
+ * placeholder to fall back on, so it had no name at all. Clicking the label
+ * text did not focus its field either.
+ *
+ * Wrapping rather than htmlFor/id: eleven fields would each need an id invented
+ * here and kept unique against the rest of the page, and the wrapper needs
+ * none. Same shape as the Field in
+ * app/owner/(dashboard)/profile/_components/PayoutSetup.tsx.
+ *
+ * The <span> is deliberately left inline, matching the inline <Label> it
+ * replaces, so the label's line box and the 1.5 spacing below it are unchanged.
+ */
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="space-y-1.5">
-      <Label className="text-xs font-semibold text-charcoal-700">{label}</Label>
+    <label className="block space-y-1.5">
+      <span className="text-xs font-semibold text-charcoal-700">{label}</span>
       {children}
-    </div>
+    </label>
   );
 }

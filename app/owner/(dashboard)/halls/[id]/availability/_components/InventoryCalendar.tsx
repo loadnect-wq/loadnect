@@ -135,7 +135,14 @@ export function InventoryCalendar({
       )}
 
       {/* ── Grid ─────────────────────────────────────────────────────────── */}
-      <div className="mt-3 grid grid-cols-7 gap-1" role="grid" aria-label={`Availability for ${monthLabel}`}>
+      {/* role="group", not role="grid". The children here are weekday captions,
+          empty padding cells and buttons — not rows and gridcells — and a grid
+          missing that structure announces as a broken one ("row 0 of 0"), which
+          is worse than no grid at all. The name still needs a role that can
+          carry one, so "group" keeps the aria-label spoken while claiming only
+          what is true. Each day button already carries its own date and status
+          in its accessible name, which is what a screen-reader user needs. */}
+      <div className="mt-3 grid grid-cols-7 gap-1" role="group" aria-label={`Availability for ${monthLabel}`}>
         {["S", "M", "T", "W", "T", "F", "S"].map((d, i) => (
           <div key={i} className="pb-1 text-center text-[10px] font-bold uppercase tracking-wide text-charcoal-400">
             {d}

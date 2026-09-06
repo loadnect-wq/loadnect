@@ -56,12 +56,38 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       className={`${inter.variable} ${playfair.variable}`}
     >
       <body className="flex min-h-screen flex-col bg-ivory-100 text-foreground antialiased">
+        {/* Skip link — the first focusable thing on every page (WCAG 2.4.1).
+            Without it, a keyboard or screen-reader user has to tab past the
+            whole Navbar — the logo link, every NAV_LINKS entry, then the
+            dashboard/sign-out or sign-in/register/get-started buttons — again
+            on every single navigation before reaching the page they asked for.
+            Invisible until focused, so nothing changes for a mouse user.
+            z sits above the Navbar's sticky z-50 header, or the link would take
+            focus and be painted underneath it. */}
+        <a
+          href="#main"
+          className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[100] focus:rounded-xl focus:bg-maroon-700 focus:px-4 focus:py-2.5 focus:text-sm focus:font-semibold focus:text-white focus:shadow-elevated"
+        >
+          Skip to main content
+        </a>
+
         {/* Desktop navbar (hidden on mobile) */}
         <div className="hidden lg:block">
           <Navbar />
         </div>
 
-        <main className="flex-1 pb-[calc(var(--bottom-nav-h,4.5rem)+env(safe-area-inset-bottom))] lg:pb-0">
+        {/* tabIndex={-1} is what makes the skip link actually land: following a
+            fragment link does not move focus to a non-focusable element in
+            every browser, and without focus the next Tab goes back to the top
+            of the nav. -1 keeps it out of the tab order otherwise.
+            No focus:outline-none here on purpose: the browser draws its ring
+            only for :focus-visible, so following the skip link confirms where
+            focus landed and a stray click on the page does not. */}
+        <main
+          id="main"
+          tabIndex={-1}
+          className="flex-1 pb-[calc(var(--bottom-nav-h,4.5rem)+env(safe-area-inset-bottom))] lg:pb-0"
+        >
           {children}
         </main>
 

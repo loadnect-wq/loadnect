@@ -62,25 +62,43 @@ export function CreateTicketForm() {
         className="w-full rounded-xl border border-border bg-white px-3 py-2 text-sm focus:border-maroon-400 focus:outline-none focus:ring-1 focus:ring-maroon-300"
       />
 
+      {/* Both selects carry their own label. A select cannot take its name from
+          a placeholder, and the first option ("Category (optional)") is a value
+          the user can pick, not a name — so both controls used to be announced
+          with no name whatsoever. The labels are visually hidden because the
+          collapsed selects already read "Category (optional)" and "Priority: …"
+          on screen — a visible label would say it twice and push the rest of
+          the form down. */}
       <div className="grid grid-cols-2 gap-3">
-        <select
-          value={category}
-          onChange={(e) => setCategory(e.target.value)}
-          className="w-full rounded-xl border border-border bg-white px-3 py-2 text-sm focus:border-maroon-400 focus:outline-none focus:ring-1 focus:ring-maroon-300"
-        >
-          <option value="">Category (optional)</option>
-          {TICKET_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
-        </select>
+        {/* `grid`, not `block`: these two labels are now the grid items, and a
+            grid item's display is blockified — which is exactly what the bare
+            selects were before. A block wrapper would put each select back on a
+            text baseline and add a descender gap under it, making the row
+            taller. This keeps the row the height it already was. */}
+        <label className="grid">
+          <span className="sr-only">Category (optional)</span>
+          <select
+            value={category}
+            onChange={(e) => setCategory(e.target.value)}
+            className="w-full rounded-xl border border-border bg-white px-3 py-2 text-sm focus:border-maroon-400 focus:outline-none focus:ring-1 focus:ring-maroon-300"
+          >
+            <option value="">Category (optional)</option>
+            {TICKET_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
+        </label>
 
-        <select
-          value={priority}
-          onChange={(e) => setPriority(e.target.value as TicketPriority)}
-          className="w-full rounded-xl border border-border bg-white px-3 py-2 text-sm focus:border-maroon-400 focus:outline-none focus:ring-1 focus:ring-maroon-300"
-        >
-          {TICKET_PRIORITIES.map((p) => (
-            <option key={p.value} value={p.value}>Priority: {p.label}</option>
-          ))}
-        </select>
+        <label className="grid">
+          <span className="sr-only">Priority</span>
+          <select
+            value={priority}
+            onChange={(e) => setPriority(e.target.value as TicketPriority)}
+            className="w-full rounded-xl border border-border bg-white px-3 py-2 text-sm focus:border-maroon-400 focus:outline-none focus:ring-1 focus:ring-maroon-300"
+          >
+            {TICKET_PRIORITIES.map((p) => (
+              <option key={p.value} value={p.value}>Priority: {p.label}</option>
+            ))}
+          </select>
+        </label>
       </div>
 
       <textarea

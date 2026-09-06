@@ -22,6 +22,7 @@ const SUB_CATEGORIES = [
 ] as const;
 
 function StarRow({
+  label,
   value,
   hovered,
   onSelect,
@@ -29,6 +30,11 @@ function StarRow({
   onLeave,
   size = "lg",
 }: {
+  /** What is being rated, folded into every star's accessible name. This form
+   *  renders five of these rows — 25 buttons — and they all used to answer to
+   *  "Rate 3 stars", so a screen-reader user had no way to tell which category
+   *  a star belonged to, or to check what they had already chosen. */
+  label: string;
   value: number;
   hovered: number;
   onSelect: (n: number) => void;
@@ -39,7 +45,7 @@ function StarRow({
   const display = hovered || value;
   const cls = size === "lg" ? "h-8 w-8" : "h-5 w-5";
   return (
-    <div className="flex items-center gap-1">
+    <div className="flex items-center">
       {[1, 2, 3, 4, 5].map((n) => (
         <button
           key={n}
@@ -47,8 +53,13 @@ function StarRow({
           onClick={() => onSelect(n)}
           onMouseEnter={() => onHover(n)}
           onMouseLeave={onLeave}
-          aria-label={`Rate ${n} star${n > 1 ? "s" : ""}`}
-          className="transition-transform hover:scale-110 active:scale-95"
+          aria-label={`${label}: ${n} star${n > 1 ? "s" : ""}`}
+          aria-pressed={n === value}
+          // 44px is the touch target every other control on this screen uses.
+          // The sub-rating stars were a 20x20 tap that landed on the wrong star
+          // as often as the right one; the icon stays its old size, only the
+          // hit area grows.
+          className="flex h-11 w-11 items-center justify-center transition-transform hover:scale-110 active:scale-95 motion-reduce:hover:scale-100 motion-reduce:active:scale-100"
         >
           <Star
             className={
@@ -120,26 +131,31 @@ export function ReviewForm({ hallId, bookingId, hallName }: Props) {
         How was your experience at <strong>{hallName}</strong>?
       </p>
 
-      {/* Overall star rating */}
-      <div>
-        <p className="text-[11px] font-semibold uppercase tracking-wide text-charcoal-500 mb-1.5">
+      {/* Overall star rating. fieldset/legend so the row of stars is announced
+          as one named group rather than five loose buttons. */}
+      <fieldset>
+        <legend className="text-[11px] font-semibold uppercase tracking-wide text-charcoal-500 mb-1.5">
           Overall Rating
-        </p>
+        </legend>
         <StarRow
+          label="Overall rating"
           value={rating}
           hovered={hovered}
           onSelect={setRating}
           onHover={setHovered}
           onLeave={() => setHovered(0)}
         />
-      </div>
+      </fieldset>
 
-      {/* Sub-ratings */}
-      <div className="grid grid-cols-2 gap-3">
+      {/* Sub-ratings. One column on phones: five 44px targets do not fit two
+          rows side by side at 375px, and the target is worth more than the
+          column count. Two columns return from sm up, where there is room. */}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         {SUB_CATEGORIES.map((cat) => (
-          <div key={cat.key}>
-            <p className="text-[11px] font-semibold text-charcoal-500 mb-1">{cat.label}</p>
+          <fieldset key={cat.key} className="min-w-0">
+            <legend className="text-[11px] font-semibold text-charcoal-500 mb-1">{cat.label}</legend>
             <StarRow
+              label={cat.label}
               value={subRatings[cat.key] ?? 0}
               hovered={subHovered[cat.key] ?? 0}
               onSelect={(n) => setSubRatings((prev) => ({ ...prev, [cat.key]: n }))}
@@ -147,7 +163,7 @@ export function ReviewForm({ hallId, bookingId, hallName }: Props) {
               onLeave={() => setSubHovered((prev) => ({ ...prev, [cat.key]: 0 }))}
               size="sm"
             />
-          </div>
+          </fieldset>
         ))}
       </div>
 

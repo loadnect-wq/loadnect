@@ -62,7 +62,7 @@ export async function createTicket(input: {
         .select("id")
         .single();
       if (retryErr) return { error: sanitizeError(retryErr, "createTicket.retry") };
-      await notifyTicketCreated(retry.id, v.subject);
+      await notifyTicketCreated(v.subject);
       revalidatePath("/customer/support");
       revalidatePath("/owner/support");
       revalidatePath("/admin/support-tickets");
@@ -71,8 +71,10 @@ export async function createTicket(input: {
     return { error: sanitizeError(error, "createTicket") };
   }
 
-  // Admin alert — idempotent per ticket, never fails the ticket creation.
-  await notifyTicketCreated(data.id, v.subject);
+  // Admin alert — bucketed to one SMS per hour, never fails the ticket
+  // creation. The ticket id is deliberately not passed: the alert stands for
+  // every ticket opened in that hour and points at /admin/support-tickets.
+  await notifyTicketCreated(v.subject);
 
   revalidatePath("/customer/support");
   revalidatePath("/owner/support");

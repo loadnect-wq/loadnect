@@ -489,6 +489,7 @@ export function BookingFlow({ hall, availability, windowDays, onlinePaymentEnabl
                         key={iso}
                         type="button"
                         disabled={allClosed}
+                        aria-pressed={active}
                         onClick={() => {
                           // 1st tap = start. 2nd tap after start (within 4 days)
                           // = end. Tap before start, or with a range set, restarts.
@@ -516,6 +517,21 @@ export function BookingFlow({ hall, availability, windowDays, onlinePaymentEnabl
                         <span className="text-lg font-bold">{d.getUTCDate()}</span>
                         <span className="text-[10px]">
                           {d.toLocaleDateString("en-IN", { month: "short", timeZone: "UTC" })}
+                        </span>
+                        {/* The stripes below, and the struck-through styling,
+                            carry this state in colour alone. Say it in words
+                            too, in the tile's accessible name. `beyondMax` is
+                            NOT "booked" — it is a date this range cannot reach
+                            from the start already chosen, so it must not be
+                            announced as unavailable. */}
+                        <span className="sr-only">
+                          {!anyOpen
+                            ? "Fully booked"
+                            : beyondMax
+                              ? "Not available as an end date for the selected start"
+                              : a
+                                ? `Morning ${a.morning ? "available" : "taken"}, evening ${a.evening ? "available" : "taken"}`
+                                : "Available"}
                         </span>
                         {/* Tiny availability stripes */}
                         {!allClosed && a && (
@@ -580,6 +596,7 @@ export function BookingFlow({ hall, availability, windowDays, onlinePaymentEnabl
                         key={s.id}
                         type="button"
                         disabled={!open}
+                        aria-pressed={active}
                         onClick={() => setSlot(s.id)}
                         className={cn(
                           "flex w-full items-center justify-between rounded-2xl border px-4 py-3.5 text-left shadow-sm transition",
@@ -637,11 +654,12 @@ export function BookingFlow({ hall, availability, windowDays, onlinePaymentEnabl
                 <div className="space-y-4">
                   <div>
                     <Label>Event type</Label>
-                    <div className="mt-2 flex flex-wrap gap-2">
+                    <div className="mt-2 flex flex-wrap gap-2" role="group" aria-label="Event type">
                       {EVENT_TYPES.map((t) => (
                         <button
                           key={t}
                           type="button"
+                          aria-pressed={eventType === t}
                           onClick={() => setEventType(t)}
                           className={cn(
                             "rounded-full border px-3 py-1.5 text-xs font-semibold",

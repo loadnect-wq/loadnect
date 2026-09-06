@@ -3,7 +3,6 @@
 import { useState, useTransition } from "react";
 import { CheckCircle2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/Button";
 import { type OwnerRow } from "@/lib/owner";
 import { upsertOwnerRow, updateOwnerProfileName } from "@/app/owner/(dashboard)/actions";
@@ -84,7 +83,11 @@ export function OwnerProfileForm({ ownerRow, fullName, email, phone, initialNoti
         </Field>
         <Field label="Email">
           <Input value={email ?? ""} disabled className="opacity-60 cursor-not-allowed" />
-          <p className="text-[11px] text-charcoal-500 mt-1">Email is managed by Hallnect and cannot be changed here.</p>
+          {/* span, not p: Field now wraps its children in a <label>, whose
+              content model is phrasing only. Rendered identically — Tailwind's
+              preflight already zeroes p margins, and the vertical gap comes
+              from the label's space-y either way. */}
+          <span className="mt-1 block text-[11px] text-charcoal-500">Email is managed by Hallnect and cannot be changed here.</span>
         </Field>
         <Field label="Phone">
           <Input value={phoneV} onChange={(e) => setPhoneV(e.target.value)} placeholder="+91 98765 43210" type="tel" />
@@ -192,11 +195,29 @@ export function OwnerProfileForm({ ownerRow, fullName, email, phone, initialNoti
   );
 }
 
+/**
+ * THE LABEL WRAPS THE CONTROL. It used to be a sibling <Label> with no htmlFor
+ * beside a control with no id, which ties the two to nothing. A screen reader
+ * then falls back to whatever it can find: for most of these fields that is the
+ * placeholder, so "Business Name *" was announced as "e.g. ABC Events Pvt Ltd"
+ * — an example value read out as the field's name — and the two with nothing to
+ * fall back on, the State select and the read-only Email, had no name at all.
+ * Clicking the label text did not focus its field either.
+ *
+ * Wrapping rather than htmlFor/id: nine fields across the two forms on this
+ * page would each need an id invented here and kept unique, and the wrapper
+ * needs none. Same shape as the Field in ./PayoutSetup.tsx.
+ *
+ * The <span> is deliberately left inline, matching the inline <Label> it
+ * replaces, so the label's line box and the 1.5 spacing below it are unchanged.
+ * Anything else passed as a child lands inside the label, so hint text must be
+ * phrasing content (a span, not a p).
+ */
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="space-y-1.5">
-      <Label className="text-xs font-semibold text-charcoal-700">{label}</Label>
+    <label className="block space-y-1.5">
+      <span className="text-xs font-semibold text-charcoal-700">{label}</span>
       {children}
-    </div>
+    </label>
   );
 }

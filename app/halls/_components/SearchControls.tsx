@@ -203,9 +203,13 @@ export function SearchControls({
           {visibleChips.map((chip) => {
             const isActive = activeChip === chip.key;
             return (
+              // aria-pressed, because "selected" is otherwise carried by
+              // background colour alone — the same pattern the owner's
+              // InventoryCalendar uses for its slot chips.
               <button
                 key={chip.key}
                 type="button"
+                aria-pressed={isActive}
                 onClick={() => pushWith({ category: isActive ? "" : chip.key })}
                 className={cn(
                   "shrink-0 rounded-full border px-3 py-1.5 text-xs font-semibold shadow-sm transition-colors",
@@ -253,11 +257,12 @@ export function SearchControls({
           {/* City */}
           <div>
             <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-charcoal-500">City</p>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-2" role="group" aria-label="City">
               {CITIES.map((c) => (
                 <button
                   key={c}
                   type="button"
+                  aria-pressed={city === c}
                   onClick={() => setCity(city === c ? "" : c)}
                   className={cn(
                     "rounded-full border px-3 py-1.5 text-xs font-semibold",
@@ -287,11 +292,12 @@ export function SearchControls({
           {/* Capacity */}
           <div>
             <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-charcoal-500">Minimum Guests</p>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-2 gap-2" role="group" aria-label="Minimum guests">
               {CAPACITY_OPTIONS.map((opt) => (
                 <button
                   key={opt.value}
                   type="button"
+                  aria-pressed={capacity === opt.value}
                   onClick={() => setCapacity(capacity === opt.value ? "" : opt.value)}
                   className={cn(
                     "rounded-xl border px-3 py-2 text-sm",
@@ -362,11 +368,12 @@ export function SearchControls({
           {/* Amenities */}
           <div>
             <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-charcoal-500">Must-Have Amenity</p>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-2" role="group" aria-label="Must-have amenity">
               {FILTER_AMENITIES.map((a) => (
                 <button
                   key={a.slug}
                   type="button"
+                  aria-pressed={amenity === a.slug}
                   onClick={() => setAmenity(amenity === a.slug ? "" : a.slug)}
                   className={cn(
                     "rounded-full border px-3 py-1.5 text-xs font-semibold",
@@ -393,6 +400,7 @@ export function SearchControls({
               <li key={opt.value}>
                 <button
                   type="button"
+                  aria-pressed={active}
                   onClick={() => {
                     setSortOpen(false);
                     pushWith({ sort: opt.value === "recommended" ? "" : opt.value });
@@ -405,7 +413,9 @@ export function SearchControls({
                   )}
                 >
                   {opt.label}
-                  {active && <span className="h-2 w-2 rounded-full bg-maroon-600" />}
+                  {/* Decoration only — aria-pressed above is what says
+                      "this is the current sort". */}
+                  {active && <span aria-hidden className="h-2 w-2 rounded-full bg-maroon-600" />}
                 </button>
               </li>
             );

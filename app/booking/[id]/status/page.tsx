@@ -7,8 +7,13 @@
 //   which queries Cashfree's order API SERVER-SIDE and only then moves the
 //   booking to `payment_success`.  A user manually visiting this URL with a fake
 //   ?order_id cannot confirm a booking — the order id must match a real payment
-//   row AND Cashfree must report it PAID.  fetchBookingById additionally enforces
-//   that the booking belongs to the signed-in customer (RLS + customer_id).
+//   row AND Cashfree must report it PAID.
+//
+//   AUTHORISE, THEN APPLY.  ?order_id is chosen by whoever opens the URL, and it
+//   decides which booking verifyAndApplyPayment acts on — the one in the path
+//   does not.  So the booking is loaded and authorised FIRST (fetchBookingById
+//   scopes to auth.uid(), with RLS behind it), and the order is only applied if
+//   it belongs to that same booking.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { redirect, notFound } from "next/navigation";
@@ -50,24 +55,40 @@ export default async function BookingStatusPage({ params, searchParams }: Props)
   const user = await getSession();
   if (!user) redirect(`/login?next=/booking/${id}/status`);
 
+  // ── Authorisation FIRST, before anything is applied ─────────────────────────
+  // This read is the gate, not just the display query: RLS + customer_id scoping
+  // mean it returns a row only for the customer the booking belongs to. It ran
+  // AFTER verification until now, so ?order_id was applied before the page knew
+  // whose booking it had been handed — any signed-in visitor could name a
+  // stranger's order and have its side effects (the payment_failed stamp, the
+  // refund_state='owed' write, that customer's cancellation and failure
+  // messages) run against a booking that was never theirs.
+  let booking = await fetchBookingById(id);
+  if (!booking) notFound();
+
   // ── Server-side verification (the authoritative step) ───────────────────────
+  // expectedBookingId keeps the order and the authorised booking tied together:
+  // the return_url Cashfree sends the customer back to always carries this
+  // booking's own order (lib/payments.ts builds it that way), so the legitimate
+  // return-from-gateway flow is untouched, and only a hand-edited order_id is
+  // refused.
   let verifyState: ApplyPaymentState | null = null;
   let verifyMessage: string | undefined;
   if (orderId) {
     try {
-      const result = await verifyAndApplyPayment(orderId);
+      const result = await verifyAndApplyPayment(orderId, { expectedBookingId: id });
       verifyState   = result.state;
       verifyMessage = result.message;
     } catch (e) {
       console.error("[booking-status] verification failed:", e);
       verifyState = "error";
     }
+    // Verification is what moves the booking to booking_requested, so re-read
+    // it: the row fetched above was the one we authorised against, taken before
+    // the write, and rendering that would show "Payment pending" to a customer
+    // whose payment had just been applied.
+    booking = (await fetchBookingById(id)) ?? booking;
   }
-
-  // Load the (now-updated) booking for display. RLS + customer_id scoping ensure
-  // a customer can only ever see their own booking.
-  const booking = await fetchBookingById(id);
-  if (!booking) notFound();
 
   const paid =
     booking.status === "payment_success" ||

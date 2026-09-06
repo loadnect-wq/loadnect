@@ -60,16 +60,26 @@ export function HeroSearch() {
           className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-charcoal-400"
           aria-hidden
         />
-        <select
-          name="city"
-          className={cn(inputBase, "cursor-pointer appearance-none pl-12 pr-4")}
-          defaultValue=""
-        >
-          <option value="">Any City</option>
-          {CITIES.map((c) => (
-            <option key={c} value={c}>{c}</option>
-          ))}
-        </select>
+        {/* A select has no placeholder to fall back on — "Any City" is its first
+            OPTION, not a label — so without this wrapper the control reached a
+            screen reader with no accessible name at all. A wrapping label — the
+            shape PayoutSetup already uses — needs no id to invent or keep
+            unique. Hidden visually because the pin icon and the chosen value
+            are what a sighted user reads, and sr-only is out of flow, so the
+            search bar keeps its size. */}
+        <label className="block">
+          <span className="sr-only">City</span>
+          <select
+            name="city"
+            className={cn(inputBase, "cursor-pointer appearance-none pl-12 pr-4")}
+            defaultValue=""
+          >
+            <option value="">Any City</option>
+            {CITIES.map((c) => (
+              <option key={c} value={c}>{c}</option>
+            ))}
+          </select>
+        </label>
       </div>
 
       {/* Submit */}

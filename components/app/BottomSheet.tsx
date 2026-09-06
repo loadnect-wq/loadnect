@@ -2,7 +2,7 @@
 
 import { AnimatePresence, motion } from "framer-motion";
 import { X } from "lucide-react";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 
 interface BottomSheetProps {
   open: boolean;
@@ -12,7 +12,15 @@ interface BottomSheetProps {
   footer?: React.ReactNode;
 }
 
+// Everything a keyboard user can reach inside the sheet.
+const FOCUSABLE =
+  'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), ' +
+  'textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
 export function BottomSheet({ open, onClose, title, children, footer }: BottomSheetProps) {
+  const panelRef   = useRef<HTMLDivElement>(null);
+  const restoreRef = useRef<HTMLElement | null>(null);
+
   useEffect(() => {
     if (!open) return;
     const prev = document.body.style.overflow;
@@ -20,11 +28,51 @@ export function BottomSheet({ open, onClose, title, children, footer }: BottomSh
     return () => { document.body.style.overflow = prev; };
   }, [open]);
 
+  // Move focus into the sheet on open and put it back where it came from on
+  // close. The sheet covers the page but the page underneath stayed in the tab
+  // order, so a keyboard user opening Filters was still tabbing through the
+  // results behind it, and on close was dropped at the top of the document.
+  //
+  // Depends on `open` ALONE, deliberately. Every call site passes an inline
+  // arrow for onClose, so a dependency on it would re-run this on every render
+  // and yank focus out of whatever the user was typing into.
   useEffect(() => {
+    if (!open) return;
+    restoreRef.current = document.activeElement as HTMLElement | null;
+    // Focus the panel itself rather than its first control, so the sheet's own
+    // name is announced before its contents.
+    const frame = requestAnimationFrame(() => panelRef.current?.focus());
+    return () => {
+      cancelAnimationFrame(frame);
+      restoreRef.current?.focus?.();
+    };
+  }, [open]);
+
+  // Escape closes, Tab cycles within the panel. These two live in one effect on
+  // purpose: a sheet that traps focus but cannot be dismissed is far worse than
+  // one that leaks it.
+  useEffect(() => {
+    if (!open) return;
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") { onClose(); return; }
+      if (e.key !== "Tab") return;
+      const panel = panelRef.current;
+      if (!panel) return;
+      const items = Array.from(panel.querySelectorAll<HTMLElement>(FOCUSABLE));
+      if (items.length === 0) { e.preventDefault(); panel.focus(); return; }
+      const first = items[0];
+      const last  = items[items.length - 1];
+      const active  = document.activeElement;
+      const outside = !panel.contains(active);
+      if (e.shiftKey && (outside || active === first)) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && (outside || active === last)) {
+        e.preventDefault();
+        first.focus();
+      }
     }
-    if (open) window.addEventListener("keydown", onKey);
+    window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose]);
 
@@ -41,10 +89,12 @@ export function BottomSheet({ open, onClose, title, children, footer }: BottomSh
             aria-hidden
           />
           <motion.div
+            ref={panelRef}
+            tabIndex={-1}
             role="dialog"
             aria-modal
             aria-label={title}
-            className="fixed inset-x-0 bottom-0 z-50 flex max-h-[90vh] flex-col rounded-t-3xl bg-white shadow-elevated sm:left-1/2 sm:max-w-lg sm:-translate-x-1/2"
+            className="fixed inset-x-0 bottom-0 z-50 flex max-h-[90vh] flex-col rounded-t-3xl bg-white shadow-elevated outline-none sm:left-1/2 sm:max-w-lg sm:-translate-x-1/2"
             initial={{ y: "100%" }}
             animate={{ y: 0 }}
             exit={{ y: "100%" }}

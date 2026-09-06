@@ -642,20 +642,37 @@ export async function resolveRecipientPhoneForNotification(input: {
   }
 }
 
-/** Admin alert: new support ticket. */
-export async function notifyTicketCreated(ticketId: string, subject: string): Promise<void> {
+/**
+ * Admin alert: support tickets are waiting.
+ *
+ * ONE ALERT PER HOUR, NOT ONE PER TICKET. The key used to carry the ticket id,
+ * which made it unique by construction and left the outbox's idempotency
+ * nothing to collapse: every ticket was a billed SMS, and any signed-in account
+ * can open tickets in a loop. Worse than the money, MAX_PER_PHONE_PER_HOUR (15)
+ * in the service layer is shared with the alerts that genuinely need waking
+ * someone up — a failed owner payout, a payment mismatch — so a ticket flood
+ * would silence those for the rest of the hour.
+ *
+ * Same fix and the same reasoning as the contact form in
+ * app/contact/actions.ts: bucket by UTC hour, and point the admin at the list
+ * rather than at one ticket, because this SMS may now stand for several. The
+ * dashboard is the record; the SMS is only the nudge. Nothing here is
+ * customer-facing — the ticket itself is stored either way.
+ */
+export async function notifyTicketCreated(subject: string): Promise<void> {
   try {
     const adminPhone = await getAdminNotificationPhone();
+    const hourBucket = new Date().toISOString().slice(0, 13); // YYYY-MM-DDTHH
     await dispatchAll([
       adminAlert({
         adminPhone,
-        eventKey: `ticket.created:${ticketId}`,
+        eventKey: `ticket.created:${hourBucket}`,
         eventType: "ticket.created",
         event: "New support ticket",
         // A ticket subject is user-supplied text landing in a branded message —
         // sanitise it exactly like an owner's rejection note.
         details: sanitizeNotificationText(subject, 120) ?? "No subject",
-        reference: `Ticket ${ticketId.slice(0, 8).toUpperCase()}`,
+        reference: "See all in /admin/support-tickets",
       }),
     ]);
   } catch (e) {

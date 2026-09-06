@@ -1,0 +1,20 @@
+-- 0035 — DELIBERATELY EMPTY. Read this before "fixing" the gap.
+--
+-- Production applied a migration at this position (supabase_migrations version
+-- 20260826092235, name "contact_messages", header "-- 0035: contact_messages")
+-- whose file was never committed. Its content is fully superseded by
+-- 0051_contact_messages.sql, which was written later precisely because the
+-- table existed in production and not in the repo — that file's own header
+-- explains the reproducibility hole it closes.
+--
+-- Re-exporting 0035 verbatim would be worse than this note. It creates the same
+-- table and the same RLS policies as 0051, and `create policy` is NOT
+-- idempotent: a fresh replay would run 0035, reach 0051, and fail with
+-- "policy already exists" — turning a rebuild that works today into one that
+-- does not. So the sequence keeps its number, the history keeps its record, and
+-- 0051 stays the single definition.
+--
+-- The four other missing files (0034, 0036, 0037, 0038) WERE exported verbatim
+-- on 2026-09-06, because nothing else in the repo recreated them.
+
+-- No statements. See 0051_contact_messages.sql.

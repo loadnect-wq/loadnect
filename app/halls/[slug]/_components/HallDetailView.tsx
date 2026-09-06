@@ -15,7 +15,10 @@ import {
 import { motion } from "framer-motion";
 import { type HallDetail, type HallListing, type AvailabilityRow } from "@/lib/halls";
 import { CARD_GRADIENTS, formatPrice } from "@/lib/mock-data";
-import { todayInBusinessTz, addDaysToIsoDate, isoDateToLabelDate } from "@/lib/dates";
+import {
+  todayInBusinessTz, addDaysToIsoDate, isoDateToLabelDate,
+  formatDateInBusinessTz, formatIsoDateLabel,
+} from "@/lib/dates";
 import {
   advanceFromTotal, DEFAULT_ADVANCE_PERCENT,
   cappedPlatformFeeRupees, platformFeeGstRupees, PLATFORM_FEE_GST_PERCENT,
@@ -64,6 +67,17 @@ const VENUE_RULES = [
 
 type DayStatus = "available" | "partial" | "unavailable";
 
+// COLOUR IS NOT A SIGNAL ON ITS OWN. The tiles below differ only by background
+// (maroon / amber / red), which is invisible to roughly one man in twelve and
+// to every screen reader. These words go into each tile's accessible name, the
+// way the owner-side InventoryCalendar names its day cells. They are the same
+// words as the legend under the strip — keep the two in step.
+const DAY_STATUS_TEXT: Record<DayStatus, string> = {
+  available:   "Available",
+  partial:     "Partially booked",
+  unavailable: "Fully booked",
+};
+
 // Imported, not redeclared. These two Sets were a stale copy: `offline_booked`
 // (migration 0056) was missing from FULL_BLOCK, so a date a venue had blocked
 // for a phone booking rendered GREEN on the public page — measured, with live
@@ -79,6 +93,32 @@ function getDayStatus(dateStr: string, rows: AvailabilityRow[]): DayStatus {
   if (statuses.some((s) => HARD_BLOCK_STATUSES.has(s)))    return "unavailable";
   if (statuses.some((s) => PARTIAL_BLOCK_STATUSES.has(s))) return "partial";
   return "available";
+}
+
+// ── Review timestamps ─────────────────────────────────────────────────────────
+
+/**
+ * The month a review was written, as a hydration-safe label.
+ *
+ * THE BUG: this was `new Date(r.created_at).toLocaleDateString("en-IN", …)`
+ * with no timeZone, inside a "use client" component that Next also renders on
+ * the server. The server resolves the month against UTC and the visitor's
+ * browser against IST, so a review written in the last 5h30m of a month came
+ * out as two different months and React reported a hydration mismatch.
+ *
+ * The instant is now pinned to the business timezone — the date the review was
+ * actually written, in the market it was written in — and then formatted from
+ * its ISO parts, so both renders produce the same characters.
+ *
+ * Returns "" rather than throwing on a timestamp that will not parse:
+ * Intl.DateTimeFormat.format(Invalid Date) raises a RangeError, where the old
+ * toLocaleDateString merely printed "Invalid Date". A bad row must not take the
+ * whole venue page down.
+ */
+function reviewMonthLabel(createdAt: string): string {
+  const at = new Date(createdAt);
+  if (Number.isNaN(at.getTime())) return "";
+  return formatIsoDateLabel(formatDateInBusinessTz(at), { month: "short", year: "numeric" });
 }
 
 // ── Gradient fallback for similar halls ───────────────────────────────────────
@@ -141,11 +181,15 @@ export function HallDetailView({ hall, similar, isPreview, sidebarAd, advancePer
   const calDays = Array.from({ length: 30 }, (_, i) => {
     const iso = addDaysToIsoDate(stripStart, i);
     const d = isoDateToLabelDate(iso);
+    const status = getDayStatus(iso, hall.availability);
     return {
       iso,
       day:  d.getUTCDate(),
       wkd:  d.toLocaleDateString("en-IN", { weekday: "short", timeZone: "UTC" }).slice(0, 1),
-      status: getDayStatus(iso, hall.availability),
+      status,
+      // The tile itself shows only a one-letter weekday and a number, so the
+      // full date and the status have to be carried by the accessible name.
+      label: `${formatIsoDateLabel(iso, { weekday: "long", day: "numeric", month: "long", year: "numeric" })} — ${DAY_STATUS_TEXT[status]}`,
     };
   });
 
@@ -433,11 +477,17 @@ export function HallDetailView({ hall, similar, isPreview, sidebarAd, advancePer
             <section className="mt-6">
               <h2 className="font-serif text-base font-semibold text-charcoal-900">Availability</h2>
               <div className="mt-3 rounded-2xl bg-white p-3 shadow-card">
-                <div className="grid grid-cols-7 gap-1 sm:gap-1.5">
-                  {calDays.map(({ iso, day, wkd, status }) => (
-                    <div
+                {/* A list, so each day is an element that can carry a name of
+                    its own — aria-label on a bare <div> is ignored. role="list"
+                    is here because Tailwind's list-style:none makes Safari drop
+                    the list semantics, and with them the cells' names. The two
+                    visible spans are hidden from assistive tech: the label below
+                    already says the date, and better. */}
+                <ul role="list" className="grid grid-cols-7 gap-1 sm:gap-1.5">
+                  {calDays.map(({ iso, day, wkd, status, label }) => (
+                    <li
                       key={iso}
-                      title={iso}
+                      title={label}
                       className={[
                         "flex flex-col items-center rounded-xl py-1.5 text-center",
                         status === "unavailable"
@@ -447,11 +497,20 @@ export function HallDetailView({ hall, similar, isPreview, sidebarAd, advancePer
                           : "bg-maroon-50 text-maroon-700",
                       ].join(" ")}
                     >
-                      <span className="text-[9px] font-semibold uppercase sm:text-[10px]">{wkd}</span>
-                      <span className="text-xs font-bold sm:text-sm">{day}</span>
-                    </div>
+                      {/* An sr-only CHILD, not aria-label on the <li>. ARIA 1.2
+                          does allow naming a listitem, but support for it is the
+                          weakest link in the chain — where it is not honoured the
+                          cell would announce nothing at all, which is worse than
+                          the bare "M 6" this replaced. A text node is read by
+                          everything. BookingFlow.tsx uses the same construction
+                          for the same reason. sr-only is absolutely positioned,
+                          so the flex layout is untouched. */}
+                      <span className="sr-only">{label}</span>
+                      <span aria-hidden className="text-[9px] font-semibold uppercase sm:text-[10px]">{wkd}</span>
+                      <span aria-hidden className="text-xs font-bold sm:text-sm">{day}</span>
+                    </li>
                   ))}
-                </div>
+                </ul>
 
                 {/* Legend */}
                 <div className="mt-3 flex flex-wrap gap-3 text-[11px] text-charcoal-500">
@@ -564,9 +623,14 @@ export function HallDetailView({ hall, similar, isPreview, sidebarAd, advancePer
                         </div>
                       )}
 
-                      <p className="mt-1.5 text-[10px] text-charcoal-400">
-                        {new Date(r.created_at).toLocaleDateString("en-IN", { month: "short", year: "numeric" })}
-                      </p>
+                      {/* See reviewMonthLabel: this line was the one date on
+                          the page that did not pin a timezone, and it was a
+                          hydration mismatch. */}
+                      {reviewMonthLabel(r.created_at) && (
+                        <p className="mt-1.5 text-[10px] text-charcoal-400">
+                          {reviewMonthLabel(r.created_at)}
+                        </p>
+                      )}
                     </div>
                   ))}
                 </div>
