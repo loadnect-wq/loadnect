@@ -163,6 +163,8 @@ export async function POST(request: Request) {
     const db = admin as any;
     const now = new Date().toISOString();
     let applied = 0;
+    let unmatched = 0;
+    let failed = 0;
 
     for (const report of reports) {
       const status = mapStatus(report.status);
@@ -194,14 +196,38 @@ export async function POST(request: Request) {
           report.detail ?? `The operator did not deliver this message (${report.status || status})`;
       }
 
-      const { count } = await db
+      // READ THE ERROR. supabase-js reports a PostgREST failure in the result
+      // object rather than throwing, so the try/catch below never sees one and
+      // the loop used to fall through to `applied += count ?? 0` with count
+      // null. That made a total write failure — a CHECK violation on
+      // notif_delivery_status_valid, a renamed column, a grant narrowed the way
+      // 0065 narrowed payments — print the SAME line as a quiet batch:
+      // "0 row(s) updated". Which is also the correct output when a report's
+      // requestId matches no row of ours, so nothing distinguished them, and
+      // the 200 below stops MSG91 ever mentioning it again.
+      const { count, error } = await db
         .from("notifications")
         .update(update, { count: "exact" })
         .eq("provider_message_id", report.requestId);
+
+      if (error) {
+        // Loud, and per report: this is the only trace that will ever exist.
+        failed += 1;
+        console.error(
+          `[msg91-webhook] update failed for ${report.requestId}:`,
+          error.message,
+        );
+        continue;
+      }
+      if ((count ?? 0) === 0) unmatched += 1;
       applied += count ?? 0;
     }
 
-    console.info(`[msg91-webhook] ${reports.length} report(s), ${applied} row(s) updated`);
+    // Says which kind of nothing happened. "0 updated" alone was the ambiguity.
+    console[failed > 0 ? "error" : "info"](
+      `[msg91-webhook] ${reports.length} report(s), ${applied} row(s) updated, ` +
+        `${unmatched} unmatched, ${failed} write error(s)`,
+    );
   } catch (e) {
     // Never 500 at MSG91: it would retry this callback for hours. The report is
     // advisory — the outbox row is already correct about what WE did.

@@ -2,7 +2,7 @@ import { Suspense } from "react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Building2 } from "lucide-react";
-import { fetchHalls, countActivePremiumHalls } from "@/lib/halls";
+import { fetchHallsResult, countActivePremiumHalls } from "@/lib/halls";
 import { todayInBusinessTz } from "@/lib/dates";
 import { getAdvancePercent } from "@/lib/platform-settings";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -89,7 +89,11 @@ export default async function HallsPage({
   const effectiveDate = date || (sp.available === "today" ? todayInBusinessTz() : "");
 
   const advancePercent = await getAdvancePercent();
-  const halls = await fetchHalls({
+  // fetchHallsResult, not fetchHalls: an empty array from a BROKEN query and an
+  // empty array from a genuine no-match are the same value, and this page's
+  // whole job is to say which. Especially now, when zero venues is the expected
+  // state and a failure would hide inside the ordinary empty screen.
+  const { halls, failed: hallsFailed } = await fetchHallsResult({
     city, area, capacity, priceMin, priceMax, q, category, amenity,
     date: effectiveDate, sort,
   });
@@ -169,14 +173,21 @@ export default async function HallsPage({
         ) : (
           <EmptyState
             icon={<Building2 className="h-8 w-8" />}
-            title="No halls found"
+            // A failed query must never read as "we have no venues". Telling a
+            // visitor the catalogue is empty when we simply could not read it
+            // costs us the visit, and costs the venue a booking.
+            title={hallsFailed ? "We couldn't load venues just now" : "No halls found"}
             description={
-              hasFilters
-                ? "Try adjusting or clearing your filters to see more results."
-                : "No approved wedding halls are listed yet. Check back soon."
+              hallsFailed
+                ? "Something went wrong at our end — this is not a sign that no venues are listed. Please refresh, or try again in a moment."
+                : hasFilters
+                  ? "Try adjusting or clearing your filters to see more results."
+                  : "No approved wedding halls are listed yet. Check back soon."
             }
             action={
-              hasFilters ? (
+              // Not on failure: clearing filters cannot fix a query that never
+              // ran, and offering it implies the filters were the problem.
+              hasFilters && !hallsFailed ? (
                 <Link href="/halls" className="text-sm font-semibold text-maroon-600 hover:underline">
                   Clear all filters
                 </Link>

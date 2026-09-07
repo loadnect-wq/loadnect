@@ -162,7 +162,36 @@ export type HallDetail = {
 
 // ── Main query ────────────────────────────────────────────────────────────────
 
-export async function fetchHalls(filters: HallsFilters): Promise<HallListing[]> {
+/**
+ * Same query as fetchHalls, but says whether it actually ran.
+ *
+ * fetchHalls returns HallListing[] and nothing else, so a failed query and a
+ * genuinely empty catalogue are the same value to every caller — and the page
+ * renders "No halls found" either way. The comment at the top of this file
+ * records that shipping once already (PGRST100 from an unquoted search term).
+ * It is more dangerous now than it was then: the catalogue IS empty pre-launch,
+ * so "no venues" is the expected screen and a broken query hides inside it.
+ *
+ * Callers that show a real listing page should use this and say something
+ * different when `failed` is true. Callers where an empty list is cosmetic —
+ * the homepage's featured strip — can keep using fetchHalls.
+ */
+export async function fetchHallsResult(
+  filters: HallsFilters,
+): Promise<{ halls: HallListing[]; failed: boolean }> {
+  // Allocated per call. A module-level flag would be shared by every concurrent
+  // request on the same server instance, so one visitor's failed query would
+  // blank another visitor's healthy results.
+  const failure: FailureFlag = { failed: false };
+  const halls = await fetchHalls(filters, failure);
+  return { halls, failed: failure.failed };
+}
+
+/** Out-parameter so fetchHalls keeps its HallListing[] signature for the four
+ *  callers that do not need the distinction. */
+type FailureFlag = { failed: boolean };
+
+export async function fetchHalls(filters: HallsFilters, failure?: FailureFlag): Promise<HallListing[]> {
   const supabase = await getSupabaseServerClient();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = supabase as any; // Database type is a placeholder until `supabase gen types` runs
@@ -304,6 +333,10 @@ export async function fetchHalls(filters: HallsFilters): Promise<HallListing[]> 
     } else {
       console.error("[fetchHalls]", error.message);
     }
+    // The empty list below is indistinguishable from "no venue matched", so
+    // tell any caller that asked. Set for the unprovisioned case too: a page
+    // that cannot read the table has not found zero halls, it has failed.
+    if (failure) failure.failed = true;
     return [];
   }
 
