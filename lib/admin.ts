@@ -1406,9 +1406,22 @@ export async function fetchStuckPlanPurchases(): Promise<StuckPlanPurchaseRow[]>
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = supabase as any;
 
+  // premium_listings MUST name its constraint. plan_purchases and
+  // premium_listings reference each other — plan_purchases.premium_listing_id
+  // forward, premium_listings.plan_purchase_id back — so a bare
+  // `premium_listings(id)` is ambiguous and PostgREST refuses the whole query
+  // with "more than one relationship was found". It had done since 28 August;
+  // handleError swallows it and returns [], so this panel reported "no stuck
+  // purchases" every time it was opened. Fail-open on the one screen whose job
+  // is to notice that an owner paid Rs 4,999 and got nothing.
+  //
+  // The named constraint is the REVERSE one, which is the relationship this
+  // function is documented to want: listings that point AT this purchase. The
+  // forward link-back is best-effort (see applyPlanPayment) and its absence
+  // does not mean the listing is missing.
   const { data, error } = await db
     .from("plan_purchases")
-    .select("id, plan_slug, amount, paid_at, cashfree_order_id, halls(name), hall_owners(business_name), premium_listings(id)")
+    .select("id, plan_slug, amount, paid_at, cashfree_order_id, halls(name), hall_owners(business_name), premium_listings!premium_listings_plan_purchase_id_fkey(id)")
     .eq("status", "paid")
     .order("paid_at", { ascending: false })
     .limit(100);
