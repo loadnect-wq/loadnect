@@ -24,6 +24,10 @@ export default async function AdminCouponsPage() {
 
   const rows = result.unavailable ? [] : result.rows;
   const liveCount   = rows.filter((c) => c.is_active).length;
+  // Rows whose usage query failed carry 0s that are not zeroes. Summing them
+  // silently understates both the redemption count and the rupee cost, so the
+  // totals say so instead of quietly being wrong.
+  const usageBroken = rows.filter((c) => c.usageUnavailable).length;
   const totalPaid   = rows.reduce((s, c) => s + c.paid, 0);
   const totalForgone = rows.reduce((s, c) => s + c.feesForgone, 0);
 
@@ -45,6 +49,19 @@ export default async function AdminCouponsPage() {
           </div>
         ) : (
           <>
+            {usageBroken > 0 && (
+              <div role="alert" className="rounded-xl border-2 border-red-300 bg-red-50 p-4 text-sm text-red-900">
+                <p className="font-semibold">
+                  Usage figures are incomplete ({usageBroken} of {rows.length} coupons)
+                </p>
+                <p className="mt-1 text-xs">
+                  Those coupons show &ldquo;usage unavailable&rdquo; because the usage query failed &mdash;
+                  they are <strong>not</strong> unused. The Bookings and fees-forgone totals below
+                  exclude them, so both are understated, and a redemption cap judged on these
+                  numbers would be judged wrong.
+                </p>
+              </div>
+            )}
             {rows.length > 0 && (
               <div className="grid grid-cols-3 gap-3">
                 <div className="rounded-xl bg-white p-3 shadow-card">
@@ -96,11 +113,21 @@ export default async function AdminCouponsPage() {
                             <p className="mt-1 text-xs text-charcoal-600">{c.description}</p>
                           )}
                           <p className="mt-1.5 text-[11px] text-charcoal-500">
-                            {c.paid} used
-                            {c.held > 0 && ` · ${c.held} in checkout`}
-                            {c.max_redemptions != null && ` · limit ${c.max_redemptions}`}
-                            {" · "}
-                            {formatPrice(c.feesForgone)} forgone
+                            {/* usageUnavailable means the coupon_usage RPC did not
+                                run. "0 used · Rs 0 forgone" would be indistinguishable
+                                from a coupon nobody has redeemed — and `paid` is the
+                                number a redemption cap is judged against. */}
+                            {c.usageUnavailable ? (
+                              <span className="font-semibold text-red-700">usage unavailable</span>
+                            ) : (
+                              <>
+                                {c.paid} used
+                                {c.held > 0 && ` · ${c.held} in checkout`}
+                                {c.max_redemptions != null && ` · limit ${c.max_redemptions}`}
+                                {" · "}
+                                {formatPrice(c.feesForgone)} forgone
+                              </>
+                            )}
                             {" · created "}{fmtDate(c.created_at)}
                             {c.expires_at && ` · expires ${fmtDate(c.expires_at)}`}
                             {c.stopped_at && ` · stopped ${fmtDate(c.stopped_at)}`}

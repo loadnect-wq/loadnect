@@ -21,9 +21,15 @@ function isInWindow(start: string, end: string): boolean {
 }
 
 export default async function AdminPremiumPage() {
-  const [listings, halls, stuck] = await Promise.all([
+  const [premium, halls, stuckResult] = await Promise.all([
     fetchAllPremium(), fetchHallOptionsForPremium(), fetchStuckPlanPurchases(),
   ]);
+  // Both reads used to collapse a failure into an empty list, so this page said
+  // "no premium listings" and "nothing stuck" whether or not the queries ran —
+  // and these are the two screens that catch an owner who paid Rs 4,999 and got
+  // nothing. They now report whether they executed.
+  const listings = premium.rows;
+  const stuck = stuckResult.rows;
   const totalRevenue = listings.reduce((s, l) => s + l.amount, 0);
   const activeCount  = listings.filter((l) => l.is_active && isInWindow(l.start_date, l.end_date)).length;
   const proCount     = listings.filter((l) => l.plan_slug === "pro" && l.is_active && isInWindow(l.start_date, l.end_date)).length;
@@ -36,11 +42,28 @@ export default async function AdminPremiumPage() {
 
         {/* Summary */}
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <SummaryCard label="Active now"    value={activeCount.toString()} highlight />
-          <SummaryCard label="Pro active"    value={proCount.toString()} />
-          <SummaryCard label="Total listings" value={listings.length.toString()} />
-          <SummaryCard label="Premium revenue" value={formatPrice(totalRevenue)} wide />
+          <SummaryCard label="Active now"    value={premium.unavailable ? "—" : activeCount.toString()} highlight />
+          <SummaryCard label="Pro active"    value={premium.unavailable ? "—" : proCount.toString()} />
+          <SummaryCard label="Total listings" value={premium.unavailable ? "—" : listings.length.toString()} />
+          <SummaryCard label="Premium revenue" value={premium.unavailable ? "—" : formatPrice(totalRevenue)} wide />
         </div>
+
+        {/* An empty screen here is only good news if the queries actually ran. */}
+        {(premium.unavailable || stuckResult.unavailable) && (
+          <div role="alert" className="rounded-2xl border-2 border-red-300 bg-red-50 p-4 text-red-900">
+            <p className="font-serif text-sm font-semibold">This page could not be loaded fully</p>
+            <p className="mt-1 text-xs">
+              {premium.unavailable && stuckResult.unavailable
+                ? "Neither the premium listings nor the paid-but-not-activated check could be read."
+                : premium.unavailable
+                  ? "The premium listings could not be read."
+                  : "The paid-but-not-activated check could not be read."}{" "}
+              Whatever is missing below is missing because a query failed, <strong>not</strong> because
+              there is nothing there. An owner may have paid and be waiting. Refresh, and if it
+              persists check the server logs before telling anyone their plan is fine.
+            </p>
+          </div>
+        )}
 
         {/* PAID BUT NOT ACTIVATED. Activation retries itself on every webhook
             redelivery and every visit to the return page, so anything that
@@ -79,7 +102,11 @@ export default async function AdminPremiumPage() {
         {listings.length === 0 ? (
           <div className="rounded-2xl bg-white p-8 text-center shadow-card">
             <Sparkles className="mx-auto h-10 w-10 text-charcoal-300 mb-3" />
-            <p className="text-sm text-charcoal-500">No premium listings purchased yet.</p>
+            <p className="text-sm text-charcoal-500">
+              {premium.unavailable
+                ? "Premium listings could not be loaded — this is not the same as none being purchased."
+                : "No premium listings purchased yet."}
+            </p>
           </div>
         ) : (
           <div className="overflow-x-auto lg:overflow-hidden rounded-2xl bg-white shadow-card">

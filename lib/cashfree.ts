@@ -348,7 +348,15 @@ export function classifyRefundStatus(raw: string | undefined): RefundOutcome {
     case "ONHOLD":    return { state: "processing" };
     case "CANCELLED": return { state: "failed", reason: "Cashfree cancelled the refund." };
     case "FAILED":    return { state: "failed", reason: "Cashfree could not complete the refund." };
-    default:          return { state: "processing" };
+    default:
+      // Still "processing", because the alternative invites a second payout for
+      // a refund that may well be in flight — that trade is not close. But it is
+      // no longer SILENT: an absent or unrecognised status used to be
+      // indistinguishable from a genuine PENDING, and getCashfreeRefund now
+      // refuses to hand this function an undefined at all, so reaching here
+      // means Cashfree sent a status we do not know about.
+      console.warn(`[cashfree] unrecognised refund_status ${JSON.stringify(raw)} — treating as processing`);
+      return { state: "processing" };
   }
 }
 
@@ -423,10 +431,26 @@ export async function getCashfreeRefund(
     );
     const text = await res.text();
     let data: CashfreeRefund = {} as CashfreeRefund;
-    try { data = text ? JSON.parse(text) : {}; } catch { /* ignore */ }
+    let unreadable = false;
+    try { data = text ? JSON.parse(text) : {}; } catch { unreadable = true; }
 
     if (!res.ok) {
       return { ok: false, error: `Cashfree returned HTTP ${res.status}`, status: res.status };
+    }
+
+    // A 2xx WHOSE BODY WE COULD NOT READ IS NOT A SUCCESS. This used to return
+    // { ok: true, data: {} }, so refund_status was undefined and
+    // classifyRefundStatus fell to its default — "processing". That is the exact
+    // state this function is called to RESOLVE, so a refund Cashfree had marked
+    // FAILED or CANCELLED read as in-flight on every subsequent poll, forever,
+    // because each poll failed the same way. Saying "we could not check" leaves
+    // the row alone for a human, which is the honest outcome.
+    if (unreadable || !text || data.refund_status === undefined) {
+      console.error(
+        `[cashfree] refund status unreadable for ${refundId}:`,
+        unreadable ? "body was not JSON" : "no refund_status in the response",
+      );
+      return { ok: false, error: "Cashfree's answer could not be read, so the refund status is unknown." };
     }
     return { ok: true, data };
   } catch {

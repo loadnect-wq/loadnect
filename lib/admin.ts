@@ -231,6 +231,18 @@ export type AdminStats = {
     /** Messages that failed and are still retryable. */
     failedNotifications: number;
   };
+  /**
+   * Sections whose query did not run.
+   *
+   * EVERY FIGURE BELOW DEFAULTS TO ZERO, so a failed read is indistinguishable
+   * from a quiet month unless the caller is told which reads failed. Only
+   * usersRes.error was ever checked; the other six results were consumed as
+   * `(res.data ?? [])`, so a 42501 — the exact failure 0065 caused on payments
+   * — silently produced "Platform fees Rs 0" on the one screen whose job is to
+   * state the numbers. Anything named here means the figures derived from it
+   * are not facts, and the dashboard must say so rather than print a zero.
+   */
+  failed: string[];
 };
 
 // ── Error helper ──────────────────────────────────────────────────────────────
@@ -257,6 +269,17 @@ export async function fetchAdminStats(): Promise<AdminStats> {
     revenue:  { grossBookings: 0, grossAdvances: 0, commission: 0, platformFees: 0, netRevenue: 0, ownerPayouts: 0, refunds: 0 },
     open:     { pendingHalls: 0, pendingOwners: 0, openTickets: 0, pendingAds: 0,
                 refundsOwed: 0, stuckPayouts: 0, failedNotifications: 0 },
+    failed:   [],
+  };
+
+  /** Records a read that did not run, so the caller can refuse to present its
+   *  zeroes as facts. Returns nothing: every block below already tolerates an
+   *  empty result, and a partial dashboard plus an honest banner beats an
+   *  all-zero one. */
+  const noteFailure = (section: string, error: { code?: string; message: string } | null | undefined) => {
+    if (!error) return;
+    handleError(`fetchAdminStats(${section})`, error);
+    empty.failed.push(section);
   };
 
   const [usersRes, hallsRes, bookingsRes, commissionsRes, ticketsRes, adsRes, paymentsRes] = await Promise.all([
@@ -284,7 +307,15 @@ export async function fetchAdminStats(): Promise<AdminStats> {
       .in("status", ["payment_success", "refunded"]),
   ]);
 
-  if (usersRes.error) { handleError("fetchAdminStats(users)", usersRes.error); return empty; }
+  // Each result is checked. Previously only this one was, and it returned an
+  // all-zero AdminStats that the dashboard rendered as real figures.
+  noteFailure("users", usersRes.error);
+  noteFailure("halls", hallsRes.error);
+  noteFailure("bookings", bookingsRes.error);
+  noteFailure("commissions", commissionsRes.error);
+  noteFailure("support tickets", ticketsRes.error);
+  noteFailure("advertisements", adsRes.error);
+  noteFailure("payments", paymentsRes.error);
 
   const roles = (usersRes.data ?? []) as { role: string }[];
   empty.users.total          = roles.length;
@@ -373,18 +404,28 @@ export async function fetchAdminStats(): Promise<AdminStats> {
     empty.open.refundsOwed  = refundRows.filter((r) => r.state !== "completed").length;
     empty.open.stuckPayouts = payoutRows.length;
   } catch (e) {
+    // Both helpers already return [] on a query error, so this catch is the
+    // SECOND fail-open layer over the same numbers. Reaching it means
+    // "Refunds owed 0 / Stuck payouts 0" is a guess, and the comment above
+    // records exactly what that costs: a customer waiting on a refund and a
+    // venue waiting on a payout, over an all-clear.
     handleError("fetchAdminStats.moneyQueues", e as { code?: string; message: string });
+    empty.failed.push("refund and payout queues");
   }
 
   try {
-    const { count } = await db
+    const { count, error } = await db
       .from("notifications")
       .select("id", { count: "exact", head: true })
       .eq("status", "failed")
       .or("permanent_failure.is.null,permanent_failure.eq.false");
     empty.open.failedNotifications = Number(count ?? 0);
-  } catch {
-    /* a missing table must not break the dashboard */
+    noteFailure("notifications", error);
+  } catch (e) {
+    // A missing table must not break the dashboard, but it must not read as
+    // "no messages failed" either.
+    handleError("fetchAdminStats(notifications)", e as { code?: string; message: string });
+    empty.failed.push("notifications");
   }
 
   return empty;
@@ -979,7 +1020,13 @@ export async function fetchAllReviews(visibilityFilter?: "visible" | "hidden"): 
 
 // ── Premium listings ──────────────────────────────────────────────────────────
 
-export async function fetchAllPremium(): Promise<AdminPremiumRow[]> {
+export async function fetchAllPremium(): Promise<{
+  rows: AdminPremiumRow[];
+  /** Each row here is Rs 4,999 or Rs 9,999 an owner already paid. An empty
+   *  table reads as "nobody bought premium", which is what a fresh install
+   *  looks like, so a failed query is never questioned. */
+  unavailable: boolean;
+}> {
   const supabase = await getSupabaseServerClient();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = supabase as any;
@@ -1001,9 +1048,16 @@ export async function fetchAllPremium(): Promise<AdminPremiumRow[]> {
       .limit(200));
   }
 
-  if (error) { handleError("fetchAllPremium", error); return []; }
+  // The 42703 retry above only covers a missing plan_slug. Anything else — a
+  // failure on the halls(name, slug) embed, a grant change, a timeout — used to
+  // return [] and render "no premium listings", which is indistinguishable from
+  // a fresh install. Combined with the same fail-open in fetchStuckPlanPurchases,
+  // BOTH screens that would catch a paid-but-not-activated plan went quiet at
+  // once, which is precisely the case an owner is complaining about when an
+  // admin opens this page.
+  if (error) { handleError("fetchAllPremium", error); return { rows: [], unavailable: true }; }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return (data ?? []).map((row: any): AdminPremiumRow => ({
+  const rows = (data ?? []).map((row: any): AdminPremiumRow => ({
     id:         row.id,
     hall_id:    row.hall_id,
     hall_name:  row.halls?.name ?? "Hall",
@@ -1014,6 +1068,8 @@ export async function fetchAllPremium(): Promise<AdminPremiumRow[]> {
     amount:     Number(row.amount),
     is_active:  row.is_active,
   }));
+
+  return { rows, unavailable: false };
 }
 
 // Lightweight hall lookup for the admin "create premium listing" form.
@@ -1401,7 +1457,13 @@ export type StuckPlanPurchaseRow = {
  * the link-back write is best-effort and its failure does not mean the listing
  * is missing.
  */
-export async function fetchStuckPlanPurchases(): Promise<StuckPlanPurchaseRow[]> {
+export async function fetchStuckPlanPurchases(): Promise<{
+  rows: StuckPlanPurchaseRow[];
+  /** The query did not run. An empty list is then NOT an all-clear, and the
+   *  panel must say so — the ambiguous-embed bug hid behind exactly this for
+   *  ten days, because a healthy system and a broken one both rendered "none". */
+  unavailable: boolean;
+}> {
   const supabase = await getSupabaseServerClient();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = supabase as any;
@@ -1426,10 +1488,14 @@ export async function fetchStuckPlanPurchases(): Promise<StuckPlanPurchaseRow[]>
     .order("paid_at", { ascending: false })
     .limit(100);
 
-  if (error) { handleError("fetchStuckPlanPurchases", error); return []; }
+  // The embed was fixed by naming its constraint, but the handler that HID it
+  // was the reason nobody noticed for ten days. Three embeds remain (halls,
+  // hall_owners, the constraint-named premium_listings), so any future RLS
+  // change or 0065-style grant narrowing re-throws here.
+  if (error) { handleError("fetchStuckPlanPurchases", error); return { rows: [], unavailable: true }; }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return (data ?? [])
+  const rows = (data ?? [])
     .filter((row: any) => !row.premium_listings || row.premium_listings.length === 0)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     .map((row: any): StuckPlanPurchaseRow => ({
@@ -1441,6 +1507,8 @@ export async function fetchStuckPlanPurchases(): Promise<StuckPlanPurchaseRow[]>
       paid_at:        row.paid_at ?? null,
       order_id:       row.cashfree_order_id ?? null,
     }));
+
+  return { rows, unavailable: false };
 }
 
 // ── Coupons ───────────────────────────────────────────────────────────────────
@@ -1461,6 +1529,9 @@ export type AdminCouponRow = {
   paid:            number;
   /** What the waivers have cost Hallnect so far, in rupees. */
   feesForgone:     number;
+  /** The usage query did not run, so held/paid/feesForgone are NOT zero —
+   *  they are unknown, and the table must print that rather than a 0. */
+  usageUnavailable?: boolean;
 };
 
 /**
@@ -1492,7 +1563,20 @@ export async function fetchCoupons(): Promise<
       // coupon_usage() is SECURITY DEFINER and admin-gated; it raises for a
       // non-admin rather than returning zeroes, so a failure here means the
       // caller is not an admin and the page would not have rendered anyway.
-      const { data: u } = await db.rpc("coupon_usage", { _coupon_id: c.id });
+      //
+      // THAT REASONING COVERS ONE FAILURE MODE AND THE CODE ASSUMED IT COVERED
+      // ALL OF THEM. `error` was destructured away entirely, so a renamed or
+      // dropped function after a migration, a permission change on the routine,
+      // or a statement timeout each left `u` null and rendered "Held 0, Paid 0,
+      // Fees forgone Rs 0" for a real admin — identical to a coupon nobody has
+      // used. `paid` is what a redemption cap is judged against and feesForgone
+      // is the running rupee cost of the campaign, so both being wrong AND
+      // reassuring is the worst combination available.
+      const { data: u, error: usageError } = await db.rpc("coupon_usage", { _coupon_id: c.id });
+      if (usageError) {
+        handleError(`fetchCoupons(usage:${c.code})`, usageError);
+        return { ...c, held: 0, paid: 0, feesForgone: 0, usageUnavailable: true };
+      }
       const usage = Array.isArray(u) ? u[0] : u;
       const paid = Number(usage?.paid ?? 0);
       return {
@@ -1500,6 +1584,7 @@ export async function fetchCoupons(): Promise<
         held:        Number(usage?.held ?? 0),
         paid,
         feesForgone: paid * PLATFORM_FEE_RUPEES,
+        usageUnavailable: false,
       };
     }),
   );

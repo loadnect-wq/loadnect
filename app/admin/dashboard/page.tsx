@@ -17,6 +17,12 @@ export default async function AdminDashboardPage() {
     fetchAuditLog({ page: 1 }),
   ]);
 
+  // A figure whose source query did not run is not zero, it is unknown. Printing
+  // "Rs 0" for it is the precise mistake this audit was chasing, so each money
+  // card asks whether its own source loaded and prints an em dash if it did not.
+  const money = (value: number, ...sources: string[]) =>
+    sources.some((src) => stats.failed.includes(src)) ? "—" : formatPrice(value);
+
   const queue: { count: number; label: string; href: string; color: string }[] = [
     {
       count: stats.open.pendingHalls,
@@ -75,6 +81,34 @@ export default async function AdminDashboardPage() {
       />
 
       <div className="px-4 py-5 sm:px-6 lg:px-8 space-y-6">
+
+        {/* EVERY NUMBER ON THIS PAGE IS A ZERO BY DEFAULT, so a read that failed
+            renders exactly like a quiet week. Until fetchAdminStats reported
+            which reads ran, this page could show "Platform fees Rs 0" and
+            "Refunds owed 0" over a customer waiting on money, with nothing
+            anywhere to say the query never executed. Naming the failed sections
+            is the whole fix: an operator who sees this knows not to trust the
+            figures below, which is the one thing a silent zero denied them. */}
+        {stats.failed.length > 0 && (
+          <div
+            role="alert"
+            className="flex items-start gap-3 rounded-2xl border-2 border-red-300 bg-red-50 p-4 text-red-900"
+          >
+            <AlertCircle className="mt-0.5 h-5 w-5 shrink-0" />
+            <div className="min-w-0">
+              <p className="font-serif text-sm font-semibold">
+                Some figures below could not be read
+              </p>
+              <p className="mt-1 text-xs">
+                Failed: <span className="font-semibold">{stats.failed.join(", ")}</span>. Anything
+                derived from {stats.failed.length === 1 ? "it" : "them"} is showing{" "}
+                <span className="font-mono">0</span> because the query did not run &mdash; not
+                because there is nothing to report. Do not reconcile from this page until it
+                loads cleanly.
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* Action queue */}
         <section>
@@ -136,40 +170,42 @@ export default async function AdminDashboardPage() {
             <RevenueCard
               icon={<CheckCircle2 className="h-5 w-5 text-emerald-600" />}
               label="Gross booking value"
-              value={formatPrice(stats.revenue.grossBookings)}
+              value={money(stats.revenue.grossBookings, "bookings")}
             />
             <RevenueCard
               icon={<CheckCircle2 className="h-5 w-5 text-emerald-600" />}
               label="Gross advances"
-              value={formatPrice(stats.revenue.grossAdvances)}
+              value={money(stats.revenue.grossAdvances, "commissions")}
             />
             <RevenueCard
               icon={<Wallet className="h-5 w-5 text-maroon-600" />}
               // Not labelled "2.5%": the sum spans historical bookings that
               // carry their own snapshotted rate from the previous model.
               label="Commission earned"
-              value={formatPrice(stats.revenue.commission)}
+              value={money(stats.revenue.commission, "commissions")}
               highlight
             />
             <RevenueCard
               icon={<Wallet className="h-5 w-5 text-gold-600" />}
               label="Platform fees"
-              value={formatPrice(stats.revenue.platformFees)}
+              value={money(stats.revenue.platformFees, "payments")}
               highlight
             />
             <RevenueCard
               icon={<Wallet className="h-5 w-5 text-maroon-600" />}
               label="Net Hallnect revenue"
-              value={formatPrice(stats.revenue.netRevenue)}
+              value={money(stats.revenue.netRevenue, "commissions", "payments")}
               highlight
             />
             <RevenueCard
               icon={<Wallet className="h-5 w-5 text-charcoal-600" />}
               label="Owner payouts"
-              value={formatPrice(stats.revenue.ownerPayouts)}
+              value={money(stats.revenue.ownerPayouts, "commissions")}
             />
           </div>
-          {stats.revenue.refunds > 0 && (
+          {/* Hidden when the payments read failed: a missing note is honest,
+              "Refunds issued: Rs 0" would not be. */}
+          {stats.revenue.refunds > 0 && !stats.failed.includes("payments") && (
             <p className="mt-2 text-xs text-charcoal-500">
               Refunds issued: {formatPrice(stats.revenue.refunds)} (platform fees are retained
               except on venue/platform-caused cancellations, where one was charged).

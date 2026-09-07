@@ -211,6 +211,21 @@ export async function fetchOwnerRow(): Promise<OwnerRow | null> {
 // ── Fetch halls for this owner ────────────────────────────────────────────────
 
 // RLS: owns_hall(id) — owner can read all their halls regardless of status.
+//
+// THROWS ON A QUERY ERROR, AND THAT IS DELIBERATE. This is the root of the
+// owner dashboard: the hall ids it returns feed fetchOwnerBookings,
+// fetchOwnerRevenue, fetchOwnerCommissions, fetchOwnerPremiumListings and
+// fetchOwnerStats, and every one of them opens with `if (hallIds.length === 0)
+// return []`. So returning [] on failure short-circuited all six screens before
+// their queries were even issued, and produced a perfectly self-consistent "you
+// have nothing" — an owner with a live, approved, booked venue shown the
+// new-owner empty state and an "Add your first hall" prompt, with no error
+// anywhere. The realistic response to that is to list the venue again.
+//
+// A throw reaches app/error.tsx, which says we hit an error and offers a retry
+// and a reference. "We could not load this" is worth far more to an owner than
+// a confident, wrong "you have no halls", and no caller has to be taught the
+// difference.
 export async function fetchOwnerHalls(ownerId: string): Promise<OwnerHall[]> {
   const supabase = await getSupabaseServerClient();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -222,7 +237,12 @@ export async function fetchOwnerHalls(ownerId: string): Promise<OwnerHall[]> {
     .eq("owner_id", ownerId)
     .order("created_at", { ascending: false });
 
-  if (error) { handleError("fetchOwnerHalls", error); return []; }
+  if (error) {
+    handleError("fetchOwnerHalls", error);
+    // The message is deliberately generic: Next replaces it in production
+    // anyway, and the redacted detail is already in the server log above.
+    throw new Error("Could not load your venues.");
+  }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return (data ?? []).map((row: any): OwnerHall => {
