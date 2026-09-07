@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { requireRole } from "@/lib/auth";
 import Link from "next/link";
 import {
   AlertCircle, Building2, CalendarDays, CheckCircle2,
@@ -11,6 +12,14 @@ import { AdminPageHeader } from "../_components/AdminPageHeader";
 export const metadata: Metadata = { title: "Admin Dashboard" };
 
 export default async function AdminDashboardPage() {
+  // ASSERTS ITS OWN ROLE. The layout also calls requireRole, but a layout and
+  // its page render CONCURRENTLY in the App Router — the layout's redirect does
+  // not stop this component's queries from being issued first. An anonymous
+  // request therefore ran every read below as `anon`, was denied by the grants,
+  // and only then got its 307. Nothing leaked, but the work was wasted and each
+  // denial now logs at error level, which would bury real failures. Guarding
+  // here also means this page is not relying on a file it does not control.
+  await requireRole(["admin"]);
   // Independent reads — run them together rather than serially.
   const [stats, recentActivity] = await Promise.all([
     fetchAdminStats(),

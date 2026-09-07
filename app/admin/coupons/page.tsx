@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { requireRole } from "@/lib/auth";
 import { TicketPercent } from "lucide-react";
 import { fetchCoupons } from "@/lib/admin";
 import { formatPrice } from "@/lib/mock-data";
@@ -10,8 +11,6 @@ import { CreateCouponForm } from "./_components/CreateCouponForm";
 
 export const metadata: Metadata = { title: "Coupons — Admin" };
 
-// No role guard here: app/admin/layout.tsx already calls requireRole(["admin"])
-// for the whole subtree, and noindex is inherited with it.
 
 function fmtDate(iso: string) {
   return new Date(iso).toLocaleDateString("en-IN", {
@@ -20,6 +19,14 @@ function fmtDate(iso: string) {
 }
 
 export default async function AdminCouponsPage() {
+  // ASSERTS ITS OWN ROLE. The layout also calls requireRole, but a layout and
+  // its page render CONCURRENTLY in the App Router — the layout's redirect does
+  // not stop this component's queries from being issued first. An anonymous
+  // request therefore ran every read below as `anon`, was denied by the grants,
+  // and only then got its 307. Nothing leaked, but the work was wasted and each
+  // denial now logs at error level, which would bury real failures. Guarding
+  // here also means this page is not relying on a file it does not control.
+  await requireRole(["admin"]);
   const result = await fetchCoupons();
 
   const rows = result.unavailable ? [] : result.rows;

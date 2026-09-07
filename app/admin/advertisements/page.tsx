@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { requireRole } from "@/lib/auth";
 import Link from "next/link";
 import { Megaphone } from "lucide-react";
 import { fetchAllAds } from "@/lib/admin";
@@ -38,6 +39,14 @@ function fmtDate(iso: string | null) {
 type Props = { searchParams: Promise<{ status?: string }> };
 
 export default async function AdminAdsPage({ searchParams }: Props) {
+  // ASSERTS ITS OWN ROLE. The layout also calls requireRole, but a layout and
+  // its page render CONCURRENTLY in the App Router — the layout's redirect does
+  // not stop this component's queries from being issued first. An anonymous
+  // request therefore ran every read below as `anon`, was denied by the grants,
+  // and only then got its 307. Nothing leaked, but the work was wasted and each
+  // denial now logs at error level, which would bury real failures. Guarding
+  // here also means this page is not relying on a file it does not control.
+  await requireRole(["admin"]);
   const { status } = await searchParams;
   const activeFilter = FILTERS.find((f) => f.key === status) ?? FILTERS[0];
   const ads = await fetchAllAds(activeFilter.value);

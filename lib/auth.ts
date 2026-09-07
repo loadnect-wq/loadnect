@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { redirect } from "next/navigation";
 import { getSupabaseServerClient } from "./supabase/server";
 import { getDashboardPath } from "./constants";
@@ -22,7 +23,17 @@ export async function getSession() {
   return user;
 }
 
-export async function getProfile(): Promise<Profile | null> {
+/**
+ * MEMOIZED PER REQUEST. Every admin and owner page now asserts its own role
+ * rather than trusting the layout to have done it (see below), and without this
+ * that would mean a second auth.getUser() round trip plus a second profiles read
+ * on every render. React's cache() is request-scoped, so the layout's guard and
+ * the page's guard share one lookup and the extra assertions are free.
+ *
+ * Request-scoped is the important word: this must never be a module-level cache,
+ * or one visitor's profile would answer another visitor's request.
+ */
+export const getProfile = cache(async function getProfile(): Promise<Profile | null> {
   const supabase = await getSupabaseServerClient();
   const {
     data: { user },
@@ -41,7 +52,7 @@ export async function getProfile(): Promise<Profile | null> {
   // gap can never lock out an entire user base.
   const row = data as unknown as Profile & { is_active?: boolean | null };
   return { ...row, is_active: row.is_active !== false };
-}
+});
 
 export async function requireAuth(): Promise<Profile> {
   const profile = await getProfile();

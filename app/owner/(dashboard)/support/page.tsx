@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { requireRole } from "@/lib/auth";
 import { AppHeader } from "@/components/app/AppHeader";
 import { CreateTicketForm } from "@/components/support/CreateTicketForm";
 import { TicketList } from "@/components/support/TicketList";
@@ -7,6 +8,9 @@ import { fetchMyTickets } from "@/lib/tickets-server";
 export const metadata: Metadata = { title: "Support — Owner" };
 
 export default async function OwnerSupportPage() {
+  // Asserts its own role: a layout's redirect does not stop this page's queries
+  // from being issued, because layout and page render concurrently.
+  await requireRole(["owner_approved", "owner_pending", "admin"]);
   const tickets = await fetchMyTickets();
 
   return (
