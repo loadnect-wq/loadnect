@@ -13,7 +13,7 @@ import {
 import { sanitizeError } from "@/lib/errors";
 import { notifyBookingEvent } from "@/lib/notifications/events";
 import { normalizePhoneE164 } from "@/lib/notifications/phone";
-import { recordBookingRefund } from "@/lib/refunds";
+import { recordBookingRefundOrAlert } from "@/lib/refunds";
 
 type ActionResult = { success: true } | { error: string };
 
@@ -80,7 +80,10 @@ export async function cancelBooking(
   // ₹200 platform fee is non-refundable on a customer cancellation). Recording
   // is idempotent and never fails the cancellation; when money is actually due
   // the customer is told the exact figure rather than left guessing.
-  const refund = await recordBookingRefund(bookingId, "customer");
+  // OrAlert: the cancellation above is already committed, so a recording
+  // failure must not throw an error at a customer whose booking DID cancel.
+  // It rings an admin instead of vanishing into a console line.
+  const { refund } = await recordBookingRefundOrAlert(bookingId, "customer");
   if (refund && refund.refundAmount > 0) {
     await notifyBookingEvent("refund.initiated", bookingId, { amount: refund.refundAmount });
   }

@@ -39,6 +39,7 @@ import { toPaise, PAISE_PER_RUPEE } from "@/lib/money";
 export { CUSTOMER_REFUND_SCHEDULE, customerRefundPercent } from "@/lib/refund-schedule";
 // A re-export does not bind the name locally, and this module calls it.
 import { customerRefundPercent } from "@/lib/refund-schedule";
+import { notifyAdminOperational } from "@/lib/notifications/events";
 
 /**
  * The commission Hallnect KEEPS when a booking is cancelled, in rupees.
@@ -99,7 +100,13 @@ export async function recordBookingRefund(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const db = admin as any;
 
-    const { data: payment } = await db
+    // READ THE ERROR. `error` was discarded, so a failure here produced
+    // `payment = null`, which this function documents as "there is nothing to
+    // refund". A captured advance then looked exactly like a booking that
+    // lapsed unpaid: refund_state is never set to 'owed', and 'owed' is the ONLY
+    // thing that puts a row into the admin refund queue or lets issueRefund act.
+    // The money stays taken, the customer is never told, and no screen shows it.
+    const { data: payment, error: paymentErr } = await db
       .from("payments")
       .select("*")
       .eq("booking_id", bookingId)
@@ -108,14 +115,23 @@ export async function recordBookingRefund(
       .limit(1)
       .maybeSingle();
 
+    if (paymentErr) {
+      console.error("[refunds] could not read the payment for", bookingId, ":", paymentErr.message);
+      throw new Error("Could not read the payment for this booking.");
+    }
+
     // Nothing captured → nothing to refund (a pending booking simply lapses).
     if (!payment) return null;
 
     // Already recorded — do not recompute or re-announce.
     if (payment.refund_amount != null && Number(payment.refund_amount) > 0) return null;
 
-    const { data: booking } = await db
+    const { data: booking, error: bookingErr } = await db
       .from("bookings").select("*").eq("id", bookingId).maybeSingle();
+    if (bookingErr) {
+      console.error("[refunds] could not read booking", bookingId, ":", bookingErr.message);
+      throw new Error("Could not read this booking.");
+    }
     if (!booking) return null;
 
     // Components: prefer the stored breakdown; legacy payments carried the
@@ -327,8 +343,14 @@ export async function recordBookingRefund(
       ({ error } = await db.from("payments").update(legacy).eq("id", payment.id));
     }
     if (error) {
+      // The refund has been CALCULATED and could not be persisted. Returning
+      // null here handed the caller the same value that means "this booking was
+      // never paid", so it could not retry, warn or escalate — and with
+      // refund_amount still null the row stays outside the admin refund queue
+      // and outside the overdue sweep. A throw is the only way the caller can
+      // tell the two apart.
       console.error("[refunds] could not record refund:", error.message);
-      return null;
+      throw new Error("The refund was calculated but could not be recorded.");
     }
 
     return {
@@ -338,7 +360,47 @@ export async function recordBookingRefund(
       percentApplied: percent,
     };
   } catch (e) {
+    // Deliberately rethrows rather than returning null. Every caller treats null
+    // as "nothing was owed"; a failure is not that, and a cancellation that
+    // silently drops a refund is the most expensive outcome in this file.
     console.error("[refunds] failed:", e instanceof Error ? e.message : e);
-    return null;
+    throw e instanceof Error ? e : new Error("Could not record the refund.");
+  }
+}
+
+/**
+ * recordBookingRefund for the three CANCELLATION paths, which must not fail.
+ *
+ * recordBookingRefund now throws when it cannot read or write, because null had
+ * to mean two different things — "nothing was owed" and "we could not tell" —
+ * and the caller could not distinguish a captured advance from a booking that
+ * lapsed unpaid. But by the time these callers reach it the cancellation is
+ * already committed: the booking is cancelled, the dates are released and the
+ * customer has been told. Letting the throw escape would show them an error for
+ * something that DID happen, and invite a retry.
+ *
+ * So the throw stops here and becomes an admin alert instead. The cancellation
+ * stands, and the refund that could not be recorded is now something a person
+ * is told about rather than a console line nobody reads. Keyed per booking, so
+ * a retry of the same cancellation does not ring twice.
+ */
+export async function recordBookingRefundOrAlert(
+  bookingId: string,
+  initiator: CancellationInitiator,
+): Promise<{ refund: RecordedRefund | null; failed: boolean }> {
+  try {
+    return { refund: await recordBookingRefund(bookingId, initiator), failed: false };
+  } catch (e) {
+    console.error("[refunds] recording failed for", bookingId, ":", e instanceof Error ? e.message : e);
+    await notifyAdminOperational({
+      key:       `refund.record_failed:${bookingId}`,
+      eventType: "refund.record_failed",
+      event:     "A refund could not be recorded",
+      // Under MAX_VARIABLE_LENGTH (60): a longer DLT variable is truncated.
+      details:   "Booking cancelled but the refund was not saved.",
+      reference: "Check the booking in /admin/payments",
+      bookingId,
+    }).catch(() => {});
+    return { refund: null, failed: true };
   }
 }

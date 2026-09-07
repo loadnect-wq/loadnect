@@ -156,8 +156,11 @@ export type HallDetail = {
   custom_amenities: string[];
   availability:   AvailabilityRow[];
   reviews:        HallReview[];
-  /** Published seller identity; null when it cannot be read (see fetchHallSeller). */
+  /** Published seller identity; null when this hall has no seller record. */
   seller:         HallSeller | null;
+  /** The seller lookup FAILED, as opposed to returning nothing. The venue page
+   *  must say so rather than quietly omitting a Rule 5(3)(a) disclosure. */
+  sellerUnavailable: boolean;
 };
 
 // ── Main query ────────────────────────────────────────────────────────────────
@@ -197,33 +200,65 @@ export async function fetchHalls(filters: HallsFilters, failure?: FailureFlag): 
   const db = supabase as any; // Database type is a placeholder until `supabase gen types` runs
 
   // Step 1: find hall IDs that are fully blocked on the requested date
+  //
+  // A FAILURE HERE USED TO SHOW BOOKED HALLS AS AVAILABLE. `error` was not
+  // read, so on any failure `blocked` was null, unavailableIds stayed empty and
+  // the `not(id, in, ...)` exclusion below was simply skipped — the date filter
+  // degraded to a NO-OP while the page went on saying it was showing results
+  // for that date. The result count grows rather than shrinks, so it looks
+  // healthier when it is broken, and a customer enquires about a venue that is
+  // already taken. Showing nothing is recoverable; showing a booked hall as
+  // free is a wasted trip for the customer and a wasted call for the venue.
   let unavailableIds: string[] = [];
   if (filters.date) {
-    const { data: blocked } = await db
+    const { data: blocked, error: blockedErr } = await db
       .from("availability")
       .select("hall_id")
       .eq("date", filters.date)
       .in("status", FULL_BLOCK_STATUSES);
+    if (blockedErr) {
+      console.error("[fetchHalls] date-availability lookup failed:", blockedErr.message);
+      if (failure) failure.failed = true;
+      return [];
+    }
     unavailableIds = (blocked ?? []).map((r: { hall_id: string }) => r.hall_id);
   }
 
   // Step 2: find hall IDs that have the requested amenity
+  //
+  // Both reads discarded `error`, and the `else` below is commented "slug not in
+  // DB" — so a failed lookup took that branch and every amenity-filtered search
+  // returned "No halls found" while unfiltered search worked perfectly. Nothing
+  // was logged, and the comment actively pointed the next reader at the wrong
+  // cause. This is the 0065 shape exactly: a grant scoped to `amenities` breaks
+  // only these two reads, so the site looks healthy everywhere else.
   let amenityFilterIds: string[] | null = null;
   if (filters.amenity) {
-    const { data: amenityRow } = await db
+    const { data: amenityRow, error: amenityErr } = await db
       .from("amenities")
       .select("id")
       .eq("slug", filters.amenity)
       .maybeSingle();
 
+    if (amenityErr) {
+      console.error("[fetchHalls] amenity lookup failed:", amenityErr.message);
+      if (failure) failure.failed = true;
+      return [];
+    }
+
     if (amenityRow?.id) {
-      const { data: haRows } = await db
+      const { data: haRows, error: haErr } = await db
         .from("hall_amenities")
         .select("hall_id")
         .eq("amenity_id", amenityRow.id);
+      if (haErr) {
+        console.error("[fetchHalls] hall_amenities lookup failed:", haErr.message);
+        if (failure) failure.failed = true;
+        return [];
+      }
       amenityFilterIds = (haRows ?? []).map((r: { hall_id: string }) => r.hall_id);
     } else {
-      return []; // slug not in DB → no results
+      return []; // slug genuinely not in DB → no results
     }
   }
 
@@ -453,7 +488,9 @@ export async function countActivePremiumHalls(): Promise<number> {
  * absence degraded to "no seller block", i.e. the Rule 5(3)(a) obligation
  * silently unmet on every venue page, with only an info-level log to say so.
  */
-async function fetchHallSeller(hallId: string): Promise<HallSeller | null> {
+async function fetchHallSeller(
+  hallId: string,
+): Promise<{ seller: HallSeller | null; unavailable: boolean }> {
   const supabase = await getSupabaseServerClient();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = supabase as any;
@@ -468,16 +505,26 @@ async function fetchHallSeller(hallId: string): Promise<HallSeller | null> {
     } else {
       console.error("[fetchHallSeller]", error.code, error.message);
     }
-    return null;
+    // UNAVAILABLE, NOT ABSENT. Both used to return null, and the page renders
+    // nothing for null — so a revoked EXECUTE grant, a timeout, or the function
+    // erroring internally removed a statutory disclosure from every venue page
+    // while each page still looked finished. The docstring above says this is
+    // precisely why the service-role version was replaced; the replacement kept
+    // the same silent degradation.
+    return { seller: null, unavailable: true };
   }
 
   const row = Array.isArray(data) ? data[0] : data;
-  if (!row?.business_name) return null;
+  // A genuine absence: the RPC ran and this hall has no published seller.
+  if (!row?.business_name) return { seller: null, unavailable: false };
 
   return {
-    business_name: row.business_name as string,
-    address:       (row.address as string | null) ?? null,
-    city:          (row.city    as string | null) ?? null,
+    seller: {
+      business_name: row.business_name as string,
+      address:       (row.address as string | null) ?? null,
+      city:          (row.city    as string | null) ?? null,
+    },
+    unavailable: false,
   };
 }
 
@@ -536,7 +583,7 @@ export async function fetchHallBySlug(slug: string): Promise<HallDetail | null> 
 
   // Published seller identity (Rule 5(3)(a)). Fetched alongside availability
   // rather than embedded — see fetchHallSeller for why an embed cannot work.
-  const seller = await fetchHallSeller(hall.id as string);
+  const sellerResult = await fetchHallSeller(hall.id as string);
 
   // Availability for next 30 days (separate query — embedding with date filter
   // is cleaner here since we don't want to pull years of rows)
@@ -656,7 +703,8 @@ export async function fetchHallBySlug(slug: string): Promise<HallDetail | null> 
     custom_amenities: customAmenities,
     availability,
     reviews,
-    seller,
+    seller: sellerResult.seller,
+    sellerUnavailable: sellerResult.unavailable,
   };
 }
 

@@ -35,7 +35,7 @@ import {
 import type { BookingExpirySummary } from "@/lib/booking-expiry";
 import type { PremiumExpirySummary } from "@/lib/premium-expiry";
 import { DEFAULT_ADVANCE_PERCENT, DEFAULT_COMMISSION_PERCENT } from "@/lib/booking-payment";
-import { recordBookingRefund } from "@/lib/refunds";
+import { recordBookingRefundOrAlert } from "@/lib/refunds";
 import { releaseAvailabilityForBooking } from "@/lib/availability-release";
 
 function requireUuid(id: string, label = "id"): string | null {
@@ -1874,7 +1874,8 @@ export async function cancelBookingAsAdmin(
 
   // THE POINT OF THE WHOLE ACTION: initiator decides the refund. "owner" and
   // "platform" both return the full advance AND the platform fee.
-  const refund = await recordBookingRefund(bookingId, initiator);
+  // OrAlert — see the note in app/customer/actions.ts.
+  const { refund } = await recordBookingRefundOrAlert(bookingId, initiator);
   if (refund && refund.refundAmount > 0) {
     await notifyBookingEvent("refund.initiated", bookingId, { amount: refund.refundAmount });
   }

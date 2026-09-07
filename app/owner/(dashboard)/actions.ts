@@ -23,7 +23,7 @@ import { notifyBookingEvent, notifyHallSubmitted, notifyHallEdited } from "@/lib
 import { normalizePhoneE164 } from "@/lib/notifications/phone";
 import { isCashfreeConfigured } from "@/lib/cashfree";
 import { payOwnerOnAcceptance } from "@/lib/owner-payout";
-import { recordBookingRefund } from "@/lib/refunds";
+import { recordBookingRefundOrAlert } from "@/lib/refunds";
 import { releaseAvailabilityForBooking } from "@/lib/availability-release";
 import { isOwnerResponseOverdue } from "@/lib/booking-expiry";
 import { isEasySplitEnabled, upsertVendor, getVendorStatus } from "@/lib/easy-split";
@@ -828,7 +828,8 @@ export async function rejectBooking(bookingId: string, reason?: string): Promise
   // The venue declined, so the customer gets EVERYTHING back — advance and the
   // ₹200 platform fee alike, exactly as /refund-policy §5 promises. Recorded
   // idempotently; never fails the decline.
-  const refund = await recordBookingRefund(bookingId, "owner");
+  // OrAlert — see the note in app/customer/actions.ts.
+  const { refund } = await recordBookingRefundOrAlert(bookingId, "owner");
   if (refund && refund.refundAmount > 0) {
     await notifyBookingEvent("refund.initiated", bookingId, { amount: refund.refundAmount });
   }

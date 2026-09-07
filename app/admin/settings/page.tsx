@@ -220,7 +220,9 @@ export default async function AdminSettingsPage() {
                       ? "bg-amber-100 font-semibold text-amber-900"
                       : onboardedVendors === 0
                         ? "bg-red-100 font-semibold text-red-900"
-                        : "bg-white/70 text-charcoal-700"
+                        : onboardedVendors === null
+                          ? "bg-amber-100 font-semibold text-amber-900"
+                          : "bg-white/70 text-charcoal-700"
                   }`}>
                     {!cashfree.easySplitEnabled ? (
                       <>
@@ -238,10 +240,25 @@ export default async function AdminSettingsPage() {
                         &ldquo;not_applicable&rdquo; and alerts once a day. Unset
                         CASHFREE_EASY_SPLIT_ENABLED until owners are onboarded, or onboard them.
                       </>
+                    ) : onboardedVendors === null ? (
+                      <>
+                        {/* I wrote this banner earlier today and put the same
+                            defect in it that it exists to report:
+                            countOnboardedVendors returns null when its read
+                            fails, and null used to render as the word "some",
+                            so a failed count claimed owners WERE onboarded and
+                            payouts WERE automatic — in the calm white box. The
+                            zero case is the entire point of this banner, and a
+                            failed read is not evidence against zero. */}
+                        Easy Split is <span className="font-mono">ON</span>, but the count of owners with a
+                        Cashfree vendor id <strong>could not be read</strong>. This is not evidence that any
+                        owner is onboarded: if none is, every accepted booking records a failed payout and
+                        sends a billed admin SMS. Reload, and treat automatic payouts as unproven until this
+                        line shows a number.
+                      </>
                     ) : (
                       <>
-                        Easy Split is <span className="font-mono">ON</span> and{" "}
-                        {onboardedVendors === null ? "some" : onboardedVendors} owner
+                        Easy Split is <span className="font-mono">ON</span> and {onboardedVendors} owner
                         {onboardedVendors === 1 ? " has" : "s have"} a vendor id — accepting a booking pays
                         them automatically. Owners without one are not paid; those payouts appear on the{" "}
                         <Link href="/admin/payments" className="font-semibold underline">Payments</Link> page.

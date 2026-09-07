@@ -401,12 +401,26 @@ export async function attemptSend(
     return { sent: false, error: "max attempts reached" };
   }
 
-  const { count: claimed } = await db
+  const { count: claimed, error: claimErr } = await db
     .from("notifications")
     .update({ status: "processing", attempt_count: attempts }, { count: "exact" })
     .eq("id", notificationId)
     .eq("status", current.status)
     .eq("attempt_count", current.attempt_count);
+
+  // A FAILED CLAIM IS NOT A LOST RACE. `error` was never read, and supabase-js
+  // returns PostgREST failures in the result object rather than throwing, so a
+  // check-constraint violation, a narrowed grant or a transient fault left
+  // `claimed` null and fell into the branch below — which reports "another
+  // process is already sending this notification". That is this codebase's own
+  // wording for the HEALTHY concurrency case, so an admin working the failed-SMS
+  // queue reads it as "someone has this in hand" and moves on. Nobody has it.
+  // The message is never sent, nothing is logged, and the row keeps its old
+  // status, so it does not even look stuck.
+  if (claimErr) {
+    console.error(`[notifications] claim failed for ${notificationId}:`, claimErr.message);
+    return { sent: false, error: "Could not claim this notification for sending — it was not sent." };
+  }
   if ((claimed ?? 0) === 0) {
     return { sent: false, error: "another process is already sending this notification" };
   }

@@ -744,7 +744,26 @@ export async function verifyAndApplyPayment(
           };
           ({ error: refErr } = await db.from("payments").update(legacyUpdate).eq("id", payment.id));
         }
-        if (refErr) logSideEffectError("slotConflictRefund", refErr);
+        // A FAILURE HERE STRANDS MONEY THE CUSTOMER HAS BEEN PROMISED. The
+        // write that failed is the one that sets refund_state='owed' /
+        // refund_amount, and that state is the ONLY thing that puts the row in
+        // the admin refund queue and the only thing issueRefund will act on. So
+        // the customer is told in writing that a refund is coming, the charge
+        // is captured, and the row looks exactly like a booking with no refund
+        // due — nobody works it and the refund can never be issued. A console
+        // line was the entire record. It rings an admin now.
+        if (refErr) {
+          logSideEffectError("slotConflictRefund", refErr);
+        await notifyAdminOperational({
+          key:       `refund.write_failed:${payment.id}`,
+          eventType: "refund.write_failed",
+          event:     "A promised refund was not recorded",
+          // Under MAX_VARIABLE_LENGTH (60) or DLT truncates it mid-sentence.
+          details:   "Customer was promised a refund; the row did not save.",
+          reference: "Find the payment in /admin/payments and refund by hand",
+          bookingId: payment.booking_id,
+        }).catch(() => {});
+        }
         // Pass the captured amount — the refund message states it, and
         // omitting it told the customer their refund was ₹0.
         // TELL THE CUSTOMER THEIR BOOKING IS GONE. refund.initiated is
@@ -828,7 +847,18 @@ export async function verifyAndApplyPayment(
               .update({ status: "refunded", payment_message: dupUpdate.payment_message })
               .eq("id", payment.id));
           }
-          if (dupErr) logSideEffectError("duplicateCaptureRefund", dupErr);
+          if (dupErr) {
+            logSideEffectError("duplicateCaptureRefund", dupErr);
+          await notifyAdminOperational({
+            key:       `refund.write_failed:${payment.id}`,
+            eventType: "refund.write_failed",
+            event:     "A promised refund was not recorded",
+            // Under MAX_VARIABLE_LENGTH (60) or DLT truncates it mid-sentence.
+            details:   "Customer was promised a refund; the row did not save.",
+            reference: "Find the payment in /admin/payments and refund by hand",
+            bookingId: payment.booking_id,
+          }).catch(() => {});
+          }
           logSideEffectError("duplicateCapture", {
             code: "duplicate_capture",
             message: `order ${orderId} is a second capture on booking ${payment.booking_id}; payment ${other.id} already succeeded`,
@@ -860,7 +890,18 @@ export async function verifyAndApplyPayment(
           const legacyStale = { status: "refunded", payment_message: staleUpdate.payment_message };
           ({ error: staleErr } = await db.from("payments").update(legacyStale).eq("id", payment.id));
         }
-        if (staleErr) logSideEffectError("bookingNotPendingRefund", staleErr);
+        if (staleErr) {
+          logSideEffectError("bookingNotPendingRefund", staleErr);
+        await notifyAdminOperational({
+          key:       `refund.write_failed:${payment.id}`,
+          eventType: "refund.write_failed",
+          event:     "A promised refund was not recorded",
+          // Under MAX_VARIABLE_LENGTH (60) or DLT truncates it mid-sentence.
+          details:   "Customer was promised a refund; the row did not save.",
+          reference: "Find the payment in /admin/payments and refund by hand",
+          bookingId: payment.booking_id,
+        }).catch(() => {});
+        }
         logSideEffectError("bookingNotPending", {
           code: "booking_not_pending",
           message: `order ${orderId} paid but booking ${payment.booking_id} was ${freshStatus || "missing"}`,

@@ -26,7 +26,7 @@
 import "server-only";
 
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
-import { recordBookingRefund } from "@/lib/refunds";
+import { recordBookingRefundOrAlert } from "@/lib/refunds";
 import { releaseAvailabilityForBooking } from "@/lib/availability-release";
 import { notifyBookingEvent } from "@/lib/notifications/events";
 
@@ -95,8 +95,12 @@ export async function expireOverdueBookingRequests(): Promise<BookingExpirySumma
         summary.expired += 1;
 
         // PLATFORM-caused: the customer is owed everything back, fee included.
-        const refund = await recordBookingRefund(row.id, "platform");
+        // OrAlert so a recording failure does not skip the two steps below:
+        // the dates would stay blocked and the customer would never be told
+        // their booking was cancelled.
+        const { refund, failed } = await recordBookingRefundOrAlert(row.id, "platform");
         if (refund) summary.refundsRecorded += 1;
+        if (failed) summary.errors.push(`${row.id}: refund not recorded`);
 
         await releaseAvailabilityForBooking(row.id);
 

@@ -418,8 +418,21 @@ export function HallDetailView({ hall, similar, isPreview, sidebarAd, advancePer
                 pan_number and the payout bank columns; none of them may ever
                 appear here. lib/halls.ts fetches exactly business_name, address
                 and city — read the comment on fetchHallSeller before adding to
-                it. `seller` is null when the service-role key is unset, in which
-                case the block is absent rather than half-filled. */}
+                it. `seller` is null when this hall has no seller record; when the
+                LOOKUP failed, sellerUnavailable is set and we say so below
+                rather than dropping a statutory disclosure off a page that
+                otherwise looks complete. */}
+            {hall.sellerUnavailable && (
+              <section className="mt-6">
+                <h2 className="font-serif text-base font-semibold text-charcoal-900">Listed by</h2>
+                <div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+                  <p className="text-sm text-amber-900">
+                    Seller details could not be loaded just now. Please refresh before booking —
+                    you are entitled to see who you would be contracting with.
+                  </p>
+                </div>
+              </section>
+            )}
             {hall.seller && (
               <section className="mt-6">
                 <h2 className="font-serif text-base font-semibold text-charcoal-900">Listed by</h2>

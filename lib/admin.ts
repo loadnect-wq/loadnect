@@ -737,7 +737,23 @@ export async function fetchStuckPayouts(): Promise<StuckPayoutRow[]> {
     .limit(200);
 
   // A missing column (pre-0031 database) must not break the payments page.
-  if (error) { handleError("fetchStuckPayouts", error); return []; }
+  if (error) {
+    handleError("fetchStuckPayouts", error);
+    // THROWS. Returning [] told /admin/payments there were no stuck payouts and
+    // the dashboard tile "Payouts owed to venues: 0" — the all-clear — from the
+    // one query whose job is to notice money that never reached a venue. The
+    // header above records this exact query reading empty through 17 failures
+    // across five days; the service-role fix removed that cause and left the
+    // swallow that made it invisible.
+    //
+    // It matters more than a wrong number: RetryPayoutButton and
+    // MarkPaidManuallyButton are rendered ONLY inside this list, so an empty
+    // result also removes the only way to pay or record a payout anywhere in
+    // the product — and with Easy Split off, this hand-worked queue is how
+    // venues actually get paid. fetchAdminStats catches this and marks the
+    // dashboard degraded rather than printing a 0.
+    throw new Error("Could not read the payout queue.");
+  }
 
   const PAYABLE_BOOKING = new Set(["owner_confirmed", "completed"]);
   const REFUND_IN_FLIGHT = new Set(["owed", "processing", "completed"]);
@@ -828,7 +844,12 @@ export async function fetchRefundQueue(): Promise<RefundQueueRow[]> {
     .limit(100);
 
   // A missing column (pre-0033 database) must not break the payments page.
-  if (error) { handleError("fetchRefundQueue", error); return []; }
+  if (error) {
+    handleError("fetchRefundQueue", error);
+    // Same reasoning as fetchStuckPayouts: [] here is "no customer is owed
+    // money", which is the one answer this queue must never give by accident.
+    throw new Error("Could not read the refund queue.");
+  }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return (data ?? []).map((row: any): RefundQueueRow => ({
