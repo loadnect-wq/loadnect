@@ -54,8 +54,15 @@ export default async function AdminDashboardPage() {
     },
     {
       count: stats.open.failedNotifications,
-      label: "Messages that failed to send",
-      href:  "/admin/notifications?status=failed",
+      // "and can be retried", not "failed": this counts failed messages that are
+      // NOT permanent_failure, so it is deliberately smaller than the Failed tile
+      // on the notifications page. Two different numbers both labelled "failed"
+      // is how an operator concludes one of the screens is broken.
+      label: "Messages to retry",
+      // ?status= was read by nothing — the page's param is `filter`, so this
+      // card landed on the unfiltered list and the operator had to find the
+      // failures by hand, having just been told exactly how many there were.
+      href:  "/admin/notifications?filter=failed",
       color: "border-orange-200 bg-orange-50 text-orange-900",
     },
   ];
