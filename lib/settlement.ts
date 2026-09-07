@@ -9,27 +9,20 @@
 //   • provides the webhook audit/idempotency helpers (payment_webhook_events),
 //     which app/api/webhooks/cashfree/route.ts writes on every verified event.
 //
-// LIVE Cashfree Easy Split ORDER + SETTLEMENT calls are FEATURE-FLAGGED. Until
-// `CASHFREE_EASY_SPLIT_ENABLED=true` AND vendor credentials exist, `submitSplitOrder`
-// returns `{ enabled: false }` and the ledger records the intended split without
-// dispatching a live vendor split. This keeps money code build-verifiable and
-// prevents shipping an unverifiable live split. Search for "TODO(easy-split)".
+// THIS FILE DOES NOT MOVE VENDOR MONEY. It once carried a `submitSplitOrder`
+// stub and a second `isEasySplitEnabled()` beside it, both unreachable: nothing
+// ever imported them, and the live payout path is lib/owner-payout.ts calling
+// lib/easy-split.ts. Two predicates of the same name had already drifted apart
+// — this one was case-sensitive and also required isCashfreeConfigured(), the
+// real one is neither — so whichever a future caller imported decided whether
+// an owner got paid. Deleted rather than reconciled, because the safe number of
+// definitions for "should we pay the owner automatically?" is one.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import "server-only";
 
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
-import { isCashfreeConfigured } from "@/lib/cashfree";
 import { commissionPaiseOn, splitFromParts, type CommissionSplit } from "@/lib/money";
-
-/** True only when Easy Split is explicitly enabled AND Cashfree is configured.
- *  Never throws — safe as a pre-flight guard. */
-export function isEasySplitEnabled(): boolean {
-  return (
-    process.env.CASHFREE_EASY_SPLIT_ENABLED === "true" &&
-    isCashfreeConfigured()
-  );
-}
 
 // ── Webhook idempotency ─────────────────────────────────────────────────────────
 
@@ -181,36 +174,3 @@ export async function resolveSplitForBooking(bookingId: string): Promise<
   };
 }
 
-// ── Live Easy Split order (feature-flagged stub) ────────────────────────────────
-
-export type SplitOrderResult =
-  | { ok: true; enabled: true; splitGroupId: string }
-  | { ok: true; enabled: false }        // flag off → ledger records intent only
-  | { ok: false; error: string };
-
-/**
- * Dispatches a live Cashfree Easy Split vendor split for a payment transaction.
- *
- * While `isEasySplitEnabled()` is false (default), this is a NO-OP that returns
- * `{ enabled: false }` — the caller records the intended split in the ledger but
- * does not move vendor money. This is deliberate: a live split cannot be
- * verified without Cashfree Easy Split enabled + a verified `cashfree_vendor_id`.
- */
-export async function submitSplitOrder(params: {
-  ownerCashfreeVendorId: string | null;
-  ownerAmountPaise: number;
-}): Promise<SplitOrderResult> {
-  if (!isEasySplitEnabled()) {
-    return { ok: true, enabled: false };
-  }
-  if (!params.ownerCashfreeVendorId) {
-    return { ok: false, error: "Owner has no verified Cashfree vendor id (KYC incomplete)." };
-  }
-
-  // TODO(easy-split): call the Cashfree Easy Split order/split API here with the
-  // vendor id + owner share (paise → rupees for the API). Persist the returned
-  // split group id on payment_transactions.cashfree_split_group_id and advance
-  // split_status → PROCESSED. Until credentials + sandbox testing exist, we do
-  // NOT fabricate a live split.
-  return { ok: false, error: "Easy Split live dispatch is not yet wired (awaiting vendor credentials)." };
-}

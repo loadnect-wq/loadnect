@@ -19,9 +19,48 @@ import { PaymentSettingsForm } from "./_components/PaymentSettingsForm";
 
 export const metadata: Metadata = { title: "Admin Settings" };
 
+/**
+ * Applied schema version, read from the database rather than asserted.
+ *
+ * NEVER THROWS, and that is the point: this page is the only readout an
+ * operator has for configuration Vercel keeps write-only, so one unavailable
+ * row must not take the Cashfree and MSG91 cards down with it. A null renders
+ * as "could not read", which is honest; a hardcoded string was not.
+ */
+async function fetchSchemaState(): Promise<{ version: string; name: string | null; count: number } | null> {
+  try {
+    const sb = await getSupabaseServerClient();
+    const { data, error } = await sb.rpc("schema_migration_state").single();
+    if (error || !data) return null;
+    const row = data as { latest_version: string; latest_name: string | null; applied_count: number };
+    return { version: row.latest_version, name: row.latest_name, count: row.applied_count };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Owners who actually hold a Cashfree vendor id. Easy Split pays nobody without
+ * one, so this is the half of "is payout automatic?" that the feature flag
+ * cannot answer. Same no-throw contract as above.
+ */
+async function countOnboardedVendors(): Promise<number | null> {
+  try {
+    const sb = await getSupabaseServerClient();
+    const { count, error } = await sb
+      .from("hall_owners")
+      .select("id", { count: "exact", head: true })
+      .not("cashfree_vendor_id", "is", null);
+    if (error) return null;
+    return count ?? 0;
+  } catch {
+    return null;
+  }
+}
+
 export default async function AdminSettingsPage() {
   const profile = await requireRole(["admin"]);
-  const [commissionPercent, premiumPlans, paymentSettings, authHealth, cashfree] = await Promise.all([
+  const [commissionPercent, premiumPlans, paymentSettings, authHealth, cashfree, schemaState, onboardedVendors] = await Promise.all([
     getCommissionPercent(),
     fetchPremiumPlans(),
     getPublicPaymentSettings(),
@@ -30,6 +69,8 @@ export default async function AdminSettingsPage() {
     // instead of erroring, which is what sent customers to Vercel's login page.
     checkAuthRedirectHealth(),
     checkCashfreeHealth(),
+    fetchSchemaState(),
+    countOnboardedVendors(),
   ]);
 
   // Cheap, synchronous env reads — no network call, unlike the probes above.
@@ -168,21 +209,42 @@ export default async function AdminSettingsPage() {
                   )}
                   {/* Whether an accepted booking actually pays the owner. Both
                       halves must be true: the flag on, AND at least one owner
-                      onboarded as a vendor. The flag alone is not readiness. */}
-                  <p className={`mt-2 rounded-lg p-2 text-[11px] ${cashfree.easySplitEnabled ? "bg-white/70 text-charcoal-700" : "bg-amber-100 font-semibold text-amber-900"}`}>
-                    {cashfree.easySplitEnabled ? (
-                      <>
-                        Easy Split is <span className="font-mono">ON</span> — accepting a booking pays the
-                        owner automatically. Owners still need a connected payout account each; any that
-                        fail appear on the{" "}
-                        <Link href="/admin/payments" className="font-semibold underline">Payments</Link> page.
-                      </>
-                    ) : (
+                      onboarded as a vendor. The flag alone is not readiness.
+                      This comment described the intent for a while before the
+                      code did — it read only the flag, so it announced
+                      "accepting a booking pays the owner automatically" on a
+                      deployment where not one owner had a vendor id and every
+                      payout would have failed. */}
+                  <p className={`mt-2 rounded-lg p-2 text-[11px] ${
+                    !cashfree.easySplitEnabled
+                      ? "bg-amber-100 font-semibold text-amber-900"
+                      : onboardedVendors === 0
+                        ? "bg-red-100 font-semibold text-red-900"
+                        : "bg-white/70 text-charcoal-700"
+                  }`}>
+                    {!cashfree.easySplitEnabled ? (
                       <>
                         Easy Split is <span className="font-mono">OFF</span> (CASHFREE_EASY_SPLIT_ENABLED).
                         Accepted bookings will NOT pay owners — each payout records
                         &ldquo;not_applicable&rdquo; and the owner&rsquo;s share stays in Hallnect&rsquo;s
                         account until it is settled by hand.
+                      </>
+                    ) : onboardedVendors === 0 ? (
+                      <>
+                        Easy Split is <span className="font-mono">ON</span> but no owner has a Cashfree
+                        vendor id, so it can pay nobody. Every accepted booking will record a{" "}
+                        <span className="font-mono">failed</span> payout and send a billed admin SMS —
+                        noisier and less accurate than turning the flag off, which records
+                        &ldquo;not_applicable&rdquo; and alerts once a day. Unset
+                        CASHFREE_EASY_SPLIT_ENABLED until owners are onboarded, or onboard them.
+                      </>
+                    ) : (
+                      <>
+                        Easy Split is <span className="font-mono">ON</span> and{" "}
+                        {onboardedVendors === null ? "some" : onboardedVendors} owner
+                        {onboardedVendors === 1 ? " has" : "s have"} a vendor id — accepting a booking pays
+                        them automatically. Owners without one are not paid; those payouts appear on the{" "}
+                        <Link href="/admin/payments" className="font-semibold underline">Payments</Link> page.
                       </>
                     )}
                   </p>
@@ -330,9 +392,19 @@ export default async function AdminSettingsPage() {
 
         {/* Database health */}
         <Section title="Database" icon={<Database className="h-4 w-4" />}>
-          <ConfigRow label="Schema version" value="0011 (booking cleanup)" />
+          {/* Read live. This row said "0011 (booking cleanup)" for fifty-six
+              migrations, directly above a sentence promising live state. */}
+          <ConfigRow
+            label="Latest migration applied"
+            value={schemaState ? (schemaState.name ?? schemaState.version) : "could not read"}
+          />
+          <ConfigRow
+            label="Migrations applied"
+            value={schemaState ? String(schemaState.count) : "—"}
+          />
           <p className="mt-3 text-[11px] text-charcoal-500">
-            Run new migrations through the Supabase SQL editor. The dashboard reflects the live database state.
+            Read live from the database, not from this repository — the two can disagree, and when they do it
+            is this one that is true. Run new migrations through the Supabase SQL editor.
           </p>
         </Section>
 
