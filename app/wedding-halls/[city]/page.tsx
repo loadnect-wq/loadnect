@@ -23,7 +23,7 @@ import { platformFeeDisclosure } from "@/lib/booking-payment";
 import { buildMetadata } from "@/lib/seo/metadata";
 import { JsonLd } from "@/components/seo/JsonLd";
 import { jsonLdGraph, breadcrumbJsonLd, cityCollectionJsonLd, faqJsonLd } from "@/lib/seo/jsonld";
-import { cityFromSlug, fetchCityInventoryBySlug, citySlug } from "@/lib/seo/cities";
+import { cityFromSlug, fetchCityInventoryBySlug, citySlug, SERVICE_AREA_CITIES } from "@/lib/seo/cities";
 
 type Props = { params: Promise<{ city: string }> };
 
@@ -90,6 +90,24 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
  * revalidatePath, so the usual case is immediate and this is the backstop.
  */
 export const revalidate = 300;
+
+/**
+ * PRERENDERED, one page per service area.
+ *
+ * Without this a dynamic segment cannot be prerendered at all: Next has no list
+ * of paths to build, so every /wedding-halls/<city> was rendered per request
+ * and served no-store, even with `revalidate` set. These are SEO landing pages
+ * whose whole job is to be fast for a stranger arriving from Google, and the
+ * set is a fixed, small list we control — so there is nothing to discover at
+ * runtime.
+ *
+ * cityFromSlug still validates on the way in, so a slug outside this list is a
+ * genuine 404 rather than an empty page pretending to be one.
+ */
+export function generateStaticParams() {
+  return SERVICE_AREA_CITIES.map((city) => ({ city: citySlug(city) }));
+}
+
 
 export default async function CityPage({ params }: Props) {
   const { city: slug } = await params;
