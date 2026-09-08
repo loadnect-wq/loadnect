@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import { Menu, X, LogOut, LayoutDashboard } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -12,11 +12,58 @@ import { getSupabaseClient } from "@/lib/supabase/client";
 
 type NavUser = { fullName: string | null; role: string } | null;
 
+/**
+ * Is there a Supabase session cookie? Synchronous, no network.
+ *
+ * @supabase/ssr keeps the session in cookies (not localStorage) so the server
+ * and browser share it, which means the browser can read them — they cannot be
+ * httpOnly or the client library could not work. That gives us the one fact
+ * needed to stop showing the wrong navbar, in the same frame as hydration,
+ * instead of after a round trip to a database on another continent.
+ *
+ * A HINT, NOT AUTHORITY. The cookie may be expired, so this is never used to
+ * decide a signed-IN state — only to rule one out. getUser() remains the judge.
+ */
+/** useSyncExternalStore requires a subscribe fn; the cookie does not change
+ *  under us in a way this header needs to react to — onAuthStateChange covers
+ *  sign-in and sign-out. */
+const NO_SUBSCRIBE = () => () => {};
+
+function hasSessionCookie(): boolean {
+  if (typeof document === "undefined") return false;
+  return document.cookie
+    .split(";")
+    .some((c) => /^\s*sb-.*-auth-token/.test(c));
+}
+
 export function Navbar() {
   const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
-  const [user, setUser] = useState<NavUser>(null);
+  // undefined = NOT YET KNOWN, and that is the whole fix. This used to start at
+  // null, i.e. "signed out" — an assertion, made before anything had been
+  // checked. Every page then painted "Sign In / Get Started" to a signed-in
+  // person and corrected itself once the network answered. Now the three states
+  // are distinct and the unknown one renders nothing either way.
+  const [user, setUser] = useState<NavUser | undefined>(undefined);
+
+  // THE COOKIE HINT, read the way React sanctions a value that legitimately
+  // differs between server and client. useSyncExternalStore takes a separate
+  // server snapshot, so there is no hydration mismatch and no setState inside
+  // an effect: React swaps to the client value as part of hydration rather than
+  // in a second render pass afterwards.
+  const cookieHint = useSyncExternalStore(
+    NO_SUBSCRIBE,
+    () => (hasSessionCookie() ? "maybe-signed-in" : "signed-out"),
+    () => "unknown",
+  );
+
+  // The authoritative answer when we have it; otherwise the only thing the
+  // cookie can prove, which is a NEGATIVE. Absence of the cookie means signed
+  // out for certain. Presence proves nothing — it may be expired — so that case
+  // stays unknown and waits for getUser().
+  const authView: NavUser | undefined =
+    user !== undefined ? user : cookieHint === "signed-out" ? null : undefined;
   const [signingOut, setSigningOut] = useState(false);
 
   useEffect(() => {
@@ -45,17 +92,18 @@ export function Navbar() {
         return;
       }
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { data } = await supabase
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         .from("profiles" as any)
         .select("full_name, role")
         .eq("id", authUser.id)
         .single();
 
-      if (data) {
-        const d = data as { full_name: string | null; role: string };
-        setUser({ fullName: d.full_name, role: d.role });
-      }
+      const d = data as { full_name: string | null; role: string } | null;
+      // Set state even when the profile row is missing. Returning early here
+      // left `user` at undefined forever, so the header stayed blank for a
+      // signed-in user whose profile row had not been created yet.
+      setUser({ fullName: d?.full_name ?? null, role: d?.role ?? "customer" });
     }
 
     loadProfile();
@@ -83,7 +131,7 @@ export function Navbar() {
     setSigningOut(false);
   }
 
-  const dashboardPath = user ? getDashboardPath(user.role) : "/";
+  const dashboardPath = authView ? getDashboardPath(authView.role) : "/";
 
   return (
     <header
@@ -128,7 +176,15 @@ export function Navbar() {
 
           {/* Desktop CTAs */}
           <div className="hidden items-center gap-2 lg:flex">
-            {user ? (
+            {/* THE CACHED HTML MUST ASSERT NOTHING. Every public page is now
+                prerendered and served to everyone identically, so the markup
+                cannot claim either state. While `user` is undefined this
+                reserves the space the real controls will occupy — no "Sign In"
+                to contradict a moment later, and no layout shift when the
+                answer arrives. */}
+            {authView === undefined ? (
+              <span className="h-9 w-[260px]" aria-hidden />
+            ) : authView ? (
               <>
                 <Link
                   href={dashboardPath}
@@ -138,7 +194,7 @@ export function Navbar() {
                   Dashboard
                 </Link>
                 <span className="text-sm font-medium text-charcoal-600">
-                  {user.fullName ?? "Account"}
+                  {authView.fullName ?? "Account"}
                 </span>
                 <button
                   onClick={handleSignOut}
@@ -196,10 +252,15 @@ export function Navbar() {
             </ul>
 
             <div className="mt-3 space-y-2 border-t border-border pt-3">
-              {user ? (
+              {authView === undefined ? (
+                // The menu only opens on a tap, by which point the answer has
+                // almost always arrived; a spinner here would flash more than
+                // it explained.
+                <p className="px-3 text-sm text-charcoal-400">Loading…</p>
+              ) : authView ? (
                 <>
                   <p className="px-3 text-sm font-medium text-charcoal-700">
-                    {user.fullName ?? "My Account"}
+                    {authView.fullName ?? "My Account"}
                   </p>
                   <Link
                     href={dashboardPath}
