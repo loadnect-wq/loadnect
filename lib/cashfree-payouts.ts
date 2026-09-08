@@ -140,12 +140,22 @@ async function payoutFetch<T>(
     let unreadable = false;
     try { body = text ? JSON.parse(text) : {}; } catch { unreadable = true; }
 
-    // Status code only — the body carries bank details.
+    // Status code and Cashfree's own error text only — never a success body,
+    // which carries bank details.
     if (!res.ok) {
       const code = typeof body.code === "string" ? body.code
                  : typeof body.type === "string" ? body.type : null;
-      const message = typeof body.message === "string" ? body.message : `Cashfree Payouts returned HTTP ${res.status}`;
-      console.error(`[payouts] ${init.method ?? "GET"} ${path} -> HTTP ${res.status}`, code ?? "");
+      // WHETHER THE BODY WAS EVEN JSON IS DIAGNOSTIC. Cashfree's application
+      // errors are JSON with a `code`; an HTML or empty body on a 403 means the
+      // request was refused BEFORE reaching the API — an IP allowlist or WAF —
+      // which is a completely different fix from "the product is not enabled".
+      // Without this the two were indistinguishable and both read as "403".
+      const message = typeof body.message === "string" && body.message
+        ? body.message
+        : unreadable
+          ? `HTTP ${res.status} with a non-JSON body: ${text.slice(0, 160).replace(/\s+/g, " ").trim()}`
+          : `Cashfree Payouts returned HTTP ${res.status} with no error message`;
+      console.error(`[payouts] ${init.method ?? "GET"} ${path} -> HTTP ${res.status}`, code ?? "(no code)", unreadable ? "(non-JSON body)" : "");
       return { ok: false, error: message, status: res.status, code };
     }
 
@@ -414,7 +424,14 @@ export async function checkPayoutsHealth(): Promise<PayoutsHealth> {
   if (probe.status === 403) {
     return {
       ...health, credentialsAccepted: false, notActivated: true,
-      error: "Cashfree returned 403 — Payouts is not enabled for this account, or this server's IP is not allowlisted.",
+      // Cashfree's own words first, then the interpretation. Replacing their
+      // message with ours threw away the only thing that says WHICH 403 this is.
+      error:
+        `Cashfree returned 403. Their message: ${probe.error}`
+        + (probe.code ? ` (code ${probe.code})` : "")
+        + " — this is either Payouts not enabled for the account, or this server's IP not being on the"
+        + " allowlist. Vercel functions have no fixed egress IP, so an allowlist cannot be satisfied"
+        + " from here; that case needs the x-cf-signature scheme instead.",
     };
   }
   if (probe.status !== null && probe.status >= 500) {
