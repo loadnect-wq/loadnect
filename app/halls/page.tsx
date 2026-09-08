@@ -88,15 +88,22 @@ export default async function HallsPage({
   // for a given day. An explicit ?date= always wins.
   const effectiveDate = date || (sp.available === "today" ? todayInBusinessTz() : "");
 
-  const advancePercent = await getAdvancePercent();
+  // One round of queries. These three are independent, and the premium count
+  // used to be awaited inline in the JSX below, which serialised it behind the
+  // whole search.
   // fetchHallsResult, not fetchHalls: an empty array from a BROKEN query and an
   // empty array from a genuine no-match are the same value, and this page's
   // whole job is to say which. Especially now, when zero venues is the expected
   // state and a failure would hide inside the ordinary empty screen.
-  const { halls, failed: hallsFailed } = await fetchHallsResult({
-    city, area, capacity, priceMin, priceMax, q, category, amenity,
-    date: effectiveDate, sort,
-  });
+  const [advancePercent, hallsResult, premiumCount] = await Promise.all([
+    getAdvancePercent(),
+    fetchHallsResult({
+      city, area, capacity, priceMin, priceMax, q, category, amenity,
+      date: effectiveDate, sort,
+    }),
+    countActivePremiumHalls(),
+  ]);
+  const { halls, failed: hallsFailed } = hallsResult;
 
   // effectiveDate, not date — an "Available Today" visit with no matches must
   // read as a filter that found nothing, not as "no halls are listed yet".
@@ -122,7 +129,7 @@ export default async function HallsPage({
               it stays hidden forever and does not come back when an owner
               actually buys a plan. */}
           <SearchControls
-            premiumCount={await countActivePremiumHalls()}
+            premiumCount={premiumCount}
             defaultCity={city}
             defaultArea={area}
             defaultCapacity={capacity}

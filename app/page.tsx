@@ -92,11 +92,23 @@ export default async function HomePage() {
   // premium → rest before rating, which is the "Homepage promotion" the Pro
   // plan is sold on. Sorting by rating alone quietly ignored premium tier, so
   // owners paid Rs9,999/month for placement the homepage never gave them.
-  const featured: HallListing[] = (await fetchHalls({})).slice(0, 6);
-  // Real approved-venue counts, so the city links below point at pages that
-  // actually have something on them (lib/seo/cities.ts).
-  const advancePercent = await getAdvancePercent();
-  const cityInventory = await fetchCityInventory();
+  //
+  // ONE ROUND OF QUERIES, NOT FOUR. These four reads do not depend on each
+  // other, but they were awaited one after another — and the database is in
+  // Sydney while this function runs in Mumbai, so each await paid a ~150-200ms
+  // round trip before the next one could start. On the busiest page on the site
+  // that was most of a 2.5s time-to-first-byte, spent waiting rather than
+  // working. Run together they cost one round trip instead of four.
+  //
+  // countActivePremiumHalls is in here too: it was awaited further down the
+  // function, which made it a fifth serial hop.
+  const [featuredAll, advancePercent, cityInventory, premiumCount] = await Promise.all([
+    fetchHalls({}),
+    getAdvancePercent(),
+    fetchCityInventory(),
+    countActivePremiumHalls(),
+  ]);
+  const featured: HallListing[] = featuredAll.slice(0, 6);
   const citiesWithVenues = cityInventory.filter((c) => c.venueCount > 0);
 
   // ── Truth gates ───────────────────────────────────────────────────────────
@@ -119,7 +131,8 @@ export default async function HomePage() {
   //    /halls?category=premium, which returns nothing while no hall holds a
   //    tier. Hidden until there is inventory; they return on their own the
   //    moment an owner buys a plan.
-  const premiumCount = await countActivePremiumHalls();
+  //    Fetched with the batch at the top of this function, not here — awaiting
+  //    it at its point of use made it a fifth serial round trip to Sydney.
   const visibleCategories = premiumCount > 0
     ? [...CATEGORIES]
     : CATEGORIES.filter((c) => c.key !== "premium");

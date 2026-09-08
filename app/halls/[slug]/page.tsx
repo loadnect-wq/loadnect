@@ -59,8 +59,13 @@ export default async function HallDetailPage({ params }: Props) {
   const hall = await fetchHallBySlug(slug);
   if (!hall) notFound();
 
-  const similar = await fetchSimilarHalls(hall.id, hall.city);
-  const advancePercent = await getAdvancePercent();
+  // Together, not one after the other. Only fetchSimilarHalls needs the hall;
+  // getAdvancePercent needs nothing, and awaiting it second added a whole
+  // Mumbai-to-Sydney round trip to the page a customer books from.
+  const [similar, advancePercent] = await Promise.all([
+    fetchSimilarHalls(hall.id, hall.city),
+    getAdvancePercent(),
+  ]);
 
   // isPreview is true only when an owner/admin fetched a non-approved hall.
   // Public users can never reach this point with a non-approved hall (RLS → 404).
