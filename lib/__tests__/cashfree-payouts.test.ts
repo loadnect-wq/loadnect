@@ -73,3 +73,24 @@ describe("classifying a transfer", () => {
     expect(classifyTransfer("success")).toEqual({ terminal: true, summary: "done" });
   });
 });
+
+describe("2FA signature configuration", () => {
+  it("reports no signature key when the env var is absent or blank", async () => {
+    const { hasPayoutSignatureKey } = await import("@/lib/cashfree-payouts");
+    const prev = process.env.CASHFREE_PAYOUT_PUBLIC_KEY;
+
+    delete process.env.CASHFREE_PAYOUT_PUBLIC_KEY;
+    expect(hasPayoutSignatureKey()).toBe(false);
+
+    // Whitespace is not a key. A blank-looking value that reads as "configured"
+    // would claim requests carry a signature when they carry nothing.
+    process.env.CASHFREE_PAYOUT_PUBLIC_KEY = "   ";
+    expect(hasPayoutSignatureKey()).toBe(false);
+
+    process.env.CASHFREE_PAYOUT_PUBLIC_KEY = "-----BEGIN PUBLIC KEY-----\nabc\n-----END PUBLIC KEY-----";
+    expect(hasPayoutSignatureKey()).toBe(true);
+
+    if (prev === undefined) delete process.env.CASHFREE_PAYOUT_PUBLIC_KEY;
+    else process.env.CASHFREE_PAYOUT_PUBLIC_KEY = prev;
+  });
+});

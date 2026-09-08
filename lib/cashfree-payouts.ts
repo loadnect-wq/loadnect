@@ -15,6 +15,7 @@
 
 import "server-only";
 
+import { constants, publicEncrypt } from "node:crypto";
 import { optionalEnv } from "@/lib/env";
 
 const PAYOUT_API_VERSION = "2024-01-01";
@@ -57,13 +58,63 @@ export function getPayoutConfig(): PayoutConfig {
   };
 }
 
+/**
+ * TWO-FACTOR SIGNATURE, WHICH IS HOW YOU AUTHENTICATE FROM A DYNAMIC IP.
+ *
+ * Cashfree Payouts refuses a request whose source IP is not on the account's
+ * allowlist — "IP not whitelisted", which is what production answered here.
+ * Vercel functions have no fixed egress IP (static IPs are a Secure Compute
+ * feature, i.e. Enterprise), so an allowlist can never be satisfied from this
+ * deployment. Cashfree's documented alternative is a signature:
+ *
+ *   base64( RSA-OAEP-encrypt( "<clientId>.<unix seconds>", publicKey ) )
+ *
+ * sent as X-Cf-Signature, valid for 10 minutes. The public key is generated in
+ * the Cashfree dashboard under Payouts > Developers > Two-Factor Authentication.
+ *
+ * Returns null when no key is configured, and the header is simply omitted —
+ * so this is inert until the key exists, and an IP-allowlisted deployment keeps
+ * working without it. NEVER throws: a malformed key must surface as Cashfree's
+ * own "signature missing" rather than as a crash in every payout call.
+ *
+ * NOTE: Cashfree documents this for Payouts V1 and does not state whether it
+ * applies to V2 (x-api-version 2024-01-01), which is what this client speaks.
+ * If V2 rejects it the settings card will show Cashfree's own message.
+ */
+function payoutSignature(clientId: string): string | null {
+  const pem = (process.env.CASHFREE_PAYOUT_PUBLIC_KEY ?? "").trim();
+  if (!pem) return null;
+  try {
+    // Vercel's UI accepts real newlines, but a key pasted through a shell often
+    // arrives with literal backslash-n. Accept both rather than fail obscurely.
+    const key = pem.includes("\\n") ? pem.replace(/\\n/g, "\n") : pem;
+    const payload = `${clientId}.${Math.floor(Date.now() / 1000)}`;
+    return publicEncrypt(
+      { key, padding: constants.RSA_PKCS1_OAEP_PADDING },
+      Buffer.from(payload, "utf8"),
+    ).toString("base64");
+  } catch (e) {
+    // The key itself is never logged.
+    console.error("[payouts] could not build X-Cf-Signature:", e instanceof Error ? e.message : "unknown");
+    return null;
+  }
+}
+
 function payoutHeaders(cfg: PayoutConfig): Record<string, string> {
-  return {
+  const headers: Record<string, string> = {
     "Content-Type":    "application/json",
     "x-api-version":   PAYOUT_API_VERSION,
     "x-client-id":     cfg.clientId,
     "x-client-secret": cfg.clientSecret,
   };
+  const signature = payoutSignature(cfg.clientId);
+  if (signature) headers["X-Cf-Signature"] = signature;
+  return headers;
+}
+
+/** Whether a 2FA public key is configured, for the admin readout. */
+export function hasPayoutSignatureKey(): boolean {
+  return (process.env.CASHFREE_PAYOUT_PUBLIC_KEY ?? "").trim() !== "";
 }
 
 // ── Identifier shaping — Cashfree's charsets are narrow and they differ ──────
@@ -387,6 +438,9 @@ export type PayoutsHealth = {
   /** Cashfree answers 403 apis_not_enabled when Payouts is not switched on for
    *  the account. It reads exactly like a credentials bug, so name it. */
   notActivated:        boolean;
+  /** A 2FA public key is configured, so requests carry X-Cf-Signature and do
+   *  not depend on this server's IP being allowlisted. */
+  signatureConfigured: boolean;
 };
 
 /**
@@ -402,6 +456,7 @@ export async function checkPayoutsHealth(): Promise<PayoutsHealth> {
   const base: PayoutsHealth = {
     configured: false, mode: null, apiBaseUrl: null, clientIdMasked: null,
     credentialsAccepted: null, error: null, notActivated: false,
+    signatureConfigured: hasPayoutSignatureKey(),
   };
   if (!isPayoutsConfigured()) return base;
 
@@ -429,9 +484,13 @@ export async function checkPayoutsHealth(): Promise<PayoutsHealth> {
       error:
         `Cashfree returned 403. Their message: ${probe.error}`
         + (probe.code ? ` (code ${probe.code})` : "")
-        + " — this is either Payouts not enabled for the account, or this server's IP not being on the"
-        + " allowlist. Vercel functions have no fixed egress IP, so an allowlist cannot be satisfied"
-        + " from here; that case needs the x-cf-signature scheme instead.",
+        + (hasPayoutSignatureKey()
+            ? " — a 2FA public key IS configured, so this is not the IP allowlist. Either Payouts is"
+              + " not enabled for the account, or the V2 API does not accept X-Cf-Signature."
+            : " — no 2FA public key is configured, so these requests are authenticated by IP alone."
+              + " Vercel functions have no fixed egress IP, so an allowlist can never be satisfied"
+              + " from here. Generate a public key in the Cashfree dashboard (Payouts > Developers >"
+              + " Two-Factor Authentication) and set CASHFREE_PAYOUT_PUBLIC_KEY."),
     };
   }
   if (probe.status !== null && probe.status >= 500) {

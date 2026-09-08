@@ -314,6 +314,16 @@ export default async function AdminSettingsPage() {
                         )}
                       </dd>
                     </div>
+                    {/* Without this, an IP-allowlist rejection and a genuine
+                        credentials problem look identical on this card. */}
+                    <div className="flex flex-wrap items-center gap-x-2">
+                      <dt className="font-semibold text-charcoal-600">Auth method</dt>
+                      <dd className="text-charcoal-800">
+                        {payouts.signatureConfigured
+                          ? "X-Cf-Signature (works from any IP)"
+                          : "IP allowlist only — no 2FA public key set"}
+                      </dd>
+                    </div>
                   </dl>
                   {payouts.error && (
                     <p className={`mt-2 rounded-lg p-2 text-[11px] ${payouts.notActivated ? "bg-red-100 font-semibold text-red-900" : "bg-white/70 text-charcoal-700"}`}>
