@@ -111,9 +111,12 @@ describe("2FA public key parsing", () => {
   it("accepts a real key however its newlines were destroyed", async () => {
     const { generateKeyPairSync } = await import("node:crypto");
     const { payoutSignatureError } = await import("@/lib/cashfree-payouts");
+    // Both encodings, or Node's overloads do not match — one alone is a type
+    // error that only `next build` catches, not `tsc --noEmit` on its own.
     const { publicKey } = generateKeyPairSync("rsa", {
       modulusLength: 2048,
-      publicKeyEncoding: { type: "spki", format: "pem" },
+      publicKeyEncoding:  { type: "spki",  format: "pem" },
+      privateKeyEncoding: { type: "pkcs8", format: "pem" },
     });
     const prev = process.env.CASHFREE_PAYOUT_PUBLIC_KEY;
 
