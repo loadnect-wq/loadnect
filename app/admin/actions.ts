@@ -1556,14 +1556,58 @@ export async function issueRefund(paymentId: string): Promise<ActionResult> {
   // overnight — SCHEDULED_FOR_NEXT_WORKINGDAY is a documented PENDING code, and
   // NEFT does not run on Sundays. That is a real window in which a full refund
   // to the customer and a transfer to the owner are both live against one
-  // capture. Resolve the transfer first; Reconcile on the payout row says
-  // whether it landed.
+  // capture.
+  //
+  // THIS USED TO BE A DEAD END. It refused and told the admin to "reconcile it
+  // in the payout queue first" — but fetchStuckPayouts excludes any booking
+  // with a refund owed, so the row was not in that queue, and Mark-paid-
+  // manually refuses while a transfer is open too. The customer was owed a
+  // refund the product had no way to release, against a policy promising 5-7
+  // business days.
+  //
+  // So it resolves the transfer itself rather than sending someone to look for
+  // a button that is not there. Reconcile only READS from Cashfree, so this is
+  // safe to do inline: it cannot move money, only find out what already
+  // happened.
   if (payment.split_status === "in_flight" || payment.split_status === "pending") {
-    return {
-      error:
-        "A payout to the owner is in progress for this booking. Reconcile it in the payout queue first — "
-        + "refunding now could pay out the same capture twice.",
-    };
+    let settled = false;
+    if (payment.split_payout_id) {
+      const r = await reconcilePayout(String(payment.split_payout_id));
+      if (r.ok) {
+        // done = the owner really was paid, and the refund must not go out on
+        // top. Anything else releases the block.
+        settled = r.summary === "done";
+        if (!settled) {
+          const { data: fresh } = await db
+            .from("payments").select("split_status").eq("id", payment.id).maybeSingle();
+          payment.split_status = fresh?.split_status ?? payment.split_status;
+        }
+      } else {
+        return {
+          error:
+            `A payout to the owner is in progress and Cashfree could not be reached to check it (${r.error}). `
+            + "Try again shortly — refunding now could pay out the same capture twice.",
+        };
+      }
+    }
+    if (settled || payment.split_status === "done") {
+      const owed = Number(payment.split_owner_amount);
+      return {
+        error:
+          `That transfer has now completed — the owner was paid `
+          + `${Number.isFinite(owed) ? `Rs${owed.toLocaleString("en-IN")}` : "their share"}. `
+          + "Recover it from the owner before refunding the customer.",
+      };
+    }
+    if (payment.split_status === "in_flight" || payment.split_status === "pending") {
+      return {
+        error:
+          "A payout to the owner is still in flight at Cashfree for this booking. It has just been "
+          + "re-checked and is not final yet — try again once it settles or reverses.",
+      };
+    }
+    // Terminal and not paid (failed / reversed): the advance is the customer's,
+    // and the refund may proceed.
   }
   if (payment.refund_state === "processing") {
     return { error: "A refund is already in progress for this booking." };

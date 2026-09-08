@@ -21,6 +21,7 @@ import { getProfile } from "@/lib/auth";
 import { hasValidCronSecret } from "@/lib/cron-auth";
 import { expireOverdueBookingRequests } from "@/lib/booking-expiry";
 import { reportOverdueRefunds } from "@/lib/refund-sla";
+import { reconcileOpenPayouts } from "@/lib/payout-dispatch";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -234,6 +235,26 @@ async function run(actor: SweepActor) {
     // would not add a report, it would fail the deployment.
     const refundSla = await reportOverdueRefunds();
 
+    // PAYOUT RECONCILIATION, for the same reason and under the same constraint.
+    // A Cashfree Payouts transfer is asynchronous: RECEIVED, QUEUED and PENDING
+    // are the normal path, SCHEDULED_FOR_NEXT_WORKINGDAY is a documented PENDING
+    // code, and a SUCCESS can still REVERSE within about 24 hours. So something
+    // has to ask Cashfree what happened without a human pressing a button.
+    //
+    // /api/admin/payouts/reconcile exists and its own header calls itself a
+    // scheduled job — but it was never scheduled, because vercel.json already
+    // holds the two crons this plan allows and a third fails the build. Rather
+    // than leave the endpoint describing a schedule that does not exist, the
+    // sweep calls the same function directly. The endpoint stays as the
+    // on-demand path.
+    //
+    // Read-only against Cashfree — it cannot move money, only record what
+    // already happened — which is what makes it safe to run unattended.
+    const payouts = await reconcileOpenPayouts(50).catch((e) => {
+      console.error("[sweep] payout reconcile failed:", e instanceof Error ? e.message : e);
+      return { checked: 0, settled: 0, errors: 1 };
+    });
+
     // ok REFLECTS WHAT HAPPENED TO THE ROWS, not merely that the function
     // returned. This reported ok:true even when every booking it touched
     // failed, because the summary's per-row error list was never consulted —
@@ -245,7 +266,7 @@ async function run(actor: SweepActor) {
     // and answered with 500: a monitored cron retries a 500 and ignores a 200.
     const failures = summary.errors ?? [];
     const ok = failures.length === 0;
-    const payload = { ok, summary, pendingCancelled, otpPruned, refundSla };
+    const payload = { ok, summary, pendingCancelled, otpPruned, refundSla, payouts };
 
     // The tidy-up steps deliberately do NOT feed `ok`: it drives the status
     // code, and a failed OTP prune is not worth making a monitored cron retry a

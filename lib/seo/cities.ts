@@ -14,6 +14,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import "server-only";
+import { SERVICE_AREA_CITIES } from "./service-areas";
 
 import { getSupabasePublicClient } from "@/lib/supabase/public";
 import { slugify } from "@/lib/utils";
@@ -22,16 +23,9 @@ import { slugify } from "@/lib/utils";
 export const MIN_VENUES_FOR_INDEX = 1;
 
 /** Cities Hallnect actively serves. Presence here does NOT imply indexable. */
-export const SERVICE_AREA_CITIES = [
-  "Madurai",
-  "Chennai",
-  "Coimbatore",
-  "Tiruchirappalli",
-  "Salem",
-  "Tirunelveli",
-  "Thanjavur",
-  "Erode",
-] as const;
+// The list lives in service-areas.ts so a Client Component can read it too;
+// re-exported here because most callers already import it from this module.
+export { SERVICE_AREA_CITIES } from "./service-areas";
 
 export type CityInventory = {
   city: string;

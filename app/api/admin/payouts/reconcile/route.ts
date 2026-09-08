@@ -2,7 +2,14 @@
 // app/api/admin/payouts/reconcile/route.ts
 // POST — ask Cashfree what happened to every transfer that is not yet final.
 //
-// WHY THIS EXISTS AS A SCHEDULED JOB rather than only a button. A Cashfree
+// THE SCHEDULE LIVES ELSEWHERE, and this header used to claim otherwise. Vercel
+// Hobby caps this project at TWO cron jobs and vercel.json already holds two, so
+// a third entry fails the BUILD. The nightly sweep in
+// app/api/admin/bookings/expire-overdue therefore calls reconcileOpenPayouts()
+// directly, alongside the other jobs piggy-backed on that slot. This route is
+// the ON-DEMAND path: an admin, or a real scheduler if one is ever added.
+//
+// WHY IT NEEDS TO RUN AT ALL, on a schedule or otherwise. A Cashfree
 // Payouts transfer is asynchronous by definition: RECEIVED, QUEUED and PENDING
 // are the normal path, SCHEDULED_FOR_NEXT_WORKINGDAY is a documented PENDING
 // code, and NEFT does not run on Sundays. So a transfer dispatched on Saturday

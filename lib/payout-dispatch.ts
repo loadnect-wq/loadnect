@@ -204,7 +204,7 @@ export async function dispatchOwnerPayout(
 
   // 3. The destination, and that it is the one Cashfree verified.
   const { data: owner } = await db.from("hall_owners")
-    .select("id, payout_account_number, payout_ifsc, payout_beneficiary_id, payout_beneficiary_status")
+    .select("id, payout_account_number, payout_ifsc, payout_beneficiary_id, payout_beneficiary_status, payout_beneficiary_synced_at, payout_details_changed_at")
     .eq("id", (await db.from("halls").select("owner_id").eq("id", booking.hall_id).maybeSingle()).data?.owner_id)
     .maybeSingle();
   if (!owner) return { state: "refused", reason: "The venue has no owner record." };
@@ -216,6 +216,40 @@ export async function dispatchOwnerPayout(
   }
   const beneficiaryId = String(owner.payout_beneficiary_id ?? toBeneficiaryId(String(owner.id)));
   const digest = destinationDigest(owner.payout_account_number, owner.payout_ifsc);
+
+  // THE DESTINATION MUST BE THE ONE CASHFREE VERIFIED. This is the control the
+  // scope specifies against a compromised owner account redirecting payouts,
+  // and it was HALF built: 0068 stamps payout_details_changed_at on every
+  // destination edit and every payout records a destination_digest, so it read
+  // as implemented — but nothing compared either value, so a destination
+  // changed after verification was paid without comment.
+  //
+  // Two independent checks, because they catch different things:
+  //   • changed AFTER the beneficiary was last synced with Cashfree — the
+  //     account-takeover case, where VERIFIED refers to an older destination;
+  //   • different from what the last completed transfer actually paid — which
+  //     also catches a change made while a beneficiary sync was in flight.
+  const changedAt = owner.payout_details_changed_at ? Date.parse(String(owner.payout_details_changed_at)) : null;
+  const syncedAt  = owner.payout_beneficiary_synced_at ? Date.parse(String(owner.payout_beneficiary_synced_at)) : null;
+  if (changedAt != null && syncedAt != null && changedAt > syncedAt) {
+    return {
+      state: "refused",
+      reason: "The owner changed their bank details after Cashfree verified them. Re-register the payout account before sending money.",
+    };
+  }
+
+  const { data: lastPaid } = await db.from("owner_payouts")
+    .select("destination_digest")
+    .eq("hall_owner_id", owner.id)
+    .eq("status", "SUCCESS")
+    .order("created_at", { ascending: false })
+    .limit(1).maybeSingle();
+  if (lastPaid?.destination_digest && lastPaid.destination_digest !== digest) {
+    return {
+      state: "refused",
+      reason: "The destination account differs from the one this owner was last paid at. Re-register the payout account to confirm the change is theirs.",
+    };
+  }
 
   // 4. Next attempt number, then INSERT BEFORE SENDING. The partial unique
   //    index refuses if anything non-terminal already exists for this booking,
@@ -390,8 +424,21 @@ export async function reconcileOpenPayouts(limit = 50): Promise<{ checked: numbe
   const admin = getSupabaseAdminClient();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = admin as any;
+  // NOT JUST THE NON-TERMINAL ONES. Cashfree documents REVERSED as a state a
+  // transfer reaches AFTER SUCCESS — the beneficiary bank sends the money back,
+  // typically within 24 hours (BENE_NAME_DIFFERS, ACCOUNT_BLOCKED,
+  // RETURNED_FROM_BENEFICIARY). classifyTransfer marks SUCCESS terminal, so
+  // sweeping `is_terminal = false` alone meant a reversal was never noticed:
+  // payments would still read split_status='done', the owner would be unpaid
+  // and believe otherwise, and issueRefund would refuse the customer's refund
+  // forever on the grounds that the owner had already been paid.
+  //
+  // So settled rows stay in the sweep for 48h past settlement. That is the
+  // window Cashfree describes, with margin.
+  const reversalWindow = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
   const { data: open } = await db.from("owner_payouts")
-    .select("id").eq("is_terminal", false)
+    .select("id")
+    .or(`is_terminal.eq.false,and(status.eq.SUCCESS,settled_at.gte.${reversalWindow})`)
     .order("created_at", { ascending: true }).limit(limit);
 
   for (const row of (open ?? []) as { id: string }[]) {

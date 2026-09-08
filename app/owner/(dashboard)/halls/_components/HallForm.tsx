@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState, useTransition } from "react";
+import { SERVICE_AREA_CITIES } from "@/lib/seo/service-areas";
 import { useRouter } from "next/navigation";
 import { ImagePlus, Plus, Sparkles, Star, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
@@ -32,13 +33,10 @@ const VENUE_TYPE_OPTIONS = [
   { value: "banquet",   label: "Banquet"   },
 ] as const;
 
-// Tamil Nadu cities/areas only — Hallnect's current service area.
-const CITIES = [
-  "Madurai", "Chennai", "Coimbatore", "Tiruchirappalli", "Salem",
-  "Tirunelveli", "Thanjavur", "Dindigul", "Erode", "Tiruppur",
-  "Vellore", "Kanchipuram", "Sivakasi", "Virudhunagar", "Karaikudi",
-  "Rajapalayam", "Pollachi", "Chengalpattu",
-];
+// The service area comes from lib/seo/cities.ts and nowhere else. A local copy
+// here is how the dropdown came to offer ten cities that had no landing page,
+// so an approved venue in any of them would have put a 404 in the sitemap.
+const CITIES = SERVICE_AREA_CITIES;
 
 export function HallForm({ ownerId, amenities, hall }: Props) {
   const router = useRouter();
