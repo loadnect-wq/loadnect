@@ -59,42 +59,79 @@ export function getPayoutConfig(): PayoutConfig {
 }
 
 /**
+ * Rebuilds a PEM from however it survived being pasted into an env var.
+ *
+ * A PEM is header line, base64 wrapped at 64 columns, footer line — and OpenSSL
+ * is strict about all three. Every common paste damages one of them: Vercel's
+ * single-line inputs turn the newlines into spaces, shells turn them into
+ * literal backslash-n, Windows adds carriage returns, and copying from a viewer
+ * can drop them entirely. All of those produce exactly one error,
+ * "DECODER routines::unsupported", which says nothing about which one happened.
+ *
+ * So rather than trust the shape, take the base64 out and lay it back down
+ * correctly. A key with no header at all is treated as a bare SPKI body, which
+ * is what you get copying the middle of the file.
+ */
+function normalisePem(raw: string): string {
+  const text = raw.trim().replace(/\\n/g, "\n").replace(/\r/g, "");
+  const match = text.match(/-----BEGIN ([A-Z ]+)-----([\s\S]*?)-----END \1-----/);
+  const label = match ? match[1] : "PUBLIC KEY";
+  const body  = (match ? match[2] : text).replace(/\s+/g, "");
+  const lines = body.match(/.{1,64}/g) ?? [];
+  return `-----BEGIN ${label}-----\n${lines.join("\n")}\n-----END ${label}-----\n`;
+}
+
+/** Why the signature could not be built, or null when it can be. Rendered on
+ *  /admin/settings, because "Signature missing in the request" coming back from
+ *  Cashfree does not tell an operator that OUR key failed to parse. */
+export function payoutSignatureError(): string | null {
+  const raw = (process.env.CASHFREE_PAYOUT_PUBLIC_KEY ?? "").trim();
+  if (!raw) return "No CASHFREE_PAYOUT_PUBLIC_KEY is set.";
+  if (/PRIVATE KEY/i.test(raw)) {
+    return "That is a PRIVATE key. Cashfree's 2FA uses the PUBLIC key it generated for you — the one in the downloaded file, not a key of your own.";
+  }
+  try {
+    publicEncrypt(
+      { key: normalisePem(raw), padding: constants.RSA_PKCS1_OAEP_PADDING },
+      Buffer.from("probe", "utf8"),
+    );
+    return null;
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "unknown";
+    return /DECODER|unsupported|asn1|PEM/i.test(msg)
+      ? `The key could not be parsed (${msg}). Paste the whole file including the BEGIN and END lines. If Cashfree's download is password-protected, open it with the password they emailed and copy the key out of it first.`
+      : `The key could not be used (${msg}).`;
+  }
+}
+
+/**
  * TWO-FACTOR SIGNATURE, WHICH IS HOW YOU AUTHENTICATE FROM A DYNAMIC IP.
  *
  * Cashfree Payouts refuses a request whose source IP is not on the account's
- * allowlist — "IP not whitelisted", which is what production answered here.
- * Vercel functions have no fixed egress IP (static IPs are a Secure Compute
- * feature, i.e. Enterprise), so an allowlist can never be satisfied from this
- * deployment. Cashfree's documented alternative is a signature:
+ * allowlist. Vercel functions have no fixed egress IP (static IPs are a Secure
+ * Compute feature, i.e. Enterprise), so an allowlist can never be satisfied from
+ * this deployment. Cashfree's alternative is a signature:
  *
  *   base64( RSA-OAEP-encrypt( "<clientId>.<unix seconds>", publicKey ) )
  *
  * sent as X-Cf-Signature, valid for 10 minutes. The public key is generated in
  * the Cashfree dashboard under Payouts > Developers > Two-Factor Authentication.
  *
- * Returns null when no key is configured, and the header is simply omitted —
- * so this is inert until the key exists, and an IP-allowlisted deployment keeps
- * working without it. NEVER throws: a malformed key must surface as Cashfree's
- * own "signature missing" rather than as a crash in every payout call.
- *
- * NOTE: Cashfree documents this for Payouts V1 and does not state whether it
- * applies to V2 (x-api-version 2024-01-01), which is what this client speaks.
- * If V2 rejects it the settings card will show Cashfree's own message.
+ * Returns null when no key is configured or the key will not parse, and the
+ * header is then omitted — Cashfree answers "Signature missing in the request",
+ * which is why payoutSignatureError() exists to say what actually went wrong.
+ * NEVER throws, and never logs the key.
  */
 function payoutSignature(clientId: string): string | null {
-  const pem = (process.env.CASHFREE_PAYOUT_PUBLIC_KEY ?? "").trim();
-  if (!pem) return null;
+  const raw = (process.env.CASHFREE_PAYOUT_PUBLIC_KEY ?? "").trim();
+  if (!raw) return null;
   try {
-    // Vercel's UI accepts real newlines, but a key pasted through a shell often
-    // arrives with literal backslash-n. Accept both rather than fail obscurely.
-    const key = pem.includes("\\n") ? pem.replace(/\\n/g, "\n") : pem;
     const payload = `${clientId}.${Math.floor(Date.now() / 1000)}`;
     return publicEncrypt(
-      { key, padding: constants.RSA_PKCS1_OAEP_PADDING },
+      { key: normalisePem(raw), padding: constants.RSA_PKCS1_OAEP_PADDING },
       Buffer.from(payload, "utf8"),
     ).toString("base64");
   } catch (e) {
-    // The key itself is never logged.
     console.error("[payouts] could not build X-Cf-Signature:", e instanceof Error ? e.message : "unknown");
     return null;
   }
@@ -441,6 +478,10 @@ export type PayoutsHealth = {
   /** A 2FA public key is configured, so requests carry X-Cf-Signature and do
    *  not depend on this server's IP being allowlisted. */
   signatureConfigured: boolean;
+  /** Why the signature could not be built, when a key IS set but unusable.
+   *  Without this, our own parse failure surfaced only as Cashfree's
+   *  "Signature missing in the request", which points at the wrong thing. */
+  signatureError: string | null;
 };
 
 /**
@@ -457,6 +498,7 @@ export async function checkPayoutsHealth(): Promise<PayoutsHealth> {
     configured: false, mode: null, apiBaseUrl: null, clientIdMasked: null,
     credentialsAccepted: null, error: null, notActivated: false,
     signatureConfigured: hasPayoutSignatureKey(),
+    signatureError: hasPayoutSignatureKey() ? payoutSignatureError() : null,
   };
   if (!isPayoutsConfigured()) return base;
 

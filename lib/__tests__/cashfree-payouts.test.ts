@@ -94,3 +94,57 @@ describe("2FA signature configuration", () => {
     else process.env.CASHFREE_PAYOUT_PUBLIC_KEY = prev;
   });
 });
+
+describe("2FA public key parsing", () => {
+  // A PEM is header, base64 wrapped at 64 columns, footer, and OpenSSL is strict
+  // about all three. Every one of these is a real way the key arrives after
+  // being pasted into an environment variable, and every one of them produces
+  // the SAME opaque error ("DECODER routines::unsupported") if not repaired.
+  const mangle = {
+    "pristine PEM":        (k: string) => k,
+    "newlines to spaces":  (k: string) => k.replace(/\n/g, " "),
+    "literal backslash-n": (k: string) => k.replace(/\n/g, "\n"),
+    "CRLF line endings":   (k: string) => k.replace(/\n/g, "\r\n"),
+    "body only, no header":(k: string) => k.replace(/-----[A-Z ]+-----/g, "").replace(/\s+/g, ""),
+  };
+
+  it("accepts a real key however its newlines were destroyed", async () => {
+    const { generateKeyPairSync } = await import("node:crypto");
+    const { payoutSignatureError } = await import("@/lib/cashfree-payouts");
+    const { publicKey } = generateKeyPairSync("rsa", {
+      modulusLength: 2048,
+      publicKeyEncoding: { type: "spki", format: "pem" },
+    });
+    const prev = process.env.CASHFREE_PAYOUT_PUBLIC_KEY;
+
+    for (const [name, f] of Object.entries(mangle)) {
+      process.env.CASHFREE_PAYOUT_PUBLIC_KEY = f(publicKey as string);
+      expect(payoutSignatureError(), name).toBeNull();
+    }
+
+    if (prev === undefined) delete process.env.CASHFREE_PAYOUT_PUBLIC_KEY;
+    else process.env.CASHFREE_PAYOUT_PUBLIC_KEY = prev;
+  });
+
+  it("names the problem instead of failing silently", async () => {
+    const { generateKeyPairSync } = await import("node:crypto");
+    const { payoutSignatureError } = await import("@/lib/cashfree-payouts");
+    const prev = process.env.CASHFREE_PAYOUT_PUBLIC_KEY;
+
+    process.env.CASHFREE_PAYOUT_PUBLIC_KEY = "not a key at all";
+    expect(payoutSignatureError()).toMatch(/could not be parsed/i);
+
+    // Handing over a private key is a plausible mistake and deserves its own
+    // sentence rather than a generic parse failure.
+    const { privateKey } = generateKeyPairSync("rsa", {
+      modulusLength: 2048,
+      privateKeyEncoding: { type: "pkcs8", format: "pem" },
+      publicKeyEncoding: { type: "spki", format: "pem" },
+    });
+    process.env.CASHFREE_PAYOUT_PUBLIC_KEY = privateKey as string;
+    expect(payoutSignatureError()).toMatch(/PRIVATE key/i);
+
+    if (prev === undefined) delete process.env.CASHFREE_PAYOUT_PUBLIC_KEY;
+    else process.env.CASHFREE_PAYOUT_PUBLIC_KEY = prev;
+  });
+});

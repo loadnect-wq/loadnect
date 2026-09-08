@@ -319,12 +319,23 @@ export default async function AdminSettingsPage() {
                     <div className="flex flex-wrap items-center gap-x-2">
                       <dt className="font-semibold text-charcoal-600">Auth method</dt>
                       <dd className="text-charcoal-800">
-                        {payouts.signatureConfigured
-                          ? "X-Cf-Signature (works from any IP)"
-                          : "IP allowlist only — no 2FA public key set"}
+                        {!payouts.signatureConfigured
+                          ? "IP allowlist only — no 2FA public key set"
+                          : payouts.signatureError
+                            ? "X-Cf-Signature — KEY UNUSABLE, header not sent"
+                            : "X-Cf-Signature (works from any IP)"}
                       </dd>
                     </div>
                   </dl>
+                  {/* OUR fault, not Cashfree's, and they cannot tell you which:
+                      an unparseable key means we send no header at all, and the
+                      only thing Cashfree can say is that it is missing. */}
+                  {payouts.signatureError && (
+                    <p className="mt-2 rounded-lg bg-red-100 p-2 text-[11px] font-semibold text-red-900">
+                      The 2FA public key is set but cannot be used, so requests go out with no
+                      signature. {payouts.signatureError}
+                    </p>
+                  )}
                   {payouts.error && (
                     <p className={`mt-2 rounded-lg p-2 text-[11px] ${payouts.notActivated ? "bg-red-100 font-semibold text-red-900" : "bg-white/70 text-charcoal-700"}`}>
                       {payouts.error}
