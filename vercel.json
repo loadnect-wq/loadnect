@@ -1,6 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "regions": ["bom1"],
+  "regions": ["syd1"],
   "crons": [
     {
       "path": "/api/admin/bookings/expire-overdue",
