@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { LogOut, Shield, AlertTriangle, Settings as SettingsIcon, Database, Timer, Percent, Sparkles, KeyRound, CheckCircle2, XCircle, CreditCard, ShieldCheck } from "lucide-react";
+import { LogOut, Shield, AlertTriangle, Settings as SettingsIcon, Database, Timer, Percent, Sparkles, KeyRound, CheckCircle2, XCircle, CreditCard, ShieldCheck, Wallet } from "lucide-react";
 import { requireRole } from "@/lib/auth";
 import { PENDING_PAYMENT_TIMEOUT_MIN } from "@/lib/booking-payment";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
@@ -9,6 +9,7 @@ import { getCommissionPercent, getPublicPaymentSettings } from "@/lib/platform-s
 import { fetchPremiumPlans } from "@/lib/premium-plans";
 import { checkAuthRedirectHealth } from "@/lib/auth-health";
 import { checkCashfreeHealth } from "@/lib/cashfree-health";
+import { checkPayoutsHealth } from "@/lib/cashfree-payouts";
 import { getMsg91Status } from "@/lib/msg91";
 import { Badge } from "@/components/ui/Badge";
 import { AdminPageHeader } from "../_components/AdminPageHeader";
@@ -40,17 +41,21 @@ async function fetchSchemaState(): Promise<{ version: string; name: string | nul
 }
 
 /**
- * Owners who actually hold a Cashfree vendor id. Easy Split pays nobody without
- * one, so this is the half of "is payout automatic?" that the feature flag
- * cannot answer. Same no-throw contract as above.
+ * Owners whose payout account Cashfree has actually VERIFIED.
+ *
+ * This is the half of "can we pay anyone?" that credentials cannot answer: the
+ * Payouts product can be live, the keys accepted, and every transfer still
+ * refused because no beneficiary passed verification. Counts VERIFIED only —
+ * INITIATED means Cashfree is still checking and will not accept a transfer.
+ * Same no-throw contract as above.
  */
-async function countOnboardedVendors(): Promise<number | null> {
+async function countVerifiedBeneficiaries(): Promise<number | null> {
   try {
     const sb = await getSupabaseServerClient();
     const { count, error } = await sb
       .from("hall_owners")
       .select("id", { count: "exact", head: true })
-      .not("cashfree_vendor_id", "is", null);
+      .eq("payout_beneficiary_status", "VERIFIED");
     if (error) return null;
     return count ?? 0;
   } catch {
@@ -60,7 +65,7 @@ async function countOnboardedVendors(): Promise<number | null> {
 
 export default async function AdminSettingsPage() {
   const profile = await requireRole(["admin"]);
-  const [commissionPercent, premiumPlans, paymentSettings, authHealth, cashfree, schemaState, onboardedVendors] = await Promise.all([
+  const [commissionPercent, premiumPlans, paymentSettings, authHealth, cashfree, payouts, schemaState, verifiedBeneficiaries] = await Promise.all([
     getCommissionPercent(),
     fetchPremiumPlans(),
     getPublicPaymentSettings(),
@@ -69,8 +74,9 @@ export default async function AdminSettingsPage() {
     // instead of erroring, which is what sent customers to Vercel's login page.
     checkAuthRedirectHealth(),
     checkCashfreeHealth(),
+    checkPayoutsHealth(),
     fetchSchemaState(),
-    countOnboardedVendors(),
+    countVerifiedBeneficiaries(),
   ]);
 
   // Cheap, synchronous env reads — no network call, unlike the probes above.
@@ -207,61 +213,37 @@ export default async function AdminSettingsPage() {
                       Set it explicitly if your Cashfree dashboard shows a separate webhook secret.
                     </p>
                   )}
-                  {/* Whether an accepted booking actually pays the owner. Both
-                      halves must be true: the flag on, AND at least one owner
-                      onboarded as a vendor. The flag alone is not readiness.
-                      This comment described the intent for a while before the
-                      code did — it read only the flag, so it announced
-                      "accepting a booking pays the owner automatically" on a
-                      deployment where not one owner had a vendor id and every
-                      payout would have failed. */}
+                  {/* WHO CAN ACTUALLY BE PAID. The Payouts credentials being
+                      accepted says nothing about this: every transfer is still
+                      refused unless the owner's own account reached VERIFIED.
+                      A failed count is NOT evidence of zero, so it says so
+                      rather than implying everything is fine — the mistake this
+                      very banner made when it was first written. */}
                   <p className={`mt-2 rounded-lg p-2 text-[11px] ${
-                    !cashfree.easySplitEnabled
+                    verifiedBeneficiaries === null
                       ? "bg-amber-100 font-semibold text-amber-900"
-                      : onboardedVendors === 0
-                        ? "bg-red-100 font-semibold text-red-900"
-                        : onboardedVendors === null
-                          ? "bg-amber-100 font-semibold text-amber-900"
-                          : "bg-white/70 text-charcoal-700"
+                      : verifiedBeneficiaries === 0
+                        ? "bg-amber-100 font-semibold text-amber-900"
+                        : "bg-white/70 text-charcoal-700"
                   }`}>
-                    {!cashfree.easySplitEnabled ? (
+                    {verifiedBeneficiaries === null ? (
                       <>
-                        Easy Split is <span className="font-mono">OFF</span> (CASHFREE_EASY_SPLIT_ENABLED).
-                        Accepted bookings will NOT pay owners — each payout records
-                        &ldquo;not_applicable&rdquo; and the owner&rsquo;s share stays in Hallnect&rsquo;s
-                        account until it is settled by hand.
+                        The number of owners with a verified payout account <strong>could not be
+                        read</strong>. Treat automatic payouts as unproven until this shows a number.
                       </>
-                    ) : onboardedVendors === 0 ? (
+                    ) : verifiedBeneficiaries === 0 ? (
                       <>
-                        Easy Split is <span className="font-mono">ON</span> but no owner has a Cashfree
-                        vendor id, so it can pay nobody. Every accepted booking will record a{" "}
-                        <span className="font-mono">failed</span> payout and send a billed admin SMS —
-                        noisier and less accurate than turning the flag off, which records
-                        &ldquo;not_applicable&rdquo; and alerts once a day. Unset
-                        CASHFREE_EASY_SPLIT_ENABLED until owners are onboarded, or onboard them.
-                      </>
-                    ) : onboardedVendors === null ? (
-                      <>
-                        {/* I wrote this banner earlier today and put the same
-                            defect in it that it exists to report:
-                            countOnboardedVendors returns null when its read
-                            fails, and null used to render as the word "some",
-                            so a failed count claimed owners WERE onboarded and
-                            payouts WERE automatic — in the calm white box. The
-                            zero case is the entire point of this banner, and a
-                            failed read is not evidence against zero. */}
-                        Easy Split is <span className="font-mono">ON</span>, but the count of owners with a
-                        Cashfree vendor id <strong>could not be read</strong>. This is not evidence that any
-                        owner is onboarded: if none is, every accepted booking records a failed payout and
-                        sends a billed admin SMS. Reload, and treat automatic payouts as unproven until this
-                        line shows a number.
+                        No owner has a VERIFIED payout account yet, so no transfer can succeed.
+                        Register each owner&rsquo;s bank details from the payout queue on{" "}
+                        <Link href="/admin/payments" className="font-semibold underline">Payments</Link>{" "}
+                        — until then every payout is a bank transfer by hand.
                       </>
                     ) : (
                       <>
-                        Easy Split is <span className="font-mono">ON</span> and {onboardedVendors} owner
-                        {onboardedVendors === 1 ? " has" : "s have"} a vendor id — accepting a booking pays
-                        them automatically. Owners without one are not paid; those payouts appear on the{" "}
-                        <Link href="/admin/payments" className="font-semibold underline">Payments</Link> page.
+                        {verifiedBeneficiaries} owner{verifiedBeneficiaries === 1 ? " has" : "s have"} a
+                        VERIFIED payout account and can be paid from the queue on{" "}
+                        <Link href="/admin/payments" className="font-semibold underline">Payments</Link>.
+                        Owners without one are refused at dispatch, not silently skipped.
                       </>
                     )}
                   </p>
@@ -273,6 +255,77 @@ export default async function AdminSettingsPage() {
                       CASHFREE_ENV above — so it is harmless, but it is safe to delete to avoid confusion.
                     </p>
                   )}
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* CASHFREE PAYOUTS — the money going OUT.
+            A separate product from the gateway with its own credentials, its own
+            host and its own activation switch, so "payments work" says nothing
+            about whether an owner can be paid. This card exists because the
+            credentials are write-only in Vercel and there is nowhere else to
+            look. */}
+        <div className={`rounded-2xl border-2 p-5 ${
+          !payouts.configured ? "border-amber-200 bg-amber-50"
+          : payouts.credentialsAccepted === false ? "border-red-200 bg-red-50"
+          : payouts.credentialsAccepted === null ? "border-amber-200 bg-amber-50"
+          : payouts.mode === "production" ? "border-green-200 bg-green-50"
+          : "border-blue-200 bg-blue-50"}`}>
+          <div className="flex items-start gap-3">
+            <Wallet className="mt-0.5 h-5 w-5 shrink-0 text-charcoal-700" />
+            <div className="min-w-0 flex-1">
+              <h3 className="font-serif text-sm font-semibold text-charcoal-900">Owner payouts</h3>
+
+              {!payouts.configured ? (
+                <p className="mt-0.5 text-xs text-amber-800">
+                  Not configured. Owners cannot be paid automatically — every payout is a bank
+                  transfer by hand from the queue on{" "}
+                  <Link href="/admin/payments" className="font-semibold underline">Payments</Link>.
+                  Set <span className="font-mono">CASHFREE_PAYOUT_CLIENT_ID</span> and{" "}
+                  <span className="font-mono">CASHFREE_PAYOUT_CLIENT_SECRET</span> in Vercel and
+                  redeploy. These are a SEPARATE pair from the gateway keys.
+                </p>
+              ) : (
+                <>
+                  <p className="mt-0.5 text-xs text-charcoal-700">
+                    Running in <span className="font-bold uppercase">{payouts.mode}</span>
+                    {payouts.mode === "production" ? " — real money will be sent." : " — test money only."}
+                  </p>
+                  <dl className="mt-3 space-y-1 text-[11px]">
+                    <div className="flex flex-wrap gap-x-2">
+                      <dt className="font-semibold text-charcoal-600">API endpoint</dt>
+                      <dd className="font-mono text-charcoal-800">{payouts.apiBaseUrl}</dd>
+                    </div>
+                    <div className="flex flex-wrap gap-x-2">
+                      <dt className="font-semibold text-charcoal-600">Payout client ID</dt>
+                      <dd className="font-mono text-charcoal-800">{payouts.clientIdMasked}</dd>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-x-2">
+                      <dt className="font-semibold text-charcoal-600">Credentials</dt>
+                      <dd className="flex items-center gap-1">
+                        {payouts.credentialsAccepted === true ? (
+                          <><CheckCircle2 className="h-3.5 w-3.5 text-green-600" /><span className="font-semibold text-green-700">accepted by Cashfree</span></>
+                        ) : payouts.credentialsAccepted === false ? (
+                          <><XCircle className="h-3.5 w-3.5 text-red-600" /><span className="font-semibold text-red-700">REJECTED</span></>
+                        ) : (
+                          <span className="text-charcoal-500">could not verify</span>
+                        )}
+                      </dd>
+                    </div>
+                  </dl>
+                  {payouts.error && (
+                    <p className={`mt-2 rounded-lg p-2 text-[11px] ${payouts.notActivated ? "bg-red-100 font-semibold text-red-900" : "bg-white/70 text-charcoal-700"}`}>
+                      {payouts.error}
+                    </p>
+                  )}
+                  <p className="mt-2 rounded-lg bg-white/70 p-2 text-[11px] text-charcoal-700">
+                    Transfers are sent by an admin from the payout queue, one at a time — nothing
+                    dispatches automatically on acceptance. A transfer that reports SUCCESS can
+                    still reverse within 24 hours, so <strong>Reconcile</strong> on a payout row is
+                    the authority, not the summary shown against the booking.
+                  </p>
                 </>
               )}
             </div>

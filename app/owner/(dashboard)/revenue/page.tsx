@@ -4,7 +4,7 @@ import { IndianRupee, TrendingUp } from "lucide-react";
 import { requireRole } from "@/lib/auth";
 import { fetchOwnerRow, fetchOwnerHalls, fetchOwnerRevenue, fetchOwnerCommissions } from "@/lib/owner";
 import type { AdvancePayout } from "@/lib/owner";
-import { isEasySplitEnabled } from "@/lib/easy-split";
+import { isPayoutsConfigured } from "@/lib/cashfree-payouts";
 import { getCommissionPercent } from "@/lib/platform-settings";
 import { formatPrice } from "@/lib/mock-data";
 import { Badge } from "@/components/ui/Badge";
@@ -68,26 +68,15 @@ export default async function OwnerRevenuePage() {
     ownerRow.payout_account_number && ownerRow.payout_ifsc && ownerRow.pan_number,
   );
 
-  // THE FLAG ALONE IS NOT READINESS — this owner also has to be a vendor
-  // Cashfree will settle to. Both halves are required by the payout code
-  // itself: payOwnerOnAcceptance refuses with "Owner has not completed
-  // Cashfree vendor onboarding" when cashfree_vendor_id is null, and
-  // splitOrderToVendor refuses again ('vendor_not_active') unless Cashfree
-  // reports the vendor ACTIVE — which is exactly what vendor_kyc_status
-  // 'VERIFIED' records (lib/easy-split.ts readVendorStatus). /admin/settings
-  // states the same rule to admins.
-  //
-  // Keying the sentence below on the flag alone described a gateway settlement
-  // for owners no split can reach. Checked against production on 2026-09-06:
-  // no hall_owners row has a cashfree_vendor_id at all, and the one owner who
-  // has submitted bank details carries vendor_last_error "Merchant not enabled
-  // with easy splits" from their 2026-08-27 attempt — Cashfree has not
-  // switched the product on for Hallnect's merchant account. Every payout in
-  // that state is a transfer a person makes.
+  // BOTH HALVES, OR THE OWNER IS TOLD SOMETHING UNTRUE. Cashfree Payouts being
+  // configured says nothing about whether THIS owner can be paid: every
+  // transfer is refused unless their own beneficiary reached VERIFIED. Telling
+  // an owner their payouts are automatic when the next transfer will be
+  // rejected is worse than telling them nothing.
   const automaticPayoutsLive =
-    isEasySplitEnabled() &&
-    Boolean(ownerRow.cashfree_vendor_id) &&
-    ownerRow.vendor_kyc_status === "VERIFIED";
+    isPayoutsConfigured() &&
+    Boolean(ownerRow.payout_beneficiary_id) &&
+    ownerRow.payout_beneficiary_status === "VERIFIED";
 
   const SETTLED_STATUSES = ["paid", "paid_out", "collected"];
   const totalCommissionDeducted = commissions

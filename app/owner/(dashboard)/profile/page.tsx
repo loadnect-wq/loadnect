@@ -6,7 +6,7 @@ import { fetchOwnerRow } from "@/lib/owner";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { AppHeader } from "@/components/app/AppHeader";
 import { OwnerProfileForm } from "./_components/OwnerProfileForm";
-import { isEasySplitEnabled } from "@/lib/easy-split";
+import { isPayoutsConfigured } from "@/lib/cashfree-payouts";
 import { PayoutSetup } from "./_components/PayoutSetup";
 
 export const metadata: Metadata = { title: "Owner Profile" };
@@ -55,17 +55,18 @@ export default async function OwnerProfilePage() {
         {/* Payout setup, first: it is the one thing an owner must do before
             they can be paid, and it now carries its own fields rather than
             depending on a second form further down the page. */}
-        {/* easySplitEnabled is server-only — isEasySplitEnabled() reads an env
-            var, so a client component cannot ask. It is passed down because
-            BOTH halves must be true before an owner is told payouts are
-            automatic, which is the rule /owner/revenue already applies. */}
+        {/* payoutsEnabled is server-only — it reads an env var, so a client
+            component cannot ask. Passed down because BOTH halves must be true
+            before an owner is told payouts are automatic: the product switched
+            on AND their own account VERIFIED by Cashfree. */}
         <PayoutSetup
-          easySplitEnabled={isEasySplitEnabled()}
-          vendorId={ownerRow?.cashfree_vendor_id ?? null}
-          kycStatus={ownerRow?.vendor_kyc_status ?? null}
-          lastError={ownerRow?.vendor_last_error ?? null}
+          easySplitEnabled={isPayoutsConfigured()}
+          vendorId={ownerRow?.payout_beneficiary_id ?? null}
+          kycStatus={ownerRow?.payout_beneficiary_status ?? null}
+          lastError={ownerRow?.payout_beneficiary_last_error ?? null}
           hasBusinessName={!!ownerRow?.business_name}
           saved={{
+            accountHolder: ownerRow?.payout_account_holder ?? null,
             accountNumber: ownerRow?.payout_account_number ?? null,
             ifsc:          ownerRow?.payout_ifsc           ?? null,
             pan:           ownerRow?.pan_number            ?? null,

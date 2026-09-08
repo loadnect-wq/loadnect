@@ -14,7 +14,8 @@
 
 import { useState, useTransition } from "react";
 import { AlertTriangle, Check, RefreshCw, Send } from "lucide-react";
-import { issueRefund, syncRefundStatus, retryOwnerPayout } from "@/app/admin/actions";
+import { issueRefund, syncRefundStatus,
+         sendOwnerPayout, reconcileOwnerPayout, registerOwnerBeneficiary } from "@/app/admin/actions";
 
 type Result = { success: true } | { error: string };
 
@@ -97,21 +98,86 @@ export function SyncRefundButton({ paymentId }: { paymentId: string }) {
   );
 }
 
-export function RetryPayoutButton({
-  bookingId, amountLabel,
-}: { bookingId: string; amountLabel: string }) {
+
+// ── Cashfree Payouts ────────────────────────────────────────────────────────
+
+/**
+ * SEND. The only control in the product that moves money to a venue.
+ *
+ * The confirm names the amount, the venue and the last four of the destination
+ * account, because "are you sure?" is a question people click through and
+ * "send Rs22,500 to Grand Mahal, account ending 4471" is one they read. Every
+ * guard behind it is re-run server-side; this button only chooses which
+ * booking, never how much and never where.
+ */
+export function SendPayoutButton({
+  bookingId, amountLabel, hallName, accountHint, disabledReason,
+}: {
+  bookingId: string; amountLabel: string; hallName: string;
+  accountHint: string | null; disabledReason: string | null;
+}) {
   const { pending, error, done, fire } = useMoneyAction(
-    () => retryOwnerPayout(bookingId),
-    `Retry paying ${amountLabel} to the venue owner for booking ${bookingId.slice(0, 8).toUpperCase()}?`,
+    () => sendOwnerPayout(bookingId),
+    `Send ${amountLabel} to ${hallName}${accountHint ? `, account ending ${accountHint}` : ""}?
+
+`
+      + `This transfers real money through Cashfree and cannot be recalled.`,
   );
+  if (disabledReason) {
+    return (
+      <span className="text-[11px] font-medium text-charcoal-500" title={disabledReason}>
+        {disabledReason}
+      </span>
+    );
+  }
+  return (
+    <div>
+      <button type="button" onClick={fire} disabled={pending}
+        className={`${BTN} bg-green-700 text-white hover:bg-green-800`}>
+        <Send className={`h-3.5 w-3.5 ${pending ? "animate-pulse" : ""}`} aria-hidden />
+        {pending ? "Sending…" : `Send ${amountLabel}`}
+      </button>
+      <Feedback error={error} done={done} doneLabel="Transfer sent." />
+    </div>
+  );
+}
+
+/**
+ * RECONCILE. Asks Cashfree what actually happened.
+ *
+ * This is the recovery path for every uncertain state, and there are more of
+ * them than under Easy Split: a dispatch that timed out, a transfer sitting in
+ * APPROVAL_PENDING, or a SUCCESS that later reversed. It never sends anything,
+ * so it is safe to press repeatedly — which matters, because the alternative an
+ * anxious operator reaches for is pressing Send again.
+ */
+export function ReconcilePayoutButton({ payoutId }: { payoutId: string }) {
+  const { pending, error, done, fire } = useMoneyAction(() => reconcileOwnerPayout(payoutId));
   return (
     <div>
       <button type="button" onClick={fire} disabled={pending}
         className={`${BTN} bg-charcoal-800 text-white hover:bg-charcoal-900`}>
         <RefreshCw className={`h-3.5 w-3.5 ${pending ? "animate-spin" : ""}`} aria-hidden />
-        {pending ? "Retrying…" : "Retry payout"}
+        {pending ? "Checking…" : "Reconcile"}
       </button>
-      <Feedback error={error} done={done} doneLabel="Payout sent." />
+      <Feedback error={error} done={done} doneLabel="Status updated." />
+    </div>
+  );
+}
+
+/** Registers the owner's bank details with Cashfree. Only VERIFIED can be paid. */
+export function RegisterBeneficiaryButton({
+  hallOwnerId, currentStatus,
+}: { hallOwnerId: string; currentStatus: string | null }) {
+  const { pending, error, done, fire } = useMoneyAction(() => registerOwnerBeneficiary(hallOwnerId));
+  return (
+    <div>
+      <button type="button" onClick={fire} disabled={pending}
+        className={`${BTN} bg-maroon-700 text-white hover:bg-maroon-800`}>
+        <Check className={`h-3.5 w-3.5 ${pending ? "animate-pulse" : ""}`} aria-hidden />
+        {pending ? "Registering…" : currentStatus ? "Re-check account" : "Register account"}
+      </button>
+      <Feedback error={error} done={done} doneLabel="Account checked." />
     </div>
   );
 }

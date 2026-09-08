@@ -11,6 +11,7 @@ import { toVendorId, isEasySplitEnabled } from "@/lib/easy-split";
 
 /** A complete, valid set of payout details. */
 const VALID = {
+  accountHolder: "Ramesh Kumar",
   accountNumber: "123456789012",
   ifsc:  "HDFC0000001",
   pan:   "ABCDE1234F",
@@ -48,13 +49,30 @@ describe("payout details accepted by Cashfree", () => {
     expect(payoutDetailsSchema.safeParse({ ...VALID, phone: "919344040013" }).success).toBe(true);
   });
 
-  it("requires every field — three out of four is not a payout account", () => {
+  it("requires every field — four out of five is not a payout account", () => {
     // These were OPTIONAL on the business form, so an owner could save a
     // profile that looked complete and could never be paid.
-    for (const key of ["accountNumber", "ifsc", "pan", "phone"] as const) {
+    for (const key of ["accountHolder", "accountNumber", "ifsc", "pan", "phone"] as const) {
       const partial = { ...VALID, [key]: "" };
       expect(payoutDetailsSchema.safeParse(partial).success).toBe(false);
     }
+  });
+
+  it("rejects an account holder name Cashfree's charset would refuse", () => {
+    // beneficiary_name is "alphabets and whitespaces only". A business name
+    // carrying punctuation is not merely rejected at registration — the wrong
+    // name on an accepted transfer is BENE_NAME_DIFFERS, a REVERSED code, so
+    // the money leaves and comes back a day later.
+    for (const accountHolder of [
+      "Sri Krishna Mahal Pvt. Ltd.",   // dots
+      "Ramesh & Sons",                 // ampersand
+      "Hall 42",                       // digits
+      "R",                             // too short to be a name
+      "",
+    ]) {
+      expect(payoutDetailsSchema.safeParse({ ...VALID, accountHolder }).success).toBe(false);
+    }
+    expect(payoutDetailsSchema.safeParse({ ...VALID, accountHolder: "Sri Krishna Mahal" }).success).toBe(true);
   });
 
   it("normalises the case Cashfree and the DB CHECKs expect", () => {

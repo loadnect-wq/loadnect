@@ -4,7 +4,8 @@ import Link from "next/link";
 import { Lock, AlertTriangle, Undo2 } from "lucide-react";
 import { fetchAllPayments, fetchStuckPayouts, fetchRefundQueue } from "@/lib/admin";
 import { MarkPaidManuallyButton } from "./_components/MarkPaidManuallyButton";
-import { IssueRefundButton, SyncRefundButton, RetryPayoutButton } from "./_components/MoneyActions";
+import { IssueRefundButton, SyncRefundButton, SendPayoutButton,
+         ReconcilePayoutButton, RegisterBeneficiaryButton } from "./_components/MoneyActions";
 import { formatPrice } from "@/lib/mock-data";
 import { Badge } from "@/components/ui/Badge";
 import { AdminPageHeader } from "../_components/AdminPageHeader";
@@ -145,10 +146,10 @@ export default async function AdminPaymentsPage({ searchParams }: Props) {
                 </p>
                 <p className="mt-0.5 text-xs text-red-800">
                   These bookings are confirmed and the customer was charged, but the owner&apos;s
-                  share is still in Hallnect&apos;s account. The usual causes are an owner who has
-                  not finished payout onboarding, or Easy Split not yet being enabled on the
-                  Cashfree account. The figure shown is the owner&apos;s SHARE — the advance
-                  less Hallnect&apos;s commission — so it is the amount to transfer.
+                  share is still in Hallnect&apos;s account. <strong>Send</strong> transfers it
+                  through Cashfree Payouts; <strong>Reconcile</strong> asks Cashfree what happened
+                  to a transfer already sent. The figure shown is the owner&apos;s SHARE — the
+                  advance less Hallnect&apos;s commission — so it is the amount to transfer.
                 </p>
                 <ul className="mt-3 space-y-2">
                   {stuck.map((r) => (
@@ -159,7 +160,25 @@ export default async function AdminPaymentsPage({ searchParams }: Props) {
                       </div>
                       <p className="mt-0.5 text-charcoal-500">
                         Booking {r.booking_id.slice(0, 8).toUpperCase()} · {r.split_status} · {fmtDateTime(r.created_at)}
+                        {r.account_hint ? ` · a/c …${r.account_hint}` : ""}
                       </p>
+                      {/* Cashfree's raw verdict, never a translation of it. When
+                          money does not arrive, the status_code is the only thing
+                          that tells an operator why. */}
+                      {r.payout_status && (
+                        <p className="mt-0.5 font-mono text-[11px] text-charcoal-700">
+                          transfer {r.payout_status}
+                          {r.payout_status_code ? ` (${r.payout_status_code})` : ""}
+                          {r.payout_utr ? ` · UTR ${r.payout_utr}` : ""}
+                          {!r.payout_is_terminal && " · not final"}
+                        </p>
+                      )}
+                      {r.beneficiary_status !== "VERIFIED" && (
+                        <p className="mt-0.5 font-semibold text-amber-700">
+                          Payout account is {r.beneficiary_status ?? "not registered"} — Cashfree
+                          will only pay a VERIFIED account.
+                        </p>
+                      )}
                       {r.split_error && (
                         <p className="mt-0.5 text-red-700">{r.split_error}</p>
                       )}
@@ -169,11 +188,38 @@ export default async function AdminPaymentsPage({ searchParams }: Props) {
                           booking before transferring.
                         </p>
                       )}
-                      <div className="mt-2 space-y-2">
-                        <RetryPayoutButton
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {/* Reconcile comes FIRST while a transfer is open: the
+                            safe action should be the easy one to reach, because
+                            the unsafe instinct when a payout looks stuck is to
+                            press Send again. */}
+                        {r.payout_id && !r.payout_is_terminal && (
+                          <ReconcilePayoutButton payoutId={r.payout_id} />
+                        )}
+                        {r.hall_owner_id && r.beneficiary_status !== "VERIFIED" && (
+                          <RegisterBeneficiaryButton
+                            hallOwnerId={r.hall_owner_id}
+                            currentStatus={r.beneficiary_status}
+                          />
+                        )}
+                        <SendPayoutButton
                           bookingId={r.booking_id}
                           amountLabel={formatPrice(r.owner_amount)}
+                          hallName={r.hall_name}
+                          accountHint={r.account_hint}
+                          disabledReason={
+                            r.payout_id && !r.payout_is_terminal
+                              ? "A transfer is already open — reconcile it first"
+                              : r.beneficiary_status !== "VERIFIED"
+                                ? "Register the payout account first"
+                                : r.amount_is_estimated
+                                  ? "Amount is estimated — settle this one by hand"
+                                  : null
+                          }
                         />
+                        {r.payout_id && r.payout_is_terminal && (
+                          <ReconcilePayoutButton payoutId={r.payout_id} />
+                        )}
                         <MarkPaidManuallyButton
                           bookingId={r.booking_id}
                           amountLabel={formatPrice(r.owner_amount)}

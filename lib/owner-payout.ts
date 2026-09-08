@@ -27,7 +27,6 @@ import "server-only";
 
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import { todayInBusinessTz } from "@/lib/dates";
-import { isEasySplitEnabled, splitOrderToVendor } from "@/lib/easy-split";
 import { notifyOwnerPayoutFailed, notifyAdminOperational } from "@/lib/notifications/events";
 
 export type ShareResult =
@@ -145,7 +144,7 @@ export async function payOwnerOnAcceptance(bookingId: string): Promise<PayoutOut
     // 2. Commission owed on this booking — authoritative, from the DB.
     const { data: commission } = await db
       .from("commissions")
-      .select("commission_amount, hall_owner_id, hall_owners!hall_owner_id(cashfree_vendor_id)")
+      .select("commission_amount, hall_owner_id")
       .eq("booking_id", bookingId)
       .maybeSingle();
 
@@ -172,7 +171,6 @@ export async function payOwnerOnAcceptance(bookingId: string): Promise<PayoutOut
       bookingPlatformFee: bookingRow?.commission_amount ?? bookingRow?.platform_fee ?? null,
     });
 
-    const vendorId: string | null = commission?.hall_owners?.cashfree_vendor_id ?? null;
 
     // UNKNOWN IS NOT ZERO, and this column is read as if it were exact.
     //
@@ -215,30 +213,21 @@ export async function payOwnerOnAcceptance(bookingId: string): Promise<PayoutOut
       return { state: "failed", reason };
     };
 
-    // EASY SPLIT BEING OFF IS NOT THE SAME AS NOTHING BEING OWED.
+    // AN ACCEPTED BOOKING MEANS AN OWNER IS OWED MONEY.
     //
-    // The booking is accepted, the advance is captured, and the owner's share
-    // now has to leave Hallnect's account by hand — but the only trace of that
-    // was split_status='not_applicable' on a row whose only reader is an admin
-    // who happens to open the payout queue. Money owed to a venue was queued
-    // for a transfer nobody had been told to make.
+    // The booking is accepted and the advance is captured, but under Payouts
+    // the transfer is a deliberate act by an admin — so the only trace of the
+    // debt is a row in a queue somebody has to open. That is exactly the shape
+    // of money quietly not being sent, so it rings.
     //
-    // Deliberately NOT failAndAlert: this is the configuration this deployment
-    // runs in today, not a fault, and dressing it as a failure would train the
-    // admin to ignore the alert that means a real one. Distinct event, distinct
-    // wording, and it says what to do rather than what broke.
-    //
-    // Keyed on the BOOKING, not the day. A day key would report the first
-    // acceptance of the morning and silently swallow every later one — the same
-    // silence in a smaller costume. One per booking, deduped by the outbox, so
-    // a double-tapped Accept or an admin pressing "Retry payout" does not
-    // repeat it.
-    const alertManualTransferOwed = async (): Promise<void> => {
+    // Deliberately NOT failAndAlert: nothing has broken. Dressing a normal
+    // payable booking as a failure would train the admin to ignore the alert
+    // that means a real one.
+    const alertPayoutOwed = async (): Promise<void> => {
       // ONCE A DAY, NOT ONCE A BOOKING.
       //
-      // Easy Split being off is not an incident, it is this deployment's
-      // permanent state — so a per-booking key would fire on every accepted
-      // booking, forever. The admin already receives two SMS per booking
+      // Payable bookings are the normal state, not an incident, so a
+      // per-booking key would fire on every accepted booking, forever. The admin already receives two SMS per booking
       // (booking.requested and payment.success); a third that never stops is
       // not an alert. Worse, it is billed, and it competes for the same
       // per-phone hourly ceiling as the alerts that DO mean something, so the
@@ -258,70 +247,39 @@ export async function payOwnerOnAcceptance(bookingId: string): Promise<PayoutOut
         event:     "Payouts are waiting to be sent by hand",
         // Under MAX_VARIABLE_LENGTH (60) — a DLT variable longer than that is
         // truncated mid-sentence, so the closing words never reach the phone.
-        details:   "Easy Split is off - these settle by bank transfer.",
+        details:   "An owner is due their advance. Send it from Payments.",
         reference: "Clear them from the payout queue in /admin/payments",
         bookingId,
       }).catch(() => {});
     };
 
-    if (!isEasySplitEnabled()) {
-      await note("not_applicable", "Easy Split is not enabled");
-      await alertManualTransferOwed();
-      return { state: "skipped", reason: "Easy Split is not enabled" };
-    }
-    if (!vendorId) {
-      return failAndAlert("Owner has not completed Cashfree vendor onboarding");
-    }
+    // ── UNDER PAYOUTS, ACCEPTANCE RECORDS ELIGIBILITY. IT DOES NOT SEND. ──
+    //
+    // This function used to dispatch an Easy Split the moment an owner
+    // accepted. Cashfree Payouts is a different product with a different
+    // failure surface: transfers are asynchronous by definition, SUCCESS can
+    // reverse within 24 hours, and a FAILED carrying certain status codes may
+    // mean the debit happened and unwound. Sending automatically on acceptance
+    // would put every one of those cases on a path with no human in it.
+    //
+    // So the booking becomes PAYABLE and an admin presses Send in
+    // /admin/payments. The first real rupee that moves through this system
+    // moves because somebody looked at it. Auto-dispatch can come later, once
+    // the reconcile loop has a track record.
     if (!share.ok) {
       // Never fall back to paying out the full advance — that would hand the
-      // owner Hallnect's platform fee, and a settled split cannot be reversed.
+      // owner Hallnect's platform fee. Recorded as failed so it shows in the
+      // queue with its reason, and an admin settles it by hand.
       return failAndAlert(share.reason);
     }
 
-    // 4. CLAIM the split before calling the gateway. A concurrent Accept sees
-    //    'pending' and matches 0 rows, so only one caller can dispatch.
-    // share.ownerAmount, not the nullable alias above: everything from here on
-    // is past the !share.ok guard, so the figure is known and is the one we
-    // both claim and dispatch.
-    const { count: claimed } = await db
-      .from("payments")
-      .update({ split_status: "pending", split_owner_amount: share.ownerAmount, split_vendor_id: vendorId }, { count: "exact" })
-      .eq("id", payment.id)
-      .in("split_status", ["none", "failed", "not_applicable"]);
-
-    if ((claimed ?? 0) === 0) {
-      return { state: "skipped", reason: "A payout is already in progress" };
-    }
-
-    // 5. Dispatch.
-    const result = await splitOrderToVendor({
-      cashfreeOrderId: payment.cashfree_order_id,
-      vendorId,
-      amountToOwner: share.ownerAmount,
-    });
-
-    if (!result.ok) {
-      return failAndAlert(result.error);
-    }
-
     await db.from("payments")
-      .update({ split_status: "done", split_at: new Date().toISOString(), split_error: null })
-      .eq("id", payment.id);
+      .update({ split_owner_amount: share.ownerAmount, split_error: null })
+      .eq("id", payment.id)
+      .neq("split_status", "done");
 
-    // The commission is now genuinely collected — it never left Hallnect's
-    // share of the advance, so the owner owes nothing separately.
-    await db.from("commissions")
-      .update({
-        status: "paid",
-        paid_at: new Date().toISOString(),
-        payment_method: "easy_split",
-        payment_reference: payment.cashfree_order_id,
-        admin_note: "Collected automatically from the customer advance at payout",
-      })
-      .eq("booking_id", bookingId)
-      .neq("status", "paid");
-
-    return { state: "paid", ownerAmount: result.ownerAmount };
+    await alertPayoutOwed();
+    return { state: "skipped", reason: "Recorded as payable — send it from /admin/payments" };
   } catch (e) {
     // Never propagate — the acceptance itself must stand.
     console.error("[owner-payout] failed:", e instanceof Error ? e.message : e);

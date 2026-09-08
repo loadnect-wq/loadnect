@@ -23,6 +23,7 @@ import { SUSPENSION_BAN_DURATION } from "@/lib/constants";
 import { recordAdminAction } from "@/lib/audit";
 import { createCashfreeRefund, getCashfreeRefund, classifyRefundStatus } from "@/lib/cashfree";
 import { payOwnerOnAcceptance } from "@/lib/owner-payout";
+import { dispatchOwnerPayout, reconcilePayout, registerBeneficiary } from "@/lib/payout-dispatch";
 import { notifyBookingEvent,
   notifyOwnerAccountDecision,
   notifyAdminOperational,
@@ -1540,6 +1541,21 @@ export async function issueRefund(paymentId: string): Promise<ActionResult> {
         `Recover that amount from the owner's next settlement first, then refund from the Cashfree dashboard.`,
     };
   }
+  // AND THE MONEY MAY BE ON ITS WAY RIGHT NOW. Under Easy Split 'pending'
+  // lasted milliseconds, so refusing only on 'done' was enough. A Cashfree
+  // Payouts transfer is asynchronous by definition and can sit in flight
+  // overnight — SCHEDULED_FOR_NEXT_WORKINGDAY is a documented PENDING code, and
+  // NEFT does not run on Sundays. That is a real window in which a full refund
+  // to the customer and a transfer to the owner are both live against one
+  // capture. Resolve the transfer first; Reconcile on the payout row says
+  // whether it landed.
+  if (payment.split_status === "in_flight" || payment.split_status === "pending") {
+    return {
+      error:
+        "A payout to the owner is in progress for this booking. Reconcile it in the payout queue first — "
+        + "refunding now could pay out the same capture twice.",
+    };
+  }
   if (payment.refund_state === "processing") {
     return { error: "A refund is already in progress for this booking." };
   }
@@ -1678,32 +1694,95 @@ export async function syncRefundStatus(paymentId: string): Promise<ActionResult>
   return { success: true };
 }
 
+
 /**
- * Retries an owner payout that failed.
+ * SEND an owner their advance through Cashfree Payouts.
  *
- * The split itself is idempotent (a status-guarded claim, plus Cashfree's
- * disable_split), so this is safe to press repeatedly — it re-runs the same
- * path the owner's Accept ran, using figures already in the database.
+ * This is the button that moves real money, so it does the least it can: every
+ * guard is re-run inside dispatchOwnerPayout against the database, regardless
+ * of what the screen believed when it rendered. The admin's identity is
+ * recorded on the payout row and in the audit log, because "who authorised
+ * this transfer" is the first question anyone asks about a payment that went
+ * to the wrong place.
  */
-export async function retryOwnerPayout(bookingId: string): Promise<ActionResult> {
+export async function sendOwnerPayout(bookingId: string): Promise<ActionResult> {
   const actor = await requireAdminActor();
   if (!actor.ok) return { error: actor.error };
+
   const idErr = requireUuid(bookingId, "booking id");
   if (idErr) return { error: idErr };
 
   await recordAdminAction({
-    action:     "owner_payout_retried",
+    action:     "owner_payout_sent",
     entityType: "booking",
     entityId:   bookingId,
-    reason:     "Manual payout retry from the admin dashboard",
+    reason:     "Payout dispatched from the admin dashboard",
   });
 
-  const outcome = await payOwnerOnAcceptance(bookingId);
+  const outcome = await dispatchOwnerPayout(bookingId, actor.user.id);
   revalidatePath("/admin/payments");
 
-  if (outcome.state === "paid")    return { success: true };
-  if (outcome.state === "skipped") return { error: `Not retried: ${outcome.reason}` };
-  return { error: outcome.reason };
+  switch (outcome.state) {
+    case "sent":
+      return { success: true };
+    case "in_flight":
+      return { success: true };
+    case "unknown":
+      // Deliberately NOT an error the admin can "fix" by pressing Send again.
+      return {
+        error:
+          "The transfer was sent but Cashfree did not confirm it. Do NOT send again — "
+          + "press Reconcile on this payout to find out what happened.",
+      };
+    case "refused":
+      return { error: outcome.reason };
+    default:
+      return { error: outcome.reason };
+  }
+}
+
+/** Ask Cashfree what actually happened to a transfer. The primary status source. */
+export async function reconcileOwnerPayout(payoutId: string): Promise<ActionResult> {
+  const actor = await requireAdminActor();
+  if (!actor.ok) return { error: actor.error };
+  const idErr = requireUuid(payoutId, "payout id");
+  if (idErr) return { error: idErr };
+
+  const res = await reconcilePayout(payoutId);
+  revalidatePath("/admin/payments");
+  if (!res.ok) return { error: res.error };
+  return { success: true };
+}
+
+/**
+ * Register (or re-read) an owner's payout destination at Cashfree.
+ *
+ * Only a VERIFIED beneficiary can be paid, and verification is Cashfree's call,
+ * not ours — so this is a button an admin presses rather than something that
+ * silently happens in the background and is never looked at again.
+ */
+export async function registerOwnerBeneficiary(hallOwnerId: string): Promise<ActionResult> {
+  const actor = await requireAdminActor();
+  if (!actor.ok) return { error: actor.error };
+  const idErr = requireUuid(hallOwnerId, "owner id");
+  if (idErr) return { error: idErr };
+
+  const res = await registerBeneficiary(hallOwnerId);
+  await recordAdminAction({
+    action:     "owner_beneficiary_registered",
+    entityType: "hall_owner",
+    entityId:   hallOwnerId,
+    newStatus:  res.ok ? (res.status ?? "unknown") : "error",
+    reason:     res.ok ? "Payout account registered with Cashfree" : res.error,
+  });
+
+  revalidatePath("/admin/payments");
+  revalidatePath("/admin/owners");
+  if (!res.ok) return { error: res.error };
+  if (String(res.status ?? "").toUpperCase() !== "VERIFIED") {
+    return { error: `Registered, but Cashfree reports the account as ${res.status ?? "unverified"}. It cannot be paid until it is VERIFIED.` };
+  }
+  return { success: true };
 }
 
 /**
@@ -1714,7 +1793,7 @@ export async function retryOwnerPayout(bookingId: string): Promise<ActionResult>
  * Before this action there was no way to write that fact down, and the gap cost
  * money twice over:
  *
- *   • retryOwnerPayout accepts split_status in (none, failed, not_applicable),
+ *   • dispatchOwnerPayout refuses a booking already marked done,
  *     so a booking already paid by NEFT could be dispatched again the moment
  *     Easy Split came online — paying the owner twice.
  *   • issueRefund's double-spend guard is `split_status === "done"`, which a
@@ -1765,6 +1844,24 @@ export async function markPayoutSettledManually(
   // here would assert the opposite.
   if (["owed", "processing", "completed"].includes(String(payment.refund_state ?? "none"))) {
     return { error: "A refund is in progress on this booking — resolve that first." };
+  }
+
+  // AND NOT WHILE A MACHINE TRANSFER IS LIVE. Asserting by hand that money was
+  // sent, while Cashfree is moving money to the same account, is precisely the
+  // double payment this queue exists to prevent. The non-terminal row is the
+  // authority; clear it with Reconcile before recording anything manually.
+  const { data: liveTransfer } = await db
+    .from("owner_payouts")
+    .select("id, transfer_id, status")
+    .eq("booking_id", bookingId)
+    .eq("is_terminal", false)
+    .maybeSingle();
+  if (liveTransfer) {
+    return {
+      error:
+        `A Cashfree transfer for this booking is still open (${liveTransfer.status}). `
+        + "Press Reconcile on it first — recording a manual payment now could send the money twice.",
+    };
   }
 
   // count:"exact" — an RLS-filtered update reports zero rows with no error, and

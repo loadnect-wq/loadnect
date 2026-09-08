@@ -49,6 +49,7 @@ import { savePayoutDetails, refreshPayoutStatus } from "@/app/owner/(dashboard)/
 export const BUSINESS_DETAILS_ID = "business-details";
 
 type Saved = {
+  accountHolder: string | null;
   accountNumber: string | null;
   ifsc:          string | null;
   pan:           string | null;
@@ -93,7 +94,7 @@ export function PayoutSetup({
   // owner Cashfree has already verified read as "awaiting verification" the
   // moment the platform flag is off — blaming them for our configuration.
   const awaitingKyc = !!vendorId && !kycVerified;
-  const hasAll = Boolean(saved.accountNumber && saved.ifsc && saved.pan && saved.phone);
+  const hasAll = Boolean(saved.accountHolder && saved.accountNumber && saved.ifsc && saved.pan && saved.phone);
   /** Details saved, but no Cashfree vendor was ever created for this owner —
    *  so no accepted booking can pay out on its own, whatever the reason. Both
    *  reasons end in a hand transfer: with Easy Split off payOwnerOnAcceptance
@@ -110,6 +111,7 @@ export function PayoutSetup({
   // the owner does not have to go looking for the fields.
   const [editing, setEditing] = useState(!hasAll);
 
+  const [accountHolder, setAccountHolder] = useState(saved.accountHolder ?? "");
   const [accountNumber, setAccountNumber] = useState("");
   const [ifsc,  setIfsc]  = useState(saved.ifsc  ?? "");
   const [pan,   setPan]   = useState(saved.pan   ?? "");
@@ -123,7 +125,7 @@ export function PayoutSetup({
     setError(null);
     setNotice(null);
     start(async () => {
-      const result = await savePayoutDetails({ accountNumber, ifsc, pan, phone });
+      const result = await savePayoutDetails({ accountHolder, accountNumber, ifsc, pan, phone });
 
       if (result.state === "error") { setError(result.error); return; }
 
@@ -195,6 +197,23 @@ export function PayoutSetup({
           {/* ── The form ─────────────────────────────────────────────────── */}
           {editing ? (
             <div className="mt-3 space-y-2.5">
+              {/* THE NAME ON THE ACCOUNT, and it has to match the bank's record.
+                  Cashfree accepts letters and spaces only, and a name that
+                  passes that filter but differs from the bank's can produce a
+                  transfer that reports success and reverses a day later. */}
+              <Field
+                label="Name on the bank account"
+                hint="Exactly as your bank has it. Letters and spaces only — no &, no Pvt. Ltd."
+              >
+                <input
+                  value={accountHolder}
+                  onChange={(e) => setAccountHolder(e.target.value.replace(/[^A-Za-z\s]/g, "").slice(0, 100))}
+                  autoComplete="off"
+                  placeholder="e.g. Ramesh Kumar"
+                  className="min-h-[44px] w-full rounded-lg border border-border px-2.5 text-sm"
+                />
+              </Field>
+
               <Field label="Bank account number" hint="Digits only. This is where booking payouts are sent.">
                 <input
                   value={accountNumber}

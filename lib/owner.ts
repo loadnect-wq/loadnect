@@ -19,10 +19,18 @@ export type OwnerRow = {
   city:           string | null;
   state:          string | null;
   payout_upi:     string | null;
-  /** Bank payout destination — required by Cashfree for vendor settlement. */
+  /** Bank payout destination. Owner-supplied, but no longer owner-WRITABLE:
+   *  migration 0068 revoked the `authenticated` UPDATE grant on these columns
+   *  because under Payouts they are the destination of real money. */
+  payout_account_holder: string | null;
   payout_account_number: string | null;
   payout_ifsc:           string | null;
-  /** Cashfree Easy Split vendor state — governs automatic payouts. */
+  /** Cashfree PAYOUTS beneficiary state. Only VERIFIED can be paid. */
+  payout_beneficiary_id:         string | null;
+  payout_beneficiary_status:     string | null;
+  payout_beneficiary_last_error: string | null;
+  /** Cashfree Easy Split vendor state — legacy, retained only so historical
+   *  rows still read. Nothing dispatches money from these any more. */
   cashfree_vendor_id: string | null;
   vendor_kyc_status:  string | null;
   vendor_last_error:  string | null;
@@ -198,7 +206,7 @@ export async function fetchOwnerRow(): Promise<OwnerRow | null> {
   // the halls_insert WITH CHECK owns_owner_row() test as a 42501).
   const { data, error } = await db
     .from("hall_owners")
-    .select("id, profile_id, business_name, business_email, business_phone, gst_number, pan_number, address, city, state, payout_upi, payout_account_number, payout_ifsc, is_verified, cashfree_vendor_id, vendor_kyc_status, vendor_last_error")
+    .select("id, profile_id, business_name, business_email, business_phone, gst_number, pan_number, address, city, state, payout_upi, payout_account_holder, payout_account_number, payout_ifsc, payout_beneficiary_id, payout_beneficiary_status, payout_beneficiary_last_error, is_verified, cashfree_vendor_id, vendor_kyc_status, vendor_last_error")
     .eq("profile_id", user.id)
     .maybeSingle();
 

@@ -7,7 +7,7 @@ import { markPayoutSettledManually } from "../../actions";
  * Records a payout the admin made by hand (NEFT/UPI), outside the gateway.
  *
  * The reference is REQUIRED and typed, not a confirm-click, because this write
- * is what stops the same owner being paid twice: `retryOwnerPayout` skips
+ * is what stops the same owner being paid twice: `dispatchOwnerPayout` skips
  * split_status='done', and `issueRefund` refuses on it. Making the admin write
  * down the bank reference is the difference between a record and an assertion.
  */

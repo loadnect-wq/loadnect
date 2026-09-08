@@ -199,6 +199,17 @@ export type OwnerBusinessInput = z.input<typeof ownerBusinessSchema>;
 // value into a different, still-valid one. For fields that identify a person
 // and route money, a wrong-but-valid value is worse than a rejection.
 export const payoutDetailsSchema = z.object({
+  // THE NAME ON THE BANK ACCOUNT, and it is not cosmetic. Cashfree accepts
+  // "alphabets and whitespaces only" for beneficiary_name, so a business name
+  // carrying "&", "." or "Pvt. Ltd." is rejected outright — but worse,
+  // BENE_NAME_DIFFERS is a documented REVERSED status code, so a name that
+  // passes the charset filter and does not match the bank's record produces a
+  // transfer that reports SUCCESS and unwinds a day later. Easy Split
+  // substituted business_name and got away with it because it never sent money.
+  accountHolder: z.string()
+    .refine((v) => /^[A-Za-z][A-Za-z\s]{1,99}$/.test(v.trim()),
+      "Enter the name exactly as it appears on the bank account — letters and spaces only.")
+    .transform((s) => sanitizeText(s, 100)),
   accountNumber: z.string()
     .refine((v) => /^[0-9]{6,20}$/.test(v.trim()), "Account number must be 6-20 digits.")
     .transform((s) => sanitizeText(s, 20)),

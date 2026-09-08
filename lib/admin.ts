@@ -661,6 +661,20 @@ export type StuckPayoutRow = {
   /** True when owner_amount had to be inferred from the captured total because
    *  the booking carries no commission snapshot — pay it only after checking. */
   amount_is_estimated: boolean;
+  /** The venue owner, so a beneficiary can be registered from this screen. */
+  hall_owner_id: string | null;
+  /** Cashfree's verdict on the destination. Only VERIFIED can be paid. */
+  beneficiary_status: string | null;
+  /** The most recent transfer ATTEMPT, if any. owner_payouts is the authority;
+   *  split_status is only its summary. */
+  payout_id: string | null;
+  payout_status: string | null;
+  payout_status_code: string | null;
+  payout_is_terminal: boolean;
+  payout_utr: string | null;
+  /** Last four of the destination account, so an admin can sanity-check where
+   *  the money is about to go without the full number being on screen. */
+  account_hint: string | null;
 };
 
 /** The owner's share of a payment, from the most authoritative source present. */
@@ -731,7 +745,7 @@ export async function fetchStuckPayouts(): Promise<StuckPayoutRow[]> {
   // payable state and which has no refund in flight.
   const { data, error } = await db
     .from("payments")
-    .select("id, booking_id, amount, split_owner_amount, split_status, split_error, refund_state, advance_amount, platform_fee_amount, created_at, bookings(status, commission_amount, owner_net_advance, halls(name))")
+    .select("id, booking_id, amount, split_owner_amount, split_status, split_error, refund_state, advance_amount, platform_fee_amount, created_at, bookings(status, commission_amount, owner_net_advance, halls(name, owner_id, hall_owners(id, payout_beneficiary_status, payout_account_number)))")
     .eq("status", "payment_success")
     .order("created_at", { ascending: false })
     .limit(200);
@@ -757,6 +771,30 @@ export async function fetchStuckPayouts(): Promise<StuckPayoutRow[]> {
 
   const PAYABLE_BOOKING = new Set(["owner_confirmed", "completed"]);
   const REFUND_IN_FLIGHT = new Set(["owed", "processing", "completed"]);
+
+  // The latest transfer attempt per booking. owner_payouts is the authority for
+  // payout state; payments.split_status is only its summary, and the two can
+  // legitimately disagree for the moment between a dispatch and its reconcile.
+  const transfers = new Map<string, {
+    id: string; status: string; status_code: string | null;
+    is_terminal: boolean; transfer_utr: string | null;
+  }>();
+  {
+    const { data: rows } = await db
+      .from("owner_payouts")
+      .select("id, booking_id, status, status_code, is_terminal, transfer_utr, attempt")
+      .order("attempt", { ascending: true });
+    for (const t of (rows ?? []) as Record<string, unknown>[]) {
+      // Ascending, so the last write per booking is the highest attempt.
+      transfers.set(String(t.booking_id), {
+        id: String(t.id),
+        status: String(t.status),
+        status_code: (t.status_code as string | null) ?? null,
+        is_terminal: Boolean(t.is_terminal),
+        transfer_utr: (t.transfer_utr as string | null) ?? null,
+      });
+    }
+  }
 
   return ((data ?? []) as unknown[])
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -793,6 +831,18 @@ export async function fetchStuckPayouts(): Promise<StuckPayoutRow[]> {
       split_error:  row.split_error ?? null,
       hall_name:    row.bookings?.halls?.name ?? "Hall",
       created_at:   row.created_at,
+      hall_owner_id: row.bookings?.halls?.hall_owners?.id ?? null,
+      beneficiary_status: row.bookings?.halls?.hall_owners?.payout_beneficiary_status ?? null,
+      // Last four only. An admin needs to recognise the account, not read it.
+      account_hint: (() => {
+        const acct = String(row.bookings?.halls?.hall_owners?.payout_account_number ?? "");
+        return acct.length >= 4 ? acct.slice(-4) : null;
+      })(),
+      payout_id:          transfers.get(row.booking_id)?.id ?? null,
+      payout_status:      transfers.get(row.booking_id)?.status ?? null,
+      payout_status_code: transfers.get(row.booking_id)?.status_code ?? null,
+      payout_is_terminal: transfers.get(row.booking_id)?.is_terminal ?? true,
+      payout_utr:         transfers.get(row.booking_id)?.transfer_utr ?? null,
     }));
 }
 
