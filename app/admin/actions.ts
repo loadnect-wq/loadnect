@@ -222,6 +222,15 @@ async function moderateHall(
   revalidatePath("/admin/dashboard");
   revalidatePath("/admin/audit-logs");
   revalidatePath("/owner/halls");
+  // THE PUBLIC PAGES ARE CACHED NOW, so a status change has to say so or an
+  // approved venue would not appear for up to five minutes — and a suspended
+  // one would keep appearing, which is worse. layout is used for the city
+  // pages because /wedding-halls/[city] is a dynamic segment and each city has
+  // its own cache entry; "page" would only clear one of them.
+  revalidatePath("/");
+  revalidatePath("/halls");
+  revalidatePath("/wedding-halls/[city]", "layout");
+  revalidatePath("/sitemap.xml");
   return { success: true };
 }
 

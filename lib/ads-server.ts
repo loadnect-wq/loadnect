@@ -2,7 +2,7 @@
 // validators/types can be safely imported by client components.
 
 import "server-only";
-import { getSupabaseServerClient } from "@/lib/supabase/server";
+import { getSupabasePublicClient } from "@/lib/supabase/public";
 import {
   isValidPlacement,
   sanitizeAdText,
@@ -16,7 +16,9 @@ export async function fetchActiveAds(
 ): Promise<PublicAd[]> {
   if (!isValidPlacement(placement)) return [];
 
-  const supabase = await getSupabaseServerClient();
+  // Cookie-free: reading cookies makes the route dynamic, and this page
+  // has nothing per-visitor on it — active ads are shown to everyone.
+  const supabase = getSupabasePublicClient();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = supabase as any;
 

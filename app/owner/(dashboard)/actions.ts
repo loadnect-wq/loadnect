@@ -438,6 +438,15 @@ export async function updateHall(hallId: string, data: {
 
   revalidatePath(`/owner/halls/${hallId}/edit`);
   revalidatePath("/owner/halls");
+  // updateHall can change the name, price or photos of an APPROVED hall, which
+  // is what the cached public pages show. Without this the listing page would
+  // keep serving the old price for up to five minutes.
+  revalidatePath("/");
+  revalidatePath("/halls");
+  revalidatePath("/wedding-halls/[city]", "layout");
+  // NOT the venue page: its route is /halls/[slug], not the id, and it is still
+  // rendered dynamically because owner/admin preview of an unapproved hall
+  // depends on the caller's session.
   return { success: true };
 }
 

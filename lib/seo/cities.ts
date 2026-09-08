@@ -15,7 +15,7 @@
 
 import "server-only";
 
-import { getSupabaseServerClient } from "@/lib/supabase/server";
+import { getSupabasePublicClient } from "@/lib/supabase/public";
 import { slugify } from "@/lib/utils";
 
 /** Minimum approved venues before a city page earns a place in the index. */
@@ -58,7 +58,9 @@ export function cityFromSlug(slug: string): string | null {
  */
 export async function fetchCityInventory(): Promise<CityInventory[]> {
   try {
-    const supabase = await getSupabaseServerClient();
+    // Cookie-free: reading cookies makes the route dynamic, and this page
+    // has nothing per-visitor on it — counts approved halls per city.
+    const supabase = getSupabasePublicClient();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const db = supabase as any;
     const { data, error } = await db

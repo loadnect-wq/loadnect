@@ -25,6 +25,27 @@ function formatPrice(n: number) {
 // advertised "Pro Rs4,999" and "Elite Rs9,999" while the database sold
 // "Premium Rs4,999" and "Pro Rs9,999". An owner comparing the pricing page to
 // their dashboard saw different products at different prices.
+/**
+ * CACHED, AND THAT IS THE WHOLE POINT.
+ *
+ * Every public page on this site used to be served
+ * `Cache-Control: private, no-cache, no-store` with `X-Vercel-Cache: MISS`,
+ * so each visitor paid for a full function invocation and a fresh round of
+ * queries to a database on another continent — to be shown exactly the same
+ * approved venues as the visitor before them. Nothing on this page differs per
+ * person: the header resolves the signed-in user in the browser, and saved
+ * halls live in the browser too.
+ *
+ * The only reason it was dynamic is that the catalogue queries happened to go
+ * through the cookie-reading Supabase client. They now use the cookie-free one
+ * (lib/supabase/public.ts), so this render can be reused.
+ *
+ * Five minutes, not longer: a newly approved venue should appear without anyone
+ * clearing anything. Admin actions that change what belongs here also call
+ * revalidatePath, so the usual case is immediate and this is the backstop.
+ */
+export const revalidate = 300;
+
 export default async function PremiumPage() {
   const plans = await fetchPremiumPlans();
   return (

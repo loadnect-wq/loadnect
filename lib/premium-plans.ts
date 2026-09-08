@@ -10,7 +10,7 @@
 // admin-editable part.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { getSupabaseServerClient } from "@/lib/supabase/server";
+import { getSupabasePublicClient } from "@/lib/supabase/public";
 
 export type PremiumTier = "free" | "premium" | "pro";
 
@@ -76,7 +76,9 @@ const FALLBACK: PremiumPlan[] = [
 
 export async function fetchPremiumPlans(): Promise<PremiumPlan[]> {
   try {
-    const supabase = await getSupabaseServerClient();
+    // Cookie-free: reading cookies makes the route dynamic, and this page
+    // has nothing per-visitor on it — the plan catalogue is a price list.
+    const supabase = getSupabasePublicClient();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const db = supabase as any;
     const { data, error } = await db

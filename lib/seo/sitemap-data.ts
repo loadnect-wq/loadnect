@@ -13,7 +13,7 @@
 
 import "server-only";
 
-import { getSupabaseServerClient } from "@/lib/supabase/server";
+import { getSupabasePublicClient } from "@/lib/supabase/public";
 
 export type SitemapVenue = {
   slug: string;
@@ -28,7 +28,9 @@ export type SitemapVenue = {
  */
 export async function fetchIndexableVenues(): Promise<SitemapVenue[]> {
   try {
-    const supabase = await getSupabaseServerClient();
+    // Cookie-free: this is the list of approved, public hall slugs, and reading
+    // cookies was the only thing forcing /sitemap.xml to be rendered per request.
+    const supabase = getSupabasePublicClient();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const db = supabase as any;
     const { data, error } = await db

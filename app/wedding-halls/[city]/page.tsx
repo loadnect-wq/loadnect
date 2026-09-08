@@ -70,6 +70,27 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   });
 }
 
+/**
+ * CACHED, AND THAT IS THE WHOLE POINT.
+ *
+ * Every public page on this site used to be served
+ * `Cache-Control: private, no-cache, no-store` with `X-Vercel-Cache: MISS`,
+ * so each visitor paid for a full function invocation and a fresh round of
+ * queries to a database on another continent — to be shown exactly the same
+ * approved venues as the visitor before them. Nothing on this page differs per
+ * person: the header resolves the signed-in user in the browser, and saved
+ * halls live in the browser too.
+ *
+ * The only reason it was dynamic is that the catalogue queries happened to go
+ * through the cookie-reading Supabase client. They now use the cookie-free one
+ * (lib/supabase/public.ts), so this render can be reused.
+ *
+ * Five minutes, not longer: a newly approved venue should appear without anyone
+ * clearing anything. Admin actions that change what belongs here also call
+ * revalidatePath, so the usual case is immediate and this is the backstop.
+ */
+export const revalidate = 300;
+
 export default async function CityPage({ params }: Props) {
   const { city: slug } = await params;
   const city = cityFromSlug(slug);
@@ -77,8 +98,10 @@ export default async function CityPage({ params }: Props) {
   // An unknown city is a genuine 404, not an empty page pretending to be one.
   if (!city) notFound();
 
-  const advancePercent = await getAdvancePercent();
-  const halls = await fetchHalls({ city, sort: "rating" });
+  const [advancePercent, halls] = await Promise.all([
+    getAdvancePercent(),
+    fetchHalls({ city, sort: "rating" }),
+  ]);
   const priceFrom = halls.length ? Math.min(...halls.map((h) => h.price_per_day)) : null;
   const largest = halls.length ? Math.max(...halls.map((h) => h.capacity_max)) : null;
   const description = describeCity(city, halls.length, priceFrom);

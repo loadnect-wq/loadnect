@@ -9,7 +9,7 @@
 // DEFINER RPC `get_commission_percent()` which returns the number only.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { getSupabaseServerClient } from "@/lib/supabase/server";
+import { getSupabasePublicClient } from "@/lib/supabase/public";
 import { isCashfreeConfigured } from "@/lib/cashfree";
 import { DEFAULT_COMMISSION_PERCENT, DEFAULT_ADVANCE_PERCENT } from "@/lib/booking-payment";
 import { cache } from "react";
@@ -21,7 +21,9 @@ const FALLBACK = DEFAULT_COMMISSION_PERCENT; // 2.5
  *  missing (e.g. migration 0012 has not been run yet in dev). */
 export async function getCommissionPercent(): Promise<number> {
   try {
-    const supabase = await getSupabaseServerClient();
+    // Cookie-free: reading cookies makes the route dynamic, and this page
+    // has nothing per-visitor on it — the commission rate is shown on public pages.
+    const supabase = getSupabasePublicClient();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const db = supabase as any;
     const { data, error } = await db.rpc("get_commission_percent");
@@ -72,7 +74,9 @@ const PAYMENT_SETTINGS_FALLBACK: PublicPaymentSettings = {
  *  takes effect on the next page load. */
 export const getPublicPaymentSettings = cache(async function getPublicPaymentSettings(): Promise<PublicPaymentSettings> {
   try {
-    const supabase = await getSupabaseServerClient();
+    // Cookie-free: reading cookies makes the route dynamic, and this page
+    // has nothing per-visitor on it — a SECURITY DEFINER RPC built for exactly this, public by design.
+    const supabase = getSupabasePublicClient();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const db = supabase as any;
     const { data, error } = await db.rpc("get_public_payment_settings");
@@ -129,7 +133,9 @@ export async function isManualBookingAllowed(): Promise<boolean> {
   if (!isCashfreeConfigured()) return true;
 
   try {
-    const supabase = await getSupabaseServerClient();
+    // Cookie-free: reading cookies makes the route dynamic, and this page
+    // has nothing per-visitor on it — the manual-booking flag is public.
+    const supabase = getSupabasePublicClient();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const db = supabase as any;
     const { data, error } = await db.rpc("get_public_payment_settings");

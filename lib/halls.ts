@@ -2,6 +2,7 @@
 // Import only from Server Components, Route Handlers, or Server Actions.
 
 import { getSupabaseServerClient } from "@/lib/supabase/server";
+import { getSupabasePublicClient } from "@/lib/supabase/public";
 import { todayInBusinessTz, addDaysToIsoDate } from "@/lib/dates";
 import { FULL_BLOCK_STATUSES } from "@/lib/availability-status";
 import type { PremiumTier } from "@/lib/premium-plans";
@@ -195,7 +196,9 @@ export async function fetchHallsResult(
 type FailureFlag = { failed: boolean };
 
 export async function fetchHalls(filters: HallsFilters, failure?: FailureFlag): Promise<HallListing[]> {
-  const supabase = await getSupabaseServerClient();
+  // Cookie-free: reading cookies makes the route dynamic, and this page
+  // has nothing per-visitor on it — the catalogue query filters status='approved' in SQL, so a session cannot widen it.
+  const supabase = getSupabasePublicClient();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = supabase as any; // Database type is a placeholder until `supabase gen types` runs
 
@@ -424,7 +427,9 @@ export async function fetchHalls(filters: HallsFilters, failure?: FailureFlag): 
  */
 export async function countActivePremiumHalls(): Promise<number> {
   try {
-    const supabase = await getSupabaseServerClient();
+    // Cookie-free: reading cookies makes the route dynamic, and this page
+    // has nothing per-visitor on it — counts approved premium halls only.
+    const supabase = getSupabasePublicClient();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const db = supabase as any;
 
