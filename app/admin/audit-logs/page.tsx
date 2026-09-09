@@ -15,6 +15,11 @@ const ENTITY_FILTERS = [
   { key: "premium_listing",    label: "Premium",     value: "premium_listing" },
   { key: "review",             label: "Reviews",     value: "review" },
   { key: "commission_payment", label: "Commissions", value: "commission_payment" },
+  // Scheduled jobs write here too (entity_type 'cron'). Without this entry they
+  // could only be seen in "All", where they dilute the human actions this page
+  // exists to show — and there is no way to look at just the cron history when
+  // asking "did the payout sweep run last night?".
+  { key: "cron",               label: "Cron",        value: "cron" },
 ];
 
 /** Colour by intent so a suspension never reads like an approval at a glance. */

@@ -201,10 +201,17 @@ turns both from latent into certain (`lib/payout-dispatch.ts`):
 "how long has this been in flight?" unanswerable. It is now written by the
 dispatch path only.
 
-**Audit rows: on work, plus a daily heartbeat.** The route writes an
-`admin_audit_log` row with action `cron.payouts_reconcile` whenever a run
-checked something or hit an error, and otherwise at most one row per 23 hours
-saying "ran, nothing open" (`metadata.heartbeat = true`).
+**Audit rows: on a state CHANGE, plus a daily heartbeat.** The route writes an
+`admin_audit_log` row with action `cron.payouts_reconcile` whenever a transfer
+settled or something errored, and otherwise at most one row per 23 hours
+(`metadata.heartbeat = true`). Filter to them with the **Cron** tab on
+`/admin/audit-logs`.
+
+The condition is a state change, not activity, and that matters: rows stay in
+the sweep for 48h past settlement, so one payout would otherwise make ~192
+consecutive runs "did something" — up to 96 rows a day, in a table that is
+APPEND-ONLY (`guard_audit_log_immutable`, no DELETE policy) and paginates at 50.
+That would bury the hall approvals and suspensions the page exists to show.
 
 The heartbeat is not decoration. Gating the row on `checked > 0` alone is
 useless exactly when it matters most: before the first booking there are no

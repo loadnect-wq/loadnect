@@ -112,21 +112,34 @@ export async function GET(request: Request) {
 }
 
 /**
- * An audit row when the run did something — plus a DAILY HEARTBEAT when it did
- * not.
+ * An audit row when something CHANGED — plus a daily heartbeat when it did not.
  *
- * The heartbeat is the whole point, and leaving it out was a real mistake.
- * Writing a row only when `checked > 0` sounds tidy and is useless exactly when
- * it matters most: at launch there are no bookings and no payouts, so every run
- * finds nothing, the condition never fires, and the audit log stays empty. An
- * empty log then means, indistinguishably — the cron never ran, the cron ran and
- * got a 401 because CRON_SECRET is unset, the cron ran and found nothing, or
- * the path 404s. That is not a monitoring signal, it is the absence of one, and
- * a job whose health cannot be told from its silence is not monitored at all.
+ * Two mistakes were possible here and both were made on the way to this:
  *
- * So: a row whenever there was work or an error, and otherwise at most one row
- * per 23 hours saying "ran, nothing open". Quiet days cost one row; busy ones
- * are recorded as they happen; 96 rows a day never happens.
+ * 1. WRITING ONLY WHEN THERE WAS WORK. Useless exactly when it matters most: at
+ *    launch there are no bookings and no payouts, so every run finds nothing,
+ *    the condition never fires, and the audit log stays empty. An empty log then
+ *    means, indistinguishably — the cron never ran, it ran and got a 401 because
+ *    CRON_SECRET is unset, it ran and found nothing, or the path 404s. A job
+ *    whose health cannot be told from its silence is not monitored at all.
+ *    Hence the heartbeat.
+ *
+ * 2. WRITING WHENEVER ROWS WERE MERELY CHECKED. `checked > 0` looks like the
+ *    obvious condition and is far too loud. Rows stay in the sweep for 48h past
+ *    settlement, so a single payout makes ~192 consecutive runs "checked > 0",
+ *    at up to 96 rows a day — and admin_audit_log is APPEND-ONLY
+ *    (guard_audit_log_immutable, a BEFORE UPDATE OR DELETE trigger, with no
+ *    DELETE policy), so every one of those is permanent. /admin/audit-logs
+ *    paginates at 50 and its entity filter had no "cron" entry, so that chatter
+ *    would push a real hall approval or user suspension off page one within the
+ *    hour — in the table that exists specifically to make privileged HUMAN
+ *    actions visible.
+ *
+ * So the condition is a STATE CHANGE, not activity: a transfer settled, or
+ * something errored. Asking Cashfree about three still-pending transfers and
+ * being told they are still pending is not an audit event. Steady state is
+ * therefore about one row a day, plus a row whenever money actually moved or
+ * something broke.
  *
  * Never throws and never changes the response: an audit write is a record of
  * the work, not part of it.
@@ -135,7 +148,7 @@ async function recordReconcileRun(
   summary: { checked: number; settled: number; errors: number },
   thrown?: unknown,
 ): Promise<void> {
-  const didWork = summary.checked > 0 || summary.errors > 0;
+  const didWork = summary.settled > 0 || summary.errors > 0;
   try {
     const { getSupabaseAdminClient } = await import("@/lib/supabase/admin");
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -165,7 +178,9 @@ async function recordReconcileRun(
         ? `Checked ${summary.checked} open transfer(s), ${summary.settled} settled, ` +
           `${summary.errors} error(s).` +
           (thrown ? ` Threw: ${thrown instanceof Error ? thrown.message : String(thrown)}` : "")
-        : "Heartbeat: ran, no open transfers to reconcile.",
+        : summary.checked > 0
+          ? `Heartbeat: ran, ${summary.checked} transfer(s) still open, nothing changed.`
+          : "Heartbeat: ran, no open transfers to reconcile.",
       metadata:    { via: "cron", heartbeat: !didWork, ...summary },
     });
     if (error) console.error("[payouts-reconcile] audit write failed", error.code, error.message);

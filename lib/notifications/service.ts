@@ -45,6 +45,7 @@ import {
 } from "@/lib/notifications/sms-templates";
 import { getCanonicalAppUrl } from "@/lib/app-url";
 import { CONTACT } from "@/lib/constants";
+import { postAdminWebhook } from "./admin-webhook";
 
 export type RecipientType = "customer" | "owner" | "admin";
 
@@ -285,10 +286,37 @@ export async function dispatchNotification(req: NotificationRequest): Promise<vo
     // after() runs the send once the response has been sent. If it fails, the
     // row stays 'pending' or lands on 'failed' exactly as before — the outbox
     // is what makes deferring safe, because nothing is lost by not waiting.
-    if (!runAfterResponse(() => attemptSend(db, row.id, /* isRetry */ false))) {
+    // ADMIN ALERTS GO OUT TWICE, over two independent transports.
+    //
+    // Every MSG91 template is DLT-gated, so while approval is outstanding an
+    // operational alert is composed, recorded here, and reaches nobody. The
+    // webhook is a plain POST to whatever the operator actually watches
+    // (ADMIN_ALERT_WEBHOOK_URL — Slack, Discord, ntfy, anything), and it is a
+    // no-op when unset, so nothing changes for a project that has not set one.
+    //
+    // Placed HERE, and not in notifyAdminOperational, on purpose: this is the
+    // path where the outbox insert SUCCEEDED, so the dedupe_key unique index
+    // has already rejected a repeat. The webhook inherits that idempotency
+    // rather than reimplementing it — which matters now that the overdue-refund
+    // sweep runs three times a day against a single daily key.
+    //
+    // First, because an alert nobody receives is the failure being fixed: if
+    // the SMS provider hangs, the ping has already left.
+    const work = async () => {
+      if (req.recipientType === "admin") {
+        await postAdminWebhook({
+          eventKey:  req.eventKey,
+          eventType: req.eventType,
+          message,
+        }).catch(() => { /* never blocks the SMS */ });
+      }
+      await attemptSend(db, row.id, /* isRetry */ false);
+    };
+
+    if (!runAfterResponse(work)) {
       // No request scope to defer into (a script, a test, a non-route caller).
       // Await it, which is precisely the old behaviour.
-      await attemptSend(db, row.id, /* isRetry */ false);
+      await work();
     }
   } catch (e) {
     console.error("[notifications] dispatch error:", e instanceof Error ? e.message : e);
