@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { LogOut, Shield, AlertTriangle, Settings as SettingsIcon, Database, Timer, Percent, Sparkles, KeyRound, CheckCircle2, XCircle, CreditCard, ShieldCheck, Wallet } from "lucide-react";
+import { LogOut, Shield, AlertTriangle, Settings as SettingsIcon, Database, Timer, Percent, Sparkles, KeyRound, CheckCircle2, XCircle, CreditCard, ShieldCheck, Wallet, BarChart3 } from "lucide-react";
 import { requireRole } from "@/lib/auth";
 import { PENDING_PAYMENT_TIMEOUT_MIN } from "@/lib/booking-payment";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
@@ -14,11 +14,17 @@ import { getMsg91Status } from "@/lib/msg91";
 import { Badge } from "@/components/ui/Badge";
 import { AdminPageHeader } from "../_components/AdminPageHeader";
 import { CleanupButton } from "./_components/CleanupButton";
+import { InternalTrafficToggle } from "./_components/InternalTrafficToggle";
 import { CommissionRateForm } from "./_components/CommissionRateForm";
 import { PremiumPlansForm } from "./_components/PremiumPlansForm";
 import { PaymentSettingsForm } from "./_components/PaymentSettingsForm";
 
 export const metadata: Metadata = { title: "Admin Settings" };
+
+/** Same expression the banner uses, so this readout cannot claim an id that is
+ *  not the one on the page. */
+const GA_MEASUREMENT_ID =
+  process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID?.trim() || "G-4YVQGMTCR4";
 
 /**
  * Applied schema version, read from the database rather than asserted.
@@ -509,6 +515,17 @@ export default async function AdminSettingsPage() {
           </p>
           <div className="mt-3">
             <CleanupButton />
+          </div>
+        </Section>
+
+        {/* Analytics */}
+        <Section title="Analytics" icon={<BarChart3 className="h-4 w-4" />}>
+          <ConfigRow label="Google Analytics" value={GA_MEASUREMENT_ID} />
+          <p className="mt-2 text-[11px] text-charcoal-500">
+            Loads only for visitors who accept the cookie banner. Nothing is sent to Google before that.
+          </p>
+          <div className="mt-3">
+            <InternalTrafficToggle />
           </div>
         </Section>
 

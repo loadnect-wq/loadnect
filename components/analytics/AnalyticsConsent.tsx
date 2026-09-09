@@ -22,7 +22,7 @@
 // page must not assert what this particular visitor has already decided.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { useCallback, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useSyncExternalStore } from "react";
 import Script from "next/script";
 
 /** Public by design — a GA measurement id ships in the page source of every
@@ -32,6 +32,48 @@ const MEASUREMENT_ID =
 
 const STORAGE_KEY = "hn_analytics_consent";
 type Consent = "granted" | "denied" | "unknown";
+
+/**
+ * "This browser belongs to us." Separate from consent, and it wins.
+ *
+ * WHY NOT GA'S OWN INTERNAL-TRAFFIC FILTER. That matches on IP address, which
+ * is fine for a fixed office line and wrong for a home connection: the IP
+ * changes, so it quietly stops excluding you — and worse, the stale entry can
+ * later exclude a REAL visitor who is assigned that address. Silently dropping
+ * genuine traffic is a bigger error than counting your own.
+ *
+ * This marks the device instead, so it survives an IP change and cannot ever
+ * exclude somebody else. The cost is that it is per browser: set it on each
+ * device you use, and again if you clear site data. Any GA-side opt-out has
+ * that same property.
+ */
+const INTERNAL_KEY = "hn_internal_traffic";
+
+/** Marking a phone or a second laptop should not require finding a settings
+ *  page on a small screen, so any URL with ?exclude-me does it. */
+const INTERNAL_PARAM = "exclude-me";
+
+export function isInternalTraffic(): boolean {
+  try { return window.localStorage.getItem(INTERNAL_KEY) === "1"; }
+  catch { return false; }
+}
+
+export function setInternalTraffic(on: boolean) {
+  try {
+    if (on) window.localStorage.setItem(INTERNAL_KEY, "1");
+    else window.localStorage.removeItem(INTERNAL_KEY);
+  } catch { /* storage blocked */ }
+  // Turning it on must also remove what earlier acceptance already set.
+  if (on) clearAnalyticsCookies();
+  emit();
+}
+
+/** The toggle in /admin/settings, sharing this module's store so the two agree
+ *  without a round trip. Server snapshot is false: the prerendered HTML must
+ *  not assert anything about this particular browser. */
+export function useInternalTraffic(): [boolean, (on: boolean) => void] {
+  return [useSyncExternalStore(subscribe, isInternalTraffic, () => false), setInternalTraffic];
+}
 
 /**
  * Deletes the cookies Google Analytics set, on withdrawal.
@@ -95,6 +137,22 @@ function emit() { listeners.forEach((fn) => fn()); }
 
 export function AnalyticsConsent() {
   const consent = useSyncExternalStore(subscribe, read, () => "unknown" as Consent);
+  const internal = useSyncExternalStore(subscribe, isInternalTraffic, () => false);
+
+  // ?exclude-me on any URL marks this browser. Done in an effect rather than in
+  // the store's snapshot, which must stay pure and can be called repeatedly.
+  useEffect(() => {
+    try {
+      const url = new URL(window.location.href);
+      if (!url.searchParams.has(INTERNAL_PARAM)) return;
+      if (!isInternalTraffic()) setInternalTraffic(true);
+      // Strip it again: the param must not survive into a shared link, a
+      // bookmark, or the referrer of the next click, or it would silently stop
+      // measuring somebody who is not us.
+      url.searchParams.delete(INTERNAL_PARAM);
+      window.history.replaceState(null, "", url.pathname + url.search + url.hash);
+    } catch { /* nothing to do */ }
+  }, []);
 
   const decide = useCallback((value: Exclude<Consent, "unknown">) => {
     try { window.localStorage.setItem(STORAGE_KEY, value); } catch { /* nothing to do */ }
@@ -106,7 +164,7 @@ export function AnalyticsConsent() {
 
   return (
     <>
-      {consent === "granted" && (
+      {consent === "granted" && !internal && (
         <>
           <Script
             id="ga-src"
@@ -134,7 +192,7 @@ export function AnalyticsConsent() {
         </>
       )}
 
-      {consent === "unknown" && (
+      {consent === "unknown" && !internal && (
         <div
           role="dialog"
           aria-live="polite"
