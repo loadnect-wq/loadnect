@@ -45,8 +45,9 @@ export function PaymentSettingsForm({ initial }: { initial: Initial }) {
       <Toggle label="Enable online customer payment (Cashfree)" checked={onlinePay} onChange={setOnlinePay} />
 
       <p className="rounded-lg bg-ivory-100 p-2.5 text-[11px] leading-relaxed text-charcoal-600">
-        Commission is fixed at 2.5% of the hall price and is retained from the customer&apos;s
-        advance automatically. Owners are never billed, so there is nothing to configure here.
+        Commission is a percentage of the hall price, retained from the customer&apos;s advance
+        automatically. Owners are never billed. Each hall carries the rate its owner chose when
+        they listed it; the figure above this card is only the fallback for a hall that has none.
       </p>
 
       {error && <p className="text-xs text-red-600">{error}</p>}

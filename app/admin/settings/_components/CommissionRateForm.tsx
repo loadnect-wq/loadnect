@@ -54,8 +54,9 @@ export function CommissionRateForm({ initialPercent }: { initialPercent: number 
         </button>
       </div>
       <p className="text-[11px] text-charcoal-500">
-        Applied to new bookings only. Existing commissions keep the rate that was
-        active at booking time.
+        This is the FALLBACK rate, used only for a hall whose owner has not chosen one — each
+        hall carries its own. Applied to new bookings only; existing bookings keep the rate that
+        was active when they were made.
       </p>
       {msg && (
         <p className={`text-[11px] font-semibold ${msg.ok ? "text-emerald-700" : "text-red-600"}`}>

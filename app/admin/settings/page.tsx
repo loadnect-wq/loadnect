@@ -119,7 +119,7 @@ export default async function AdminSettingsPage() {
 
         {/* Commission rate (editable) */}
         <Section title="Commission" icon={<Percent className="h-4 w-4" />}>
-          <ConfigRow label="Current platform commission" value={`${commissionPercent}%`} />
+          <ConfigRow label="Fallback commission (halls with none set)" value={`${commissionPercent}%`} />
           <div className="mt-3 border-t border-border pt-3">
             <CommissionRateForm initialPercent={commissionPercent} />
           </div>
