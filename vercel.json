@@ -4,11 +4,15 @@
   "crons": [
     {
       "path": "/api/admin/bookings/expire-overdue",
-      "schedule": "30 3 * * *"
+      "schedule": "30 3,7,11 * * *"
     },
     {
       "path": "/api/admin/premium/expire-listings",
       "schedule": "15 0 * * *"
+    },
+    {
+      "path": "/api/admin/payouts/reconcile",
+      "schedule": "*/15 * * * *"
     }
   ]
 }

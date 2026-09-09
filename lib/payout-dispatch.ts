@@ -340,7 +340,12 @@ export async function dispatchOwnerPayout(
   }
 
   const cls = classifyTransfer(res.data.status);
-  await applyTransferState(db, row.id, payment.id, res.data, cls, now);
+  // The send itself: stamp dispatched_at, and this is necessarily the first
+  // time the row could settle.
+  await applyTransferState(db, row.id, payment.id, res.data, cls, now, {
+    isDispatch: true,
+    existingSettledAt: null,
+  });
 
   return cls.summary === "done"
     ? { state: "sent", transferId, status: res.data.status }
@@ -357,6 +362,10 @@ async function applyTransferState(
   t: { status: string; statusCode: string | null; statusDescription: string | null; cfTransferId: string | null; utr: string | null; serviceChargePaise: number | null; serviceTaxPaise: number | null; raw: Record<string, unknown> },
   cls: { terminal: boolean; summary: string },
   now: string,
+  // WHICH CALLER THIS IS, because two of these columns record an EVENT and not
+  // a reading. Both used to be stamped unconditionally, which was harmless
+  // while reconcile ran once a night and corrosive at any real cadence.
+  opts: { isDispatch: boolean; existingSettledAt: string | null },
 ): Promise<void> {
   await db.from("owner_payouts").update({
     status: t.status,
@@ -368,10 +377,17 @@ async function applyTransferState(
     service_tax_paise: t.serviceTaxPaise,
     is_terminal: cls.terminal,
     last_checked_at: now,
-    dispatched_at: now,
+    // "When we sent it" — so only the send writes it. Reconcile re-stamping
+    // this made every transfer look freshly dispatched, and "how long has this
+    // been in flight?" unanswerable. last_checked_at above is the reading.
+    ...(opts.isDispatch ? { dispatched_at: now } : {}),
     last_response: t.raw,
     updated_at: now,
-    ...(cls.summary === "done" ? { settled_at: now } : {}),
+    // FIRST settlement only. Re-stamping this on every reconcile kept SUCCESS
+    // rows permanently inside the 48h reversal window in reconcileOpenPayouts,
+    // where — ordered oldest-first with limit 50 — they starved newly
+    // dispatched transfers out of the sweep entirely.
+    ...(cls.summary === "done" && !opts.existingSettledAt ? { settled_at: now } : {}),
     ...(cls.summary === "reversed" ? { reversed_at: now } : {}),
   }).eq("id", payoutId);
 
@@ -400,8 +416,10 @@ export async function reconcilePayout(payoutId: string): Promise<ReconcileResult
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = admin as any;
 
+  // settled_at is read so applyTransferState can tell a first settlement from
+  // the ninety-sixth confirmation of the same one.
   const { data: row } = await db.from("owner_payouts")
-    .select("id, transfer_id, payment_id, booking_id, status").eq("id", payoutId).maybeSingle();
+    .select("id, transfer_id, payment_id, booking_id, status, settled_at").eq("id", payoutId).maybeSingle();
   if (!row) return { ok: false, error: "That payout no longer exists." };
 
   const res = await getTransfer(row.transfer_id);
@@ -412,7 +430,10 @@ export async function reconcilePayout(payoutId: string): Promise<ReconcileResult
   }
 
   const cls = classifyTransfer(res.data.status);
-  await applyTransferState(db, row.id, row.payment_id, res.data, cls, new Date().toISOString());
+  await applyTransferState(db, row.id, row.payment_id, res.data, cls, new Date().toISOString(), {
+    isDispatch: false,
+    existingSettledAt: (row as { settled_at?: string | null }).settled_at ?? null,
+  });
   return { ok: true, status: res.data.status, summary: cls.summary };
 }
 
@@ -439,7 +460,15 @@ export async function reconcileOpenPayouts(limit = 50): Promise<{ checked: numbe
   const { data: open } = await db.from("owner_payouts")
     .select("id")
     .or(`is_terminal.eq.false,and(status.eq.SUCCESS,settled_at.gte.${reversalWindow})`)
-    .order("created_at", { ascending: true }).limit(limit);
+    // LEAST-RECENTLY-CHECKED FIRST, not oldest-first. Ordered by created_at,
+    // `limit` stopped being a throughput cap and became a starvation trap: the
+    // head of the queue is occupied by long-lived rows — settled ones inside
+    // the 48h window, and any UNKNOWN_LOCAL whose transfer Cashfree never
+    // resolves — so the same rows were re-read every run and a transfer
+    // dispatched today might never be asked about at all. Rotating on
+    // last_checked_at guarantees every open transfer is reached in at most
+    // ceil(open / limit) runs.
+    .order("last_checked_at", { ascending: true, nullsFirst: true }).limit(limit);
 
   for (const row of (open ?? []) as { id: string }[]) {
     summary.checked += 1;

@@ -1,13 +1,14 @@
 # Scheduled jobs
 
-Two maintenance sweeps run on **Vercel Cron**, configured in `vercel.json`.
-Both are idempotent and safe to run repeatedly — re-running one is never
-harmful — and both are also runnable on demand from the admin dashboard.
+Three maintenance sweeps run on **Vercel Cron**, configured in `vercel.json`.
+All are idempotent and safe to run repeatedly — re-running one is never
+harmful — and all are also runnable on demand from the admin dashboard.
 
 | Job | Path | Schedule (UTC) | IST |
 |---|---|---|---|
-| Expire unanswered booking requests | `/api/admin/bookings/expire-overdue` | `30 3 * * *` | 09:00 |
+| Expire unanswered booking requests | `/api/admin/bookings/expire-overdue` | `30 3,7,11 * * *` | 09:00, 12:30, 16:30 |
 | Expire lapsed premium listings | `/api/admin/premium/expire-listings` | `15 0 * * *` | 05:45 |
+| Reconcile open owner payouts | `/api/admin/payouts/reconcile` | `*/15 * * * *` | every 15 min |
 
 The times are deliberate. The booking sweep sends a cancellation and refund
 notice, so it lands at a civil hour in Tamil Nadu rather than the middle of the
@@ -66,38 +67,55 @@ configured on the cron itself.
 
 ## Plan limits
 
-This project is on Vercel's **Hobby** plan, which allows **2 cron jobs, once
-per day each**. Both slots are used. Two consequences worth knowing:
+**The team moved to Vercel Pro on 2026-09-09** (verified against the live
+account: team `loadnect-wqs-projects`, plan `pro`). That lifted the two
+constraints this file used to be written around — the two-job cap, and the
+once-per-day minimum interval with up to 59 minutes of jitter. Schedules are now
+per-minute and land within the specified minute.
 
-* A booking request can sit up to roughly **72 hours** before it is swept — its
-  own 48-hour deadline, plus up to 24 hours until the next daily run. The
-  deadline itself is still enforced immediately: `acceptBooking` refuses the
-  moment the window closes, so no owner can accept late even before the sweep
-  catches up.
-* A premium plan can outlive its window by up to a day in the worst case, since
-  the sweep runs once. Activation is immediate either way — a purchase writes
+What that changed, and what it did not:
+
+* A booking request can sit up to roughly **56 hours** before it is swept — its
+  own 48-hour deadline, plus up to 8 hours until the next run, down from ~72
+  hours on a single daily slot. The deadline itself is still enforced
+  immediately: `acceptBooking` refuses the moment the window closes, so no owner
+  can accept late even before the sweep catches up.
+* The booking sweep runs three times inside Tamil Nadu waking hours rather than
+  hourly, and that is a product decision, not a scheduling one: **it sends SMS**.
+  A cancellation and refund notice at 03:00 IST is worse than one that waits.
+* A premium plan can still outlive its window by up to a day. The sweep sends
+  nothing and activation is immediate either way — a purchase writes
   `premium_listings` and the AFTER trigger recomputes the tier on the spot — so
-  the delay only ever errs in the paying owner's favour.
-* Adding a third scheduled job means upgrading to Pro, or folding the work into
-  one of the existing two. **Both slots are full, and this is enforced at deploy
-  time, not at run time**: a `vercel.json` carrying three `crons` entries is
-  rejected on Hobby and the deployment fails outright. Confirmed against the
-  live account — team `loadnect-wqs-projects`, plan `hobby`. So "just add
-  another cron" is never a safe edit here; check the plan first.
+  the delay only ever errs in the paying owner's favour. Left at once daily
+  deliberately; there is nothing to gain.
+* **Cron delivery is best effort.** Vercel does not retry a failed invocation,
+  can occasionally invoke the same run twice, and an Instant Rollback does not
+  update active cron jobs. That is why the booking sweep still calls
+  `reconcileOpenPayouts(10)` inline as a backstop even though payouts now have
+  their own schedule — one delivery path on a best-effort transport is not
+  enough for money.
+* **A cron pointed at a path that does nothing still reports success.** Vercel
+  invokes the path and records the response; a 200 from a stub is
+  indistinguishable from real work on the dashboard. See the payout reconcile
+  section below for the concrete instance of this.
 
-## Overdue refunds — folded into the nightly booking sweep
+## Overdue refunds — folded into the booking sweep
 
-**No separate cron, and that is deliberate.** This project is on the Vercel
-Hobby plan, which caps a project at **two** cron jobs, and `vercel.json` already
-holds exactly two. Vercel rejects an over-cap `vercel.json` at BUILD time, so a
-third entry does not add a job — it fails the deployment. The report therefore
-runs inside `/api/admin/bookings/expire-overdue`, the job that already runs
-daily and that already creates the refunds being counted.
+**No separate cron, and that is still deliberate** — though the reason has
+changed. It was a hard constraint (Hobby capped the project at two cron jobs and
+`vercel.json` already held two, so a third entry failed the BUILD). Now it is a
+judgement: the report counts refunds that the expiry sweep itself has just
+created, so running it anywhere else would report stale numbers.
+
+It is safe at three runs a day because the alert dedupes on
+`refunds.overdue:<IST date>` (`lib/refund-sla.ts`) — the admin still gets exactly
+one SMS per day, not three. Every SMS is billed and shares the admin's per-phone
+hourly ceiling with the payout-failure alerts, so that key is load-bearing.
 
 It runs **last** in that route, after the expiry sweep. That ordering matters:
 the sweep cancels unanswered bookings and records their refunds, so reporting
 afterwards counts this morning's new refunds in this morning's report instead of
-letting them wait a day to be noticed.
+letting them wait until the next run to be noticed.
 
 **What it does:** `reportOverdueRefunds()` in `lib/refund-sla.ts` reads payments
 with `refund_state in ('owed','failed')` and `refund_amount > 0`, and flags
@@ -131,6 +149,63 @@ the debt does. Rows written before 0053 have no stamp and fall back to
 `updated_at`, which is a **proxy**: any later touch resets it, so those refunds
 read younger than they are. That errs toward under-reporting, which is the wrong
 direction — but it is bounded to pre-0053 rows and beats not checking them.
+
+## Payout reconciliation — every 15 minutes, and the stub that nearly broke it
+
+`/api/admin/payouts/reconcile` asks Cashfree what happened to every transfer
+that is not yet final. It is **read-only against Cashfree** — it cannot move
+money, only record what already happened — which is what makes it safe to run
+unattended and safe to retry.
+
+**Why it needs a fast clock.** A Cashfree Payouts transfer is asynchronous:
+`RECEIVED`, `QUEUED` and `PENDING` are the normal path,
+`SCHEDULED_FOR_NEXT_WORKINGDAY` is a documented PENDING code, and NEFT does not
+run on Sundays. While a transfer is unresolved, `payments.split_status` reads
+`in_flight` — and that is precisely what `issueRefund` refuses to act on. So a
+slow *owner payout* freezes a *customer's* refund. On the old once-nightly
+piggyback that window was up to ~24 hours; it is now ~15 minutes.
+
+It also samples the reversal window properly. Cashfree can REVERSE a transfer
+after SUCCESS (`BENE_NAME_DIFFERS`, `ACCOUNT_BLOCKED`,
+`RETURNED_FROM_BENEFICIARY`), typically within ~24h, so settled rows stay in the
+sweep for 48h. Once a day sampled that window about twice and could miss a
+reversal at the boundary entirely — leaving `split_status='done'` with the owner
+unpaid and the customer's refund blocked forever.
+
+**The stub.** Vercel Cron invokes with **GET**. This route's GET used to be a
+health probe whose own docstring said "It reconciles nothing and reveals
+nothing." Scheduling the path without first writing a real GET would have
+produced a green Cron Jobs dashboard, `200 {"ok":true}` in the runtime logs, and
+zero reconciliation, indefinitely. The GET is now secret-only and does the work;
+POST keeps the admin-session path for the on-demand button.
+
+GET is **CRON_SECRET only, never a session** — it mutates
+`payments.split_status`, so an `<img src="…/reconcile">` on any page an admin
+visits must not be able to fire it. Same rule as the other two sweeps.
+
+**Two ordering bugs were fixed at the same time**, because a 15-minute cadence
+turns both from latent into certain (`lib/payout-dispatch.ts`):
+
+* `settled_at` was re-stamped on *every* reconcile, not just the first
+  settlement. Since the sweep includes `SUCCESS` rows whose `settled_at` is
+  within 48h, those rows refreshed their own eligibility forever and never aged
+  out.
+* The sweep ordered by `created_at ASC LIMIT 50`. Combined with the above, the
+  50 oldest rows — permanently-resident settled ones, plus any `UNKNOWN_LOCAL`
+  whose transfer Cashfree never resolves — occupied every slot, and a newly
+  dispatched transfer might never be asked about at all. It now orders by
+  `last_checked_at ASC NULLS FIRST`, so `limit` is a throughput cap again and
+  every open transfer is reached within `ceil(open / limit)` runs.
+
+`dispatched_at` was likewise being overwritten on every reconcile, which made
+"how long has this been in flight?" unanswerable. It is now written by the
+dispatch path only.
+
+**Audit rows are conditional.** The route writes one `admin_audit_log` row with
+action `cron.payouts_reconcile` only when a run checked something or hit an
+error. Unconditional rows would be 96 a day and would bury the booking sweep's
+entries. The tradeoff: a quiet run leaves no trace, so "the cron stopped" shows
+up only as an absence during periods when payouts were actually open.
 
 ## Running one now
 

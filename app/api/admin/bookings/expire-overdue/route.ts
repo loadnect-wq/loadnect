@@ -28,7 +28,13 @@ export const dynamic = "force-dynamic";
 
 // See app/api/webhooks/cashfree/route.ts for why this is declared
 // explicitly: after() runs inside the route budget, it does not extend it.
-export const maxDuration = 60;
+//
+// 300s, not the old 60. This one invocation runs five jobs — expiring requests,
+// cancelling abandoned checkouts, pruning OTP rows, reporting refunds past SLA,
+// and a payout reconcile — and it is killed at the ceiling, mid-sweep, BEFORE
+// recordSweepRun writes its audit row, so an over-running night left no durable
+// trace that it had run at all. 60 was the Hobby ceiling, not a judgement.
+export const maxDuration = 300;
 
 
 /**
@@ -217,40 +223,44 @@ async function run(actor: SweepActor) {
 
     // Each step swallows its own failure, so one failing step is RECORDED and
     // the rest still run. That isolation is load-bearing here: these are
-    // unrelated jobs sharing one schedule only because the Hobby plan caps this
-    // project at two crons, so letting one throw would silently retire jobs
-    // nobody chose to retire — and it would do so on the night they first broke.
+    // unrelated jobs sharing one schedule, so letting one throw would silently
+    // retire jobs nobody chose to retire — and it would do so on the day they
+    // first broke. (They share a schedule for historical reasons — the Hobby
+    // two-cron cap — but they are kept together now because they are cheap
+    // DELETEs and reports that genuinely want to run after the expiry pass.)
     const pendingCancelled = await cancelAbandonedCheckouts();
     const otpPruned = await pruneOtpAttempts();
 
     // The overdue-refund report runs LAST, and deliberately so: the sweep above
     // cancels unanswered bookings and records their refunds, so running the
-    // report after it means this morning's new refunds are counted in this
-    // morning's report rather than waiting a day to be noticed.
+    // report after it means this run's new refunds are counted in this run's
+    // report rather than waiting for the next one to be noticed.
     //
     // Piggy-backed here rather than given its own schedule — the same reasoning
-    // as pruneOtpAttempts above, plus a hard constraint: this project is on the
-    // Vercel Hobby plan, which caps it at TWO cron jobs, and vercel.json already
-    // holds exactly two. A third entry is rejected at BUILD time, so adding one
-    // would not add a report, it would fail the deployment.
+    // as pruneOtpAttempts above. It is safe to run three times a day: the alert
+    // dedupes on `refunds.overdue:<IST date>` (lib/refund-sla.ts), so the admin
+    // still gets exactly one SMS per day rather than three.
     const refundSla = await reportOverdueRefunds();
 
-    // PAYOUT RECONCILIATION, for the same reason and under the same constraint.
-    // A Cashfree Payouts transfer is asynchronous: RECEIVED, QUEUED and PENDING
-    // are the normal path, SCHEDULED_FOR_NEXT_WORKINGDAY is a documented PENDING
-    // code, and a SUCCESS can still REVERSE within about 24 hours. So something
-    // has to ask Cashfree what happened without a human pressing a button.
+    // PAYOUT RECONCILIATION — now a BACKSTOP, not the primary path.
     //
-    // /api/admin/payouts/reconcile exists and its own header calls itself a
-    // scheduled job — but it was never scheduled, because vercel.json already
-    // holds the two crons this plan allows and a third fails the build. Rather
-    // than leave the endpoint describing a schedule that does not exist, the
-    // sweep calls the same function directly. The endpoint stays as the
-    // on-demand path.
+    // /api/admin/payouts/reconcile has its own cron every 15 minutes as of the
+    // Pro upgrade (2026-09-09); it used to have none, because Hobby capped the
+    // project at two crons and a third failed the build, so this sweep carried
+    // the whole job on a once-nightly clock.
+    //
+    // KEPT ANYWAY, deliberately, rather than deleted as the obvious tidy-up.
+    // Vercel documents cron delivery as best effort — "Vercel will not retry an
+    // invocation if a cron job fails" — and an Instant Rollback does not update
+    // active cron jobs. Removing this would leave reconciliation with exactly
+    // one delivery path on a transport that admits it drops runs.
+    //
+    // The limit is small on purpose: the dedicated schedule carries the load,
+    // and this call must not dominate a sweep whose real job is bookings.
     //
     // Read-only against Cashfree — it cannot move money, only record what
     // already happened — which is what makes it safe to run unattended.
-    const payouts = await reconcileOpenPayouts(50).catch((e) => {
+    const payouts = await reconcileOpenPayouts(10).catch((e) => {
       console.error("[sweep] payout reconcile failed:", e instanceof Error ? e.message : e);
       return { checked: 0, settled: 0, errors: 1 };
     });
