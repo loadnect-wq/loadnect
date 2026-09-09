@@ -23,6 +23,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import Link from "next/link";
+import { HALL_COMMISSION_RATES } from "@/lib/validation/schemas";
 import {
   Gem, IndianRupee, ClipboardCheck, CalendarCheck, Images, BadgeCheck,
   ArrowRight, Wallet,
@@ -36,10 +37,19 @@ import { OwnerRegisterForm } from "./_components/OwnerRegisterForm";
 const EXAMPLE_HALL_PRICE = 100_000;
 
 export default async function OwnerRegisterPage() {
-  const commissionPercent = await getCommissionPercent();
+  // THE OWNER CHOOSES THEIR OWN RATE NOW, per hall, from HALL_COMMISSION_RATES.
+  // This page used to state the single platform rate as a fact — "Keep 98.5% of
+  // every booking" — which stopped being true the moment halls carried their
+  // own. The worked example is pinned to the LOWEST rate on offer and labelled
+  // as the lowest, so the headline promise is one the product can always keep.
+  const lowestRate  = Math.min(...HALL_COMMISSION_RATES);
+  const highestRate = Math.max(...HALL_COMMISSION_RATES);
 
-  // Worked from the same rate the platform actually charges.
-  const commission = Math.round((EXAMPLE_HALL_PRICE * commissionPercent) / 100);
+  // The platform default still applies to a hall whose owner has not chosen.
+  const commissionPercent = await getCommissionPercent();
+  void commissionPercent;
+
+  const commission = Math.round((EXAMPLE_HALL_PRICE * lowestRate) / 100);
   const ownerKeeps = EXAMPLE_HALL_PRICE - commission;
 
   const steps = [
@@ -79,11 +89,12 @@ export default async function OwnerRegisterPage() {
           </Link>
 
           <h1 className="mx-auto mt-7 max-w-2xl font-serif text-3xl font-bold leading-tight text-ivory-100 sm:text-5xl">
-            List your wedding hall. Keep {100 - commissionPercent}% of every booking.
+            List your wedding hall. Keep up to {100 - lowestRate}% of every booking.
           </h1>
           <p className="mx-auto mt-4 max-w-xl text-base leading-relaxed text-ivory-400">
             Hallnect brings couples in Tamil Nadu to your venue, collects the advance
-            for you, and never sends you a bill. Listing is free.
+            for you, and never sends you a bill. Listing is free, and you choose your own
+            commission — anywhere from {lowestRate}% to {highestRate}% — when you add each hall.
           </p>
 
           <a

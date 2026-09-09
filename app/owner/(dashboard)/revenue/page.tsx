@@ -52,6 +52,23 @@ export default async function OwnerRevenuePage() {
     getCommissionPercent(),
   ]);
 
+  // WHAT RATE TO SHOW, now that it is per hall. The single "current rate" this
+  // page used to print is only correct for an owner whose halls all agree, so
+  // it is derived from their actual halls instead: one rate if they all match,
+  // a range if they differ, and the platform default only when none is set.
+  const configuredRates = Array.from(
+    new Set(halls.map((h) => h.commission_rate).filter((r): r is number => r != null)),
+  ).sort((a, b) => a - b);
+
+  const rateLabel =
+    configuredRates.length === 0
+      ? `${commissionPercent}%`
+      : configuredRates.length === 1
+        ? `${configuredRates[0]}%`
+        : `${configuredRates[0]}%–${configuredRates[configuredRates.length - 1]}%`;
+
+  const ratesVary = configuredRates.length > 1;
+
   const totalBookingAmount = bookings.reduce((s, b) => s + b.total_amount, 0);
   const totalPayout        = bookings.reduce((s, b) => s + (b.payout_amount ?? 0), 0);
   const completedCount     = bookings.filter((b) => b.status === "completed").length;
@@ -131,7 +148,7 @@ export default async function OwnerRevenuePage() {
               </p>
             </div>
             <span className="rounded-full bg-maroon-50 px-2.5 py-1 text-[11px] font-semibold text-maroon-700">
-              Current rate {commissionPercent}%
+              {ratesVary ? "Your rates" : "Current rate"} {rateLabel}
             </span>
           </div>
           <p className="mt-2 text-[11px] text-charcoal-500">
@@ -191,10 +208,12 @@ export default async function OwnerRevenuePage() {
         )}
 
         <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-xs text-blue-800">
-          Hallnect&apos;s commission is {commissionPercent}% of the hall price, retained from the
-          customer&apos;s advance when you accept — you are never billed separately, and the
-          customer&apos;s platform fee is never deducted from you. The venue balance is
-          collected by you directly.
+          Hallnect&apos;s commission is {rateLabel} of the hall price
+          {ratesVary && " — you set it per hall, so it differs between your venues"}, retained
+          from the customer&apos;s advance when you accept. You are never billed separately, and
+          the customer&apos;s platform fee is never deducted from you. The venue balance is
+          collected by you directly. Each booking keeps the rate that applied when it was made,
+          so changing a hall&apos;s rate never alters a booking you already have.
           {/* Keyed on what a payout ACTUALLY needs. This used to check
               payout_upi, which no payout uses: Cashfree settles owner payouts
               to a bank account, so an owner with a UPI id and no bank details
