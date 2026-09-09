@@ -7,6 +7,7 @@ import { getSupabaseClient } from "@/lib/supabase/client";
 import { type HallImage } from "@/lib/owner";
 import { validateImageFile, IMAGE_LIMITS } from "@/lib/validation/schemas";
 import { ConfirmationDialog } from "@/components/ui/ConfirmationDialog";
+import { IMAGE_CACHE_CONTROL } from "@/lib/supabase/storage";
 import {
   addHallImage,
   setCoverImage,
@@ -129,7 +130,14 @@ export function ImagesManager({ hallId, initial }: Props) {
       try {
         const { error: storageErr } = await supabase.storage
           .from("hall-images")
-          .upload(path, file, { upsert: false, contentType: file.type });
+          .upload(path, file, {
+            upsert: false,
+            contentType: file.type,
+            // A year, not the one-hour default: these objects are immutable (uuid
+            // filename, upsert:false) and Supabase egress is the meter that fills
+            // first here. See IMAGE_CACHE_CONTROL in lib/supabase/storage.ts.
+            cacheControl: IMAGE_CACHE_CONTROL,
+          });
         if (storageErr) throw new Error(uploadErrorMessage(storageErr));
 
         const { data: urlData } = supabase.storage.from("hall-images").getPublicUrl(path);

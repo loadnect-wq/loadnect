@@ -9,6 +9,27 @@
 import { getSupabaseClient } from "./client";
 
 const BUCKET = "hall-images";
+
+/**
+ * One year, against Supabase Storage's one-HOUR default.
+ *
+ * EGRESS IS THE METER THAT FILLS FIRST on this project — venue photos are the
+ * largest thing the site serves, and they are served on every hall card and
+ * gallery view. At the default `cacheControl: 3600` a returning visitor
+ * re-downloads every photo they saw an hour ago, so the same bytes are billed
+ * over and over for images that never change.
+ *
+ * Safe because these objects are IMMUTABLE by construction: the filename is a
+ * fresh crypto.randomUUID() and every upload uses `upsert: false`, so a given
+ * URL's bytes can never be replaced. Editing a hall's photo uploads a new
+ * object at a new URL; deleting removes it. There is no version of this where a
+ * cached copy goes stale.
+ *
+ * Applies only to objects uploaded AFTER this shipped — Supabase stamps
+ * Cache-Control at upload time, so anything already in the bucket keeps its
+ * one-hour TTL until it is re-uploaded.
+ */
+export const IMAGE_CACHE_CONTROL = "31536000"; // seconds; 365 days
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5 MB
 const ALLOWED_MIME_TYPES = new Set([
   "image/jpeg",
@@ -61,6 +82,7 @@ export async function uploadHallImage(
     .upload(storagePath, file, {
       contentType: file.type,
       upsert: false,
+      cacheControl: IMAGE_CACHE_CONTROL,
     });
 
   if (uploadError) throw uploadError;

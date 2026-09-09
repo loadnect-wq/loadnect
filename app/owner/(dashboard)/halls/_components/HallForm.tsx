@@ -11,6 +11,7 @@ import { createHall, updateHall } from "@/app/owner/(dashboard)/actions";
 import { normalizeAmenityName, CUSTOM_AMENITY_LIMITS, validateImageFile } from "@/lib/validation/schemas";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { addHallImage } from "@/app/owner/(dashboard)/actions";
+import { IMAGE_CACHE_CONTROL } from "@/lib/supabase/storage";
 
 // Extension comes from the validated MIME type, never the untrusted filename.
 const EXT_BY_MIME: Record<string, string> = {
@@ -139,7 +140,13 @@ export function HallForm({ ownerId, amenities, hall }: Props) {
       const path = `${hallId}/${crypto.randomUUID()}.${ext}`;
       try {
         const { error: sErr } = await supabase.storage
-          .from("hall-images").upload(path, file, { upsert: false, contentType: file.type });
+          .from("hall-images").upload(path, file, {
+            upsert: false,
+            contentType: file.type,
+            // See IMAGE_CACHE_CONTROL in lib/supabase/storage.ts — immutable
+            // objects, and egress is the first meter to fill on this project.
+            cacheControl: IMAGE_CACHE_CONTROL,
+          });
         if (sErr) throw new Error(sErr.message);
 
         const { data: urlData } = supabase.storage.from("hall-images").getPublicUrl(path);
