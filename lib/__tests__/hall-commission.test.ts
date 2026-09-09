@@ -8,6 +8,7 @@ import {
   MAX_COMMISSION_SHARE_OF_ADVANCE,
 } from "@/lib/validation/schemas";
 import { calculateBookingPayment, advanceFromTotal } from "@/lib/booking-payment";
+import { sortByCommissionRate } from "@/lib/hall-commission";
 
 /**
  * A complete, valid listing with a commission rate. Mirrors the helper in
@@ -193,5 +194,51 @@ describe("every offered rate is actually payable at the live advance", () => {
     // setting is no longer safe to judge against the platform rate alone.
     expect(checkCommissionAgainstAdvance(5, 10, "advance").ok).toBe(true);
     expect(checkCommissionAgainstAdvance(5, 9.9, "advance").ok).toBe(false);
+  });
+});
+
+describe("sortByCommissionRate", () => {
+  const rows = (...rates: (number | null)[]) =>
+    rates.map((commission_rate, i) => ({ commission_rate, id: `h${i}` }));
+
+  it("orders ascending", () => {
+    const out = sortByCommissionRate(rows(5, 1.5, 3), "asc");
+    expect(out.map((r) => r.commission_rate)).toEqual([1.5, 3, 5]);
+  });
+
+  it("orders descending", () => {
+    const out = sortByCommissionRate(rows(1.5, 5, 3), "desc");
+    expect(out.map((r) => r.commission_rate)).toEqual([5, 3, 1.5]);
+  });
+
+  // The point of the function. A null is an ABSENT rate, not a low or high one:
+  // sorting it as 0 would bury every real rate behind the unconfigured halls
+  // ascending, and as Infinity would do the same descending.
+  it("puts unconfigured halls last ASCENDING, not first", () => {
+    const out = sortByCommissionRate(rows(null, 2, null, 4), "asc");
+    expect(out.map((r) => r.commission_rate)).toEqual([2, 4, null, null]);
+  });
+
+  it("puts unconfigured halls last DESCENDING too", () => {
+    const out = sortByCommissionRate(rows(null, 2, null, 4), "desc");
+    expect(out.map((r) => r.commission_rate)).toEqual([4, 2, null, null]);
+  });
+
+  it("does not mutate the input", () => {
+    const input = rows(5, 1.5);
+    const before = input.map((r) => r.commission_rate);
+    sortByCommissionRate(input, "asc");
+    expect(input.map((r) => r.commission_rate)).toEqual(before);
+  });
+
+  it("handles all-null and empty lists without throwing", () => {
+    expect(sortByCommissionRate(rows(null, null), "asc")).toHaveLength(2);
+    expect(sortByCommissionRate([], "desc")).toEqual([]);
+  });
+
+  it("keeps every row — a sort must never drop one", () => {
+    const input = rows(3, null, 1.5, 5, null, 2);
+    expect(sortByCommissionRate(input, "asc")).toHaveLength(input.length);
+    expect(sortByCommissionRate(input, "desc")).toHaveLength(input.length);
   });
 });

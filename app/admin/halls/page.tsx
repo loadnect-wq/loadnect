@@ -6,6 +6,7 @@ import { fetchAllHalls } from "@/lib/admin";
 import { formatPrice } from "@/lib/mock-data";
 import { Badge } from "@/components/ui/Badge";
 import { HALL_COMMISSION_RATES } from "@/lib/validation/schemas";
+import { sortByCommissionRate } from "@/lib/hall-commission";
 import { AdminPageHeader } from "../_components/AdminPageHeader";
 import { ConfirmButton } from "../_components/ConfirmButton";
 import { ReasonButton } from "../_components/ReasonButton";
@@ -33,7 +34,7 @@ function fmtDate(iso: string) {
   return new Date(iso).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
 }
 
-type Props = { searchParams: Promise<{ status?: string; commission?: string }> };
+type Props = { searchParams: Promise<{ status?: string; commission?: string; sort?: string }> };
 
 /**
  * Commission filter options. "unset" is the one that earns its place: a hall
@@ -46,6 +47,33 @@ const COMMISSION_FILTERS = [
   ...HALL_COMMISSION_RATES.map((r) => ({ key: String(r), label: `${r}%` })),
 ] as const;
 
+/**
+ * Sort options. "newest" is the default and is what this page has always done
+ * (fetchAllHalls orders by created_at desc in the query); the two commission
+ * orders are applied in memory, because the rate is not a column this page's
+ * session client may read — see the note where the sort is applied.
+ */
+const SORTS = [
+  { key: "newest",    label: "Newest" },
+  { key: "comm_desc", label: "Commission, high to low" },
+  { key: "comm_asc",  label: "Commission, low to high" },
+] as const;
+
+/**
+ * One place that builds this page's URLs, so a chip in any of the three rows
+ * preserves the other two. Written once because the alternative — three
+ * near-identical URLSearchParams blocks — is how a filter silently starts
+ * dropping the sort the moment someone edits one of them.
+ */
+function hrefFor(current: { status: string; commission: string; sort: string }): string {
+  const params = new URLSearchParams();
+  if (current.status !== "all") params.set("status", current.status);
+  if (current.commission !== "all") params.set("commission", current.commission);
+  if (current.sort !== "newest") params.set("sort", current.sort);
+  const qs = params.toString();
+  return qs ? `?${qs}` : "?";
+}
+
 export default async function AdminHallsPage({ searchParams }: Props) {
   // ASSERTS ITS OWN ROLE. The layout also calls requireRole, but a layout and
   // its page render CONCURRENTLY in the App Router — the layout's redirect does
@@ -55,10 +83,11 @@ export default async function AdminHallsPage({ searchParams }: Props) {
   // denial now logs at error level, which would bury real failures. Guarding
   // here also means this page is not relying on a file it does not control.
   await requireRole(["admin"]);
-  const { status, commission } = await searchParams;
+  const { status, commission, sort } = await searchParams;
   const activeFilter = FILTERS.find((f) => f.key === status) ?? FILTERS[0];
   const activeCommission =
     COMMISSION_FILTERS.find((f) => f.key === commission) ?? COMMISSION_FILTERS[0];
+  const activeSort = SORTS.find((s) => s.key === sort) ?? SORTS[0];
 
   const allHalls = await fetchAllHalls(activeFilter.value);
 
@@ -67,12 +96,34 @@ export default async function AdminHallsPage({ searchParams }: Props) {
   // merged in from a service-role read afterwards. These pages are already
   // fully materialised — fetchAllHalls has no pagination — so this costs
   // nothing beyond an array pass.
-  const halls =
+  const filtered =
     activeCommission.key === "all"
       ? allHalls
       : activeCommission.key === "unset"
         ? allHalls.filter((h) => h.commission_rate == null)
         : allHalls.filter((h) => h.commission_rate === Number(activeCommission.key));
+
+  // SORTED IN MEMORY, for the same reason it is filtered in memory: the query
+  // above runs on the session client, which migration 0072 forbids from reading
+  // commission_rate at all, so `.order("commission_rate")` would raise 42501 —
+  // and lib/admin.ts swallows that into `return []`, blanking the page. The
+  // value only exists after the service-role merge, which is here.
+  //
+  // Sorting the whole set is only honest because fetchAllHalls has no LIMIT or
+  // RANGE: every matching hall is already in `allHalls`. If pagination is ever
+  // added to that query, this sort silently becomes "sort the current page",
+  // which is worse than no sort at all — move it into the query then, which
+  // will mean moving the whole read to the service role.
+  //
+  // Unconfigured halls go LAST in both directions rather than sorting as 0 or
+  // as Infinity. They are not a low rate or a high one; they are an absent one,
+  // and burying real rates behind them would make the sort useless in exactly
+  // the case it is reached for. They remain one click away via the
+  // "Not configured" chip, which carries a count.
+  const halls =
+    activeSort.key === "newest"
+      ? filtered
+      : sortByCommissionRate(filtered, activeSort.key === "comm_asc" ? "asc" : "desc");
 
   const unconfigured = allHalls.filter((h) => h.commission_rate == null).length;
 
@@ -90,7 +141,11 @@ export default async function AdminHallsPage({ searchParams }: Props) {
           {FILTERS.map((f) => (
             <Link
               key={f.key}
-              href={f.key === "all" ? "?" : `?status=${f.key}`}
+              href={hrefFor({
+                status: f.key,
+                commission: activeCommission.key,
+                sort: activeSort.key,
+              })}
               className={[
                 "rounded-full border px-3 py-1 text-xs font-semibold",
                 activeFilter.key === f.key
@@ -112,14 +167,14 @@ export default async function AdminHallsPage({ searchParams }: Props) {
             Commission
           </span>
           {COMMISSION_FILTERS.map((f) => {
-            const params = new URLSearchParams();
-            if (activeFilter.key !== "all") params.set("status", activeFilter.key);
-            if (f.key !== "all") params.set("commission", f.key);
-            const qs = params.toString();
             return (
               <Link
                 key={f.key}
-                href={qs ? `?${qs}` : "?"}
+                href={hrefFor({
+                  status: activeFilter.key,
+                  commission: f.key,
+                  sort: activeSort.key,
+                })}
                 className={[
                   "rounded-full border px-2.5 py-0.5 text-[11px] font-semibold tabular-nums",
                   activeCommission.key === f.key
@@ -134,6 +189,39 @@ export default async function AdminHallsPage({ searchParams }: Props) {
               </Link>
             );
           })}
+        </div>
+
+        {/* Sort. Same row treatment as the commission filter — it is the other
+            secondary lens — and it composes with both chip rows above rather
+            than replacing them. */}
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-[11px] font-semibold uppercase tracking-wide text-charcoal-400">
+            Sort
+          </span>
+          {SORTS.map((o) => (
+            <Link
+              key={o.key}
+              href={hrefFor({
+                status: activeFilter.key,
+                commission: activeCommission.key,
+                sort: o.key,
+              })}
+              aria-current={activeSort.key === o.key ? "true" : undefined}
+              className={[
+                "rounded-full border px-2.5 py-0.5 text-[11px] font-semibold",
+                activeSort.key === o.key
+                  ? "border-maroon-700 bg-maroon-700 text-white"
+                  : "border-border bg-white text-charcoal-600 hover:border-maroon-300",
+              ].join(" ")}
+            >
+              {o.label}
+            </Link>
+          ))}
+          {activeSort.key !== "newest" && unconfigured > 0 && (
+            <span className="text-[11px] text-charcoal-500">
+              {unconfigured} unconfigured hall{unconfigured !== 1 ? "s" : ""} sorted last
+            </span>
+          )}
         </div>
 
         {halls.length === 0 ? (

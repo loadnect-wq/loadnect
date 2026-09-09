@@ -268,3 +268,31 @@ export async function readBookingCommissions(
     return out;
   }
 }
+
+/**
+ * Orders halls by their commission rate, with UNCONFIGURED ONES ALWAYS LAST.
+ *
+ * The null handling is the whole reason this is a named, tested function rather
+ * than an inline arrow. A hall with no rate is not a low rate or a high one —
+ * it is an absent one, so sorting it as 0 would bury every real rate behind the
+ * unconfigured halls in ascending order, and sorting it as Infinity would do the
+ * same at the other end. Either makes the sort useless in exactly the case
+ * somebody reaches for it. They stay reachable through the "Not configured"
+ * filter, which carries its own count.
+ *
+ * Pure and total: returns a NEW array, and never throws on a null or a mixed
+ * list. Callers pass rows they are already permitted to see.
+ */
+export function sortByCommissionRate<T extends { commission_rate: number | null }>(
+  rows: readonly T[],
+  direction: "asc" | "desc",
+): T[] {
+  return [...rows].sort((a, b) => {
+    if (a.commission_rate == null && b.commission_rate == null) return 0;
+    if (a.commission_rate == null) return 1;   // nulls last, both directions
+    if (b.commission_rate == null) return -1;
+    return direction === "asc"
+      ? a.commission_rate - b.commission_rate
+      : b.commission_rate - a.commission_rate;
+  });
+}
