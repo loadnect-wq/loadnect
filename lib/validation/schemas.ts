@@ -329,8 +329,16 @@ const COMMISSION_CHOICES = HALL_COMMISSION_RATES.join("%, ").concat("%");
  * a valid choice.
  */
 export const commissionRateSchema = z
-  .union([z.number(), z.string()])
+  // null and undefined are admitted into the union DELIBERATELY, so that a rate
+  // which never arrives is answered with the message below rather than with
+  // Zod's bare "Invalid input". This is the same trap couponCreateSchema
+  // documents: a Next.js server action DROPS undefined properties, so a field
+  // the owner left blank can reach the server as a MISSING KEY rather than as
+  // an empty string. Both must fail, and both must say which values are valid —
+  // an owner who has just been refused a listing needs to know what to pick.
+  .union([z.number(), z.string(), z.null(), z.undefined()])
   .transform((v) => {
+    if (v == null) return NaN;
     if (typeof v === "number") return v;
     const s = String(v).trim();
     // NOT parseFloat. parseFloat("2.5%") is 2.5 and parseFloat("2.5abc") is

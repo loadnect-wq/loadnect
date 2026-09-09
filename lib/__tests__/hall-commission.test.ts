@@ -112,6 +112,28 @@ describe("hallCreateSchema requires a commission rate", () => {
     if (r.success) expect(r.data.commissionRate).toBe(3.5);
   });
 
+  // The message matters as much as the rejection. A missing key used to yield
+  // Zod's bare "Invalid input" — unactionable on a form that has just refused
+  // to list somebody's venue. Next.js server actions DROP undefined keys, so
+  // this is the shape a blank field can genuinely arrive in.
+  it("names the valid rates when none is supplied, rather than saying 'Invalid input'", () => {
+    const { commissionRate: _omitted, ...withoutRate } = listing();
+    const r = hallCreateSchema.safeParse(withoutRate);
+    expect(r.success).toBe(false);
+    if (!r.success) {
+      expect(r.error.issues[0].message).toContain("Choose one of");
+      expect(r.error.issues[0].message).not.toBe("Invalid input");
+    }
+  });
+
+  it("gives the same actionable message for an empty string and for null", () => {
+    for (const bad of ["", null]) {
+      const r = hallCreateSchema.safeParse(listing({ commissionRate: bad }));
+      expect(r.success).toBe(false);
+      if (!r.success) expect(r.error.issues[0].message).toContain("Choose one of");
+    }
+  });
+
   it("REJECTS a listing with no commission rate at all", () => {
     // A hall must not be created with the rate silently absent — that would
     // invent a commercial term on the owner's behalf at booking time.
