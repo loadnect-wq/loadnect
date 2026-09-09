@@ -58,6 +58,27 @@ export function isInternalTraffic(): boolean {
   catch { return false; }
 }
 
+/**
+ * The same answer, but counting ?exclude-me as already-true.
+ *
+ * FOUND BY TESTING IT ON A BROWSER THAT HAD ALREADY ACCEPTED THE BANNER.
+ * Persisting the flag from an effect is one render too late: consent was
+ * already "granted", so the tag mounted, gtag.js loaded and sent a page_view
+ * before the effect could run — and then re-set the cookies the effect had just
+ * cleared. The visit where you ASK to be excluded was the one visit still being
+ * counted.
+ *
+ * Reading the parameter here instead means the very first client render already
+ * knows, so the tag never mounts at all. Pure — it only reads location — which
+ * is what useSyncExternalStore requires of a snapshot.
+ */
+function readInternal(): boolean {
+  try {
+    if (window.localStorage.getItem(INTERNAL_KEY) === "1") return true;
+    return new URLSearchParams(window.location.search).has(INTERNAL_PARAM);
+  } catch { return false; }
+}
+
 export function setInternalTraffic(on: boolean) {
   try {
     if (on) window.localStorage.setItem(INTERNAL_KEY, "1");
@@ -137,12 +158,17 @@ function emit() { listeners.forEach((fn) => fn()); }
 
 export function AnalyticsConsent() {
   const consent = useSyncExternalStore(subscribe, read, () => "unknown" as Consent);
-  const internal = useSyncExternalStore(subscribe, isInternalTraffic, () => false);
+  const internal = useSyncExternalStore(subscribe, readInternal, () => false);
 
-  // ?exclude-me on any URL marks this browser. Done in an effect rather than in
-  // the store's snapshot, which must stay pure and can be called repeatedly.
+  // Persist what readInternal already acted on, and tidy the URL. The gate is
+  // closed by then — this only makes it outlast the current page.
   useEffect(() => {
     try {
+      // An excluded browser should not keep _ga cookies from before it was
+      // excluded, however it got that way. The tag is not running to re-set
+      // them, so this actually sticks.
+      if (isInternalTraffic()) clearAnalyticsCookies();
+
       const url = new URL(window.location.href);
       if (!url.searchParams.has(INTERNAL_PARAM)) return;
       if (!isInternalTraffic()) setInternalTraffic(true);
