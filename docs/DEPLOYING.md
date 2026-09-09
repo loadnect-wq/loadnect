@@ -104,9 +104,23 @@ single request. That is a project migration with real downtime and is not
 scheduled — it is recorded here so the `bom1` line is not mistaken for the
 problem being solved.
 
-**Do not add a third `crons` entry while editing this file.** The Hobby plan
-caps the project at two and rejects an over-cap `vercel.json` at build time —
-the deployment fails outright. See `docs/SCHEDULED_JOBS.md`.
+**This project is on Vercel Pro (since 2026-09-09) and cannot go back to
+Hobby.** Hobby is restricted to non-commercial use; Hallnect takes payments, so
+the Pro plan is a compliance requirement, not a performance choice. It also
+carries three cron jobs, which Hobby capped at two.
+
+This paragraph used to say the opposite — "do not add a third `crons` entry, the
+Hobby plan caps the project at two" — which was true when written and is now
+false in both directions. Cron count and schedule frequency are no longer the
+constraint; see `docs/SCHEDULED_JOBS.md` for what actually constrains them
+(notification hours, and two jobs never sharing a minute).
+
+**The Pro upgrade also switched on something that can take the site down.**
+Vercel Spend Management is enabled by default on Pro with *Pause production
+deployment* turned on. An automatic pause on a site running Cashfree checkout is
+a payments incident, not a cost control: it 503s the Cashfree webhook, and there
+is no replay path for a missed customer-payment webhook. Check
+Settings → Billing → Spend Management and decide that deliberately.
 
 ## If pushes stop triggering builds
 
