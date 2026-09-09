@@ -50,8 +50,15 @@ export default function PrivacyPage() {
         </p>
       </Section>
 
+      {/* "ONLY WITH" MAKES THIS LIST EXHAUSTIVE, so a recipient missing from it
+          is a false statement rather than an omission. Google was missing for a
+          day after Google Analytics shipped: section 2 was corrected to declare
+          the collection and this list was not, which is the same DPDP error
+          seen from the other side. Whatever this list says must equal the set of
+          third parties any code path can reach — if a vendor is added anywhere,
+          it belongs here in the same commit. */}
       <Section title="5. Data Sharing">
-        We share your information only with: (a) venue owners to fulfil your confirmed booking — your name and contact details are shared so the owner can prepare for your event; (b) Cashfree Payments for transaction processing, and for venue owners the payout and identity details listed in section 4 so that settlements can be made; (b-i) MSG91, our SMS provider, to deliver booking notifications and one-time verification codes to the phone number you gave us; (c) cloud infrastructure and email delivery service providers under strict confidentiality agreements; and (d) law enforcement when required by a valid legal order. Venue owners may not use customer contact details for any purpose other than fulfilling the specific booking.
+        We share your information only with: (a) venue owners to fulfil your confirmed booking — your name and contact details are shared so the owner can prepare for your event; (b) Cashfree Payments for transaction processing, and for venue owners the payout and identity details listed in section 4 so that settlements can be made; (b-i) MSG91, our SMS provider, to deliver booking notifications and one-time verification codes to the phone number you gave us; (b-ii) <strong>only if you accept analytics</strong>, Google, which receives the usage data described in section 2 — we deliberately do not send it your booking reference or payment order id, and page addresses that identify a specific booking are stripped before they are sent; (c) cloud infrastructure and email delivery service providers under strict confidentiality agreements; and (d) law enforcement when required by a valid legal order. Venue owners may not use customer contact details for any purpose other than fulfilling the specific booking.
       </Section>
 
       {/* THE CONDITION THIS SECTION SET HAS NOW BEEN MET. It previously said

@@ -2,7 +2,10 @@
 // app/api/admin/payouts/reconcile/route.ts
 // POST — ask Cashfree what happened to every transfer that is not yet final.
 //
-// THIS ROUTE NOW HAS ITS OWN SCHEDULE: every 15 minutes, in vercel.json.
+// THIS ROUTE NOW HAS ITS OWN SCHEDULE: every 15 minutes, in vercel.json, at
+// :05/:20/:35/:50 — deliberately OFF the :30 boundary, because the booking
+// sweep runs at 30 3,7,11 and still calls reconcileOpenPayouts() as a backstop.
+// A shared minute meant two concurrent sweeps racing on payments.split_status.
 //
 // It did not, for a plan reason that no longer applies. Vercel Hobby capped the
 // project at TWO cron jobs and vercel.json already held two, so a third entry
@@ -56,9 +59,13 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 // 300s, not the old 60. A sweep is up to 50 sequential Cashfree status calls,
 // each allowed 20 seconds (lib/cashfree-payouts.ts), so three slow ones used to
-// exhaust the whole budget and the run was killed mid-sweep. 60 was the Hobby
-// ceiling, not a considered value; 300 is the plan default on Pro. Still far
-// below the 15-minute interval, so runs cannot overlap.
+// exhaust the whole budget and the run was killed mid-sweep.
+//
+// 60 was NOT a plan ceiling — that was wrong when first written here. Fluid
+// compute defaults to 300s on Hobby AND Pro; Pro's maximum is 800s. So 60 was
+// a self-imposed value nobody had revisited. 300 is the plan default and is
+// deliberately kept well under the 15-minute interval so runs cannot overlap —
+// 800 would allow exactly that, which is why it is not used.
 export const maxDuration = 300;
 
 export async function POST(request: Request) {

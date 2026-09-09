@@ -12,7 +12,7 @@
     },
     {
       "path": "/api/admin/payouts/reconcile",
-      "schedule": "*/15 * * * *"
+      "schedule": "5,20,35,50 * * * *"
     }
   ]
 }

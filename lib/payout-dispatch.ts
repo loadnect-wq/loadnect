@@ -437,8 +437,30 @@ export async function reconcilePayout(payoutId: string): Promise<ReconcileResult
   return { ok: true, status: res.data.status, summary: cls.summary };
 }
 
-/** Sweeps every non-terminal transfer. Safe to run on a schedule. */
-export async function reconcileOpenPayouts(limit = 50): Promise<{ checked: number; settled: number; errors: number }> {
+/**
+ * Sweeps every non-terminal transfer. Safe to run on a schedule.
+ *
+ * `cooldownSeconds` makes CONCURRENT SWEEPS SAFE, which they now have to be.
+ * There are two schedulers: this route's own cron, and the booking sweep's
+ * inline backstop call. Vercel also documents that cron delivery "can
+ * occasionally invoke the same scheduled run more than once". Nothing here
+ * takes a lock, so two overlapping sweeps would select the same head rows
+ * (neither has stamped last_checked_at yet), both ask Cashfree, and both
+ * last-write-wins into payments.split_status. If Cashfree flips SUCCESS ->
+ * REVERSED between the two reads and the stale write lands second,
+ * split_status goes back to 'done' — and that is the interlock issueRefund
+ * reads to refuse a customer's refund and dispatchOwnerPayout reads to refuse a
+ * re-send. Narrow window, worst possible outcome.
+ *
+ * Skipping rows checked in the last couple of minutes closes it: the second
+ * sweep simply finds nothing to do. This is a sweep-level guard only — the
+ * admin's per-payout Reconcile button calls reconcilePayout() directly and is
+ * deliberately never throttled.
+ */
+export async function reconcileOpenPayouts(
+  limit = 50,
+  cooldownSeconds = 120,
+): Promise<{ checked: number; settled: number; errors: number }> {
   const summary = { checked: 0, settled: 0, errors: 0 };
   if (!isPayoutsConfigured()) return summary;
 
@@ -457,9 +479,15 @@ export async function reconcileOpenPayouts(limit = 50): Promise<{ checked: numbe
   // So settled rows stay in the sweep for 48h past settlement. That is the
   // window Cashfree describes, with margin.
   const reversalWindow = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
+  const cooldownCutoff = new Date(Date.now() - cooldownSeconds * 1000).toISOString();
   const { data: open } = await db.from("owner_payouts")
     .select("id")
     .or(`is_terminal.eq.false,and(status.eq.SUCCESS,settled_at.gte.${reversalWindow})`)
+    // Second .or() — PostgREST ANDs them. Rows another sweep just looked at are
+    // not looked at again, which is what makes two concurrent sweeps safe.
+    // `is.null` is kept in the clause because a null last_checked_at must sort
+    // and select FIRST, not be filtered out by the comparison.
+    .or(`last_checked_at.is.null,last_checked_at.lt.${cooldownCutoff}`)
     // LEAST-RECENTLY-CHECKED FIRST, not oldest-first. Ordered by created_at,
     // `limit` stopped being a throughput cap and became a starvation trap: the
     // head of the queue is occupied by long-lived rows — settled ones inside
@@ -468,7 +496,12 @@ export async function reconcileOpenPayouts(limit = 50): Promise<{ checked: numbe
     // dispatched today might never be asked about at all. Rotating on
     // last_checked_at guarantees every open transfer is reached in at most
     // ceil(open / limit) runs.
-    .order("last_checked_at", { ascending: true, nullsFirst: true }).limit(limit);
+    // created_at breaks the tie: last_checked_at is not unique (a sweep stamps a
+    // whole batch within the same second), and without a stable second key the
+    // page returned at `limit` is not deterministic between runs.
+    .order("last_checked_at", { ascending: true, nullsFirst: true })
+    .order("created_at", { ascending: true })
+    .limit(limit);
 
   for (const row of (open ?? []) as { id: string }[]) {
     summary.checked += 1;

@@ -6,8 +6,8 @@
 // It is also the project's ONLY nightly maintenance slot for bookings, so it
 // carries the abandoned-checkout cleanup, the OTP retention prune and the
 // refund-SLA report as well — see run(). Every run writes one row to
-// admin_audit_log, because Hobby keeps runtime logs for about an hour and a
-// job whose only trace is a log line cannot be shown to have run at all.
+// admin_audit_log, because a job whose only trace is a log line cannot be shown
+// to have run at all once that line has aged out of retention.
 //
 // AUTHORIZATION mirrors the commission sweep exactly (either is sufficient):
 //   1. a logged-in ADMIN (role checked server-side), or
@@ -33,7 +33,10 @@ export const dynamic = "force-dynamic";
 // cancelling abandoned checkouts, pruning OTP rows, reporting refunds past SLA,
 // and a payout reconcile — and it is killed at the ceiling, mid-sweep, BEFORE
 // recordSweepRun writes its audit row, so an over-running night left no durable
-// trace that it had run at all. 60 was the Hobby ceiling, not a judgement.
+// trace that it had run at all.
+//
+// 60 was NOT a plan ceiling — fluid compute defaults to 300s on Hobby and Pro
+// alike, and Pro's maximum is 800s. It was simply a value nobody had revisited.
 export const maxDuration = 300;
 
 
