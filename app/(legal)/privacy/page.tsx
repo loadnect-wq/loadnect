@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { AnalyticsConsentControl } from "./_components/AnalyticsConsentControl";
 import { buildMetadata } from "@/lib/seo/metadata";
 import { legalUpdatedLabel } from "@/lib/content";
 import { CONTACT } from "@/lib/constants";
@@ -47,15 +48,25 @@ export default function PrivacyPage() {
         We share your information only with: (a) venue owners to fulfil your confirmed booking — your name and contact details are shared so the owner can prepare for your event; (b) Cashfree Payments for transaction processing, and for venue owners the payout and identity details listed in section 4 so that settlements can be made; (b-i) MSG91, our SMS provider, to deliver booking notifications and one-time verification codes to the phone number you gave us; (c) cloud infrastructure and email delivery service providers under strict confidentiality agreements; and (d) law enforcement when required by a valid legal order. Venue owners may not use customer contact details for any purpose other than fulfilling the specific booking.
       </Section>
 
-      {/* This section used to claim analytics cookies and a cookie-preferences control.
-          Neither exists: there is no analytics or tag script in the app, no third-party
-          measurement SDK, and no consent banner to express a preference through. Promising
-          an opt-out we never built is worse than having no analytics at all. Do not restore
-          the analytics sentence unless analytics actually ships — and if it does, it needs
-          a real consent mechanism before this paragraph can mention it. */}
+      {/* THE CONDITION THIS SECTION SET HAS NOW BEEN MET. It previously said
+          analytics must not be mentioned "unless analytics actually ships — and
+          if it does, it needs a real consent mechanism before this paragraph can
+          mention it". Google Analytics ships behind
+          components/analytics/AnalyticsConsent.tsx, which loads nothing at all
+          until the visitor accepts, and the control below genuinely clears the
+          choice. Every sentence here is checkable against that component; if it
+          is ever removed or made to load by default, this paragraph is wrong
+          first. */}
       <Section title="6. Cookies">
-        We use <strong>essential cookies only</strong> — they keep you signed in and maintain your session while you browse and book. We do not use analytics, advertising or tracking cookies, and we do not run any third-party measurement or advertising scripts on this site. Because every cookie we set is strictly necessary, there is no cookie consent banner and nothing to opt out of. You can block or clear cookies in your browser settings, but doing so will sign you out and prevent you from booking.
+        <strong>Essential cookies</strong> keep you signed in and maintain your session while you browse and book. They are always on, because without them you cannot book.
+        {" "}
+        <strong>Analytics are off until you turn them on.</strong> We ask once, in a banner at the bottom of the page. Only if you choose &ldquo;Allow analytics&rdquo; do we load Google Analytics, which tells us which pages people find useful and where they leave. Until you accept, no analytics script is loaded, no request is made to Google, and no analytics cookie is set — the tag is not on the page at all. Your choice is stored in your own browser and is never sent to us. We ask Google to anonymise your IP address, and we do not enable advertising, ad personalisation or remarketing features.
+        {" "}
+        We do not run any other third-party measurement or advertising scripts. You can change your mind at any time using the button below, and you can block or clear cookies in your browser settings — though doing so will sign you out and prevent you from booking.
       </Section>
+
+      {/* The promise above has to be operable, not merely stated. */}
+      <AnalyticsConsentControl />
 
       {/* KEEP THIS IN STEP WITH THE PRODUCT. This section previously promised
           "account details removed within 30 days", implying a self-service

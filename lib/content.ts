@@ -35,7 +35,7 @@
 // same lie in the other direction.
 export const LEGAL_LAST_UPDATED = {
   "/terms":                "2026-09-06",
-  "/privacy":              "2026-09-06",
+  "/privacy":              "2026-09-09",
   "/refund-policy":        "2026-09-06",
   "/cancellation-policy":  "2026-09-06",
   "/grievance-redressal":  "2026-09-04",

@@ -3,6 +3,7 @@ import { Inter, Playfair_Display } from "next/font/google";
 import "./globals.css";
 import { Navbar }     from "@/components/layout/Navbar";
 import { Footer }     from "@/components/layout/Footer";
+import { AnalyticsConsent } from "@/components/analytics/AnalyticsConsent";
 import { BottomNav }  from "@/components/app/BottomNav";
 import { Toaster }    from "@/components/ui/toaster";
 import { APP_NAME, APP_DESCRIPTION } from "@/lib/constants";
@@ -103,6 +104,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
         {/* Mobile bottom nav */}
         <BottomNav />
+
+        {/* Cookie banner and, only after a yes, the Google Analytics tag.
+            Client-side by design: the public pages are prerendered and served
+            from cache identically to everyone, so reading a consent cookie on
+            the server would make every route dynamic again. */}
+        <AnalyticsConsent />
 
         <Toaster />
       </body>

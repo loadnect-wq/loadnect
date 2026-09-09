@@ -70,6 +70,21 @@ const nextConfig: NextConfig = {
       "https://sandbox.cashfree.com",
     ].join(" ");
 
+    // Google Analytics, and it needs THREE directives, not one. gtag.js is
+    // fetched from googletagmanager.com, the hits go to google-analytics.com
+    // (and region-scoped *.analytics.google.com), and GA still falls back to an
+    // image beacon when a fetch is unavailable. Miss any one and analytics
+    // silently records nothing — the same shape as the form-action bug above,
+    // which blocked every payment with no server error at all.
+    //
+    // These hosts are listed even though gtag only loads after consent: the CSP
+    // is a static header and cannot know what a given visitor chose.
+    const googleAnalytics = {
+      script:  "https://www.googletagmanager.com",
+      connect: "https://www.google-analytics.com https://analytics.google.com https://*.analytics.google.com https://*.google-analytics.com",
+      img:     "https://www.google-analytics.com https://*.google-analytics.com",
+    };
+
     const csp = [
       "default-src 'self'",
       "base-uri 'self'",
@@ -81,11 +96,11 @@ const nextConfig: NextConfig = {
       // every payment, client-side, with nothing in the server logs. No payment
       // succeeded between this header shipping and this line being added.
       `form-action 'self' ${cashfree}`,
-      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://sdk.cashfree.com",
+      `script-src 'self' 'unsafe-inline' 'unsafe-eval' https://sdk.cashfree.com ${googleAnalytics.script}`,
       "style-src 'self' 'unsafe-inline'",
       "font-src 'self' data:",
-      `img-src 'self' data: blob: ${supabaseOrigin} https://*.supabase.co`,
-      `connect-src 'self' ${supabaseOrigin} https://*.supabase.co wss://*.supabase.co ${cashfree}`,
+      `img-src 'self' data: blob: ${supabaseOrigin} https://*.supabase.co ${googleAnalytics.img}`,
+      `connect-src 'self' ${supabaseOrigin} https://*.supabase.co wss://*.supabase.co ${cashfree} ${googleAnalytics.connect}`,
       // Cashfree renders its payment step in a frame.
       `frame-src 'self' ${cashfree}`,
     ].join("; ");
