@@ -213,10 +213,28 @@ export default async function AdminSettingsPage() {
                   {cashfree.credentialsError && !cashfree.modeKeyMismatch && (
                     <p className="mt-2 rounded-lg bg-white/70 p-2 text-[11px] text-red-800">{cashfree.credentialsError}</p>
                   )}
-                  {!cashfree.webhookSecretConfigured && (
+                  {/* THIS USED TO READ LIKE A MISCONFIGURATION AND IS NOT ONE.
+                      Cashfree's own documentation is explicit: "You need your
+                      Cashfree PG secret key and the payload to verify the
+                      signature" — PG webhooks are signed with the CLIENT
+                      SECRET, not with a separate dashboard-issued webhook
+                      secret. There is nothing to go and find. The old wording
+                      sent an operator hunting for a value that does not exist,
+                      on the settings page they check when unsure.
+                      https://www.cashfree.com/docs/payments/online/webhooks/signature-verification */}
+                  {!cashfree.webhookSecretConfigured ? (
                     <p className="mt-2 rounded-lg bg-white/70 p-2 text-[11px] text-charcoal-600">
-                      CASHFREE_WEBHOOK_SECRET is not set — webhook signatures are verified with the API secret key.
-                      Set it explicitly if your Cashfree dashboard shows a separate webhook secret.
+                      Webhook signatures are verified with the PG secret key, which is what Cashfree
+                      signs with. This is the correct setup — there is no separate webhook secret to
+                      configure. CASHFREE_WEBHOOK_SECRET is only needed to pin a specific key while
+                      rotating the API secret.
+                    </p>
+                  ) : (
+                    <p className="mt-2 rounded-lg bg-white/70 p-2 text-[11px] text-amber-800">
+                      CASHFREE_WEBHOOK_SECRET is set, so signatures are verified with THAT value and
+                      not with the PG secret key. Cashfree signs with the PG secret key, so this only
+                      works if the two are the same — clear it unless you set it deliberately to pin
+                      a key through a rotation.
                     </p>
                   )}
                   {/* WHO CAN ACTUALLY BE PAID. The Payouts credentials being
