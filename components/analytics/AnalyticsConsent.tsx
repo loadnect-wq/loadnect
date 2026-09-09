@@ -22,8 +22,15 @@
 // page must not assert what this particular visitor has already decided.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { useCallback, useEffect, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
+import { usePathname } from "next/navigation";
 import Script from "next/script";
+
+// The redaction rules, and why they are blunt, live in the module — they are
+// unit-tested there because "what leaves for Google" is not something to verify
+// by reading.
+import { redactUrl } from "@/lib/analytics/redact-url";
+
 
 /** Public by design — a GA measurement id ships in the page source of every
  *  site that uses one. It is an identifier, not a credential. */
@@ -180,6 +187,20 @@ export function AnalyticsConsent() {
     } catch { /* nothing to do */ }
   }, []);
 
+  // Client-side navigations, with the same redaction as the first load.
+  // The gtag config below sends the FIRST page_view itself (it has to — the tag
+  // is still loading when this effect first runs), so the first firing here is
+  // deliberately skipped rather than double-counting it.
+  const pathname = usePathname();
+  const sentFirst = useRef(false);
+  useEffect(() => {
+    if (consent !== "granted" || internal) return;
+    if (!sentFirst.current) { sentFirst.current = true; return; }
+    const g = (window as unknown as { gtag?: (...a: unknown[]) => void }).gtag;
+    if (typeof g !== "function") return;
+    g("event", "page_view", redactUrl(window.location.href));
+  }, [pathname, consent, internal]);
+
   const decide = useCallback((value: Exclude<Consent, "unknown">) => {
     try { window.localStorage.setItem(STORAGE_KEY, value); } catch { /* nothing to do */ }
     // Withdrawing consent has to remove what consent produced, or "off" is a
@@ -187,6 +208,15 @@ export function AnalyticsConsent() {
     if (value === "denied") clearAnalyticsCookies();
     emit();
   }, []);
+
+  // Computed at render, not in the template string, so the redaction lives in
+  // one function instead of being reimplemented inside a script literal. Only
+  // reached on the client: the server snapshot for consent is "unknown", so
+  // this branch never renders during SSR.
+  const initialPage =
+    typeof window === "undefined"
+      ? { page_location: "", page_path: "/" }
+      : redactUrl(window.location.href);
 
   return (
     <>
@@ -212,7 +242,15 @@ export function AnalyticsConsent() {
                 ad_personalization: 'denied',
                 analytics_storage: 'granted'
               });
-              gtag('config', '${MEASUREMENT_ID}', { anonymize_ip: true });
+              // page_location/page_path are pinned to the REDACTED values, so
+              // the initial page_view cannot carry a booking uuid or a Cashfree
+              // order id. GA uses these for the automatic first page_view; the
+              // effect above sends redacted ones for every navigation after.
+              gtag('config', '${MEASUREMENT_ID}', {
+                anonymize_ip: true,
+                page_location: ${JSON.stringify(initialPage.page_location)},
+                page_path: ${JSON.stringify(initialPage.page_path)}
+              });
             `}
           </Script>
         </>

@@ -31,10 +31,16 @@
 // can ask about a transfer nobody is sure was ever sent — Cashfree's own
 // guidance on a 5XX is "do not initiate another transaction, check the status".
 //
-// AUTHORIZATION mirrors the other maintenance routes exactly (either is
-// sufficient): a logged-in ADMIN, or a machine presenting CRON_SECRET as a
-// bearer token. With CRON_SECRET unset the header path is DISABLED — never a
-// blank-secret bypass. Takes no parameters and trusts no request body.
+// AUTHORIZATION mirrors the other maintenance routes exactly, and the two verbs
+// differ on purpose (see lib/cron-auth.ts):
+//
+//   • GET  → CRON_SECRET ONLY. It mutates payments.split_status, and a browser
+//            never attaches an Authorization header cross-origin, so there is
+//            nothing for an `<img src>` to forge.
+//   • POST → the secret OR a logged-in admin, for the on-demand button.
+//
+// With CRON_SECRET unset the header path is DISABLED — never a blank-secret
+// bypass. Takes no parameters and trusts no request body.
 //
 // READ-ONLY AGAINST CASHFREE. It sends no money and can never send money; the
 // only writes are to our own record of what Cashfree reported. That is what
@@ -106,13 +112,21 @@ export async function GET(request: Request) {
 }
 
 /**
- * An audit row, but ONLY when the run did something or broke.
+ * An audit row when the run did something — plus a DAILY HEARTBEAT when it did
+ * not.
  *
- * Every 15 minutes, an unconditional row would be 96 a day, burying the booking
- * sweep's entries in /admin/audit-logs. The cost of the condition is that a
- * quiet run leaves no trace, so "the cron stopped" is only visible as an
- * absence during periods when payouts were actually open — acceptable, because
- * an open payout is exactly when it matters.
+ * The heartbeat is the whole point, and leaving it out was a real mistake.
+ * Writing a row only when `checked > 0` sounds tidy and is useless exactly when
+ * it matters most: at launch there are no bookings and no payouts, so every run
+ * finds nothing, the condition never fires, and the audit log stays empty. An
+ * empty log then means, indistinguishably — the cron never ran, the cron ran and
+ * got a 401 because CRON_SECRET is unset, the cron ran and found nothing, or
+ * the path 404s. That is not a monitoring signal, it is the absence of one, and
+ * a job whose health cannot be told from its silence is not monitored at all.
+ *
+ * So: a row whenever there was work or an error, and otherwise at most one row
+ * per 23 hours saying "ran, nothing open". Quiet days cost one row; busy ones
+ * are recorded as they happen; 96 rows a day never happens.
  *
  * Never throws and never changes the response: an audit write is a record of
  * the work, not part of it.
@@ -121,22 +135,38 @@ async function recordReconcileRun(
   summary: { checked: number; settled: number; errors: number },
   thrown?: unknown,
 ): Promise<void> {
-  if (summary.checked === 0 && summary.errors === 0) return;
+  const didWork = summary.checked > 0 || summary.errors > 0;
   try {
     const { getSupabaseAdminClient } = await import("@/lib/supabase/admin");
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const db = getSupabaseAdminClient() as any;
+
+    if (!didWork) {
+      // 23h, not 24h: a 24h window against a job that runs on a fixed clock
+      // would drift into skipping a day entirely.
+      const since = new Date(Date.now() - 23 * 60 * 60 * 1000).toISOString();
+      const { data: recent, error: readErr } = await db.from("admin_audit_log")
+        .select("id")
+        .eq("action", "cron.payouts_reconcile")
+        .gte("created_at", since)
+        .limit(1);
+      // On a read error, WRITE. A duplicate heartbeat is noise; a skipped one
+      // is a gap that reads as a dead cron.
+      if (!readErr && recent && recent.length > 0) return;
+    }
+
     const { error } = await db.from("admin_audit_log").insert({
       actor_id:    null,
       actor_email: null,
       action:      "cron.payouts_reconcile",
       entity_type: "cron",
       new_status:  summary.errors > 0 ? "failed" : "ok",
-      reason:
-        `Checked ${summary.checked} open transfer(s), ${summary.settled} settled, ` +
-        `${summary.errors} error(s).` +
-        (thrown ? ` Threw: ${thrown instanceof Error ? thrown.message : String(thrown)}` : ""),
-      metadata:    { via: "cron", ...summary },
+      reason: didWork
+        ? `Checked ${summary.checked} open transfer(s), ${summary.settled} settled, ` +
+          `${summary.errors} error(s).` +
+          (thrown ? ` Threw: ${thrown instanceof Error ? thrown.message : String(thrown)}` : "")
+        : "Heartbeat: ran, no open transfers to reconcile.",
+      metadata:    { via: "cron", heartbeat: !didWork, ...summary },
     });
     if (error) console.error("[payouts-reconcile] audit write failed", error.code, error.message);
   } catch (e) {

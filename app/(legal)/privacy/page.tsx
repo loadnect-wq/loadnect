@@ -21,14 +21,20 @@ export default function PrivacyPage() {
         <a href={`mailto:${CONTACT.email}`} className="text-maroon-600 hover:underline">{CONTACT.email}</a>.
       </Section>
 
-      {/* This list claimed a fourth category — "usage data (pages visited, search queries,
-          device type, IP address for security)" — that nothing collects. There is no
-          analytics package, no page-view or search logging, and no migration defines an ip
-          or user_agent column anywhere; even OTP rate limiting keys on phone and account,
-          not IP. Declaring collection we do not perform is its own DPDP problem, so the
-          category is gone. If telemetry is ever added, put the category back FIRST. */}
+      {/* The usage-data category was REMOVED once, correctly: it described collection
+          nothing performed, and declaring collection you do not do is its own DPDP
+          problem. The note left behind said "If telemetry is ever added, put the category
+          back FIRST." Google Analytics then shipped (2026-09-09) and this list was not
+          updated — under-declaring, which is the worse direction of the same error. It is
+          back now, and scoped precisely to what actually happens: nothing until consent,
+          because components/analytics/AnalyticsConsent.tsx does not put the tag on the
+          page until then. Still true that no migration defines an ip or user_agent column
+          and that OTP rate limiting keys on phone and account, not IP — so the category is
+          third-party only, and says so. */}
       <Section title="2. Information We Collect">
         We collect: account information you provide (name, email, phone number); booking information (event date, hall selected, guests, payment transaction references); and venue owner information (business name, hall details, pricing, photos).
+        {" "}
+        <strong>Only if you accept analytics</strong>, Google Analytics also collects usage data on our behalf — which pages you visit, the page you arrived from, your device and browser type, and an approximate location derived from your IP address, which we ask Google to anonymise. That data is held by Google, not in our database; we store no page-view, search or IP log of our own. If you decline, or before you answer, none of it is collected at all.
       </Section>
 
       <Section title="3. How We Use Your Information">

@@ -201,11 +201,19 @@ turns both from latent into certain (`lib/payout-dispatch.ts`):
 "how long has this been in flight?" unanswerable. It is now written by the
 dispatch path only.
 
-**Audit rows are conditional.** The route writes one `admin_audit_log` row with
-action `cron.payouts_reconcile` only when a run checked something or hit an
-error. Unconditional rows would be 96 a day and would bury the booking sweep's
-entries. The tradeoff: a quiet run leaves no trace, so "the cron stopped" shows
-up only as an absence during periods when payouts were actually open.
+**Audit rows: on work, plus a daily heartbeat.** The route writes an
+`admin_audit_log` row with action `cron.payouts_reconcile` whenever a run
+checked something or hit an error, and otherwise at most one row per 23 hours
+saying "ran, nothing open" (`metadata.heartbeat = true`).
+
+The heartbeat is not decoration. Gating the row on `checked > 0` alone is
+useless exactly when it matters most: before the first booking there are no
+payouts, so every run finds nothing, the row is never written, and an empty
+audit log means — indistinguishably — the cron never ran, it ran and got a 401
+because `CRON_SECRET` is unset, it ran and found nothing, or the path 404s.
+**So the first thing to check after deploying this is that a
+`cron.payouts_reconcile` row appears within a day**, even with zero bookings.
+If it does not, the cron is not reaching the route.
 
 ## Running one now
 
