@@ -16,6 +16,7 @@ import {
   checkCommissionAgainstAdvance,
   ticketResponseSchema,
   couponCreateSchema,
+  couponLimitsSchema,
   parseSafe,
 } from "@/lib/validation/schemas";
 import { sanitizeError } from "@/lib/errors";
@@ -2124,6 +2125,112 @@ export async function stopCoupon(couponId: string): Promise<ActionResult> {
 /** Put a stopped coupon back into service. */
 export async function resumeCoupon(couponId: string): Promise<ActionResult> {
   return setCouponActive(couponId, true);
+}
+
+/**
+ * Change a live coupon's redemption cap and expiry.
+ *
+ * WHY THIS EXISTS. createCoupon could set both, and stopCoupon/resumeCoupon
+ * could switch a coupon off and on — but nothing could change the LIMITS once a
+ * coupon existed. So the only way to bound an uncapped code was to stop it and
+ * create a replacement under a different name, which breaks every link and
+ * poster already carrying the old one. LAUNCH2026 shipped uncapped and
+ * unexpiring for that reason, waiving the platform fee without limit.
+ *
+ * Both fields are OPTIONAL and blank means "no limit", exactly as on create —
+ * so this can also lift a cap, deliberately. The audit row records the before
+ * and after of both, because that pair is the whole commercial content of the
+ * change.
+ *
+ * The DATABASE is the real enforcement either way: guard_booking_coupon_integrity
+ * re-checks is_active, expiry and the redemption count on every booking INSERT,
+ * so a cap set here binds even against a booking that never went through
+ * resolveCoupon.
+ */
+export async function updateCouponLimits(couponId: string, input: {
+  maxRedemptions?: string;
+  expiresAt?: string;
+}): Promise<ActionResult> {
+  const actor = await requireAdminActor();
+  if (!actor.ok) return { error: actor.error };
+
+  const idErr = requireUuid(couponId, "coupon id");
+  if (idErr) return { error: idErr };
+
+  const parsed = parseSafe(couponLimitsSchema, input);
+  if (!parsed.ok) return { error: parsed.error };
+  const v = parsed.data;
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const db = actor.supabase as any;
+
+  const { data: before } = await db
+    .from("coupons")
+    .select("code, max_redemptions, expires_at")
+    .eq("id", couponId)
+    .maybeSingle();
+  if (!before) return { error: "Coupon not found." };
+
+  // REFUSE A CAP THAT IS ALREADY BEHIND. Setting max_redemptions below what has
+  // already been redeemed would not claw anything back — those bookings are
+  // paid and their fee is waived for good — it would only make the coupon dead
+  // on arrival while looking like it still had room. Say so instead.
+  if (v.maxRedemptions != null) {
+    const { count, error: countErr } = await db
+      .from("bookings")
+      .select("id", { count: "exact", head: true })
+      .eq("coupon_id", couponId)
+      .in("status", ["payment_success", "booking_requested", "owner_confirmed", "completed"]);
+    if (countErr || count == null) {
+      return { error: "Could not read how many times this coupon has been used." };
+    }
+    if (v.maxRedemptions < count) {
+      return {
+        error:
+          `This coupon has already been redeemed ${count} time${count === 1 ? "" : "s"}. ` +
+          `A cap below that would stop it immediately — enter ${count} or more, or stop the coupon.`,
+      };
+    }
+  }
+
+  // count:"exact" — an RLS-filtered UPDATE reports zero rows with NO error, so
+  // without this a non-admin would be told the limits had changed.
+  const { error, count } = await db
+    .from("coupons")
+    .update(
+      {
+        max_redemptions: v.maxRedemptions ?? null,
+        expires_at:      v.expiresAt ?? null,
+      },
+      { count: "exact" },
+    )
+    .eq("id", couponId);
+
+  if (error) return { error: sanitizeError(error, "admin") };
+  if (count === 0) return { error: "You do not have permission to change this coupon." };
+
+  const describe = (max: unknown, exp: unknown) =>
+    `${max == null ? "unlimited" : `${max} redemptions`}, ` +
+    `${exp == null ? "no expiry" : `expires ${String(exp).slice(0, 10)}`}`;
+
+  await recordAdminAction({
+    action:     "coupon.limits_changed",
+    entityType: "coupon",
+    entityId:   couponId,
+    // The audit page renders `reason` and not `metadata`, so the whole change
+    // has to be legible here.
+    reason:
+      `Coupon ${before.code}: ${describe(before.max_redemptions, before.expires_at)} ` +
+      `-> ${describe(v.maxRedemptions ?? null, v.expiresAt ?? null)}.`,
+    metadata: {
+      code: before.code,
+      previous: { max_redemptions: before.max_redemptions, expires_at: before.expires_at },
+      next:     { max_redemptions: v.maxRedemptions ?? null, expires_at: v.expiresAt ?? null },
+    },
+  });
+
+  revalidatePath("/admin/coupons");
+  return { success: true };
 }
 
 async function setCouponActive(couponId: string, active: boolean): Promise<ActionResult> {

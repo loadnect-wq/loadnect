@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/Badge";
 import { AdminPageHeader } from "../_components/AdminPageHeader";
 import { ConfirmButton } from "../_components/ConfirmButton";
 import { stopCoupon, resumeCoupon } from "../actions";
+import { EditCouponLimits } from "./_components/EditCouponLimits";
 import { CreateCouponForm } from "./_components/CreateCouponForm";
 
 export const metadata: Metadata = { title: "Coupons — Admin" };
@@ -141,7 +142,13 @@ export default async function AdminCouponsPage() {
                           </p>
                         </div>
 
-                        <div className="shrink-0">
+                        <div className="shrink-0 flex items-start gap-2">
+                          <EditCouponLimits
+                            couponId={c.id}
+                            code={c.code}
+                            maxRedemptions={c.max_redemptions ?? null}
+                            expiresAt={c.expires_at ?? null}
+                          />
                           {c.is_active ? (
                             <ConfirmButton
                               action={stopCoupon.bind(null, c.id)}

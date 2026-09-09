@@ -778,8 +778,17 @@ export const couponCreateSchema = z.object({
   // in-process tests passed, because they keep the key.
   maxRedemptions: z
     .union([z.string(), z.number(), z.null()])
-    .transform((v) =>
-      v === null || String(v).trim() === "" ? undefined : parseInt(String(v), 10))
+    .transform((v) => {
+      if (v === null || String(v).trim() === "") return undefined;
+      if (typeof v === "number") return v;
+      const s = String(v).trim();
+      // NOT a bare parseInt. parseInt("2.5") is 2 and parseInt("50%") is 50 —
+      // it stops at the first character it cannot use and returns what it has,
+      // so a typo silently became a DIFFERENT, valid-looking cap. An admin who
+      // typed 2.5 got a coupon that died after two redemptions. Only a clean
+      // run of digits is accepted; anything else becomes NaN and is refused.
+      return /^\d+$/.test(s) ? Number(s) : NaN;
+    })
     .refine((n) => n === undefined || (Number.isInteger(n) && n > 0),
       "Leave blank for unlimited, or enter a positive whole number.")
     .optional(),
@@ -789,6 +798,25 @@ export const couponCreateSchema = z.object({
     .refine((v) => v === undefined || /^\d{4}-\d{2}-\d{2}$/.test(v),
       "Enter a date as YYYY-MM-DD, or leave blank for no expiry.")
     .optional(),
+});
+
+/**
+ * Changing the limits on a coupon that already exists.
+ *
+ * Reuses couponCreateSchema's two limit fields verbatim — same union, same
+ * trailing .optional() for the missing-key case a server action produces, same
+ * meaning for blank. If these two ever disagree, a cap acceptable on the create
+ * form becomes a 500 on the edit form for the same typed value.
+ *
+ * `undefined` therefore means "clear it, back to unlimited / no expiry", which
+ * is the same thing blank means on create. That is a real thing an admin may
+ * want, so it is expressible rather than being silently treated as "leave
+ * alone" — the caller passes what the field shows, and what it shows is what
+ * gets stored.
+ */
+export const couponLimitsSchema = couponCreateSchema.pick({
+  maxRedemptions: true,
+  expiresAt:      true,
 });
 
 // ── Helper: parse safely and return ActionResult-shaped errors ───────────────
