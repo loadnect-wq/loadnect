@@ -76,6 +76,17 @@ export default async function OwnerHallsPage() {
                       <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-charcoal-600">
                         <span>👥 Up to {hall.capacity_max.toLocaleString("en-IN")}</span>
                         <span>💰 {formatPrice(hall.price_per_day)}/day</span>
+                        {/* The owner's own agreed rate, per hall. Shown as
+                            information, not as a control: it is changed from
+                            the edit form, where the "future bookings only"
+                            warning sits next to it. */}
+                        {hall.commission_rate != null ? (
+                          <span>Hallnect commission {hall.commission_rate}%</span>
+                        ) : (
+                          <span className="font-semibold text-amber-700">
+                            Commission not set
+                          </span>
+                        )}
                         {hall.is_premium && (
                           <span className="flex items-center gap-0.5 font-bold text-gold-600">
                             <Sparkles className="h-3 w-3" /> Premium

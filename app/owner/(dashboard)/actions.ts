@@ -17,8 +17,11 @@ import {
   normalizeAmenityName,
   CUSTOM_AMENITY_LIMITS,
   customAmenityListSchema,
+  commissionRateSchema,
 } from "@/lib/validation/schemas";
 import { sanitizeError } from "@/lib/errors";
+import { setHallCommissionRate, readHallCommissionRate } from "@/lib/hall-commission";
+import { recordOwnerAction } from "@/lib/audit";
 import { notifyBookingEvent, notifyHallSubmitted, notifyHallEdited } from "@/lib/notifications/events";
 import { normalizePhoneE164 } from "@/lib/notifications/phone";
 import { isCashfreeConfigured } from "@/lib/cashfree";
@@ -206,6 +209,9 @@ export async function createHall(data: {
   amenityIds:   string[];
   venueTypes:   string[];
   customAmenities?: string[];
+  /** One of HALL_COMMISSION_RATES. Required — hallCreateSchema rejects anything
+   *  else, and the halls_commission_rate_allowed CHECK rejects it again. */
+  commissionRate: number | string;
 }): Promise<ActionResult> {
   const { supabase, user } = await getAuthUser();
   if (!user) return { error: "Not authenticated" };
@@ -276,6 +282,11 @@ export async function createHall(data: {
     price_morning:  v.priceMorning ?? null,
     price_evening:  v.priceEvening ?? null,
     venue_types:    v.venueTypes,
+    // The owner's own commercial term. Taken from the PARSED value, so the
+    // eight-value bound has already been applied — the raw form string never
+    // reaches the database. The halls_commission_rate_allowed CHECK is the
+    // second line of defence for a request that never touched this action.
+    commission_rate: v.commissionRate,
     status: "pending_approval",
   });
 
@@ -346,6 +357,10 @@ export async function updateHall(hallId: string, data: {
   amenityIds:   string[];
   venueTypes:   string[];
   customAmenities?: string[];
+  /** Optional here, unlike on create. Omit it and the hall keeps the rate it
+   *  has; supply a different one and it is changed, audited, and applied to
+   *  FUTURE bookings only — existing bookings carry their own snapshot. */
+  commissionRate?: number | string;
 }): Promise<ActionResult> {
   const { supabase, user } = await getAuthUser();
   if (!user) return { error: "Not authenticated" };
@@ -368,6 +383,12 @@ export async function updateHall(hallId: string, data: {
     .select("status, name, city, address, capacity_max, price_per_day, venue_types")
     .eq("id", hallId)
     .maybeSingle();
+
+  // commission_rate is read SEPARATELY, through the service role, and is
+  // deliberately absent from the select above. Migration 0072 hides the column
+  // from anon and authenticated, so asking for it on the session client would
+  // fail the whole read and take the rest of the edit down with it.
+  const priorRate = await readHallCommissionRate(hallId);
 
   const { error, count } = await db
     .from("halls")
@@ -392,6 +413,45 @@ export async function updateHall(hallId: string, data: {
   // so an unguarded version reported a successful save that never happened.
   if ((count ?? 0) === 0) {
     return { error: "This hall could not be updated (it may not be yours)." };
+  }
+
+  // ── Commission rate ─────────────────────────────────────────────────────────
+  // Written only AFTER the update above returned a non-zero count. That count is
+  // the ownership proof: it came back through the session client, so RLS decided
+  // this hall is theirs. The write itself must then use the service role,
+  // because 0046's column-scoped UPDATE grant deliberately excludes money
+  // columns from what an owner may PATCH — which is also why an owner cannot
+  // change this value by talking to PostgREST directly and skipping the audit
+  // row below.
+  //
+  // Failure here does NOT fail the edit: the rest of the listing is already
+  // saved, and reporting a total failure would send the owner back to re-enter
+  // work that was persisted. It is reported instead.
+  if (data.commissionRate !== undefined && data.commissionRate !== "") {
+    const rateParsed = parseSafe(commissionRateSchema, data.commissionRate);
+    if (!rateParsed.ok) return { error: rateParsed.error };
+
+    const res = await setHallCommissionRate(hallId, rateParsed.data);
+    if (!res.ok) return { error: res.error };
+
+    if (res.changed) {
+      // Money changed hands differently from this moment on, so it is recorded
+      // against the person who did it. Existing bookings are untouched — each
+      // carries its own commission_rate snapshot taken at creation.
+      await recordOwnerAction({
+        action:         "hall.commission_changed",
+        entityType:     "hall",
+        entityId:       hallId,
+        previousStatus: res.previous == null ? "not configured" : `${res.previous}%`,
+        newStatus:      `${rateParsed.data}%`,
+        reason:
+          `Hallnect commission changed from ` +
+          `${res.previous == null ? "not configured" : `${res.previous}%`} to ` +
+          `${rateParsed.data}% by the hall owner. Applies to future bookings only; ` +
+          `existing bookings keep the rate they were made at.`,
+        metadata: { previous: res.previous, next: rateParsed.data, changedBy: "owner" },
+      });
+    }
   }
 
   // Sync amenities: delete existing, re-insert selected

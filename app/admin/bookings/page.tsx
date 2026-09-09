@@ -129,7 +129,31 @@ export default async function AdminBookingsPage({ searchParams }: Props) {
                         <p>{formatBookingDates(b.event_date, b.end_date)}</p>
                         <p className="text-[11px] text-charcoal-500">{SLOT_LABELS[b.slot] ?? b.slot}</p>
                       </Td>
-                      <Td className="font-semibold">{formatPrice(b.total_amount)}</Td>
+                      <Td className="font-semibold">
+                        {formatPrice(b.total_amount)}
+                        {/* THE BOOKING'S OWN SNAPSHOT, not the hall's rate
+                            today. If the owner has since changed their
+                            commission, these figures do not move — they are
+                            what this customer was actually charged against and
+                            what the owner is actually owed. */}
+                        {b.commission_rate != null && b.commission_amount != null ? (
+                          <span className="mt-1 block text-[11px] font-normal text-charcoal-500">
+                            <span className="block">
+                              Commission {b.commission_rate}% ·{" "}
+                              {formatPrice(b.commission_amount)}
+                            </span>
+                            {b.owner_net_advance != null && (
+                              <span className="block">
+                                Owner settlement {formatPrice(b.owner_net_advance)}
+                              </span>
+                            )}
+                          </span>
+                        ) : (
+                          <span className="mt-1 block text-[11px] font-normal italic text-charcoal-400">
+                            Commission not recorded
+                          </span>
+                        )}
+                      </Td>
                       <Td><Badge variant={cfg.variant} size="sm">{cfg.label}</Badge></Td>
                       <Td>
                         {["payment_success", "booking_requested", "owner_confirmed"].includes(b.status) && (

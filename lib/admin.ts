@@ -21,6 +21,7 @@
 // silently and returns an empty list instead.
 
 import { getSupabaseServerClient } from "@/lib/supabase/server";
+import { readHallCommissionRates, readBookingCommissions } from "@/lib/hall-commission";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import { getProfile } from "@/lib/auth";
 import { PLATFORM_FEE_RUPEES } from "@/lib/booking-payment";
@@ -78,6 +79,17 @@ export type AdminHallRow = {
   owner_business: string | null;
   custom_amenities: string[];
   created_at:     string;
+  /**
+   * The Hallnect commission this hall gives, or null when never configured.
+   *
+   * Merged in from a SEPARATE service-role query, never added to the select()
+   * below. Migration 0072 hides halls.commission_rate from `authenticated`, and
+   * this function runs on the session client — so naming the column in that
+   * select would raise 42703, which handleError swallows into `return []`,
+   * blanking both /admin/halls and the hall-approval queue with no visible
+   * error. One extra query per page is the cheaper failure mode.
+   */
+  commission_rate: number | null;
 };
 
 export type AdminBookingRow = {
@@ -95,6 +107,17 @@ export type AdminBookingRow = {
   /** The published policy version this customer accepted (0052). Null on
    *  bookings taken before it was recorded — see the column comment. */
   terms_version:  string | null;
+  /**
+   * The booking's OWN commission snapshot, merged in from a service-role read.
+   *
+   * Not part of the select() below and cannot be: migration 0032 hides these
+   * three columns from `authenticated`, which includes the admin's session.
+   * These are the figures the customer was actually charged against — if the
+   * hall's rate has changed since, these do not move.
+   */
+  commission_rate:   number | null;
+  commission_amount: number | null;
+  owner_net_advance: number | null;
 };
 
 export type AdminPaymentRow = {
@@ -529,6 +552,13 @@ export async function fetchAllHalls(statusFilter?: string): Promise<AdminHallRow
   const { data, error } = await query;
   if (error) { handleError("fetchAllHalls", error); return []; }
 
+  // One batched service-role read for the whole page, keyed by hall id — not a
+  // per-row lookup, which would be an N+1 against a table already queried.
+  const rates = await readHallCommissionRates(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (data ?? []).map((r: any) => r.id as string),
+  );
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return (data ?? []).map((row: any): AdminHallRow => {
     const imgs: { url: string; is_cover: boolean }[] = row.hall_images ?? [];
@@ -543,6 +573,7 @@ export async function fetchAllHalls(statusFilter?: string): Promise<AdminHallRow
       is_premium:     row.is_premium,
       capacity_max:   row.capacity_max,
       price_per_day:  Number(row.price_per_day),
+      commission_rate: rates.get(row.id) ?? null,
       rating_average: Number(row.rating_average),
       rating_count:   row.rating_count,
       cover_url:      coverUrl,
@@ -577,6 +608,13 @@ export async function fetchAllBookings(statusFilter?: string): Promise<AdminBook
   const { data, error } = await query;
   if (error) { handleError("fetchAllBookings", error); return []; }
 
+  // One batched service-role read for the page's money columns, which the
+  // session client above is not permitted to see (migration 0032).
+  const money = await readBookingCommissions(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (data ?? []).map((r: any) => r.id as string),
+  );
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return (data ?? []).map((row: any): AdminBookingRow => ({
     id:             row.id,
@@ -591,6 +629,9 @@ export async function fetchAllBookings(statusFilter?: string): Promise<AdminBook
     status:         row.status,
     created_at:     row.created_at,
     terms_version:  row.terms_version ?? null,
+    commission_rate:   money.get(row.id)?.rate ?? null,
+    commission_amount: money.get(row.id)?.amount ?? null,
+    owner_net_advance: money.get(row.id)?.ownerNetAdvance ?? null,
   }));
 }
 

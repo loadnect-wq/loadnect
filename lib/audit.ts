@@ -57,3 +57,55 @@ export async function recordAdminAction(entry: AuditEntry): Promise<void> {
     console.error("[audit] unexpected failure", e instanceof Error ? e.message : e);
   }
 }
+
+/**
+ * The same trail, for an action a HALL OWNER took on their own listing.
+ *
+ * WHY A SECOND FUNCTION RATHER THAN A FLAG. recordAdminAction writes through the
+ * session client, and admin_audit_log's INSERT policy is
+ * `is_admin() OR is_trusted_backend()` (migration 0025). An owner is neither, so
+ * every owner-initiated call to it is rejected by RLS — and because the error is
+ * logged and swallowed, the action would appear to succeed while leaving no
+ * trace at all. Silent is the worst outcome for an audit trail, so the write
+ * goes through the service-role client, which the policy does admit.
+ *
+ * THE ACTOR IS STILL TAKEN FROM THE SESSION, not from a parameter — the same
+ * guarantee this module opens with. Using the service role widens WHAT may be
+ * written, never WHO it may be attributed to; a caller still cannot pin an
+ * action on somebody else.
+ *
+ * Callers must have already established that the actor may do the thing being
+ * recorded. This function proves nothing about authorisation; it records a
+ * decision that was authorised elsewhere.
+ */
+export async function recordOwnerAction(entry: AuditEntry): Promise<void> {
+  try {
+    const supabase = await getSupabaseServerClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return; // not authenticated → nothing legitimate to record
+
+    const { getSupabaseAdminClient } = await import("@/lib/supabase/admin");
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const db = getSupabaseAdminClient() as any;
+
+    const { error } = await db.from("admin_audit_log").insert({
+      actor_id:        user.id,
+      actor_email:     user.email ?? null,
+      action:          entry.action.slice(0, 64),
+      entity_type:     entry.entityType.slice(0, 64),
+      entity_id:       entry.entityId ?? null,
+      previous_status: entry.previousStatus ?? null,
+      new_status:      entry.newStatus ?? null,
+      // The admin log page renders `reason` and does not select `metadata`, so
+      // anything that must be readable by a human belongs here.
+      reason:          entry.reason ? entry.reason.slice(0, 1000) : null,
+      metadata:        entry.metadata ?? null,
+    });
+
+    if (error && error.code !== "42P01" && error.code !== "PGRST205") {
+      console.error("[audit] failed to record owner action", entry.action, error.message);
+    }
+  } catch (e) {
+    console.error("[audit] unexpected owner-action failure", e instanceof Error ? e.message : e);
+  }
+}

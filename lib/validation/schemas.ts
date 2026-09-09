@@ -283,9 +283,77 @@ export const hallSchema = z
 
 export type HallInput = z.input<typeof hallSchema>;
 
+// ── Hallnect commission, chosen per hall by the owner ────────────────────────
+
+/**
+ * The only commission percentages a hall may carry.
+ *
+ * ONE declaration, exported, because this list has to agree in four places or
+ * the feature breaks in a different way at each: the selector the owner sees,
+ * this schema, the CHECK constraint in migration 0071, and the admin filter.
+ * A value that passes here but fails the CHECK is a 500 on a form the owner
+ * filled in correctly; one that passes the CHECK but is missing from the
+ * selector is a rate nobody can choose.
+ *
+ * WHY A FIXED SET AND NOT A RANGE. The commission is charged on the FULL hall
+ * price but retained out of the 25% advance, so rate and advance can cross —
+ * see MAX_COMMISSION_SHARE_OF_ADVANCE below, which caps the commission at half
+ * the advance. At the live 25% advance that ceiling is 12.5%, so every value
+ * here clears it with room to spare. A free-text percentage would have to be
+ * bounded against the advance at the point of entry by every owner
+ * independently, which is a worse design than eight buttons.
+ */
+export const HALL_COMMISSION_RATES = [1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5] as const;
+
+export type HallCommissionRate = (typeof HALL_COMMISSION_RATES)[number];
+
+/** True only for a value the database will also accept. */
+export function isAllowedCommissionRate(n: unknown): n is HallCommissionRate {
+  return typeof n === "number"
+    && (HALL_COMMISSION_RATES as readonly number[]).includes(n);
+}
+
+const COMMISSION_CHOICES = HALL_COMMISSION_RATES.join("%, ").concat("%");
+
+/**
+ * A commission rate as submitted by the owner's form.
+ *
+ * Accepts a number or the string an HTML control actually sends, and then
+ * admits ONLY the eight values — so "2.4999999", "2.5abc", 0, 6, -1, NaN, null
+ * and "" are all rejected with the same message rather than being coerced to
+ * something plausible. Membership is tested AFTER parseFloat, on the parsed
+ * number, because that is the value that reaches the database.
+ *
+ * Deliberately NOT a z.coerce.number(): coerce turns "" into 0, and 0 is a
+ * commission rate that would silently pay Hallnect nothing while looking like
+ * a valid choice.
+ */
+export const commissionRateSchema = z
+  .union([z.number(), z.string()])
+  .transform((v) => {
+    if (typeof v === "number") return v;
+    const s = String(v).trim();
+    // NOT parseFloat. parseFloat("2.5%") is 2.5 and parseFloat("2.5abc") is
+    // 2.5 — it stops at the first character it cannot use and returns what it
+    // has, so a string pretending to be a rate would sail through the
+    // membership test below. Only a clean decimal literal is accepted; anything
+    // else becomes NaN, which is in no allowed set.
+    return /^\d+(?:\.\d+)?$/.test(s) ? Number(s) : NaN;
+  })
+  .refine(isAllowedCommissionRate, `Choose one of ${COMMISSION_CHOICES}.`);
+
 // Owner-side input also has ownerId on create; edit doesn't need it.
+//
+// commissionRate lives HERE, on create only, and not on the shared hallSchema.
+// Two reasons, and they point the same way: it is required when a hall is
+// listed, and migration 0046's column-scoped UPDATE grant deliberately excludes
+// money columns, so updateHall could not write it through the session client
+// even if it were accepted. Changing the rate later is its own audited action.
 export const hallCreateSchema = hallSchema.and(
-  z.object({ ownerId: uuidSchema }),
+  z.object({
+    ownerId:        uuidSchema,
+    commissionRate: commissionRateSchema,
+  }),
 );
 
 // ── Custom amenities (owner-defined, scoped to one hall) ─────────────────────

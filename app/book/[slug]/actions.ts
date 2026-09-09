@@ -9,6 +9,7 @@ import { todayInBusinessTz, daysBetweenInclusive } from "@/lib/dates";
 import { startPaymentForBooking } from "@/lib/payments";
 import { isOnlinePaymentEnabled, isManualBookingAllowed } from "@/lib/platform-settings";
 import { getAdvancePercent, getCommissionPercent } from "@/lib/platform-settings";
+import { readHallCommissionRateStrict } from "@/lib/hall-commission";
 import { calculateBookingPayment, advanceFromTotal, PENDING_PAYMENT_TIMEOUT_MIN } from "@/lib/booking-payment";
 import { bookingSchema, paymentSessionSchema, uuidSchema, parseSafe } from "@/lib/validation/schemas";
 import { sanitizeError } from "@/lib/errors";
@@ -209,13 +210,33 @@ export async function createBookingRequest(
   //   • total_amount = the hall price. The customer pays a 25% ADVANCE of it
   //     now plus a flat ₹200 PLATFORM FEE (disclosed, non-refundable), and the
   //     balance directly at the venue.
-  //   • Hallnect's commission = 2.5% of the FULL HALL PRICE (rate from
-  //     platform_settings, never the client), RETAINED OUT OF the advance —
+  //   • Hallnect's commission = a percentage of the FULL HALL PRICE, taken from
+  //     THIS HALL's own agreed rate (falling back to platform_settings when the
+  //     hall has none), never from the client, RETAINED OUT OF the advance —
   //     the owner nets advance − commission at payout (lib/owner-payout.ts).
   //     It is never added on top of what the customer pays.
   // Every figure is computed by the ONE central calculation and snapshotted
   // onto the booking so later rate changes never touch this booking's money.
-  const commissionPercent = await getCommissionPercent();
+  // THE RATE COMES FROM THE HALL, and falls back to the platform setting only
+  // when this hall has never been configured.
+  //
+  // Read through the service role, not the session client: migration 0072 hides
+  // halls.commission_rate from `authenticated`, which is what a customer is —
+  // the whole point being that the commercial term between Hallnect and the
+  // venue is not the customer's business. Asking for it in the hall select
+  // above would fail that query outright.
+  //
+  // A READ FAILURE REFUSES THE BOOKING rather than falling back. The fallback
+  // path is for a hall with no rate configured, which is a real and expected
+  // state; it must not also absorb "the database did not answer", because that
+  // would quietly bill a different commission than the owner agreed to and
+  // snapshot the wrong number onto the booking forever.
+  const hallRate = await readHallCommissionRateStrict(v.hallId);
+  if (!hallRate.ok) {
+    return { error: "We could not confirm the pricing for this venue. Please try again." };
+  }
+  const platformCommissionPercent = await getCommissionPercent();
+  const commissionPercent = hallRate.rate ?? platformCommissionPercent;
   const advancePercent    = await getAdvancePercent();
   const totalAmount       = baseAmount;
 

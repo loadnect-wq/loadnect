@@ -5,6 +5,7 @@ import { Building2, ExternalLink, Sparkles } from "lucide-react";
 import { fetchAllHalls } from "@/lib/admin";
 import { formatPrice } from "@/lib/mock-data";
 import { Badge } from "@/components/ui/Badge";
+import { HALL_COMMISSION_RATES } from "@/lib/validation/schemas";
 import { AdminPageHeader } from "../_components/AdminPageHeader";
 import { ConfirmButton } from "../_components/ConfirmButton";
 import { ReasonButton } from "../_components/ReasonButton";
@@ -32,7 +33,18 @@ function fmtDate(iso: string) {
   return new Date(iso).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
 }
 
-type Props = { searchParams: Promise<{ status?: string }> };
+type Props = { searchParams: Promise<{ status?: string; commission?: string }> };
+
+/**
+ * Commission filter options. "unset" is the one that earns its place: a hall
+ * with no configured rate bills at the platform default, which is a commercial
+ * term nobody agreed to, so admin needs to be able to list exactly those.
+ */
+const COMMISSION_FILTERS = [
+  { key: "all",   label: "All rates" },
+  { key: "unset", label: "Not configured" },
+  ...HALL_COMMISSION_RATES.map((r) => ({ key: String(r), label: `${r}%` })),
+] as const;
 
 export default async function AdminHallsPage({ searchParams }: Props) {
   // ASSERTS ITS OWN ROLE. The layout also calls requireRole, but a layout and
@@ -43,10 +55,26 @@ export default async function AdminHallsPage({ searchParams }: Props) {
   // denial now logs at error level, which would bury real failures. Guarding
   // here also means this page is not relying on a file it does not control.
   await requireRole(["admin"]);
-  const { status } = await searchParams;
+  const { status, commission } = await searchParams;
   const activeFilter = FILTERS.find((f) => f.key === status) ?? FILTERS[0];
+  const activeCommission =
+    COMMISSION_FILTERS.find((f) => f.key === commission) ?? COMMISSION_FILTERS[0];
 
-  const halls = await fetchAllHalls(activeFilter.value);
+  const allHalls = await fetchAllHalls(activeFilter.value);
+
+  // Filtered in memory, not in the query: the rate is not readable by the
+  // session client this page's query runs on (migration 0072), so it arrives
+  // merged in from a service-role read afterwards. These pages are already
+  // fully materialised — fetchAllHalls has no pagination — so this costs
+  // nothing beyond an array pass.
+  const halls =
+    activeCommission.key === "all"
+      ? allHalls
+      : activeCommission.key === "unset"
+        ? allHalls.filter((h) => h.commission_rate == null)
+        : allHalls.filter((h) => h.commission_rate === Number(activeCommission.key));
+
+  const unconfigured = allHalls.filter((h) => h.commission_rate == null).length;
 
   return (
     <div>
@@ -73,6 +101,39 @@ export default async function AdminHallsPage({ searchParams }: Props) {
               {f.label}
             </Link>
           ))}
+        </div>
+
+        {/* Commission filter. Kept on its own row and visually lighter than the
+            status chips above: status is the primary axis of this page and the
+            commission rate is a secondary lens on it. Both are carried in the
+            query string so a filtered view is linkable. */}
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-[11px] font-semibold uppercase tracking-wide text-charcoal-400">
+            Commission
+          </span>
+          {COMMISSION_FILTERS.map((f) => {
+            const params = new URLSearchParams();
+            if (activeFilter.key !== "all") params.set("status", activeFilter.key);
+            if (f.key !== "all") params.set("commission", f.key);
+            const qs = params.toString();
+            return (
+              <Link
+                key={f.key}
+                href={qs ? `?${qs}` : "?"}
+                className={[
+                  "rounded-full border px-2.5 py-0.5 text-[11px] font-semibold tabular-nums",
+                  activeCommission.key === f.key
+                    ? "border-maroon-700 bg-maroon-700 text-white"
+                    : f.key === "unset" && unconfigured > 0
+                      ? "border-amber-300 bg-amber-50 text-amber-800 hover:border-amber-400"
+                      : "border-border bg-white text-charcoal-600 hover:border-maroon-300",
+                ].join(" ")}
+              >
+                {f.label}
+                {f.key === "unset" && unconfigured > 0 && ` (${unconfigured})`}
+              </Link>
+            );
+          })}
         </div>
 
         {halls.length === 0 ? (
@@ -117,6 +178,19 @@ export default async function AdminHallsPage({ searchParams }: Props) {
                       <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-charcoal-600">
                         <span>👥 Up to {h.capacity_max.toLocaleString("en-IN")}</span>
                         <span>💰 {formatPrice(h.price_per_day)}/day</span>
+                        {/* The commercial term, not a customer-facing figure.
+                            Amber rather than neutral when unset: such a hall
+                            bills at the platform default, which nobody agreed
+                            to, so it should read as needing attention. */}
+                        {h.commission_rate != null ? (
+                          <span className="font-semibold text-charcoal-700">
+                            Commission {h.commission_rate}%
+                          </span>
+                        ) : (
+                          <span className="font-semibold text-amber-700">
+                            Commission not configured
+                          </span>
+                        )}
                         {h.rating_count > 0 && (
                           <span>⭐ {h.rating_average.toFixed(1)} ({h.rating_count})</span>
                         )}

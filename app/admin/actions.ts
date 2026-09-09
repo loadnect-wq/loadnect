@@ -19,6 +19,7 @@ import {
   parseSafe,
 } from "@/lib/validation/schemas";
 import { sanitizeError } from "@/lib/errors";
+import { maxConfiguredCommissionRate } from "@/lib/hall-commission";
 import { SUSPENSION_BAN_DURATION } from "@/lib/constants";
 import { recordAdminAction } from "@/lib/audit";
 import { createCashfreeRefund, getCashfreeRefund, classifyRefundStatus } from "@/lib/cashfree";
@@ -1126,6 +1127,25 @@ export async function updatePlatformPaymentSettings(input: {
   const liveRates = await readMoneyPercents(db);
   const bound = checkCommissionAgainstAdvance(liveRates.commission, advancePct, "advance");
   if (!bound.ok) return { error: bound.error };
+
+  // AND AGAINST THE HIGHEST RATE ANY HALL ACTUALLY CARRIES, which since halls
+  // gained their own commission_rate is no longer the platform figure above.
+  // An advance that clears the platform default can still be too small for a
+  // hall that agreed to more, and nothing would surface that until a customer
+  // tried to book THAT hall and calculateBookingPayment threw at checkout —
+  // one venue silently unbookable, with the settings page reporting success.
+  const highest = await maxConfiguredCommissionRate();
+  if (highest != null && highest > liveRates.commission) {
+    const hallBound = checkCommissionAgainstAdvance(highest, advancePct, "advance");
+    if (!hallBound.ok) {
+      return {
+        error:
+          `${hallBound.error} (The highest commission any hall currently gives is ` +
+          `${highest}%, which is what this has to cover — not the ${liveRates.commission}% ` +
+          `platform default.)`,
+      };
+    }
+  }
 
   const { error } = await db.from("platform_settings").upsert(
     {

@@ -2,6 +2,7 @@
 
 import { useRef, useState, useTransition } from "react";
 import { SERVICE_AREA_CITIES } from "@/lib/seo/service-areas";
+import { HALL_COMMISSION_RATES } from "@/lib/validation/schemas";
 import { useRouter } from "next/navigation";
 import { ImagePlus, Plus, Sparkles, Star, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
@@ -39,6 +40,18 @@ const VENUE_TYPE_OPTIONS = [
 // so an approved venue in any of them would have put a 404 in the sitemap.
 const CITIES = SERVICE_AREA_CITIES;
 
+/**
+ * numeric(4,2) arrives from PostgREST as a STRING — 2.5 round-trips as "2.50",
+ * which matches no button below and would render a configured hall as
+ * unconfigured. Parse before comparing, and accept only a rate we actually
+ * offer so an unrecognised value reads as "not set" rather than as itself.
+ */
+function normaliseRate(raw: unknown): number | null {
+  if (raw == null) return null;
+  const n = typeof raw === "number" ? raw : Number(String(raw).trim());
+  return (HALL_COMMISSION_RATES as readonly number[]).includes(n) ? n : null;
+}
+
 export function HallForm({ ownerId, amenities, hall }: Props) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -54,6 +67,12 @@ export function HallForm({ ownerId, amenities, hall }: Props) {
   const [priceDay,     setPriceDay]     = useState(String(hall?.price_per_day ?? ""));
   const [priceMorn,    setPriceMorn]    = useState(String(hall?.price_morning ?? ""));
   const [priceEven,    setPriceEven]    = useState(String(hall?.price_evening ?? ""));
+
+  // Null until the owner actively chooses. NOT defaulted to a rate: silently
+  // pre-selecting one would pick a commercial term on their behalf and they
+  // would never know they had agreed to it.
+  const [commissionRate, setCommissionRate] =
+    useState<number | null>(normaliseRate(hall?.commission_rate));
   const [description,  setDescription]  = useState(hall?.description   ?? "");
   const [selectedAms,  setSelectedAms]  = useState<Set<string>>(new Set(hall?.amenity_ids ?? []));
   // Which event types this venue serves. Drives the homepage category tiles
@@ -183,6 +202,10 @@ export function HallForm({ ownerId, amenities, hall }: Props) {
       amenityIds: [...selectedAms],
       venueTypes: [...venueTypes],
       customAmenities: customAms,
+      // Sent as a number the schema will re-check server-side. On edit this may
+      // be the value it already had, which setHallCommissionRate treats as a
+      // no-op rather than an audit-worthy change.
+      commissionRate: commissionRate ?? "",
     };
     startTransition(async () => {
       const result = hall
@@ -346,6 +369,63 @@ export function HallForm({ ownerId, amenities, hall }: Props) {
         {venueTypes.size === 0 && (
           <p className="text-xs font-medium text-amber-700">
             Choose at least one — otherwise your hall will not appear under any category.
+          </p>
+        )}
+      </FormSection>
+
+      {/* Hallnect commission — the owner's own commercial term, chosen per hall.
+          Deliberately NOT pre-selected: a default here would agree to a rate on
+          their behalf. The eight values come from HALL_COMMISSION_RATES, the
+          same list the server schema and the database CHECK use, so the three
+          can never drift apart. */}
+      <FormSection title="Hallnect Commission">
+        <p className="-mt-1 text-xs text-charcoal-500">
+          Choose the commission percentage you are willing to give Hallnect for bookings made
+          through our platform. It is retained from the advance we collect — never charged on
+          top of your price, and never shown to customers.
+        </p>
+        <div
+          role="radiogroup"
+          aria-label="Hallnect commission percentage"
+          aria-required="true"
+          className="grid grid-cols-4 gap-2"
+        >
+          {HALL_COMMISSION_RATES.map((rate) => {
+            const on = commissionRate === rate;
+            return (
+              <button
+                key={rate}
+                type="button"
+                role="radio"
+                aria-checked={on}
+                onClick={() => setCommissionRate(rate)}
+                className={`min-h-[44px] rounded-xl border px-2 text-sm font-semibold tabular-nums transition-colors ${
+                  on
+                    ? "border-maroon-500 bg-maroon-50 text-maroon-800"
+                    : "border-border bg-white text-charcoal-700 hover:border-maroon-300"
+                }`}
+              >
+                {rate}%
+              </button>
+            );
+          })}
+        </div>
+
+        {commissionRate == null ? (
+          <p className="text-xs font-medium text-amber-700">
+            {hall
+              ? "This hall has no commission rate set yet. Choose one so bookings use your rate rather than the platform default."
+              : "Choose a commission rate — it is required to list your hall."}
+          </p>
+        ) : (
+          <p className="text-xs text-charcoal-600">
+            Selected: <strong className="text-charcoal-900">{commissionRate}%</strong>
+            {hall && (
+              <>
+                {" — "}changing this applies to <strong>future bookings only</strong>. Bookings
+                you already have keep the rate they were made at.
+              </>
+            )}
           </p>
         )}
       </FormSection>
