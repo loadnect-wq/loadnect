@@ -33,6 +33,43 @@ const MEASUREMENT_ID =
 const STORAGE_KEY = "hn_analytics_consent";
 type Consent = "granted" | "denied" | "unknown";
 
+/**
+ * Deletes the cookies Google Analytics set, on withdrawal.
+ *
+ * FOUND BY TESTING THE DECLINE PATH, not by reading the code. Declining stops
+ * the tag loading — verified, zero requests — but it did nothing about cookies
+ * an EARLIER acceptance had already caused. So a visitor who said yes and then
+ * changed their mind kept _ga and _ga_<id> in their browser, while the banner
+ * told them analytics was off and the policy said they could change their mind.
+ * Both were then true only about the future.
+ *
+ * A cookie can only be deleted with the domain and path it was set on, and GA
+ * sets them on the registrable domain, so every plausible variant is tried
+ * rather than guessed at. Deleting a cookie that does not exist is a no-op.
+ */
+function clearAnalyticsCookies() {
+  try {
+    const host = window.location.hostname;
+    const parts = host.split(".");
+    const domains = [
+      undefined,                                   // exactly as set, host-only
+      host,
+      `.${host}`,
+      ...(parts.length > 2
+        ? [parts.slice(-2).join("."), `.${parts.slice(-2).join(".")}`]
+        : []),
+    ];
+    for (const raw of document.cookie.split(";")) {
+      const name = raw.trim().split("=")[0];
+      if (!name.startsWith("_ga")) continue;
+      for (const d of domains) {
+        document.cookie =
+          `${name}=; Max-Age=0; path=/` + (d ? `; domain=${d}` : "");
+      }
+    }
+  } catch { /* storage blocked; nothing to clear */ }
+}
+
 function read(): Consent {
   try {
     const v = window.localStorage.getItem(STORAGE_KEY);
@@ -61,6 +98,9 @@ export function AnalyticsConsent() {
 
   const decide = useCallback((value: Exclude<Consent, "unknown">) => {
     try { window.localStorage.setItem(STORAGE_KEY, value); } catch { /* nothing to do */ }
+    // Withdrawing consent has to remove what consent produced, or "off" is a
+    // statement about the future only.
+    if (value === "denied") clearAnalyticsCookies();
     emit();
   }, []);
 
@@ -139,5 +179,7 @@ export function AnalyticsConsent() {
  *  promises "you can change your mind" has to actually provide. */
 export function resetAnalyticsConsent() {
   try { window.localStorage.removeItem(STORAGE_KEY); } catch { /* nothing to do */ }
+  // Back to undecided means back to not measured, until they answer again.
+  clearAnalyticsCookies();
   emit();
 }
