@@ -16,7 +16,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Building2, MapPin, Users, Wallet } from "lucide-react";
 import { fetchHalls } from "@/lib/halls";
-import { hasPrice } from "@/lib/booking-mode";
+import { hasPrice, isLeadGeneration } from "@/lib/booking-mode";
 import { getAdvancePercent } from "@/lib/platform-settings";
 import { HallCard } from "@/app/halls/_components/HallCard";
 import { AppHeader } from "@/components/app/AppHeader";
@@ -38,7 +38,28 @@ type Props = { params: Promise<{ city: string }> };
  * advertisement, and a city page is exactly where a searcher forms the
  * impression. Same reasoning as APP_DESCRIPTION in lib/constants.ts.
  */
-function describeCity(city: string, venueCount: number, priceFrom: number | null): string {
+/**
+ * True when EVERY venue listed in this city takes enquiries rather than
+ * bookings — so the page must not advertise a checkout none of them has.
+ *
+ * An EMPTY list is false, not true: "no venues" must not be described as "all
+ * of them are enquiry-only". The zero-venue branch of describeCity has its own
+ * copy and never reaches the claim.
+ */
+function allLead(halls: { booking_mode: string }[]): boolean {
+  return halls.length > 0 && halls.every((h) => isLeadGeneration(h.booking_mode));
+}
+
+function describeCity(
+  city: string,
+  venueCount: number,
+  priceFrom: number | null,
+  // TRUE only when EVERY venue in this city takes enquiries rather than
+  // bookings. A mixed city keeps the "book online" claim because it is true of
+  // some of its venues; a city where none of them can be booked online must not
+  // print it in the description Google shows.
+  allLeadGeneration = false,
+): string {
   if (venueCount === 0) {
     return (
       `Looking for a wedding hall in ${city}? Hallnect is adding ${city} venues — ` +
@@ -49,7 +70,10 @@ function describeCity(city: string, venueCount: number, priceFrom: number | null
   const noun = venueCount === 1 ? "venue" : "venues";
   return (
     `Compare ${venueCount} owner-listed wedding ${noun} in ${city}${price} — real photos, ` +
-    `guest capacity, amenities and live availability. Book your date online with Hallnect.`
+    `guest capacity, amenities and live availability. ` +
+    (allLeadGeneration
+      ? `Send an enquiry and the venue will confirm your date.`
+      : `Book your date online with Hallnect.`)
   );
 }
 
@@ -69,7 +93,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
   return buildMetadata({
     title: `Wedding Halls in ${city} | Marriage Halls & Venues`,
-    description: describeCity(city, inventory?.venueCount ?? 0, priceFrom),
+    description: describeCity(city, inventory?.venueCount ?? 0, priceFrom, allLead(halls)),
     path: `/wedding-halls/${citySlug(city)}`,
     // The gate: no inventory, no index.
     indexable: Boolean(inventory?.indexable),
@@ -133,7 +157,7 @@ export default async function CityPage({ params }: Props) {
   const pricedFrom = halls.map((h) => h.price_per_day).filter(hasPrice);
   const priceFrom = pricedFrom.length ? Math.min(...pricedFrom) : null;
   const largest = halls.length ? Math.max(...halls.map((h) => h.capacity_max)) : null;
-  const description = describeCity(city, halls.length, priceFrom);
+  const description = describeCity(city, halls.length, priceFrom, allLead(halls));
 
   // FAQs answered from THIS city's real numbers, and rendered visibly below —
   // which is what makes the FAQPage markup legitimate.

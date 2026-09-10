@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { calculateLeadCommission } from "@/lib/leads";
 import { isCommissionOrderId, COMMISSION_ORDER_PREFIX } from "@/lib/commission-payments";
 import { isPlanOrderId } from "@/lib/plan-payments";
+import { venueDescription } from "@/lib/seo/venue";
 import {
   toBookingMode, isLeadGeneration, formatHallPrice, hasPrice,
   primaryCtaHref, primaryCtaLabel, PRICE_ON_REQUEST,
@@ -292,6 +293,52 @@ describe("hallSchema — pricing follows the booking mode", () => {
       ...base, bookingMode: "LEAD_GENERATION", pricePerDay: "50000", priceMorning: "75000",
     });
     expect(r.success).toBe(false);
+  });
+});
+
+describe("what Google is told about a lead venue", () => {
+  // A meta description is not decoration — it is the sentence a couple reads
+  // in the search result before they click. Promising a checkout a venue does
+  // not have brings someone to the page expecting to book and hands them a
+  // form instead. Caught on the FIRST REAL LISTING: the live description ended
+  // "Book your date online" for a venue that cannot be booked online.
+  const base = {
+    name: "Sri Meenakshi Mahal",
+    slug: "sri-meenakshi-mahal-madurai",
+    city: "Madurai",
+    state: "Tamil Nadu",
+    address: "1 Temple St",
+    description: null,
+    capacity_max: 1000,
+    price_per_day: 100_000,
+    rating_average: 0,
+    rating_count: 0,
+    amenities: [] as { name: string }[],
+  };
+
+  it("does NOT promise online booking for a lead venue", () => {
+    const d = venueDescription({
+      ...base, booking_mode: "LEAD_GENERATION",
+    } as unknown as Parameters<typeof venueDescription>[0]);
+    expect(d).not.toMatch(/book your date online/i);
+    expect(d).toMatch(/enquiry/i);
+  });
+
+  it("still promises it for a direct-booking venue", () => {
+    const d = venueDescription({
+      ...base, booking_mode: "DIRECT_BOOKING",
+    } as unknown as Parameters<typeof venueDescription>[0]);
+    expect(d).toMatch(/book your date online/i);
+  });
+
+  it("drops the price clause entirely when a lead venue publishes none", () => {
+    // inr(null) would read "from Rs.0 per day" — an advertised price of zero
+    // on a wedding hall, in the snippet Google prints.
+    const d = venueDescription({
+      ...base, booking_mode: "LEAD_GENERATION", price_per_day: null,
+    } as unknown as Parameters<typeof venueDescription>[0]);
+    expect(d).not.toMatch(/from ₹\s*0|Rs\.?\s*0/i);
+    expect(d).toMatch(/contact the venue for pricing/i);
   });
 });
 

@@ -9,7 +9,7 @@
 
 import type { HallDetail } from "@/lib/halls";
 import { clamp } from "./metadata";
-import { hasPrice } from "@/lib/booking-mode";
+import { hasPrice, isLeadGeneration } from "@/lib/booking-mode";
 
 const inr = (n: number) => `₹${Math.round(n).toLocaleString("en-IN")}`;
 
@@ -53,7 +53,16 @@ export function venueDescription(hall: HallDetail): string {
     if (amenities.length) {
       bits.push(`Facilities include ${amenities.join(", ")}.`);
     }
-    bits.push("Check live availability and book your date online.");
+    // "book your date online" IS NOT TRUE OF A LEAD VENUE. Hallnect takes no
+    // payment for one and holds no date — the customer sends an enquiry and the
+    // venue arranges it directly. This sentence is the meta description Google
+    // prints under the result, so promising a checkout that does not exist
+    // brings someone to the page expecting to book and hands them a form.
+    bits.push(
+      isLeadGeneration(hall.booking_mode)
+        ? "Send an enquiry and the venue will confirm your date."
+        : "Check live availability and book your date online.",
+    );
   }
 
   return clamp(bits.join(" "), 158);
