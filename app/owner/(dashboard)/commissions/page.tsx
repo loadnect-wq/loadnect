@@ -12,7 +12,13 @@ import { Badge } from "@/components/ui/Badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { buttonVariants } from "@/components/ui/Button";
 import { AppHeader } from "@/components/app/AppHeader";
-import { DEFAULT_COMMISSION_PERCENT } from "@/lib/booking-payment";
+// NOT DEFAULT_COMMISSION_PERCENT. That constant is the COMPILE-TIME fallback
+// for when the settings row cannot be read; the live platform rate is
+// platform_settings.commission_percent, and the two are not equal — the
+// constant says 2.5 while the database says 1.5. Quoting the constant told
+// every owner a rate Hallnect does not charge, on the page about what they
+// are charged.
+import { getCommissionPercent } from "@/lib/platform-settings";
 import { fetchCommissionPayments } from "@/lib/commission-payments";
 import { PayCommission } from "./_components/PayCommission";
 
@@ -82,9 +88,10 @@ export default async function OwnerCommissionsPage() {
 
   const halls   = await fetchOwnerHalls(ownerRow.id);
   const hallIds = halls.map((h) => h.id);
-  const [allCommissions, adjustments] = await Promise.all([
+  const [allCommissions, adjustments, platformRate] = await Promise.all([
     fetchOwnerCommissions(hallIds),
     fetchOwnerSettlementAdjustments(ownerRow.id),
+    getCommissionPercent(),
   ]);
 
   // THE SPLIT. lead_id is the discriminator, guaranteed by commissions_one_source
@@ -173,7 +180,7 @@ export default async function OwnerCommissionsPage() {
             On a <strong>direct booking</strong>, Hallnect&apos;s commission is kept out of the
             customer&apos;s advance automatically when you accept it. You are never invoiced for
             it, there is no due date, and nothing is ever deducted from a later settlement. The
-            default rate is {DEFAULT_COMMISSION_PERCENT}% of the hall price; your own venues may
+            default rate is {platformRate}% of the hall price; your own venues may
             have their own agreed rate. The statement below is a record of what was deducted, for
             your books.
             {leadCommissions.length > 0 && (
