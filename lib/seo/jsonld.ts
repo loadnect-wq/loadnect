@@ -134,7 +134,8 @@ export type VenueJsonLdInput = {
   latitude: number | null;
   longitude: number | null;
   capacityMax: number;
-  pricePerDay: number;
+  /** Null for a lead-generation venue that publishes no price. */
+  pricePerDay: number | null;
   ratingAverage: number;
   ratingCount: number;
   images: { url: string; alt: string | null }[];
@@ -180,7 +181,15 @@ export function venueJsonLd(v: VenueJsonLdInput) {
       value: true,
     })),
     // priceRange is a plain string in Schema.org; this is the real day rate.
-    priceRange: `INR ${Math.round(v.pricePerDay).toLocaleString("en-IN")} per day`,
+    // OMITTED, not zeroed, for a venue that publishes no price: Math.round(null)
+    // is 0, and "INR 0 per day" is a structured-data claim that this wedding
+    // hall is free — published to Google, in a field it may show in a rich
+    // result. compact() drops undefined keys, so an absent price simply means
+    // no priceRange rather than a false one.
+    priceRange:
+      v.pricePerDay != null && Number.isFinite(v.pricePerDay) && v.pricePerDay > 0
+        ? `INR ${Math.round(v.pricePerDay).toLocaleString("en-IN")} per day`
+        : undefined,
     aggregateRating: hasRatings
       ? compact({
           "@type": "AggregateRating",

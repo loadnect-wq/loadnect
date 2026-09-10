@@ -2,7 +2,8 @@
 
 import { useRef, useState, useTransition } from "react";
 import { SERVICE_AREA_CITIES } from "@/lib/seo/service-areas";
-import { HALL_COMMISSION_RATES } from "@/lib/validation/schemas";
+import { HALL_COMMISSION_RATES, BOOKING_MODES } from "@/lib/validation/schemas";
+import { toBookingMode, type BookingMode } from "@/lib/booking-mode";
 import { useRouter } from "next/navigation";
 import { ImagePlus, Plus, Sparkles, Star, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
@@ -65,6 +66,15 @@ export function HallForm({ ownerId, amenities, hall }: Props) {
   const [capMin,       setCapMin]       = useState(String(hall?.capacity_min  ?? ""));
   const [capMax,       setCapMax]       = useState(String(hall?.capacity_max  ?? ""));
   const [priceDay,     setPriceDay]     = useState(String(hall?.price_per_day ?? ""));
+  // DEFAULTS TO DIRECT_BOOKING for a NEW hall, unlike the commission rate,
+  // which is deliberately unset. The two are different kinds of choice: a
+  // commission is a commercial term nobody may agree to on the owner's behalf,
+  // whereas a booking mode has a right answer for almost every venue and one of
+  // the two radios has to be on for the control to make sense. On EDIT the
+  // hall's stored mode wins, so opening and saving the form cannot silently
+  // switch a live listing.
+  const [bookingMode,  setBookingMode]  =
+    useState<BookingMode>(toBookingMode(hall?.booking_mode));
   const [priceMorn,    setPriceMorn]    = useState(String(hall?.price_morning ?? ""));
   const [priceEven,    setPriceEven]    = useState(String(hall?.price_evening ?? ""));
 
@@ -206,6 +216,7 @@ export function HallForm({ ownerId, amenities, hall }: Props) {
       // be the value it already had, which setHallCommissionRate treats as a
       // no-op rather than an audit-worthy change.
       commissionRate: commissionRate ?? "",
+      bookingMode,
     };
     startTransition(async () => {
       const result = hall
@@ -312,11 +323,84 @@ export function HallForm({ ownerId, amenities, hall }: Props) {
         </div>
       </FormSection>
 
+      {/* Booking mode — placed immediately BEFORE pricing because it decides
+          whether pricing is required, and a control that changes the rules of
+          the field below it has to be read first. */}
+      <FormSection title="How do you want to take bookings?">
+        <div className="grid gap-2 sm:grid-cols-2">
+          {BOOKING_MODES.map((mode) => {
+            const on = bookingMode === mode;
+            const isLead = mode === "LEAD_GENERATION";
+            return (
+              <button
+                key={mode}
+                type="button"
+                role="radio"
+                aria-checked={on}
+                onClick={() => setBookingMode(mode)}
+                className={`rounded-xl border p-3 text-left transition-colors ${
+                  on
+                    ? "border-maroon-500 bg-maroon-50"
+                    : "border-border bg-white hover:border-maroon-300"
+                }`}
+              >
+                <span className="flex items-center gap-2">
+                  <span
+                    aria-hidden
+                    className={`inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2 ${
+                      on ? "border-maroon-600" : "border-charcoal-300"
+                    }`}
+                  >
+                    {on && <span className="h-2 w-2 rounded-full bg-maroon-600" />}
+                  </span>
+                  <span className="text-sm font-semibold text-charcoal-900">
+                    {isLead ? "Lead Generation" : "Direct Booking"}
+                  </span>
+                </span>
+                <span className="mt-1.5 block text-[11px] leading-relaxed text-charcoal-600">
+                  {isLead
+                    ? "Customers send you an enquiry. You agree the price and take payment yourself, then confirm the enquiry here and settle Hallnect's commission."
+                    : "Customers book and pay an advance online. Hallnect's commission is kept from that advance automatically — you are never billed for it."}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+        {bookingMode === "LEAD_GENERATION" && (
+          <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-[11px] leading-relaxed text-amber-900">
+            <strong>Enquiries do not hold a date.</strong> Confirming one records what you
+            agreed and raises Hallnect&apos;s commission — it does not block the calendar.
+            Block the date yourself under Availability once the customer has paid you.
+          </p>
+        )}
+      </FormSection>
+
       {/* Pricing */}
-      <FormSection title="Pricing (₹)">
-        <Field label="Full Day Price *">
-          <Input type="number" min={0} step={100} value={priceDay} onChange={(e) => setPriceDay(e.target.value)} placeholder="e.g. 150000" required />
+      <FormSection title={bookingMode === "LEAD_GENERATION" ? "Pricing (₹, optional)" : "Pricing (₹)"}>
+        <Field
+          label={bookingMode === "LEAD_GENERATION" ? "Full Day Price (optional)" : "Full Day Price *"}
+        >
+          <Input
+            type="number"
+            min={0}
+            step={100}
+            value={priceDay}
+            onChange={(e) => setPriceDay(e.target.value)}
+            placeholder={bookingMode === "LEAD_GENERATION" ? "Leave empty to hide" : "e.g. 150000"}
+            // `required` follows the MODE, matching hallSchema and the
+            // halls_direct_booking_needs_price constraint. A browser-level
+            // required attribute on a field the server treats as optional is
+            // how an owner gets blocked from doing something that is allowed.
+            required={bookingMode !== "LEAD_GENERATION"}
+          />
         </Field>
+        {bookingMode === "LEAD_GENERATION" && (
+          <p className="-mt-1 text-[11px] leading-relaxed text-charcoal-500">
+            Leave pricing empty if you prefer customers to contact you for pricing. Your
+            listing will show <strong>&ldquo;Contact for pricing&rdquo;</strong> instead of a
+            figure.
+          </p>
+        )}
         <div className="grid grid-cols-2 gap-3">
           <Field label="Morning Slot (optional)">
             <Input type="number" min={0} step={100} value={priceMorn} onChange={(e) => setPriceMorn(e.target.value)} placeholder="e.g. 75000" />
@@ -325,10 +409,22 @@ export function HallForm({ ownerId, amenities, hall }: Props) {
             <Input type="number" min={0} step={100} value={priceEven} onChange={(e) => setPriceEven(e.target.value)} placeholder="e.g. 85000" />
           </Field>
         </div>
-        <p className="text-[11px] text-charcoal-500">
-          Advance payment (25%) is collected automatically at booking.
-          Platform fee (5%) applies on top of these prices.
-        </p>
+        {/* THE ADVANCE AND THE PLATFORM FEE ARE DIRECT-BOOKING FACTS. Neither
+            happens on a lead: Hallnect takes no money from that customer at
+            all, so leaving this sentence up for a lead venue would describe a
+            payment flow their listing does not have. */}
+        {bookingMode === "LEAD_GENERATION" ? (
+          <p className="text-[11px] text-charcoal-500">
+            Hallnect does not collect any payment from the customer for this listing. You
+            agree the amount with them directly; Hallnect&apos;s commission is charged to you
+            after you confirm the enquiry.
+          </p>
+        ) : (
+          <p className="text-[11px] text-charcoal-500">
+            Advance payment (25%) is collected automatically at booking.
+            Platform fee (5%) applies on top of these prices.
+          </p>
+        )}
       </FormSection>
 
       {/* Venue types — what this hall is FOR. Not cosmetic: these are the
@@ -580,7 +676,14 @@ export function HallForm({ ownerId, amenities, hall }: Props) {
             <ReviewItem label="Hall name" value={name || "—"} />
             <ReviewItem label="Location" value={[city, state].filter(Boolean).join(", ") || "—"} />
             <ReviewItem label="Capacity" value={capMax ? `Up to ${capMax}` : "—"} />
-            <ReviewItem label="Price / day" value={priceDay ? `₹${priceDay}` : "—"} />
+            <ReviewItem
+              label="Booking mode"
+              value={bookingMode === "LEAD_GENERATION" ? "Lead Generation" : "Direct Booking"}
+            />
+            <ReviewItem
+              label="Price / day"
+              value={priceDay ? `₹${priceDay}` : bookingMode === "LEAD_GENERATION" ? "Contact for pricing" : "—"}
+            />
             <ReviewItem label="Amenities" value={`${selectedAms.size} standard · ${customAms.length} custom`} />
             <ReviewItem label="Photos" value={photos.length === 1 ? "1 selected" : `${photos.length} selected`} />
           </dl>

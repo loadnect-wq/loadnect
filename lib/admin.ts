@@ -22,6 +22,7 @@
 
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { readHallCommissionRates, readBookingCommissions } from "@/lib/hall-commission";
+import { toBookingMode, type BookingMode } from "@/lib/booking-mode";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import { getProfile } from "@/lib/auth";
 import { PLATFORM_FEE_RUPEES } from "@/lib/booking-payment";
@@ -71,7 +72,8 @@ export type AdminHallRow = {
   status:         string;
   is_premium:     boolean;
   capacity_max:   number;
-  price_per_day:  number;
+  price_per_day:  number | null;
+  booking_mode:   BookingMode;
   rating_average: number;
   rating_count:   number;
   cover_url:      string | null;
@@ -544,7 +546,7 @@ export async function fetchAllHalls(statusFilter?: string): Promise<AdminHallRow
     .from("halls")
     // profiles!profile_id — see fetchAllOwners: the hall_owners→profiles embed
     // is ambiguous (profile_id vs verified_by) and must be disambiguated.
-    .select("id, slug, name, city, state, status, is_premium, capacity_max, price_per_day, rating_average, rating_count, created_at, hall_images(url, is_cover), hall_owners(business_name, profiles!profile_id(full_name)), hall_custom_amenities(name, sort_order)")
+    .select("id, slug, name, city, state, status, is_premium, capacity_max, price_per_day, booking_mode, rating_average, rating_count, created_at, hall_images(url, is_cover), hall_owners(business_name, profiles!profile_id(full_name)), hall_custom_amenities(name, sort_order)")
     .order("created_at", { ascending: false });
 
   if (statusFilter) query = query.eq("status", statusFilter);
@@ -572,7 +574,9 @@ export async function fetchAllHalls(statusFilter?: string): Promise<AdminHallRow
       status:         row.status,
       is_premium:     row.is_premium,
       capacity_max:   row.capacity_max,
-      price_per_day:  Number(row.price_per_day),
+      // Number(null) is 0; a Rs.0 venue reads as free even in the admin list.
+      price_per_day:  row.price_per_day == null ? null : Number(row.price_per_day),
+      booking_mode:   toBookingMode(row.booking_mode),
       commission_rate: rates.get(row.id) ?? null,
       rating_average: Number(row.rating_average),
       rating_count:   row.rating_count,

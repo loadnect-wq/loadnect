@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
+  Inbox,
   BadgeCheck, BellRing, Building2, CalendarDays, ClipboardCheck,
   CreditCard, LayoutDashboard, Megaphone, MessageSquare,
   Receipt, ScrollText, Settings, Sparkles, Star, TicketPercent, Users, Wallet,
@@ -49,6 +50,7 @@ const SECTIONS: { title: string; items: NavItem[] }[] = [
     title: "Operations",
     items: [
       { label: "Bookings",    href: "/admin/bookings",    icon: CalendarDays },
+      { label: "Enquiries",   href: "/admin/leads",       icon: Inbox },
       { label: "Payments",    href: "/admin/payments",    icon: CreditCard },
       { label: "Commissions", href: "/admin/commissions", icon: Wallet },
       { label: "Reviews",     href: "/admin/reviews",     icon: Star },

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  CalendarDays, Heart, LayoutDashboard, Star, User,
+  CalendarDays, Heart, Inbox, LayoutDashboard, Star, User,
   Bell,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils";
 const NAV = [
   { label: "Dashboard",   href: "/customer",              icon: LayoutDashboard, exact: true },
   { label: "My Bookings", href: "/customer/bookings",     icon: CalendarDays },
+  { label: "My Enquiries", href: "/customer/enquiries",  icon: Inbox },
   { label: "Saved Halls", href: "/customer/saved-halls",  icon: Heart },
   { label: "My Reviews",  href: "/customer/reviews",      icon: Star },
   { label: "Notifications", href: "/customer/notifications", icon: Bell },

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
+  Inbox,
   LayoutDashboard, Users, BadgeCheck, BellRing, Building2, ClipboardCheck,
   CalendarDays, CreditCard, Wallet, Star, Sparkles, Megaphone,
   MessageSquare, ScrollText, Settings,
@@ -40,6 +41,7 @@ const ITEMS: {
   { label: "Approvals",  href: "/admin/hall-approvals",  icon: ClipboardCheck, badgeKey: "pendingHalls" },
   { label: "Halls",      href: "/admin/halls",           icon: Building2 },
   { label: "Bookings",   href: "/admin/bookings",        icon: CalendarDays },
+  { label: "Enquiries",  href: "/admin/leads",           icon: Inbox },
   { label: "Payments",   href: "/admin/payments",        icon: CreditCard },
   { label: "Commissions",href: "/admin/commissions",     icon: Wallet },
   { label: "Owners",     href: "/admin/owners",          icon: BadgeCheck, badgeKey: "pendingOwners" },

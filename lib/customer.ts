@@ -5,6 +5,7 @@
 
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import type { HallListing } from "@/lib/halls";
+import { toBookingMode } from "@/lib/booking-mode";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -298,7 +299,7 @@ export async function fetchMySavedHalls(): Promise<MySavedHall[]> {
       hall_id, created_at,
       halls(
         id, slug, name, city, address,
-        capacity_max, price_per_day, is_premium, premium_tier,
+        capacity_max, price_per_day, booking_mode, is_premium, premium_tier,
         rating_average, rating_count,
         hall_images(url, is_cover)
       )
@@ -339,7 +340,10 @@ export async function fetchMySavedHalls(): Promise<MySavedHall[]> {
         city:           hall.city,
         address:        hall.address        ?? null,
         capacity_max:   hall.capacity_max,
-        price_per_day:  Number(hall.price_per_day),
+        // Number(null) is 0 and a Rs.0 venue reads as free — keep a missing
+        // price missing all the way to the renderer.
+        price_per_day:  hall.price_per_day == null ? null : Number(hall.price_per_day),
+        booking_mode:   toBookingMode(hall.booking_mode),
         is_premium:     hall.is_premium,
         premium_tier:   hall.premium_tier ?? null,
         rating_average: Number(hall.rating_average),

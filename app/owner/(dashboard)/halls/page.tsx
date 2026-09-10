@@ -4,6 +4,7 @@ import { Building2, ChevronRight, Plus, Sparkles } from "lucide-react";
 import { requireRole } from "@/lib/auth";
 import { fetchOwnerRow, fetchOwnerHalls } from "@/lib/owner";
 import { formatPrice } from "@/lib/mock-data";
+import { hasPrice, PRICE_ON_REQUEST } from "@/lib/booking-mode";
 import { Badge } from "@/components/ui/Badge";
 import { buttonVariants } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -75,7 +76,7 @@ export default async function OwnerHallsPage() {
                       <p className="mt-0.5 text-xs text-charcoal-500">{hall.city}{hall.state ? `, ${hall.state}` : ""}</p>
                       <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-charcoal-600">
                         <span>👥 Up to {hall.capacity_max.toLocaleString("en-IN")}</span>
-                        <span>💰 {formatPrice(hall.price_per_day)}/day</span>
+                        <span>💰 {hasPrice(hall.price_per_day) ? `${formatPrice(hall.price_per_day)}/day` : PRICE_ON_REQUEST}</span>
                         {/* The owner's own agreed rate, per hall. Shown as
                             information, not as a control: it is changed from
                             the edit form, where the "future bookings only"

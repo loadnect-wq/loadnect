@@ -45,6 +45,9 @@ export type SmsTemplateKey =
   | "CUSTOMER_PAYMENT_SUCCESS"
   | "CUSTOMER_PAYMENT_FAILED"
   | "CUSTOMER_REFUND_INITIATED"
+  // Lead generation
+  | "CUSTOMER_LEAD_UPDATE"
+  | "OWNER_NEW_LEAD"
   // Owner
   | "OWNER_NEW_BOOKING"
   | "OWNER_BOOKING_CANCELLED"
@@ -278,6 +281,39 @@ export const SMS_TEMPLATES: Record<SmsTemplateKey, SmsTemplateDef> = {
     (v) =>
       `Hallnect: Hi ${v[0]}, a refund of ${v[2]} has been initiated for your hall booking ${v[1]}. ` +
       `Banks usually credit refunds within 5-7 working days.`,
+  ),
+
+  // ── Lead generation ────────────────────────────────────────────────────────
+  //
+  // TWO NEW REGISTRATIONS, NOT FOUR. Every template here is a separate DLT
+  // approval the operator has to obtain from a telecom portal, and each one is
+  // days of waiting and a chance of rejection. So the customer's side of the
+  // whole lead lifecycle — "we sent it" and "the venue confirmed" — is ONE
+  // template with a status variable, the same economy ADMIN_ALERT already
+  // makes for six different admin alerts.
+  CUSTOMER_LEAD_UPDATE: def(
+    "CUSTOMER_LEAD_UPDATE",
+    "customer",
+    "The customer's hall enquiry was forwarded to the venue, or answered by it.",
+    ["customer_name", "hall_name", "event_date", "status_note"],
+    (v) =>
+      `Hallnect: Hi ${v[0]}, an update on your hall enquiry for ${v[1]} on ${v[2]}. ` +
+      `Status: ${v[3]}. The venue will contact you on your registered mobile number.`,
+  ),
+
+  OWNER_NEW_LEAD: def(
+    "OWNER_NEW_LEAD",
+    "owner",
+    "A customer sent a verified enquiry about the owner's lead-generation venue.",
+    ["hall_name", "customer_name", "event_date", "guest_count", "customer_phone", "lead_id"],
+    // "hall enquiry" in FIXED text, per the DLT note above: a reviewer sees one
+    // template with opaque variables, so the product has to be named in words
+    // they can read. Every variable has static words in front of it — no two
+    // are adjacent, which is what STPL rejected CUSTOMER_PAYMENT_SUCCESS for.
+    (v) =>
+      `Hallnect: New hall enquiry for ${v[0]} from ${v[1]} for an event on ${v[2]}. ` +
+      `Guests: ${v[3]}. Phone: ${v[4]}. Ref ${v[5]}. ` +
+      `Open your owner dashboard to confirm it.`,
   ),
 
   // ── Owner ──────────────────────────────────────────────────────────────────

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Building2, ClipboardCheck, ExternalLink, Sparkles } from "lucide-react";
 import { fetchAllHalls } from "@/lib/admin";
 import { formatPrice } from "@/lib/mock-data";
+import { formatHallPrice } from "@/lib/booking-mode";
 import { EmptyState } from "@/components/ui/empty-state";
 import { AdminPageHeader } from "../_components/AdminPageHeader";
 import { ConfirmButton } from "../_components/ConfirmButton";
@@ -81,7 +82,7 @@ export default async function HallApprovalsPage() {
                       <Field label="Business" value={h.owner_business} />
                       <Field label="Owner" value={h.owner_name} />
                       <Field label="Capacity" value={`Up to ${h.capacity_max.toLocaleString("en-IN")}`} />
-                      <Field label="Price/day" value={formatPrice(h.price_per_day)} />
+                      <Field label="Price/day" value={formatHallPrice(h.price_per_day)} />
                       <Field label="Submitted" value={fmtDate(h.created_at)} />
                     </div>
 

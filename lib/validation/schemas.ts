@@ -239,6 +239,47 @@ export const profileUpdateSchema = z.object({
 
 // ── Hall create / edit ───────────────────────────────────────────────────────
 
+// ── Booking mode ─────────────────────────────────────────────────────────────
+
+/**
+ * How a hall takes business.
+ *
+ *   DIRECT_BOOKING  — the original flow. The customer pays an advance through
+ *                     Cashfree, Hallnect retains its commission out of it, and
+ *                     the slot is held. Unchanged in every respect.
+ *   LEAD_GENERATION — Hallnect introduces the customer and never touches their
+ *                     money. The venue negotiates and settles directly; the
+ *                     commission is billed to the venue afterwards.
+ *
+ * UPPERCASE because that is what the brief names, and because these values are
+ * pinned by halls_booking_mode_allowed in migration 0073 — the CHECK and this
+ * list have to agree exactly or a valid form produces a 500.
+ */
+export const BOOKING_MODES = ["DIRECT_BOOKING", "LEAD_GENERATION"] as const;
+export type BookingMode = (typeof BOOKING_MODES)[number];
+
+export function isBookingMode(v: unknown): v is BookingMode {
+  return typeof v === "string" && (BOOKING_MODES as readonly string[]).includes(v);
+}
+
+/**
+ * DEFAULTS TO DIRECT_BOOKING when absent, and that default is load-bearing in
+ * two directions.
+ *
+ * Forward: a Next.js server action DROPS undefined properties, so a caller that
+ * does not mention the mode sends a MISSING KEY. Every such caller predates
+ * lead generation and means the original behaviour, so answering "Invalid
+ * input" would break hall editing for a field the form never had.
+ *
+ * Backward: it means no existing test, script or call site has to be rewritten
+ * to keep doing what it already did — which is the property that lets the whole
+ * feature be additive.
+ */
+export const bookingModeSchema = z
+  .union([z.string(), z.null(), z.undefined()])
+  .transform((v) => (v == null || v === "" ? "DIRECT_BOOKING" : String(v).trim()))
+  .refine(isBookingMode, `Choose either ${BOOKING_MODES.join(" or ")}.`);
+
 export const hallSchema = z
   .object({
     name:         trimmed(160).pipe(z.string().min(2, "Hall name is required.")),
@@ -248,10 +289,23 @@ export const hallSchema = z
     pincode:      pincodeSchema,
     capacityMin:  optionalCapacitySchema,
     capacityMax:  capacitySchema,
-    pricePerDay:  moneySchema.refine(
-      (n) => n >= MIN_HALL_PRICE_RUPEES,
-      `A venue must be priced at least ₹${MIN_HALL_PRICE_RUPEES} per day.`,
-    ),
+    // .default() IS LOAD-BEARING, and its absence is a real regression I made
+    // and caught here. bookingModeSchema already admits undefined into its
+    // union and maps it to DIRECT_BOOKING — but a `.transform()` pipe is a
+    // REQUIRED KEY in a Zod object unless the pipe itself opts out, so a
+    // caller that omitted the field entirely was rejected before the transform
+    // ever ran. Every call site written before lead generation omits it, which
+    // is precisely the set that must keep working unchanged.
+    //
+    // .default() short-circuits on undefined and makes the key optional; the
+    // union still handles an explicit null or "" arriving from a form.
+    bookingMode:  bookingModeSchema.default("DIRECT_BOOKING"),
+    // OPTIONAL AT THE TYPE LEVEL, REQUIRED BY THE REFINE BELOW FOR A DIRECT
+    // BOOKING. A lead-generation venue may legitimately publish no price at all
+    // ("Contact for pricing"), which is why the column lost its NOT NULL in
+    // migration 0073 — but a hall the customer is going to PAY an advance on
+    // must have a price, or there is nothing to compute the advance from.
+    pricePerDay:  optionalMoneySchema,
     priceMorning: optionalMoneySchema,
     priceEvening: optionalMoneySchema,
     description:  optionalTrimmed(4000),
@@ -268,16 +322,45 @@ export const hallSchema = z
     (d) => d.capacityMin == null || d.capacityMin <= d.capacityMax,
     { message: "Min capacity cannot exceed max.", path: ["capacityMin"] },
   )
+  // A DIRECT BOOKING HALL MUST HAVE A PRICE. This is the application-layer half
+  // of halls_direct_booking_needs_price (migration 0073): checkout derives the
+  // advance, the platform fee cap and the commission base from this number, and
+  // a null would not fail loudly — advanceFromTotal would throw deep inside the
+  // booking engine, on the customer's checkout page, long after the owner had
+  // saved a listing they were told was fine.
+  .refine(
+    (d) => d.bookingMode !== "DIRECT_BOOKING" || d.pricePerDay != null,
+    {
+      message: "A direct-booking venue needs a price per day. Switch to Lead Generation to list without one.",
+      path: ["pricePerDay"],
+    },
+  )
+  // The floor applies to whatever price IS given, in either mode. A lead
+  // venue may publish nothing, but it may not publish ₹40 — the reasoning
+  // behind MIN_HALL_PRICE_RUPEES is about what a real venue plausibly charges,
+  // and that does not change with the booking mode.
+  .refine(
+    (d) => d.pricePerDay == null || d.pricePerDay >= MIN_HALL_PRICE_RUPEES,
+    {
+      message: `A venue must be priced at least ₹${MIN_HALL_PRICE_RUPEES} per day.`,
+      path: ["pricePerDay"],
+    },
+  )
   // A half-day cannot cost more than the whole day. Not pedantry: the booking
   // engine derives the advance from whichever price the chosen slot resolves
   // to, so an inverted pair quietly charges more for less and the customer sees
   // it only at checkout.
+  //
+  // The null guard on pricePerDay is not a formality. `x <= null` is FALSE in
+  // JavaScript, so without it a lead venue that quoted a morning rate and no
+  // full-day rate would be rejected with "the morning rate cannot exceed the
+  // full-day rate" — a complaint about a field they deliberately left empty.
   .refine(
-    (d) => d.priceMorning == null || d.priceMorning <= d.pricePerDay,
+    (d) => d.priceMorning == null || d.pricePerDay == null || d.priceMorning <= d.pricePerDay,
     { message: "The morning rate cannot exceed the full-day rate.", path: ["priceMorning"] },
   )
   .refine(
-    (d) => d.priceEvening == null || d.priceEvening <= d.pricePerDay,
+    (d) => d.priceEvening == null || d.pricePerDay == null || d.priceEvening <= d.pricePerDay,
     { message: "The evening rate cannot exceed the full-day rate.", path: ["priceEvening"] },
   );
 
@@ -550,6 +633,107 @@ function todayYmd(): string {
 }
 
 export type BookingInput = z.input<typeof bookingSchema>;
+
+// ── Lead generation ──────────────────────────────────────────────────────────
+
+/**
+ * The kinds of event a lead can be about.
+ *
+ * Deliberately the SAME vocabulary as halls.venue_types (pinned by
+ * halls_venue_types_allowed in 0037 and by leads.event_type in 0073). One list
+ * means an owner who declared "wedding, reception" and a customer who picked
+ * "party" are talking about the same four things, and the admin can filter
+ * across both without a translation table.
+ */
+export const LEAD_EVENT_TYPES = ["wedding", "reception", "party", "banquet"] as const;
+export type LeadEventType = (typeof LEAD_EVENT_TYPES)[number];
+
+/**
+ * What a customer submits to enquire about a lead-generation venue.
+ *
+ * NOTE WHAT IS ABSENT: any amount, any commission, any owner id, any lead
+ * status. A lead carries no money at submission, and everything about who owns
+ * the hall is resolved server-side from hallId. The customer supplies contact
+ * details and event details, and nothing else.
+ *
+ * The phone here is the number the OTP will be sent to AND the number the venue
+ * will ring. It is stored on the lead rather than read live from the profile,
+ * so a later profile edit cannot redirect a call about an event already being
+ * planned.
+ */
+export const leadEnquirySchema = z
+  .object({
+    hallId:      uuidSchema,
+    contactName: trimmed(120).pipe(z.string().min(2, "Enter your name.")),
+    // requiredPhoneSchema, not phoneSchema — the latter treats "" as valid
+    // because it is used where a phone is genuinely optional. Here the number
+    // IS the enquiry: it is what receives the OTP and what the venue rings.
+    contactPhone: requiredPhoneSchema,
+    eventDate:   dateStringSchema,
+    // Optional, because a customer who is still deciding between a reception
+    // and a full wedding should not be blocked from asking the price.
+    eventType:   z
+      .union([z.enum(LEAD_EVENT_TYPES), z.literal(""), z.null(), z.undefined()])
+      .transform((v) => (v == null || v === "" ? null : v)),
+    guestCount:  optionalCapacitySchema,
+    requirements: optionalTrimmed(1000),
+  })
+  .refine((d) => d.eventDate >= todayYmd(), {
+    message: "Event date cannot be in the past.",
+    path: ["eventDate"],
+  });
+
+export type LeadEnquiryInput = z.input<typeof leadEnquirySchema>;
+
+/**
+ * The least a confirmed lead may be worth, in rupees.
+ *
+ * The agreed amount is the COMMISSION BASE and it is typed by the party who
+ * pays the commission, so it is the one number in this feature with an obvious
+ * incentive to be wrong. A floor does not stop under-reporting — nothing in the
+ * software can, because Hallnect never sees the money — but it does stop the
+ * degenerate case of confirming every lead at ₹1 and it makes a nonsense entry
+ * visible rather than silently producing a ₹0.03 commission nobody chases.
+ *
+ * Set equal to MIN_HALL_PRICE_RUPEES: the smallest number a venue may be listed
+ * at is also the smallest number a venue may claim to have been booked for.
+ */
+export const MIN_LEAD_AGREED_AMOUNT = MIN_HALL_PRICE_RUPEES;
+
+/**
+ * What the owner supplies when they tick Confirm.
+ *
+ * agreedAmount is REQUIRED and has no default. A lead-generation venue may have
+ * published no price at all, so there is nothing to fall back to — and falling
+ * back to the listed price where one exists would be worse than asking, because
+ * it would quietly bill commission on a number nobody agreed to.
+ */
+export const leadConfirmSchema = z.object({
+  agreedAmount: z
+    // The same union shape as commissionRateSchema, and for the same reason: a
+    // server action drops undefined, so a field the owner left blank arrives as
+    // a MISSING KEY. Admitting null/undefined into the union is what turns
+    // Zod's bare "Invalid input" into the sentence below.
+    .union([z.number(), z.string(), z.null(), z.undefined()])
+    .transform((v) => {
+      if (v == null) return NaN;
+      if (typeof v === "number") return v;
+      // NOT parseFloat. parseFloat("50,000") is 50 and parseFloat("2000abc") is
+      // 2000 — it stops at the first character it cannot use and returns what it
+      // has, so "50,000" would be read as fifty rupees and rejected as below the
+      // floor with a message about the floor, which tells the owner nothing
+      // about the comma that caused it.
+      const s = String(v).trim().replace(/\s/g, "");
+      return /^\d+(?:\.\d{1,2})?$/.test(s) ? Number(s) : NaN;
+    })
+    .refine(
+      (n) => Number.isFinite(n) && n >= MIN_LEAD_AGREED_AMOUNT,
+      `Enter the amount agreed with the customer — at least ₹${MIN_LEAD_AGREED_AMOUNT}, digits only.`,
+    ),
+  ownerNotes: optionalTrimmed(1000),
+});
+
+export type LeadConfirmInput = z.input<typeof leadConfirmSchema>;
 
 // ── Payment session ──────────────────────────────────────────────────────────
 

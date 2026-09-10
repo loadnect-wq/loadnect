@@ -9,6 +9,7 @@
 
 import type { HallDetail } from "@/lib/halls";
 import { clamp } from "./metadata";
+import { hasPrice } from "@/lib/booking-mode";
 
 const inr = (n: number) => `₹${Math.round(n).toLocaleString("en-IN")}`;
 
@@ -32,9 +33,15 @@ export function venueDescription(hall: HallDetail): string {
   const where = hall.address?.trim()
     ? `${hall.name} in ${hall.city}`
     : `${hall.name}, ${hall.city}`;
+  // The price clause is DROPPED, not zeroed, for a venue that publishes none.
+  // inr(null) would read "from Rs.0 per day" in the meta description Google
+  // shows under the result — an advertised price of zero on a wedding hall.
   bits.push(
-    `${where} seats up to ${hall.capacity_max.toLocaleString("en-IN")} guests` +
-      ` from ${inr(hall.price_per_day)} per day.`,
+    hasPrice(hall.price_per_day)
+      ? `${where} seats up to ${hall.capacity_max.toLocaleString("en-IN")} guests` +
+          ` from ${inr(hall.price_per_day)} per day.`
+      : `${where} seats up to ${hall.capacity_max.toLocaleString("en-IN")} guests.` +
+          ` Contact the venue for pricing.`,
   );
 
   // The owner's own description is the most distinguishing text available.

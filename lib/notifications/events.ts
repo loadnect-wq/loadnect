@@ -71,6 +71,7 @@ function adminAlert(input: {
   details: string;
   reference: string;
   bookingId?: string | null;
+  leadId?: string | null;
   hallId?: string | null;
 }): NotificationRequest {
   return {
@@ -82,6 +83,7 @@ function adminAlert(input: {
     templateKey: "ADMIN_ALERT",
     templateVariables: [input.event, input.details, input.reference],
     bookingId: input.bookingId ?? null,
+    leadId: input.leadId ?? null,
     hallId: input.hallId ?? null,
     critical: true,
   };
@@ -350,6 +352,208 @@ function balanceNote(paid: number, total: number): string {
  * the fix is always on Hallnect's side (vendor onboarding, KYC, gateway) and a
  * "your money is stuck" message they cannot act on is worse than a quiet fix.
  */
+// ── Lead generation ──────────────────────────────────────────────────────────
+
+export type LeadEventKind = "lead.created" | "lead.confirmed" | "lead.rejected";
+
+type LeadContext = {
+  leadId: string;
+  hallId: string;
+  hallName: string;
+  dateLabel: string;
+  guestLabel: string;
+  contactName: string;
+  contactPhone: string | null;
+  phoneVerified: boolean;
+  customer: { userId: string; name: string; phone: string | null; optedIn: boolean };
+  owner: { userId: string | null; name: string; phone: string | null; optedIn: boolean };
+};
+
+/**
+ * Everything needed to notify about one lead, in a single query.
+ *
+ * Mirrors loadBookingContext, including the two-FK disambiguation on
+ * hall_owners — PostgREST errors out without `!owner_id`.
+ */
+async function loadLeadContext(leadId: string): Promise<LeadContext | null> {
+  const admin = getSupabaseAdminClient();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const db = admin as any;
+
+  const { data, error } = await db
+    .from("leads")
+    .select(
+      "id, hall_id, customer_id, event_date, guest_count, contact_name, contact_phone, phone_verified, " +
+      `halls!hall_id(name, owner_id, hall_owners!owner_id(${OWNER_EMBED})),` +
+      "profiles!customer_id(full_name, phone, phone_verified, notifications_enabled)",
+    )
+    .eq("id", leadId)
+    .maybeSingle();
+
+  if (error || !data) {
+    console.error("[notifications] lead context load failed:", error?.message ?? "not found");
+    return null;
+  }
+
+  const hall = data.halls ?? {};
+  const customerProfile = data.profiles ?? null;
+
+  return {
+    leadId: data.id,
+    hallId: data.hall_id,
+    hallName: sanitizeName(hall.name, "your venue"),
+    dateLabel: formatBookingDates(data.event_date, null),
+    // "Not specified" rather than an empty slot: guest_count is optional on an
+    // enquiry, and DLT operators drop messages with empty variables.
+    guestLabel: data.guest_count == null ? "Not specified" : String(data.guest_count),
+    contactName: sanitizeName(data.contact_name, "a customer"),
+    contactPhone: data.contact_phone ?? null,
+    phoneVerified: Boolean(data.phone_verified),
+    customer: {
+      userId: data.customer_id,
+      name: sanitizeName(customerProfile?.full_name ?? data.contact_name, "there"),
+      // THE ENQUIRY'S OWN NUMBER WINS HERE, unlike on a booking — and only
+      // because it has been through MSG91. leads.contact_phone reaches
+      // 'pending' status solely by verification (leads_forwarded_is_verified),
+      // so by the time anything is sent it is a number this customer has
+      // proved they hold. The profile phone is the fallback for the one message
+      // that can precede verification.
+      phone: data.phone_verified
+        ? data.contact_phone
+        : (customerProfile?.phone ?? data.contact_phone ?? null),
+      optedIn: customerProfile?.notifications_enabled ?? true,
+    },
+    owner: ownerRecipient(hall.hall_owners ?? null),
+  };
+}
+
+/**
+ * Notifies about a lead. `lead.created` is the moment the enquiry is FORWARDED
+ * — i.e. after MSG91 confirmed the customer's number, never before.
+ *
+ * THE VERIFICATION GUARD IS RESTATED HERE. lib/leads.ts will not promote an
+ * unverified lead, and RLS hides one from the venue, but this function reads
+ * with the service role and sends SMS to a number a customer typed. So it
+ * checks for itself: an unverified lead notifies nobody. Three independent
+ * layers, because the failure this prevents is texting a stranger.
+ *
+ * Idempotent through the outbox: dedupe_key is `${kind}:${leadId}:${recipient}`
+ * and carries a UNIQUE index, so a repeat call inserts nothing and sends
+ * nothing. Fire-safe — a notification failure never fails the lead.
+ */
+export async function notifyLeadEvent(
+  kind: LeadEventKind,
+  leadId: string,
+  opts: { reason?: string | null; amount?: number } = {},
+): Promise<void> {
+  try {
+    const ctx = await loadLeadContext(leadId);
+    if (!ctx) return;
+
+    if (!ctx.phoneVerified) {
+      console.error(`[notifications] refusing to notify unverified lead ${leadId}`);
+      return;
+    }
+
+    const adminPhone = await getAdminNotificationPhone();
+    const eventKey = `${kind}:${leadId}`;
+    const ref = bookingRef(leadId);
+    const reason = sanitizeNotificationText(opts.reason);
+
+    const toCustomer = (statusNote: string): NotificationRequest => ({
+      eventKey, eventType: kind, recipientType: "customer",
+      recipientUserId: ctx.customer.userId, phone: ctx.customer.phone,
+      templateKey: "CUSTOMER_LEAD_UPDATE",
+      templateVariables: [ctx.customer.name, ctx.hallName, ctx.dateLabel, statusNote],
+      leadId: ctx.leadId, hallId: ctx.hallId,
+      critical: true, optedIn: ctx.customer.optedIn,
+    });
+
+    const requests: NotificationRequest[] = [];
+    switch (kind) {
+      case "lead.created":
+        requests.push(
+          {
+            eventKey, eventType: kind, recipientType: "owner",
+            recipientUserId: ctx.owner.userId, phone: ctx.owner.phone,
+            templateKey: "OWNER_NEW_LEAD",
+            templateVariables: [
+              ctx.hallName, ctx.contactName, ctx.dateLabel,
+              ctx.guestLabel, ctx.contactPhone ?? "Not available", ref,
+            ],
+            leadId: ctx.leadId, hallId: ctx.hallId,
+            critical: true, optedIn: ctx.owner.optedIn,
+          },
+          toCustomer("Sent to the venue"),
+          adminAlert({
+            adminPhone, eventKey, eventType: kind,
+            event: "New venue enquiry",
+            // Under MAX_VARIABLE_LENGTH (60) or DLT truncates the tail away.
+            details: `${ctx.hallName} on ${ctx.dateLabel}`.slice(0, 58),
+            reference: `Enquiry ${ref}`,
+            leadId: ctx.leadId, hallId: ctx.hallId,
+          }),
+        );
+        break;
+
+      case "lead.confirmed":
+        requests.push(
+          toCustomer("Confirmed by the venue"),
+          adminAlert({
+            adminPhone, eventKey, eventType: kind,
+            event: "Venue confirmed an enquiry",
+            details: opts.amount
+              ? `${ctx.hallName} for ${formatAmount(opts.amount)}`.slice(0, 58)
+              : ctx.hallName.slice(0, 58),
+            reference: `Enquiry ${ref}`,
+            leadId: ctx.leadId, hallId: ctx.hallId,
+          }),
+        );
+        break;
+
+      case "lead.rejected":
+        requests.push(
+          toCustomer(reason ? `Declined by the venue - ${reason}` : "Declined by the venue"),
+        );
+        break;
+    }
+
+    await dispatchAll(requests);
+  } catch (e) {
+    console.error("[notifications] lead event failed:", e instanceof Error ? e.message : e);
+  }
+}
+
+/**
+ * Tells the admin a venue settled a lead commission.
+ *
+ * Its own function rather than a LeadEventKind because it is about a
+ * COMMISSION, not a lead: it fires from the payment path, is keyed on the
+ * commission id, and must stay idempotent across a webhook redelivery and the
+ * owner refreshing the return page at the same moment.
+ */
+export async function notifyCommissionSettled(input: {
+  commissionId: string;
+  amount: number;
+  hallName: string | null;
+}): Promise<void> {
+  try {
+    const adminPhone = await getAdminNotificationPhone();
+    await dispatchAll([
+      adminAlert({
+        adminPhone,
+        eventKey: `commission.paid:${input.commissionId}`,
+        eventType: "commission.paid",
+        event: "Commission paid by a venue",
+        details: `${formatAmount(input.amount)} from ${sanitizeName(input.hallName, "a venue")}`.slice(0, 58),
+        reference: `Commission ${bookingRef(input.commissionId)}`,
+      }),
+    ]);
+  } catch (e) {
+    console.error("[notifications] commission settled alert failed:", e instanceof Error ? e.message : e);
+  }
+}
+
 export async function notifyOwnerPayoutFailed(input: {
   bookingId: string;
   ownerAmount: number;

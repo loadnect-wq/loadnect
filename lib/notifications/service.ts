@@ -62,6 +62,10 @@ export type NotificationRequest = {
   /** Values for the template's positional variables, in declaration order. */
   templateVariables: readonly (string | number | null | undefined)[];
   bookingId?: string | null;
+  /** Set instead of bookingId for a lead-generation enquiry. The two are
+   *  mutually exclusive in practice: a lead is not a booking and has no row in
+   *  that table, so notifications.booking_id (a real FK) could not carry it. */
+  leadId?: string | null;
   hallId?: string | null;
   /** Non-critical messages respect the recipient's notification preference. */
   critical?: boolean;
@@ -226,6 +230,7 @@ export async function dispatchNotification(req: NotificationRequest): Promise<vo
       recipient_user_id: req.recipientUserId ?? null,
       recipient_phone: phone,
       booking_id: req.bookingId ?? null,
+      lead_id: req.leadId ?? null,
       hall_id: req.hallId ?? null,
       message: message.slice(0, 800),
       channel: "sms",

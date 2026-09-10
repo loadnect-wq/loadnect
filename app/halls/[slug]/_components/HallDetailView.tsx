@@ -16,6 +16,10 @@ import { motion } from "framer-motion";
 import { type HallDetail, type HallListing, type AvailabilityRow } from "@/lib/halls";
 import { CARD_GRADIENTS, formatPrice } from "@/lib/mock-data";
 import {
+  formatHallPrice, hasPrice, isLeadGeneration,
+  primaryCtaHref, primaryCtaLabel, PRICE_ON_REQUEST,
+} from "@/lib/booking-mode";
+import {
   todayInBusinessTz, addDaysToIsoDate, isoDateToLabelDate,
   formatDateInBusinessTz, formatIsoDateLabel,
 } from "@/lib/dates";
@@ -160,7 +164,21 @@ export function HallDetailView({ hall, similar, isPreview, sidebarAd, advancePer
   // configurable rate, so a page that always said "25%" would quote a figure
   // the customer is not actually asked for the moment an admin changes it.
   const advancePct    = advancePercent ?? DEFAULT_ADVANCE_PERCENT;
-  const advanceAmount = advanceFromTotal(hall.price_per_day, advancePct);
+
+  // LEAD GENERATION TAKES NO ADVANCE, so there is nothing here to quote. This
+  // page must not offer a payment the listing cannot accept — and beyond the
+  // copy, advanceFromTotal THROWS on a null price (RangeError, "invalid
+  // total"), which in a client component is a blank venue page rather than a
+  // wrong number. Guard once, here, and let every price block below read these
+  // booleans instead of re-deriving the condition six ways.
+  const isLead        = isLeadGeneration(hall.booking_mode);
+  const priced        = hasPrice(hall.price_per_day);
+  const ctaHref       = primaryCtaHref(hall.booking_mode, hall.slug);
+  const ctaLabel      = primaryCtaLabel(hall.booking_mode);
+  const showAdvance   = priced && !isLead;
+  const advanceAmount = showAdvance
+    ? advanceFromTotal(hall.price_per_day as number, advancePct)
+    : 0;
   const balancePct    = Math.round((100 - advancePct) * 100) / 100;
 
   // The fee THIS venue's customer will actually be charged, not the headline
@@ -306,15 +324,24 @@ export function HallDetailView({ hall, similar, isPreview, sidebarAd, advancePer
               <StatCard
                 Icon={Calendar}
                 label="Per Day"
-                value={formatPrice(hall.price_per_day)}
-                sub="full day"
+                value={formatHallPrice(hall.price_per_day)}
+                sub={priced ? "full day" : "ask the venue"}
               />
-              <StatCard
-                Icon={Sparkles}
-                label="Advance"
-                value={formatPrice(advanceAmount)}
-                sub={`${advancePct}% upfront`}
-              />
+              {showAdvance ? (
+                <StatCard
+                  Icon={Sparkles}
+                  label="Advance"
+                  value={formatPrice(advanceAmount)}
+                  sub={`${advancePct}% upfront`}
+                />
+              ) : (
+                <StatCard
+                  Icon={Sparkles}
+                  label="Booking"
+                  value={isLead ? "Enquiry" : "Direct"}
+                  sub={isLead ? "venue replies" : "pay online"}
+                />
+              )}
             </div>
 
             {/* About / Description */}
@@ -459,29 +486,51 @@ export function HallDetailView({ hall, similar, isPreview, sidebarAd, advancePer
             <section className="mt-6">
               <h2 className="font-serif text-base font-semibold text-charcoal-900">Pricing</h2>
               <div className="mt-3 overflow-hidden rounded-2xl bg-white shadow-card">
-                <PriceRow label="Full Day"    price={hall.price_per_day}  />
+                {priced ? (
+                  <PriceRow label="Full Day" price={hall.price_per_day as number} />
+                ) : (
+                  <div className="flex items-center justify-between px-4 py-3">
+                    <span className="text-sm text-charcoal-700">Full Day</span>
+                    <span className="text-sm font-semibold text-maroon-700">{PRICE_ON_REQUEST}</span>
+                  </div>
+                )}
                 {hall.price_morning != null && (
                   <PriceRow label="Morning Slot" price={hall.price_morning} />
                 )}
                 {hall.price_evening != null && (
                   <PriceRow label="Evening Slot" price={hall.price_evening} />
                 )}
-                <div className="border-t border-border px-4 py-3 bg-maroon-50">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-semibold text-maroon-800">Advance ({advancePct}%)</p>
-                      <p className="text-[11px] text-charcoal-500">Pay now to confirm booking</p>
+                {showAdvance && (
+                  <div className="border-t border-border px-4 py-3 bg-maroon-50">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-semibold text-maroon-800">Advance ({advancePct}%)</p>
+                        <p className="text-[11px] text-charcoal-500">Pay now to confirm booking</p>
+                      </div>
+                      <p className="text-base font-bold text-maroon-700">{formatPrice(advanceAmount)}</p>
                     </div>
-                    <p className="text-base font-bold text-maroon-700">{formatPrice(advanceAmount)}</p>
                   </div>
-                </div>
+                )}
                 <div className="px-4 py-2.5 flex items-start gap-2 border-t border-border">
                   <Info className="h-3.5 w-3.5 shrink-0 mt-0.5 text-charcoal-400" />
-                  <p className="text-[11px] text-charcoal-500">
-                    Remaining {balancePct}% is paid directly to the venue on the event day.
-                    Unless a promotional code applies, {formatPrice(feeShown)} is added at
-                    checkout — a {formatPrice(cappedFee)} platform fee plus {PLATFORM_FEE_GST_PERCENT}% GST.
-                  </p>
+                  {isLead ? (
+                    // EVERY NUMBER IN THE DIRECT-BOOKING NOTE IS WRONG HERE.
+                    // Hallnect collects no advance, charges this customer no
+                    // platform fee and no GST on one, and holds no date — so the
+                    // sentence has to be replaced rather than reworded.
+                    <p className="text-[11px] text-charcoal-500">
+                      This venue takes enquiries rather than online bookings. Send one and the
+                      venue contacts you directly to agree the price and the date. Hallnect
+                      does not collect any payment for this listing, and no date is held until
+                      the venue confirms it with you.
+                    </p>
+                  ) : (
+                    <p className="text-[11px] text-charcoal-500">
+                      Remaining {balancePct}% is paid directly to the venue on the event day.
+                      Unless a promotional code applies, {formatPrice(feeShown)} is added at
+                      checkout — a {formatPrice(cappedFee)} platform fee plus {PLATFORM_FEE_GST_PERCENT}% GST.
+                    </p>
+                  )}
                 </div>
               </div>
             </section>
@@ -542,7 +591,11 @@ export function HallDetailView({ hall, similar, isPreview, sidebarAd, advancePer
                 </div>
 
                 <p className="mt-3 text-[11px] text-charcoal-500">
-                  Tap <strong>Book Now</strong> to choose your exact date and slot.
+                  {isLead ? (
+                    <>Tap <strong>Send Enquiry</strong> and the venue will confirm the date with you.</>
+                  ) : (
+                    <>Tap <strong>Book Now</strong> to choose your exact date and slot.</>
+                  )}
                 </p>
               </div>
             </section>
@@ -699,7 +752,7 @@ export function HallDetailView({ hall, similar, isPreview, sidebarAd, advancePer
                             <p className="line-clamp-1 text-xs font-semibold text-charcoal-900">{s.name}</p>
                             <p className="text-[10px] text-charcoal-500">{s.city}</p>
                             <p className="mt-1 text-xs font-bold text-maroon-700">
-                              {formatPrice(s.price_per_day)}
+                              {formatHallPrice(s.price_per_day)}
                             </p>
                           </div>
                         </Link>
@@ -714,27 +767,34 @@ export function HallDetailView({ hall, similar, isPreview, sidebarAd, advancePer
           {/* ── Desktop sticky booking card (right column) ── */}
           <aside className="hidden lg:block">
             <div className="sticky top-20 mt-6 rounded-2xl bg-white p-5 shadow-elevated">
-              <p className="text-xs text-charcoal-500">Starting from</p>
+              <p className="text-xs text-charcoal-500">{priced ? "Starting from" : "Pricing"}</p>
               <p className="mt-0.5 font-serif text-2xl font-bold text-maroon-700">
-                {formatPrice(hall.price_per_day)}
-                <span className="text-sm font-normal text-charcoal-500"> /day</span>
+                {formatHallPrice(hall.price_per_day)}
+                {priced && <span className="text-sm font-normal text-charcoal-500"> /day</span>}
               </p>
 
               <div className="mt-4 space-y-2 rounded-xl bg-ivory-100 p-3 text-sm">
-                <PriceLineDesktop label="Full day"    price={hall.price_per_day}  />
+                {priced && <PriceLineDesktop label="Full day" price={hall.price_per_day as number} />}
                 {hall.price_morning != null && (
                   <PriceLineDesktop label="Morning"   price={hall.price_morning}  />
                 )}
                 {hall.price_evening != null && (
                   <PriceLineDesktop label="Evening"   price={hall.price_evening}  />
                 )}
-                <div className="border-t border-border pt-2">
-                  <PriceLineDesktop
-                    label={`Advance (${advancePct}%)`}
-                    price={advanceAmount}
-                    bold
-                  />
-                </div>
+                {showAdvance ? (
+                  <div className="border-t border-border pt-2">
+                    <PriceLineDesktop
+                      label={`Advance (${advancePct}%)`}
+                      price={advanceAmount}
+                      bold
+                    />
+                  </div>
+                ) : (
+                  <p className="text-[11px] leading-relaxed text-charcoal-500">
+                    The venue quotes and collects directly. Hallnect takes no payment for this
+                    listing.
+                  </p>
+                )}
               </div>
 
               {hall.rating_count > 0 && (
@@ -747,16 +807,18 @@ export function HallDetailView({ hall, similar, isPreview, sidebarAd, advancePer
                 </div>
               )}
 
-              <Link href={`/book/${hall.slug}`} className="mt-4 block">
+              <Link href={ctaHref} className="mt-4 block">
                 <Button variant="gold" size="lg" className="w-full">
-                  Book This Hall
+                  {isLead ? "Send Enquiry" : "Book This Hall"}
                 </Button>
               </Link>
 
               <div className="mt-3 flex items-start gap-1.5">
                 <Info className="h-3.5 w-3.5 shrink-0 mt-0.5 text-charcoal-400" />
                 <p className="text-[11px] text-charcoal-500">
-                  You won&apos;t be charged yet — choose your date and slot next.
+                  {isLead
+                    ? "You will not be charged. We verify your number, then pass the enquiry to the venue."
+                    : "You won\u2019t be charged yet — choose your date and slot next."}
                 </p>
               </div>
             </div>
@@ -775,13 +837,19 @@ export function HallDetailView({ hall, similar, isPreview, sidebarAd, advancePer
       <div className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-white pb-[max(env(safe-area-inset-bottom),0.75rem)] pt-3 px-4 lg:hidden">
         <div className="flex items-center gap-3">
           <div>
-            <p className="text-[11px] text-charcoal-500">From</p>
-            <p className="font-serif text-lg font-bold text-maroon-700">
-              {formatPrice(hall.price_per_day)}
+            <p className="text-[11px] text-charcoal-500">{priced ? "From" : "Pricing"}</p>
+            <p
+              className={
+                priced
+                  ? "font-serif text-lg font-bold text-maroon-700"
+                  : "font-serif text-sm font-bold text-maroon-700"
+              }
+            >
+              {formatHallPrice(hall.price_per_day)}
             </p>
           </div>
-          <Link href={`/book/${hall.slug}`} className="flex-1">
-            <Button variant="gold" size="lg" className="w-full">Book Now</Button>
+          <Link href={ctaHref} className="flex-1">
+            <Button variant="gold" size="lg" className="w-full">{ctaLabel}</Button>
           </Link>
         </div>
       </div>

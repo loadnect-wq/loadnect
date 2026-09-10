@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/Badge";
 import { type HallListing } from "@/lib/halls";
 import { CARD_GRADIENTS, formatPrice } from "@/lib/mock-data";
 import { advanceFromTotal } from "@/lib/booking-payment";
+import { hasPrice, isLeadGeneration, PRICE_ON_REQUEST } from "@/lib/booking-mode";
 import { SaveHeart } from "@/app/_components/SaveHeart";
 
 // Booking advance — the same central calculation the checkout uses
@@ -133,17 +134,34 @@ export function HallCard({ hall, advancePercent }: HallCardProps) {
             </strong>
           </span>
           <span className="text-right">
-            <span className="block">
-              <span className="text-base font-bold text-maroon-700">
-                {formatPrice(hall.price_per_day)}
+            {hasPrice(hall.price_per_day) ? (
+              <>
+                <span className="block">
+                  <span className="text-base font-bold text-maroon-700">
+                    {formatPrice(hall.price_per_day)}
+                  </span>
+                  <span className="text-[10px] text-charcoal-500">/day</span>
+                </span>
+                {/* THE ADVANCE ESTIMATE IS FOR DIRECT BOOKING ONLY. A
+                    lead-generation venue takes no advance through Hallnect —
+                    the customer pays the venue directly — so quoting one here
+                    would advertise a payment this listing cannot accept.
+                    Advance shown as an estimate; the authoritative amount is
+                    recomputed server-side at booking (the fee % is admin-set). */}
+                {!isLeadGeneration(hall.booking_mode) && (
+                  <span className="mt-0.5 block text-[10px] font-semibold text-gold-600">
+                    ≈ {formatPrice(estimateAdvance(hall.price_per_day, advancePercent))} advance
+                  </span>
+                )}
+              </>
+            ) : (
+              <span className="block">
+                <span className="text-sm font-bold text-maroon-700">{PRICE_ON_REQUEST}</span>
+                <span className="mt-0.5 block text-[10px] font-semibold text-gold-600">
+                  Send an enquiry
+                </span>
               </span>
-              <span className="text-[10px] text-charcoal-500">/day</span>
-            </span>
-            {/* Advance shown as an estimate — the exact, authoritative amount is
-                recomputed server-side at booking (platform fee % is admin-set). */}
-            <span className="mt-0.5 block text-[10px] font-semibold text-gold-600">
-              ≈ {formatPrice(estimateAdvance(hall.price_per_day, advancePercent))} advance
-            </span>
+            )}
           </span>
         </div>
       </div>

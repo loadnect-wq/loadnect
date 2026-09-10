@@ -18,6 +18,7 @@ import {
   CUSTOM_AMENITY_LIMITS,
   customAmenityListSchema,
   commissionRateSchema,
+  leadConfirmSchema,
 } from "@/lib/validation/schemas";
 import { sanitizeError } from "@/lib/errors";
 import { setHallCommissionRate, readHallCommissionRate } from "@/lib/hall-commission";
@@ -212,6 +213,8 @@ export async function createHall(data: {
   /** One of HALL_COMMISSION_RATES. Required — hallCreateSchema rejects anything
    *  else, and the halls_commission_rate_allowed CHECK rejects it again. */
   commissionRate: number | string;
+  /** DIRECT_BOOKING (the default when absent) or LEAD_GENERATION. */
+  bookingMode?: string;
 }): Promise<ActionResult> {
   const { supabase, user } = await getAuthUser();
   if (!user) return { error: "Not authenticated" };
@@ -278,10 +281,15 @@ export async function createHall(data: {
     pincode:      v.pincode || null,
     capacity_min: v.capacityMin ?? null,
     capacity_max: v.capacityMax,
-    price_per_day:  v.pricePerDay,
+    // NULLABLE SINCE MIGRATION 0073, but only for a lead venue —
+    // halls_direct_booking_needs_price refuses a null on a direct-booking hall
+    // and hallSchema refuses it a layer earlier with a sentence the owner can
+    // act on.
+    price_per_day:  v.pricePerDay ?? null,
     price_morning:  v.priceMorning ?? null,
     price_evening:  v.priceEvening ?? null,
     venue_types:    v.venueTypes,
+    booking_mode:   v.bookingMode,
     // The owner's own commercial term. Taken from the PARSED value, so the
     // eight-value bound has already been applied — the raw form string never
     // reaches the database. The halls_commission_rate_allowed CHECK is the
@@ -361,6 +369,9 @@ export async function updateHall(hallId: string, data: {
    *  has; supply a different one and it is changed, audited, and applied to
    *  FUTURE bookings only — existing bookings carry their own snapshot. */
   commissionRate?: number | string;
+  /** DIRECT_BOOKING or LEAD_GENERATION. Absent means DIRECT_BOOKING, which is
+   *  what every caller written before lead generation meant. */
+  bookingMode?: string;
 }): Promise<ActionResult> {
   const { supabase, user } = await getAuthUser();
   if (!user) return { error: "Not authenticated" };
@@ -380,7 +391,7 @@ export async function updateHall(hallId: string, data: {
   // approved as one venue could go on serving customers as another.
   const { data: before } = await db
     .from("halls")
-    .select("status, name, city, address, capacity_max, price_per_day, venue_types")
+    .select("status, name, city, address, capacity_max, price_per_day, venue_types, booking_mode")
     .eq("id", hallId)
     .maybeSingle();
 
@@ -401,10 +412,15 @@ export async function updateHall(hallId: string, data: {
       pincode:      v.pincode || null,
       capacity_min: v.capacityMin ?? null,
       capacity_max: v.capacityMax,
-      price_per_day:  v.pricePerDay,
+      price_per_day:  v.pricePerDay ?? null,
       price_morning:  v.priceMorning ?? null,
       price_evening:  v.priceEvening ?? null,
       venue_types:    v.venueTypes,
+      // Written through the SESSION client, unlike the commission rate below.
+      // The mode is not a money column: it changes how the venue is presented
+      // and which flow a customer enters, so 0073 adds it to 0046's named
+      // UPDATE grant rather than routing it through the service role.
+      booking_mode:   v.bookingMode,
     }, { count: "exact" })
     .eq("id", hallId);
 
@@ -489,7 +505,8 @@ export async function updateHall(hallId: string, data: {
     if (before.city !== v.city) changed.push("city");
     if ((before.address ?? null) !== (v.address || null)) changed.push("address");
     if (Number(before.capacity_max) !== Number(v.capacityMax)) changed.push("capacity");
-    if (Number(before.price_per_day) !== Number(v.pricePerDay)) changed.push("price");
+    if (Number(before.price_per_day ?? 0) !== Number(v.pricePerDay ?? 0)) changed.push("price");
+    if ((before.booking_mode ?? "DIRECT_BOOKING") !== v.bookingMode) changed.push("booking mode");
     const beforeTypes = [...(before.venue_types ?? [])].sort().join(",");
     if (beforeTypes !== [...v.venueTypes].sort().join(",")) changed.push("venue types");
 
@@ -1443,4 +1460,224 @@ export async function releaseOfflineBooking(
   revalidatePath(`/owner/halls/${hallId}/availability`);
   revalidatePath(`/halls`);
   return { success: true };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LEAD GENERATION — the venue's side
+//
+// The confirmation tick is a MONEY EVENT: it is the moment a commission comes
+// into existence. So every one of these actions re-derives the owner from the
+// session, proves ownership against the database inside lib/leads.ts, and lets
+// the service role perform a write the session client is not granted at all
+// (migration 0073 gives `authenticated` no INSERT or UPDATE on `leads`).
+//
+// Nothing here accepts an owner id, a hall id, a commission rate or a
+// commission amount from the browser. The only client-supplied values are the
+// lead id, the agreed amount and a free-text note.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Resolves the caller's hall_owners row, or null. */
+async function callerOwnerRow(): Promise<{ profileId: string; ownerId: string } | null> {
+  const { supabase, user } = await getAuthUser();
+  if (!user) return null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data } = await (supabase as any)
+    .from("hall_owners").select("id").eq("profile_id", user.id).maybeSingle();
+  if (!data?.id) return null;
+  return { profileId: user.id, ownerId: data.id };
+}
+
+export type ConfirmLeadActionResult =
+  | { success: true; alreadyConfirmed: boolean; commissionAmount?: number }
+  | { error: string };
+
+/**
+ * The Confirm tick.
+ *
+ * `agreedAmount` is the one number the owner types that becomes money, so it
+ * goes through leadConfirmSchema (digits only, a floor, no parseFloat) before
+ * anything sees it. The RATE is never accepted here — confirmLead resolves it
+ * from the hall server-side.
+ */
+export async function confirmLeadAction(
+  leadId: string,
+  input: { agreedAmount: number | string; ownerNotes?: string },
+): Promise<ConfirmLeadActionResult> {
+  const caller = await callerOwnerRow();
+  if (!caller) return { error: "Complete your business profile first." };
+
+  if (!parseSafe(uuidSchema, leadId).ok) return { error: "Invalid enquiry id." };
+
+  const parsed = parseSafe(leadConfirmSchema, {
+    agreedAmount: input.agreedAmount,
+    ownerNotes: input.ownerNotes,
+  });
+  if (!parsed.ok) return { error: parsed.error };
+
+  const { confirmLead } = await import("@/lib/leads");
+  const res = await confirmLead({
+    leadId,
+    ownerProfileId: caller.profileId,
+    agreedAmount: parsed.data.agreedAmount,
+    ownerNotes: parsed.data.ownerNotes || null,
+  });
+  if (!res.ok) return { error: res.error };
+
+  // A repeat tick notifies nobody and audits nothing. The outbox dedupe key
+  // would stop the SMS anyway, but an audit row per click would be noise in an
+  // append-only log that the admin page paginates at 50.
+  if (!res.alreadyConfirmed) {
+    const { notifyLeadEvent } = await import("@/lib/notifications/events");
+    await notifyLeadEvent("lead.confirmed", leadId, { amount: res.breakdown?.agreedAmount });
+
+    await recordOwnerAction({
+      action:         "lead.confirmed",
+      entityType:     "lead",
+      entityId:       leadId,
+      previousStatus: "pending",
+      newStatus:      "confirmed",
+      reason:
+        `Venue confirmed an enquiry at an agreed amount of ` +
+        `${res.breakdown?.agreedAmount ?? "?"}. Hallnect commission ` +
+        `${res.breakdown?.commissionRate ?? "?"}% = ${res.breakdown?.commissionAmount ?? "?"}.`,
+      metadata: {
+        agreedAmount:     res.breakdown?.agreedAmount ?? null,
+        commissionRate:   res.breakdown?.commissionRate ?? null,
+        commissionAmount: res.breakdown?.commissionAmount ?? null,
+        commissionId:     res.commissionId,
+      },
+    });
+  }
+
+  revalidatePath("/owner/leads");
+  revalidatePath("/owner/commissions");
+  revalidatePath("/owner/dashboard");
+  revalidatePath("/admin/leads");
+  return {
+    success: true,
+    alreadyConfirmed: res.alreadyConfirmed,
+    commissionAmount: res.breakdown?.commissionAmount,
+  };
+}
+
+export async function rejectLeadAction(
+  leadId: string,
+  reason?: string,
+): Promise<ActionResult> {
+  const caller = await callerOwnerRow();
+  if (!caller) return { error: "Complete your business profile first." };
+  if (!parseSafe(uuidSchema, leadId).ok) return { error: "Invalid enquiry id." };
+
+  const { rejectLead } = await import("@/lib/leads");
+  const res = await rejectLead({
+    leadId,
+    ownerProfileId: caller.profileId,
+    reason: (reason ?? "").trim().slice(0, 500) || null,
+  });
+  if (!res.ok) return { error: res.error };
+
+  if (res.changed) {
+    const { notifyLeadEvent } = await import("@/lib/notifications/events");
+    await notifyLeadEvent("lead.rejected", leadId, { reason });
+    await recordOwnerAction({
+      action:         "lead.rejected",
+      entityType:     "lead",
+      entityId:       leadId,
+      previousStatus: "pending",
+      newStatus:      "rejected",
+      reason:         reason ? `Venue declined an enquiry: ${reason}` : "Venue declined an enquiry.",
+    });
+  }
+
+  revalidatePath("/owner/leads");
+  revalidatePath("/admin/leads");
+  return { success: true };
+}
+
+export type StartCommissionPaymentActionResult =
+  | { success: true; paymentSessionId: string; orderId: string; amount: number; mode: "sandbox" | "production" }
+  | { error: string };
+
+/**
+ * Opens Cashfree checkout for one LEAD commission.
+ *
+ * The browser sends a commission id and nothing else. The amount, the payee and
+ * the eligibility are all read server-side; a booking commission is refused
+ * outright by assertLeadCommission, because that money was already retained
+ * from the customer's advance and inviting the venue to pay it again would
+ * collect it twice.
+ */
+export async function startCommissionPaymentAction(
+  commissionId: string,
+): Promise<StartCommissionPaymentActionResult> {
+  const { supabase, user } = await getAuthUser();
+  if (!user) return { error: "Not authenticated" };
+  if (!parseSafe(uuidSchema, commissionId).ok) return { error: "Invalid commission id." };
+  if (!isCashfreeConfigured()) {
+    return { error: "Online payment is not available right now. Please contact Hallnect support." };
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const db = supabase as any;
+  const { data: owner } = await db
+    .from("hall_owners")
+    .select("business_name, business_email, business_phone, profiles!profile_id(full_name, email, phone)")
+    .eq("profile_id", user.id)
+    .maybeSingle();
+  if (!owner) return { error: "Complete your business profile first." };
+
+  const { startCommissionPayment } = await import("@/lib/commission-payments");
+  const res = await startCommissionPayment({
+    commissionId,
+    ownerProfileId: user.id,
+    ownerName:  owner.business_name || owner.profiles?.full_name || "Hall owner",
+    // The gateway needs a deliverable address for its receipt. The session's
+    // own email is the trustworthy one; business_email is owner-typed.
+    ownerEmail: user.email ?? owner.business_email ?? owner.profiles?.email ?? "",
+    ownerPhone: owner.business_phone ?? owner.profiles?.phone ?? null,
+  });
+
+  if (!res.ok) return { error: res.error };
+  return {
+    success: true,
+    paymentSessionId: res.paymentSessionId,
+    orderId: res.orderId,
+    amount: res.amount,
+    mode: res.mode,
+  };
+}
+
+export type CommissionPaymentStatusResult =
+  | { state: "paid" | "pending" | "failed" | "unsettled" | "not_found" | "error" }
+  | { error: string };
+
+/**
+ * What actually happened to a commission order.
+ *
+ * Called from the return page, which knows only an order id from a URL. THAT
+ * URL IS NOT EVIDENCE OF ANYTHING — this re-reads the order from Cashfree and
+ * compares the amount to the figure this server stored, exactly as the webhook
+ * does. A forged redirect proves nothing and changes nothing.
+ */
+export async function checkCommissionPaymentStatus(
+  orderId: string,
+): Promise<CommissionPaymentStatusResult> {
+  const { user } = await getAuthUser();
+  if (!user) return { error: "Not authenticated" };
+
+  const { isCommissionOrderId, verifyAndApplyCommissionPayment } =
+    await import("@/lib/commission-payments");
+  // Refuse an order id from a different namespace rather than handing a
+  // booking order to the commission verifier.
+  if (typeof orderId !== "string" || !isCommissionOrderId(orderId)) {
+    return { error: "That payment reference is not a commission payment." };
+  }
+
+  const res = await verifyAndApplyCommissionPayment(orderId);
+
+  if (res.state === "paid") {
+    revalidatePath("/owner/commissions");
+    revalidatePath("/admin/commissions");
+  }
+  return { state: res.state };
 }

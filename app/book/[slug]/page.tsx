@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { noindexMetadata } from "@/lib/seo/metadata";
 import { getSession } from "@/lib/auth";
 import { fetchHallBySlug } from "@/lib/halls";
+import { isLeadGeneration, hasPrice } from "@/lib/booking-mode";
 import { fetchHallAvailabilityWindow } from "@/lib/availability";
 import { isOnlinePaymentEnabled, getAdvancePercent } from "@/lib/platform-settings";
 import { todayInBusinessTz, addDaysToIsoDate } from "@/lib/dates";
@@ -31,6 +32,24 @@ export default async function BookPage({ params }: Props) {
   // Real DB fetch — RLS ensures only approved halls are bookable by customers
   const hall = await fetchHallBySlug(slug);
   if (!hall || hall.status !== "approved") notFound();
+
+  // A LEAD VENUE HAS NO CHECKOUT. Hallnect collects nothing for it, holds no
+  // date and may not even know its price — so this route is not merely
+  // inappropriate for one, it cannot be completed. The redirect is a
+  // convenience for a stale link or a bookmarked URL; the real gate is on the
+  // server actions (createBookingRequest resolves the hall itself), because a
+  // page redirect protects nobody who posts to the action directly.
+  if (isLeadGeneration(hall.booking_mode)) redirect(`/enquiry/${slug}`);
+
+  // A direct-booking hall ALWAYS has a price — halls_direct_booking_needs_price
+  // (migration 0073) makes a null one impossible at the database level. If one
+  // arrives anyway the constraint has been dropped or bypassed, and the honest
+  // response is to refuse rather than to let advanceFromTotal throw a
+  // RangeError onto a customer's checkout screen.
+  if (!hasPrice(hall.price_per_day)) {
+    console.error(`[book] direct-booking hall ${hall.id} has no price_per_day`);
+    notFound();
+  }
 
   // Pull authoritative availability for the next 60 days
   // Business-timezone window: UTC-derived bounds were one day behind IST.

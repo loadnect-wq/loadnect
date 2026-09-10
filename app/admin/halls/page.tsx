@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Building2, ExternalLink, Sparkles } from "lucide-react";
 import { fetchAllHalls } from "@/lib/admin";
 import { formatPrice } from "@/lib/mock-data";
+import { hasPrice, PRICE_ON_REQUEST } from "@/lib/booking-mode";
 import { Badge } from "@/components/ui/Badge";
 import { HALL_COMMISSION_RATES } from "@/lib/validation/schemas";
 import { sortByCommissionRate } from "@/lib/hall-commission";
@@ -34,7 +35,19 @@ function fmtDate(iso: string) {
   return new Date(iso).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
 }
 
-type Props = { searchParams: Promise<{ status?: string; commission?: string; sort?: string }> };
+type Props = { searchParams: Promise<{ status?: string; commission?: string; sort?: string; mode?: string }> };
+
+/**
+ * Booking-mode filter. Deliberately its own row rather than another value in
+ * the status chips: mode and status are orthogonal (a lead venue can be
+ * pending, approved or suspended), and folding them into one row would make
+ * "approved" and "Lead Generation" mutually exclusive when they are not.
+ */
+const MODE_FILTERS = [
+  { key: "all",             label: "All modes" },
+  { key: "DIRECT_BOOKING",  label: "Direct Booking" },
+  { key: "LEAD_GENERATION", label: "Lead Generation" },
+] as const;
 
 /**
  * Commission filter options. "unset" is the one that earns its place: a hall
@@ -65,10 +78,11 @@ const SORTS = [
  * near-identical URLSearchParams blocks — is how a filter silently starts
  * dropping the sort the moment someone edits one of them.
  */
-function hrefFor(current: { status: string; commission: string; sort: string }): string {
+function hrefFor(current: { status: string; commission: string; sort: string; mode: string }): string {
   const params = new URLSearchParams();
   if (current.status !== "all") params.set("status", current.status);
   if (current.commission !== "all") params.set("commission", current.commission);
+  if (current.mode !== "all") params.set("mode", current.mode);
   if (current.sort !== "newest") params.set("sort", current.sort);
   const qs = params.toString();
   return qs ? `?${qs}` : "?";
@@ -83,10 +97,11 @@ export default async function AdminHallsPage({ searchParams }: Props) {
   // denial now logs at error level, which would bury real failures. Guarding
   // here also means this page is not relying on a file it does not control.
   await requireRole(["admin"]);
-  const { status, commission, sort } = await searchParams;
+  const { status, commission, sort, mode } = await searchParams;
   const activeFilter = FILTERS.find((f) => f.key === status) ?? FILTERS[0];
   const activeCommission =
     COMMISSION_FILTERS.find((f) => f.key === commission) ?? COMMISSION_FILTERS[0];
+  const activeMode = MODE_FILTERS.find((m) => m.key === mode) ?? MODE_FILTERS[0];
   const activeSort = SORTS.find((s) => s.key === sort) ?? SORTS[0];
 
   const allHalls = await fetchAllHalls(activeFilter.value);
@@ -96,12 +111,22 @@ export default async function AdminHallsPage({ searchParams }: Props) {
   // merged in from a service-role read afterwards. These pages are already
   // fully materialised — fetchAllHalls has no pagination — so this costs
   // nothing beyond an array pass.
-  const filtered =
+  const byCommission =
     activeCommission.key === "all"
       ? allHalls
       : activeCommission.key === "unset"
         ? allHalls.filter((h) => h.commission_rate == null)
         : allHalls.filter((h) => h.commission_rate === Number(activeCommission.key));
+
+  // booking_mode IS a readable column, so this one could have gone in the
+  // query. It is done here so the two filters compose the same way and so the
+  // counts on every chip are computed against the same materialised set —
+  // a mode filter in SQL and a commission filter in memory would make the
+  // commission chips count rows the mode filter had already removed.
+  const filtered =
+    activeMode.key === "all"
+      ? byCommission
+      : byCommission.filter((h) => h.booking_mode === activeMode.key);
 
   // SORTED IN MEMORY, for the same reason it is filtered in memory: the query
   // above runs on the session client, which migration 0072 forbids from reading
@@ -144,6 +169,7 @@ export default async function AdminHallsPage({ searchParams }: Props) {
               href={hrefFor({
                 status: f.key,
                 commission: activeCommission.key,
+                mode: activeMode.key,
                 sort: activeSort.key,
               })}
               className={[
@@ -156,6 +182,41 @@ export default async function AdminHallsPage({ searchParams }: Props) {
               {f.label}
             </Link>
           ))}
+        </div>
+
+        {/* Booking mode. An admin needs to know at a glance which venues take
+            money through Hallnect and which only take enquiries, because the
+            two settle in opposite directions — one commission is retained from
+            a customer advance, the other is billed to the venue. */}
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-[11px] font-semibold uppercase tracking-wide text-charcoal-400">
+            Mode
+          </span>
+          {MODE_FILTERS.map((m) => {
+            const count =
+              m.key === "all"
+                ? allHalls.length
+                : allHalls.filter((h) => h.booking_mode === m.key).length;
+            return (
+              <Link
+                key={m.key}
+                href={hrefFor({
+                  status: activeFilter.key,
+                  commission: activeCommission.key,
+                  mode: m.key,
+                  sort: activeSort.key,
+                })}
+                className={[
+                  "rounded-full border px-2.5 py-0.5 text-[11px] font-semibold tabular-nums",
+                  activeMode.key === m.key
+                    ? "border-maroon-700 bg-maroon-700 text-white"
+                    : "border-border bg-white text-charcoal-600 hover:border-maroon-300",
+                ].join(" ")}
+              >
+                {m.label} ({count})
+              </Link>
+            );
+          })}
         </div>
 
         {/* Commission filter. Kept on its own row and visually lighter than the
@@ -173,6 +234,7 @@ export default async function AdminHallsPage({ searchParams }: Props) {
                 href={hrefFor({
                   status: activeFilter.key,
                   commission: f.key,
+                  mode: activeMode.key,
                   sort: activeSort.key,
                 })}
                 className={[
@@ -204,6 +266,7 @@ export default async function AdminHallsPage({ searchParams }: Props) {
               href={hrefFor({
                 status: activeFilter.key,
                 commission: activeCommission.key,
+                mode: activeMode.key,
                 sort: o.key,
               })}
               aria-current={activeSort.key === o.key ? "true" : undefined}
@@ -265,11 +328,24 @@ export default async function AdminHallsPage({ searchParams }: Props) {
 
                       <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-charcoal-600">
                         <span>👥 Up to {h.capacity_max.toLocaleString("en-IN")}</span>
-                        <span>💰 {formatPrice(h.price_per_day)}/day</span>
+                        <span>💰 {hasPrice(h.price_per_day) ? `${formatPrice(h.price_per_day)}/day` : PRICE_ON_REQUEST}</span>
                         {/* The commercial term, not a customer-facing figure.
                             Amber rather than neutral when unset: such a hall
                             bills at the platform default, which nobody agreed
                             to, so it should read as needing attention. */}
+                        {/* Mode badge. Amber for lead generation, because it
+                            is the mode where Hallnect has to COLLECT rather
+                            than deduct — which is the row an admin chasing
+                            money needs to spot. */}
+                        {h.booking_mode === "LEAD_GENERATION" ? (
+                          <span className="rounded-full border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800">
+                            Lead Generation
+                          </span>
+                        ) : (
+                          <span className="rounded-full border border-border bg-ivory-50 px-1.5 py-0.5 text-[10px] font-semibold text-charcoal-500">
+                            Direct
+                          </span>
+                        )}
                         {h.commission_rate != null ? (
                           <span className="font-semibold text-charcoal-700">
                             Commission {h.commission_rate}%

@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import {
-  Wallet, Sparkles, Bell, MessageSquare, User, ChevronRight, Building2,
+  Wallet, Sparkles, Bell, MessageSquare, User, ChevronRight, Building2, Inbox,
 } from "lucide-react";
 import { requireRole } from "@/lib/auth";
 import { AppHeader } from "@/components/app/AppHeader";
@@ -12,6 +12,7 @@ export const metadata: Metadata = { title: "More" };
 // 360px, so the rest live here rather than being unreachable — which is what
 // they were before this page existed.
 const ITEMS = [
+  { href: "/owner/leads",         label: "Enquiries",     desc: "Lead Generation requests waiting on you", Icon: Inbox },
   { href: "/owner/commissions",   label: "Commissions",   desc: "What Hallnect kept from each booking", Icon: Wallet },
   { href: "/owner/premium",       label: "Premium",       desc: "Your plan and monthly billing",        Icon: Sparkles },
   { href: "/owner/notifications", label: "Notifications", desc: "Booking and payment alerts",           Icon: Bell },

@@ -55,6 +55,7 @@ import {
 } from "@/lib/cashfree";
 import { verifyAndApplyPayment } from "@/lib/payments";
 import { isPlanOrderId, verifyAndApplyPlanPurchase } from "@/lib/plan-payments";
+import { isCommissionOrderId, verifyAndApplyCommissionPayment } from "@/lib/commission-payments";
 import { recordWebhookEvent, markWebhookProcessed } from "@/lib/settlement";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import { notifyAdminOperational } from "@/lib/notifications/events";
@@ -443,13 +444,23 @@ export async function POST(request: Request) {
     //     because it reads the authoritative order status rather than trusting
     //     the event name.
     //
-    // Two kinds of money arrive at this one endpoint: CUSTOMER booking advances
-    // (HN_…) and OWNER premium/pro plan purchases (HNP_…). The order-id prefix
-    // routes them without an extra database round-trip. Both paths re-verify
-    // against Cashfree and are individually idempotent.
+    // THREE kinds of money arrive at this one endpoint: CUSTOMER booking
+    // advances (HN_…), OWNER premium/pro plan purchases (HNP_…) and OWNER
+    // commission settlements on confirmed enquiries (HNC_…). The order-id
+    // prefix routes them without an extra database round-trip. All three
+    // re-verify against Cashfree and are individually idempotent.
+    //
+    // THE ORDER OF THESE TESTS MATTERS. isPlanOrderId matches the prefix
+    // "HNP_" and isCommissionOrderId matches "HNC_"; neither is a prefix of
+    // the other, so they cannot both match — but the booking path is the
+    // FALL-THROUGH, so any new prefix that is not tested here would be handed
+    // to verifyAndApplyPayment and looked up as a booking. A new namespace
+    // must be added to this chain, not merely to its own module.
     const result = isPlanOrderId(orderId)
       ? await verifyAndApplyPlanPurchase(orderId)
-      : await verifyAndApplyPayment(orderId);
+      : isCommissionOrderId(orderId)
+        ? await verifyAndApplyCommissionPayment(orderId)
+        : await verifyAndApplyPayment(orderId);
     console.info(`[cashfree-webhook] order=${orderId} applied state=${result.state}`);
 
     // 'error' is NOT a handled outcome — it is verifyAndApplyPayment telling us
@@ -463,7 +474,12 @@ export async function POST(request: Request) {
     // could not be created. The owner has paid and has nothing; a 200 here
     // would permanently cancel Cashfree's retries and strand them. Retrying is
     // safe — activation is exactly-once via premium_listings.plan_purchase_id.
-    if (result.state === "error" || result.state === "unactivated") {
+    // 'unsettled' is the COMMISSION twin of 'unactivated': the venue's money was
+    // captured but the commission row could not be marked paid, so it still
+    // shows as owing. A 200 here would cancel Cashfree's retries and leave a
+    // venue billed for something they have already settled. Retrying is safe —
+    // markCommissionSettled is guarded by its own status check.
+    if (result.state === "error" || result.state === "unactivated" || result.state === "unsettled") {
       console.error(`[cashfree-webhook] order=${orderId} not applied — asking Cashfree to retry`);
       await markSafely(eventId, "FAILED", `apply returned ${result.state}`);
       return NextResponse.json({ ok: false, state: result.state }, { status: 503 });

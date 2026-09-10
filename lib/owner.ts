@@ -5,6 +5,7 @@
 
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { readHallCommissionRate, readHallCommissionRates } from "@/lib/hall-commission";
+import { toBookingMode, type BookingMode } from "@/lib/booking-mode";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -45,7 +46,9 @@ export type OwnerHall = {
   city:           string;
   state:          string | null;
   capacity_max:   number;
-  price_per_day:  number;
+  /** NULL only for a LEAD_GENERATION venue that publishes no price. */
+  price_per_day:  number | null;
+  booking_mode:   BookingMode;
   status:         string; // hall_status enum
   is_premium:     boolean;
   rating_average: number;
@@ -258,7 +261,7 @@ export async function fetchOwnerHalls(ownerId: string): Promise<OwnerHall[]> {
 
   const { data, error } = await db
     .from("halls")
-    .select("id, slug, name, city, state, capacity_max, price_per_day, status, is_premium, rating_average, rating_count, created_at, rejection_reason, hall_images(url, is_cover)")
+    .select("id, slug, name, city, state, capacity_max, price_per_day, booking_mode, status, is_premium, rating_average, rating_count, created_at, rejection_reason, hall_images(url, is_cover)")
     .eq("owner_id", ownerId)
     .order("created_at", { ascending: false });
 
@@ -287,7 +290,9 @@ export async function fetchOwnerHalls(ownerId: string): Promise<OwnerHall[]> {
       city:           row.city,
       state:          row.state ?? null,
       capacity_max:   row.capacity_max,
-      price_per_day:  Number(row.price_per_day),
+      // Number(null) is 0 and a Rs.0 venue reads as free. Keep it null.
+      price_per_day:  row.price_per_day == null ? null : Number(row.price_per_day),
+      booking_mode:   toBookingMode(row.booking_mode),
       status:         row.status,
       is_premium:     row.is_premium,
       rating_average: Number(row.rating_average),
@@ -322,7 +327,7 @@ export async function fetchOwnerHall(hallId: string): Promise<OwnerHallDetail | 
 
   const { data, error } = await db
     .from("halls")
-    .select("id, slug, name, city, state, address, pincode, latitude, longitude, capacity_min, capacity_max, price_per_day, price_morning, price_evening, description, status, is_premium, rating_average, rating_count, created_at, rejection_reason, venue_types, hall_images(url, is_cover), hall_amenities(amenity_id), hall_custom_amenities(name, sort_order)")
+    .select("id, slug, name, city, state, address, pincode, latitude, longitude, capacity_min, capacity_max, price_per_day, price_morning, price_evening, booking_mode, description, status, is_premium, rating_average, rating_count, created_at, rejection_reason, venue_types, hall_images(url, is_cover), hall_amenities(amenity_id), hall_custom_amenities(name, sort_order)")
     .eq("id", hallId)
     .eq("owner_id", ownerRow.id)   // ← ownership, not just visibility
     .maybeSingle();
@@ -353,7 +358,8 @@ export async function fetchOwnerHall(hallId: string): Promise<OwnerHallDetail | 
     longitude:      data.longitude != null ? Number(data.longitude) : null,
     capacity_min:   data.capacity_min ?? null,
     capacity_max:   data.capacity_max,
-    price_per_day:  Number(data.price_per_day),
+    price_per_day:  data.price_per_day == null ? null : Number(data.price_per_day),
+    booking_mode:   toBookingMode(data.booking_mode),
     price_morning:  data.price_morning  != null ? Number(data.price_morning)  : null,
     price_evening:  data.price_evening  != null ? Number(data.price_evening)  : null,
     description:    data.description ?? null,
@@ -587,7 +593,12 @@ export async function fetchOwnerRevenue(hallIds: string[]): Promise<RevenueBooki
 
 export type OwnerCommissionRow = {
   id:                  string;
-  booking_id:          string;
+  /** NULL on a LEAD commission — commissions_one_source (0073) guarantees that
+   *  exactly one of booking_id and lead_id is set. */
+  booking_id:          string | null;
+  /** Set only on a LEAD commission. This is the one the owner actually OWES:
+   *  a booking commission was already retained from the customer's advance. */
+  lead_id:             string | null;
   hall_id:             string | null;
   hall_name:           string;
   /** Full hall price — the base the 2.5% commission is charged on. */
@@ -602,6 +613,7 @@ export type OwnerCommissionRow = {
   status:              string;
   created_at:          string;
   paid_at:             string | null;
+  due_date:            string | null;
   settlement_adjustment_status: string | null;
 };
 
@@ -614,8 +626,15 @@ export async function fetchOwnerCommissions(hallIds: string[]): Promise<OwnerCom
 
   // paid_at / settlement_adjustment_status exist after migration 0017. Fall
   // back gracefully if the migration has not run yet.
+  //
+  // halls!hall_id(name) is embedded ALONGSIDE the bookings join, not instead of
+  // it. A lead commission has no booking, so `bookings(halls(name))` resolves to
+  // null and every lead row would have rendered as the literal word "Hall".
+  // commissions.hall_id carries its own FK (commissions_hall_id_fkey), so the
+  // direct embed works for both shapes; the booking join stays as the fallback
+  // for any historical row whose hall_id was never backfilled.
   const fullCols =
-    "id, booking_id, hall_id, booking_amount, advance_amount, commission_rate, commission_amount, owner_payout_amount, status, created_at, paid_at, settlement_adjustment_status, bookings(halls(name))";
+    "id, booking_id, lead_id, hall_id, booking_amount, advance_amount, commission_rate, commission_amount, owner_payout_amount, status, created_at, paid_at, settlement_adjustment_status, due_date, halls!hall_id(name), bookings(halls(name))";
   const baseCols =
     "id, booking_id, hall_id, booking_amount, commission_rate, commission_amount, owner_payout_amount, status, created_at, bookings(halls(name))";
 
@@ -640,9 +659,10 @@ export async function fetchOwnerCommissions(hallIds: string[]): Promise<OwnerCom
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return (data ?? []).map((row: any): OwnerCommissionRow => ({
     id:                  row.id,
-    booking_id:          row.booking_id,
+    booking_id:          row.booking_id ?? null,
+    lead_id:             row.lead_id ?? null,
     hall_id:             row.hall_id ?? null,
-    hall_name:           row.bookings?.halls?.name ?? "Hall",
+    hall_name:           row.halls?.name ?? row.bookings?.halls?.name ?? "Hall",
     booking_amount:      Number(row.booking_amount),
     advance_amount:      row.advance_amount == null ? 0 : Number(row.advance_amount),
     commission_rate:     Number(row.commission_rate),
@@ -651,6 +671,7 @@ export async function fetchOwnerCommissions(hallIds: string[]): Promise<OwnerCom
     status:              row.status,
     created_at:          row.created_at,
     paid_at:             row.paid_at ?? null,
+    due_date:            row.due_date ?? null,
     settlement_adjustment_status: row.settlement_adjustment_status ?? null,
   }));
 }

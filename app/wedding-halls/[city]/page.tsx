@@ -16,6 +16,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Building2, MapPin, Users, Wallet } from "lucide-react";
 import { fetchHalls } from "@/lib/halls";
+import { hasPrice } from "@/lib/booking-mode";
 import { getAdvancePercent } from "@/lib/platform-settings";
 import { HallCard } from "@/app/halls/_components/HallCard";
 import { AppHeader } from "@/components/app/AppHeader";
@@ -59,7 +60,12 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
   const inventory = await fetchCityInventoryBySlug(slug);
   const halls = inventory?.venueCount ? await fetchHalls({ city, sort: "rating" }) : [];
-  const priceFrom = halls.length ? Math.min(...halls.map((h) => h.price_per_day)) : null;
+  // PRICED VENUES ONLY. Math.min over a list containing null yields 0
+  // (Math.min coerces null to 0), so one "Contact for pricing" venue in a city
+  // would advertise that whole city as "wedding halls from Rs.0" — in the page
+  // title, the meta description and the search snippet.
+  const pricedFrom = halls.map((h) => h.price_per_day).filter(hasPrice);
+  const priceFrom = pricedFrom.length ? Math.min(...pricedFrom) : null;
 
   return buildMetadata({
     title: `Wedding Halls in ${city} | Marriage Halls & Venues`,
@@ -120,7 +126,12 @@ export default async function CityPage({ params }: Props) {
     getAdvancePercent(),
     fetchHalls({ city, sort: "rating" }),
   ]);
-  const priceFrom = halls.length ? Math.min(...halls.map((h) => h.price_per_day)) : null;
+  // PRICED VENUES ONLY. Math.min over a list containing null yields 0
+  // (Math.min coerces null to 0), so one "Contact for pricing" venue in a city
+  // would advertise that whole city as "wedding halls from Rs.0" — in the page
+  // title, the meta description and the search snippet.
+  const pricedFrom = halls.map((h) => h.price_per_day).filter(hasPrice);
+  const priceFrom = pricedFrom.length ? Math.min(...pricedFrom) : null;
   const largest = halls.length ? Math.max(...halls.map((h) => h.capacity_max)) : null;
   const description = describeCity(city, halls.length, priceFrom);
 

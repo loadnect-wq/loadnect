@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/Badge";
 import { buttonVariants } from "@/components/ui/Button";
 import { fetchMySavedHalls } from "@/lib/customer";
 import { formatPrice } from "@/lib/mock-data";
+import { hasPrice, PRICE_ON_REQUEST } from "@/lib/booking-mode";
 import { CARD_GRADIENTS } from "@/lib/mock-data";
 
 export const metadata: Metadata = { title: "Saved Halls" };
@@ -81,7 +82,9 @@ export default async function SavedHallsPage() {
                       <div className="flex items-end justify-between gap-1">
                         <div>
                           <p className="text-xs font-bold text-maroon-700">
-                            {formatPrice(hall.price_per_day)}/day
+                            {hasPrice(hall.price_per_day)
+                              ? `${formatPrice(hall.price_per_day)}/day`
+                              : PRICE_ON_REQUEST}
                           </p>
                           <p className="text-[10px] text-charcoal-400">
                             Up to {hall.capacity_max.toLocaleString("en-IN")} guests

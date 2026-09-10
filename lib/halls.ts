@@ -6,6 +6,21 @@ import { getSupabasePublicClient } from "@/lib/supabase/public";
 import { todayInBusinessTz, addDaysToIsoDate } from "@/lib/dates";
 import { FULL_BLOCK_STATUSES } from "@/lib/availability-status";
 import type { PremiumTier } from "@/lib/premium-plans";
+import { toBookingMode, type BookingMode } from "@/lib/booking-mode";
+
+/**
+ * A hall's price as a number, or null.
+ *
+ * NOT `Number(row.price_per_day)`. Number(null) is 0, and a 0 price renders as
+ * "Free" on a wedding venue — a missing value quietly becoming an attractive,
+ * wrong one is the exact fail-open shape this codebase keeps finding. A price
+ * that is absent stays absent all the way to formatHallPrice, which says so.
+ */
+function nullablePrice(raw: unknown): number | null {
+  if (raw == null) return null;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : null;
+}
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -16,7 +31,11 @@ export type HallListing = {
   city:           string;
   address:        string | null;
   capacity_max:   number;
-  price_per_day:  number;
+  /** NULL for a lead-generation venue that publishes no price. Never null for a
+   *  direct-booking venue — halls_direct_booking_needs_price (0073) forbids it.
+   *  Render through formatHallPrice, never with a template literal. */
+  price_per_day:  number | null;
+  booking_mode:   BookingMode;
   is_premium:     boolean;          // legacy boolean — true if any premium tier is active
   premium_tier:   PremiumTier | null; // 'premium' | 'pro' | null
   rating_average: number;
@@ -143,9 +162,10 @@ export type HallDetail = {
   longitude:      number | null;
   capacity_min:   number | null;
   capacity_max:   number;
-  price_per_day:  number;
+  price_per_day:  number | null;
   price_morning:  number | null;
   price_evening:  number | null;
+  booking_mode:   BookingMode;
   description:    string | null;
   status:         string; // hall_status enum value
   is_premium:     boolean;
@@ -277,12 +297,12 @@ export async function fetchHalls(filters: HallsFilters, failure?: FailureFlag): 
   function buildQuery(includeTier: boolean): any {
     const select = includeTier
       ? `id, slug, name, city, address,
-         capacity_max, price_per_day, is_premium, premium_tier,
+         capacity_max, price_per_day, booking_mode, is_premium, premium_tier,
          rating_average, rating_count,
          hall_images(url, is_cover),
          hall_amenities(amenities(name))`
       : `id, slug, name, city, address,
-         capacity_max, price_per_day, is_premium,
+         capacity_max, price_per_day, booking_mode, is_premium,
          rating_average, rating_count,
          hall_images(url, is_cover),
          hall_amenities(amenities(name))`;
@@ -396,7 +416,8 @@ export async function fetchHalls(filters: HallsFilters, failure?: FailureFlag): 
       city:           row.city,
       address:        row.address ?? null,
       capacity_max:   row.capacity_max,
-      price_per_day:  Number(row.price_per_day),
+      price_per_day:  nullablePrice(row.price_per_day),
+      booking_mode:   toBookingMode(row.booking_mode),
       is_premium:     row.is_premium,
       premium_tier:   (row.premium_tier ?? null) as PremiumTier | null,
       rating_average: Number(row.rating_average),
@@ -551,7 +572,7 @@ export async function fetchHallBySlug(slug: string): Promise<HallDetail | null> 
   const SELECT_WITH_TIER = `
       id, slug, name, city, state, address, pincode,
       latitude, longitude, capacity_min, capacity_max,
-      price_per_day, price_morning, price_evening,
+      price_per_day, price_morning, price_evening, booking_mode,
       description, status, is_premium, premium_tier, owner_id,
       rating_average, rating_count,
       hall_images(url, is_cover, alt_text, sort_order),
@@ -694,7 +715,8 @@ export async function fetchHallBySlug(slug: string): Promise<HallDetail | null> 
     longitude:      hall.longitude != null ? Number(hall.longitude) : null,
     capacity_min:   hall.capacity_min   ?? null,
     capacity_max:   hall.capacity_max,
-    price_per_day:  Number(hall.price_per_day),
+    price_per_day:  nullablePrice(hall.price_per_day),
+    booking_mode:   toBookingMode(hall.booking_mode),
     price_morning:  hall.price_morning  != null ? Number(hall.price_morning)  : null,
     price_evening:  hall.price_evening  != null ? Number(hall.price_evening)  : null,
     description:    hall.description    ?? null,
@@ -762,7 +784,8 @@ export async function fetchSimilarHalls(
       city:           row.city,
       address:        row.address ?? null,
       capacity_max:   row.capacity_max,
-      price_per_day:  Number(row.price_per_day),
+      price_per_day:  nullablePrice(row.price_per_day),
+      booking_mode:   toBookingMode(row.booking_mode),
       is_premium:     row.is_premium,
       premium_tier:   (row.premium_tier ?? null) as PremiumTier | null,
       rating_average: Number(row.rating_average),
