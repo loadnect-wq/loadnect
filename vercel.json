@@ -13,6 +13,10 @@
     {
       "path": "/api/admin/payouts/reconcile",
       "schedule": "5,20,35,50 * * * *"
+    },
+    {
+      "path": "/api/admin/leads/expire-stale",
+      "schedule": "40 2 * * *"
     }
   ]
 }

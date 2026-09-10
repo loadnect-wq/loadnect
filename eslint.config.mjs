@@ -17,6 +17,16 @@ const eslintConfig = [
       "node_modules/**",
       "next-env.d.ts",
       "supabase/**",
+      // AGENT WORKTREES ARE FULL COPIES OF THIS REPO. Tooling checks out a
+      // branch under .claude/worktrees/<name>/, so every source file exists
+      // twice — and eslint linted both. That took `npm run lint` from
+      // "0 errors, 123 warnings" to 36,686 errors overnight, none of them in
+      // code anyone had written: they were duplicate reports against a second
+      // copy of the tree, plus its own vendored deps.
+      //
+      // The damage is not the number, it is that a real error can no longer be
+      // seen in it. Ignored wholesale — nothing under .claude/ is shipped.
+      ".claude/**",
     ],
   },
   ...nextCoreWebVitals,
