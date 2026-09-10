@@ -10,7 +10,12 @@ const TABS = [
   { href: "/halls",    label: "Search",   Icon: Search,        match: (p: string) => p.startsWith("/halls") },
   // Points straight at the real list. /bookings still redirects here for any
   // bookmarked or already-shared link.
-  { href: "/customer/bookings", label: "Bookings", Icon: CalendarCheck, match: (p: string) => p.startsWith("/bookings") || p.startsWith("/customer/bookings") },
+  // ALSO CLAIMS /customer/enquiries. Five tabs is the most that stays tappable
+  // at 360px (see OwnerBottomNav), so a sixth is not available — and an enquiry
+  // is the same thing to a customer as a booking request: something they sent a
+  // venue and are waiting on. The tab highlights for both, and the bookings
+  // page links across.
+  { href: "/customer/bookings", label: "Bookings", Icon: CalendarCheck, match: (p: string) => p.startsWith("/bookings") || p.startsWith("/customer/bookings") || p.startsWith("/customer/enquiries") },
   { href: "/saved",    label: "Saved",    Icon: Heart,         match: (p: string) => p.startsWith("/saved") },
   { href: "/profile",  label: "Profile",  Icon: User,          match: (p: string) => p.startsWith("/profile") },
 ] as const;
@@ -19,7 +24,11 @@ const TABS = [
 // phone saw the CUSTOMER tabs on top of their own dashboard, and "Bookings"
 // took them to /customer/bookings — a route their role is refused, which
 // bounced them straight back. Owners get OwnerBottomNav instead.
-const HIDDEN_PREFIXES = ["/login", "/signup", "/owner", "/auth/", "/approval-pending", "/admin", "/book/"];
+// "/enquiry/" joins "/book/" for the same reason: both are full-screen
+// transactional wizards with their own sticky submit button, and a fixed bottom
+// bar sits ON TOP of it. On the enquiry flow that meant the tab bar covered
+// "Send Enquiry" at exactly the moment the customer went to tap it.
+const HIDDEN_PREFIXES = ["/login", "/signup", "/owner", "/auth/", "/approval-pending", "/admin", "/book/", "/enquiry/"];
 
 export function BottomNav() {
   const pathname = usePathname() ?? "/";

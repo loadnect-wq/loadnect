@@ -1,7 +1,7 @@
 import { formatBookingDates } from "@/lib/dates";
 import type { Metadata } from "next";
 import Link from "next/link";
-import { CalendarCheck, ChevronRight, Clock, MapPin } from "lucide-react";
+import { CalendarCheck, ChevronRight, Clock, Inbox, MapPin } from "lucide-react";
 import { AppHeader } from "@/components/app/AppHeader";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Badge } from "@/components/ui/Badge";
@@ -46,6 +46,28 @@ export default async function CustomerBookingsPage({ searchParams }: Props) {
   return (
     <div className="min-h-screen bg-ivory-100">
       <AppHeader title="My Bookings" />
+
+      {/* ENQUIRIES LIVE NEXT DOOR, and this link is how a phone user reaches
+          them at all: the tab bar is capped at five and cannot carry a sixth,
+          so without this a customer who sent an enquiry had no route back to
+          it on mobile. Shown unconditionally rather than only when they have
+          one — a customer looking for an enquiry they sent needs the signpost
+          most when the list they are staring at does not contain it. */}
+      <div className="px-4 pt-3 sm:px-6 lg:px-8">
+        <Link
+          href="/customer/enquiries"
+          className="flex items-center gap-2.5 rounded-2xl border border-border bg-white px-3.5 py-2.5 shadow-card active:bg-ivory-50"
+        >
+          <Inbox className="h-4 w-4 shrink-0 text-maroon-600" aria-hidden />
+          <span className="min-w-0 flex-1">
+            <span className="block text-xs font-semibold text-charcoal-900">My enquiries</span>
+            <span className="block text-[11px] text-charcoal-500">
+              Requests you sent to venues that take enquiries
+            </span>
+          </span>
+          <ChevronRight className="h-4 w-4 shrink-0 text-charcoal-400" aria-hidden />
+        </Link>
+      </div>
 
       {/* Tabs */}
       <div className="px-4 pt-3 sm:px-6 lg:px-8">
