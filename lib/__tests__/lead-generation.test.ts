@@ -7,7 +7,7 @@ import {
   primaryCtaHref, primaryCtaLabel, PRICE_ON_REQUEST,
 } from "@/lib/booking-mode";
 import {
-  bookingModeSchema, leadConfirmSchema, leadEnquirySchema, hallSchema,
+  bookingModeSchema, leadConfirmSchema, leadEnquirySchema, hallSchema, hallCreateSchema,
   BOOKING_MODES, MIN_LEAD_AGREED_AMOUNT, MIN_HALL_PRICE_RUPEES,
 } from "@/lib/validation/schemas";
 
@@ -292,6 +292,84 @@ describe("hallSchema — pricing follows the booking mode", () => {
       ...base, bookingMode: "LEAD_GENERATION", pricePerDay: "50000", priceMorning: "75000",
     });
     expect(r.success).toBe(false);
+  });
+});
+
+describe("hallCreateSchema — THE PATH AN OWNER ACTUALLY TAKES", () => {
+  // hallSchema is tested above, but an owner never submits hallSchema. They
+  // submit hallCreateSchema, which is `hallSchema.and(...)` — a Zod
+  // INTERSECTION, and an intersection parses both sides and merges. Defaults
+  // and transforms are exactly where that goes quietly wrong, so the mode and
+  // the optional price are asserted through the composed schema rather than
+  // assumed to survive it. Nobody has ever run this form in production.
+  function listing(over: Record<string, unknown> = {}) {
+    return {
+      ownerId: "11111111-2222-4333-8444-555555555555",
+      name: "Sri Meenakshi Mahal",
+      city: "Madurai",
+      state: "",
+      address: "",
+      pincode: "625006",
+      capacityMin: null,
+      capacityMax: 500,
+      pricePerDay: 40_000,
+      priceMorning: null,
+      priceEvening: null,
+      description: "",
+      amenityIds: [] as string[],
+      venueTypes: ["wedding"],
+      commissionRate: 2.5,
+      ...over,
+    };
+  }
+
+  it("creates a LEAD venue with NO price at all", () => {
+    const r = hallCreateSchema.safeParse(
+      listing({ bookingMode: "LEAD_GENERATION", pricePerDay: "" }),
+    );
+    expect(r.success).toBe(true);
+    if (r.success) {
+      expect(r.data.pricePerDay).toBeNull();
+      expect(r.data.bookingMode).toBe("LEAD_GENERATION");
+      // The commission still has to come through the intersection intact — it
+      // is the term the venue agreed to.
+      expect(r.data.commissionRate).toBe(2.5);
+    }
+  });
+
+  it("carries the DEFAULT through the intersection when the key is absent", () => {
+    // The regression that would break every pre-existing caller.
+    const { ...noMode } = listing();
+    const r = hallCreateSchema.safeParse(noMode);
+    expect(r.success).toBe(true);
+    if (r.success) expect(r.data.bookingMode).toBe("DIRECT_BOOKING");
+  });
+
+  it("still refuses a DIRECT venue with no price", () => {
+    const r = hallCreateSchema.safeParse(
+      listing({ bookingMode: "DIRECT_BOOKING", pricePerDay: "" }),
+    );
+    expect(r.success).toBe(false);
+  });
+
+  it("creates a LEAD venue that DOES publish a price", () => {
+    const r = hallCreateSchema.safeParse(
+      listing({ bookingMode: "LEAD_GENERATION", pricePerDay: 40_000 }),
+    );
+    expect(r.success).toBe(true);
+    if (r.success) expect(r.data.pricePerDay).toBe(40_000);
+  });
+
+  it("still requires a commission rate on a LEAD venue", () => {
+    // A lead commission is billed to the venue, so the rate matters MORE here,
+    // not less — there is no advance to fall back on.
+    const withoutRate = listing({ bookingMode: "LEAD_GENERATION", pricePerDay: "" }) as Record<string, unknown>;
+    delete withoutRate.commissionRate;
+    expect(hallCreateSchema.safeParse(withoutRate).success).toBe(false);
+  });
+
+  it("rejects an unknown mode rather than defaulting it", () => {
+    expect(hallCreateSchema.safeParse(listing({ bookingMode: "HYBRID" })).success).toBe(false);
   });
 });
 
