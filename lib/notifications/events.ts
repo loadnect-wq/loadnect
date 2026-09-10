@@ -25,7 +25,7 @@ import {
   getAdminNotificationPhone,
   type NotificationRequest,
 } from "@/lib/notifications/service";
-import type { SmsTemplateKey } from "@/lib/notifications/sms-templates";
+import { templateIdFor, type SmsTemplateKey } from "@/lib/notifications/sms-templates";
 
 /**
  * First candidate that is actually a VALID phone number.
@@ -428,6 +428,106 @@ async function loadLeadContext(leadId: string): Promise<LeadContext | null> {
 }
 
 /**
+ * Which template can actually carry a new-lead notification to the venue TODAY.
+ *
+ * ═══ THIS IS A DELIBERATE, TEMPORARY SUBSTITUTION ═══════════════════════════
+ *
+ * OWNER_NEW_LEAD is the right template and its body is written. It is not
+ * DLT-approved yet, and in India an unapproved body is dropped by the operator
+ * silently — so with it alone the venue learns nothing about an enquiry it is
+ * being charged commission on.
+ *
+ * OWNER_ACCOUNT_STATUS *is* approved (MSG91 "HallnectAccount") and its
+ * registered body is genuinely generic:
+ *
+ *   "Hallnect venue owner account update for your hall listing. Item: {#var#}.
+ *    New status: {#var#}. Detail: {#var#}. Sign in to your owner dashboard to
+ *    review it."
+ *
+ * A new enquiry on their listing IS an account update about their listing, and
+ * the sentence ends by telling them exactly where to go — which is the action
+ * we want. THE REGISTERED CONTENT IS UNCHANGED; only the variable values
+ * differ, which is what variables are for. Nothing is sent that a DLT reviewer
+ * did not approve.
+ *
+ * ═══ IT RETIRES ITSELF ══════════════════════════════════════════════════════
+ *
+ * There is no flag to remember and no cleanup ticket. The moment
+ * MSG91_TEMPLATE_OWNER_NEW_LEAD is set, the first branch wins and the
+ * substitution stops — permanently, everywhere, with no deploy. A temporary
+ * measure that needs a human to end it is a permanent measure.
+ *
+ * ═══ WHAT IS NOT SUBSTITUTED, AND WHY ══════════════════════════════════════
+ *
+ * The CUSTOMER's side. Every approved customer template says "hall booking":
+ * sending CUSTOMER_BOOKING_CONFIRMED for an enquiry would tell someone their
+ * venue is CONFIRMED when they have only asked a question. That is not a
+ * stretched fit, it is a false statement to a consumer about a wedding venue,
+ * and the harm lands on the person least able to check it. The customer's
+ * enquiry confirmation waits for DLT; their side of the flow already works
+ * on-screen.
+ *
+ * Exported for tests — the branch that matters is the one nobody exercises.
+ */
+export function ownerLeadNotification(input: {
+  hallName: string;
+  contactName: string;
+  dateLabel: string;
+  guestLabel: string;
+  contactPhone: string | null;
+  ref: string;
+}): {
+  templateKey: SmsTemplateKey;
+  templateVariables: Array<string | number | null | undefined>;
+  substituted: boolean;
+} {
+  if (templateIdFor("OWNER_NEW_LEAD")) {
+    return {
+      templateKey: "OWNER_NEW_LEAD",
+      templateVariables: [
+        input.hallName, input.contactName, input.dateLabel,
+        input.guestLabel, input.contactPhone ?? "Not available", input.ref,
+      ],
+      substituted: false,
+    };
+  }
+
+  if (templateIdFor("OWNER_ACCOUNT_STATUS")) {
+    // Each value is clamped to MAX_VARIABLE_LENGTH (60) downstream; these are
+    // shaped to sit well inside it so nothing is truncated mid-phone-number.
+    //
+    // THE PHONE IS THE POINT. It is passed raw rather than through
+    // sanitizeNotificationText, which strips runs of 7+ digits to stop a hall
+    // name smuggling a phishing number into a branded message. Here the number
+    // is not user-supplied prose — it is the verified contact this venue paid
+    // a commission to receive, resolved server-side from the lead row.
+    return {
+      templateKey: "OWNER_ACCOUNT_STATUS",
+      templateVariables: [
+        `New enquiry for ${input.hallName}`,
+        "Awaiting your reply",
+        input.contactPhone
+          ? `${input.contactName}, ${input.dateLabel}, call ${input.contactPhone}`
+          : `${input.contactName}, ${input.dateLabel}, ref ${input.ref}`,
+      ],
+      substituted: true,
+    };
+  }
+
+  // Neither is configured. Record against the REAL template so the admin
+  // notification centre names the template that is actually missing, rather
+  // than blaming a stand-in that was never going to be used.
+  return {
+    templateKey: "OWNER_NEW_LEAD",
+    templateVariables: [
+      input.hallName, input.contactName, input.dateLabel,
+      input.guestLabel, input.contactPhone ?? "Not available", input.ref,
+    ],
+    substituted: false,
+  };
+}
+
+/**
  * Notifies about a lead. `lead.created` is the moment the enquiry is FORWARDED
  * — i.e. after MSG91 confirmed the customer's number, never before.
  *
@@ -476,11 +576,16 @@ export async function notifyLeadEvent(
           {
             eventKey, eventType: kind, recipientType: "owner",
             recipientUserId: ctx.owner.userId, phone: ctx.owner.phone,
-            templateKey: "OWNER_NEW_LEAD",
-            templateVariables: [
-              ctx.hallName, ctx.contactName, ctx.dateLabel,
-              ctx.guestLabel, ctx.contactPhone ?? "Not available", ref,
-            ],
+            // Picks OWNER_NEW_LEAD once it is DLT-approved, and the approved
+            // generic owner template until then. See ownerLeadNotification.
+            ...ownerLeadNotification({
+              hallName: ctx.hallName,
+              contactName: ctx.contactName,
+              dateLabel: ctx.dateLabel,
+              guestLabel: ctx.guestLabel,
+              contactPhone: ctx.contactPhone,
+              ref,
+            }),
             leadId: ctx.leadId, hallId: ctx.hallId,
             critical: true, optedIn: ctx.owner.optedIn,
           },

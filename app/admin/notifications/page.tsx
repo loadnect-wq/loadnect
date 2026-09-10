@@ -8,7 +8,7 @@ import {
   type AdminNotificationRow,
 } from "@/lib/admin";
 import { getMsg91Status } from "@/lib/msg91";
-import { smsTemplateConfigStatus, dltBody } from "@/lib/notifications/sms-templates";
+import { smsTemplateConfigStatus, dltBody, templateIdFor } from "@/lib/notifications/sms-templates";
 import { maskPhone } from "@/lib/notifications/phone";
 import { resolveAdminNotificationPhone } from "@/lib/notifications/service";
 import { AdminAlertNumberForm } from "./_components/AdminAlertNumberForm";
@@ -346,8 +346,29 @@ export default async function AdminNotificationsPage({ searchParams }: Props) {
             <summary className="cursor-pointer text-xs font-semibold text-amber-900">
               {templatesBroken.length > 0
                 ? `${templatesBroken.length} template id${templatesBroken.length === 1 ? " is" : "s are"} invalid · ${templatesReady}/${templates.length} configured`
-                : `${templates.length - templatesReady} template${templates.length - templatesReady === 1 ? "" : "s"} not configured — messages using them are recorded as skipped, not sent`}
+                : `${templates.length - templatesReady} template${templates.length - templatesReady === 1 ? "" : "s"} not configured — see below for what each one does while it waits`}
             </summary>
+
+            {/* "not configured" NO LONGER MEANS "nothing is sent" for every
+                template, and a blanket sentence saying it did was false the
+                moment the lead substitution shipped. A new enquiry still
+                reaches the venue — on the approved generic owner template —
+                so the operator must not read an amber chip here as silence.
+                Stated once, above the list, rather than repeated per row. */}
+            {!templateIdFor("OWNER_NEW_LEAD") && templateIdFor("OWNER_ACCOUNT_STATUS") && (
+              <p className="mt-2 rounded-lg border border-amber-300 bg-white/60 p-2 text-[11px] leading-relaxed text-amber-900">
+                <strong>OWNER_NEW_LEAD is being stood in for.</strong> Until it is approved on
+                DLT, a new enquiry is announced to the venue on{" "}
+                <code className="font-mono">OWNER_ACCOUNT_STATUS</code>, which is approved and
+                generic enough to carry it — the venue still gets the customer&apos;s name, date
+                and phone. This ends by itself the moment{" "}
+                <code className="font-mono">MSG91_TEMPLATE_OWNER_NEW_LEAD</code> is set; there is
+                nothing to undo. The CUSTOMER&apos;s enquiry confirmation is <em>not</em>{" "}
+                substituted — every approved customer template says &ldquo;hall booking&rdquo;,
+                and telling someone their venue is booked when they only enquired is not a
+                stand-in, it is a false statement.
+              </p>
+            )}
 
             <ul className="mt-2 space-y-3">
               {templates.map((t) => (
