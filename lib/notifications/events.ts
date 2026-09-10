@@ -493,22 +493,34 @@ export function ownerLeadNotification(input: {
   }
 
   if (templateIdFor("OWNER_ACCOUNT_STATUS")) {
-    // Each value is clamped to MAX_VARIABLE_LENGTH (60) downstream; these are
-    // shaped to sit well inside it so nothing is truncated mid-phone-number.
+    // ═══ SHAPED BY A REAL REJECTION, NOT BY GUESSWORK ══════════════════════
     //
-    // THE PHONE IS THE POINT. It is passed raw rather than through
-    // sanitizeNotificationText, which strips runs of 7+ digits to stop a hall
-    // name smuggling a phishing number into a branded message. Here the number
-    // is not user-supplied prose — it is the verified contact this venue paid
-    // a commission to receive, resolved server-side from the lead row.
+    // The first live enquiry produced exactly this message and the operator
+    // refused to deliver it — MSG91 accepted it, the delivery report came back
+    // "failed". The two things in it that operators commonly reject are both
+    // removed here:
+    //
+    //   1. A PHONE NUMBER INSIDE A VARIABLE. Carriers filter messages whose
+    //      variable content looks like injected contact details, because that
+    //      is how a registered template gets abused to deliver unregistered
+    //      content. The number now lives on the dashboard, which the approved
+    //      body already tells the owner to open.
+    //   2. LENGTH. DLT caps variables per-operator, commonly at 30 characters
+    //      — half of this codebase's MAX_VARIABLE_LENGTH. Each value below is
+    //      cut to 30 rather than relying on the downstream clamp.
+    //
+    // WHAT IS LOST IS SMALL, because the SMS is no longer the only channel:
+    // the owner dashboard now carries a standing alert with the customer's
+    // name, date and tap-to-call number. This message's job is to make them
+    // look, and the registered sentence already ends "Sign in to your owner
+    // dashboard to review it."
+    const cut = (v: string) => (v.length <= 30 ? v : `${v.slice(0, 27).trimEnd()}...`);
     return {
       templateKey: "OWNER_ACCOUNT_STATUS",
       templateVariables: [
-        `New enquiry for ${input.hallName}`,
-        "Awaiting your reply",
-        input.contactPhone
-          ? `${input.contactName}, ${input.dateLabel}, call ${input.contactPhone}`
-          : `${input.contactName}, ${input.dateLabel}, ref ${input.ref}`,
+        cut(input.hallName),
+        "New enquiry awaiting reply",
+        cut(`${input.contactName} on ${input.dateLabel}`),
       ],
       substituted: true,
     };

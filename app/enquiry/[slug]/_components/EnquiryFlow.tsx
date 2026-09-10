@@ -25,7 +25,7 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import {
   ArrowLeft, CalendarDays, CheckCircle2, Loader2, MessageSquare,
-  Phone, ShieldCheck, Users,
+  Phone, PhoneCall, ShieldCheck, Users,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { LEAD_EVENT_TYPES } from "@/lib/validation/schemas";
@@ -74,6 +74,9 @@ export function EnquiryFlow({ hall, minDate, initialName, initialPhone, otpConfi
   const [digits, setDigits] = useState<string[]>(Array(OTP_LENGTH).fill(""));
   const [cooldown, setCooldown] = useState(0);
   const [freshlyForwarded, setFreshlyForwarded] = useState(true);
+  // The venue's own number, returned by the server only once the enquiry has
+  // actually reached them. Never present before verification.
+  const [venue, setVenue] = useState<{ businessName: string; phone: string | null } | null>(null);
   const boxRefs = useRef<(HTMLInputElement | null)[]>([]);
 
   useEffect(() => {
@@ -117,6 +120,7 @@ export function EnquiryFlow({ hall, minDate, initialName, initialPhone, otpConfi
       const r = await verifyLeadOtp(leadId, code);
       if ("error" in r) { setError(r.error); setDigits(Array(OTP_LENGTH).fill("")); return; }
       setFreshlyForwarded(r.forwarded);
+      setVenue(r.venue ?? null);
       setStep("sent");
     });
   }
@@ -204,6 +208,20 @@ export function EnquiryFlow({ hall, minDate, initialName, initialPhone, otpConfi
             taken any payment. The venue will agree the price and confirm the date with
             you directly.
           </p>
+          {/* CALL THE VENUE, right here. This is the peak of intent — they
+              have just spent a minute on a form and a verification code, and
+              the next thing they want is to talk to the venue. Making them
+              navigate to another page to find the number wastes that. */}
+          {venue?.phone && (
+            <a
+              href={`tel:${venue.phone}`}
+              className="mt-4 flex items-center justify-center gap-2 rounded-xl border border-maroon-300 bg-white px-4 py-3 font-semibold text-maroon-800 active:bg-maroon-50"
+            >
+              <PhoneCall className="h-4 w-4" aria-hidden />
+              Call {venue.businessName} — {venue.phone}
+            </a>
+          )}
+
           <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:justify-center">
             <Link href="/customer/enquiries">
               <Button variant="gold" size="lg" className="w-full sm:w-auto">

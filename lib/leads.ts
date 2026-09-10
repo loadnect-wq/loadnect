@@ -789,6 +789,133 @@ export async function fetchLeadsForCustomer(customerId: string): Promise<LeadWit
   }
 }
 
+// ── The venue's phone, for a customer who has actually enquired ──────────────
+
+export type VenueContact = { businessName: string; phone: string | null };
+
+/**
+ * The venue's contact number for ONE lead, readable only by the customer who
+ * made it, and only once that lead has actually reached the venue.
+ *
+ * ═══ WHY THIS IS NOT JUST PUT ON THE VENUE PAGE ═══════════════════════════
+ *
+ * Because publishing it there deletes the business. A lead-generation venue
+ * earns Hallnect nothing except the commission on a confirmed enquiry; a
+ * phone number in the public listing lets a customer ring the venue directly,
+ * and then there is no lead, no confirmation, no commission — and no record
+ * that Hallnect introduced them. `hall_seller_public` (migration 0054)
+ * deliberately publishes the seller's NAME and ADDRESS and stops there, and
+ * this keeps that line.
+ *
+ * So the number is released at the point where the introduction has already
+ * been made and recorded: the customer verified their phone, the enquiry
+ * reached the venue, and the lead row exists to attribute it to. That is also
+ * the point at which the customer genuinely needs it.
+ *
+ * ═══ THE GATE ══════════════════════════════════════════════════════════════
+ *   • the lead must belong to THIS customer (customer_id in the WHERE)
+ *   • it must have reached the venue — 'pending' or 'confirmed'. An enquiry
+ *     still awaiting OTP has proved nothing and releases nothing, so this
+ *     cannot become a way to harvest venue numbers by starting enquiries.
+ *
+ * Returns a null phone rather than throwing when the venue has no usable
+ * number on file — the customer is told to use the enquiry instead.
+ */
+export async function fetchVenueContactForLead(input: {
+  leadId: string;
+  customerId: string;
+}): Promise<VenueContact | null> {
+  try {
+    const { data, error } = await admin()
+      .from("leads")
+      .select("id, status, hall_owners!owner_id(business_name, business_phone, profiles!profile_id(phone))")
+      .eq("id", input.leadId)
+      .eq("customer_id", input.customerId)
+      .in("status", ["pending", "confirmed"])
+      .maybeSingle();
+
+    if (error) {
+      console.error("[leads] venue contact read failed", error.code, error.message);
+      return null;
+    }
+    if (!data) return null;
+
+    const owner = data.hall_owners as
+      { business_name?: string | null; business_phone?: string | null;
+        profiles?: { phone?: string | null } | null } | null;
+
+    // Business number first, personal second — and each is only accepted if it
+    // NORMALISES. A malformed business_phone must fall through rather than be
+    // handed to a customer as a number to ring; that presence-not-validity bug
+    // is documented on pickPhone in lib/notifications/events.ts.
+    const phone =
+      normalizePhoneE164(owner?.business_phone ?? "") ??
+      normalizePhoneE164(owner?.profiles?.phone ?? "") ??
+      null;
+
+    return { businessName: owner?.business_name ?? "the venue", phone };
+  } catch (e) {
+    console.error("[leads] venue contact threw", e instanceof Error ? e.message : e);
+    return null;
+  }
+}
+
+/** Venue contact for many of the caller's own leads, keyed by lead id. */
+export async function fetchVenueContactsForCustomer(
+  customerId: string,
+): Promise<Map<string, VenueContact>> {
+  const out = new Map<string, VenueContact>();
+  try {
+    const { data, error } = await admin()
+      .from("leads")
+      .select("id, hall_owners!owner_id(business_name, business_phone, profiles!profile_id(phone))")
+      .eq("customer_id", customerId)
+      .in("status", ["pending", "confirmed"])
+      .limit(200);
+    if (error) {
+      console.error("[leads] venue contacts failed", error.code, error.message);
+      return out;
+    }
+    for (const row of (data ?? []) as Record<string, unknown>[]) {
+      const owner = row.hall_owners as
+        { business_name?: string | null; business_phone?: string | null;
+          profiles?: { phone?: string | null } | null } | null;
+      out.set(String(row.id), {
+        businessName: owner?.business_name ?? "the venue",
+        phone:
+          normalizePhoneE164(owner?.business_phone ?? "") ??
+          normalizePhoneE164(owner?.profiles?.phone ?? "") ??
+          null,
+      });
+    }
+    return out;
+  } catch (e) {
+    console.error("[leads] venue contacts threw", e instanceof Error ? e.message : e);
+    return out;
+  }
+}
+
+/** How many enquiries across these halls are still waiting on the venue. */
+export async function countPendingLeads(hallIds: readonly string[]): Promise<number> {
+  if (hallIds.length === 0) return 0;
+  try {
+    const { count, error } = await admin()
+      .from("leads")
+      .select("id", { count: "exact", head: true })
+      .in("hall_id", [...hallIds])
+      .eq("status", "pending")
+      .eq("phone_verified", true);
+    if (error) {
+      console.error("[leads] pending count failed", error.code, error.message);
+      return 0;
+    }
+    return count ?? 0;
+  } catch (e) {
+    console.error("[leads] pending count threw", e instanceof Error ? e.message : e);
+    return 0;
+  }
+}
+
 // ── Admin reconciliation ─────────────────────────────────────────────────────
 
 export type AdminLeadLedgerRow = {

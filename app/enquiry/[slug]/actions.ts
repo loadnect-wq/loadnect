@@ -49,7 +49,9 @@ import {
   RESEND_COOLDOWN_SECONDS,
   GENERIC_SEND_ERROR,
 } from "@/lib/otp-guard";
-import { createLeadEnquiry, markLeadPhoneVerified, cancelLead } from "@/lib/leads";
+import {
+  createLeadEnquiry, markLeadPhoneVerified, cancelLead, fetchVenueContactForLead,
+} from "@/lib/leads";
 import { notifyLeadEvent } from "@/lib/notifications/events";
 import { leadEnquirySchema, uuidSchema, parseSafe } from "@/lib/validation/schemas";
 
@@ -172,7 +174,13 @@ export async function resendLeadOtp(leadId: string): Promise<ResendEnquiryOtpRes
 }
 
 export type VerifyEnquiryResult =
-  | { success: true; forwarded: boolean }
+  | {
+      success: true;
+      forwarded: boolean;
+      /** The venue's number, so the customer can call the moment they land on
+       *  the success screen. Null when the venue published none. */
+      venue?: { businessName: string; phone: string | null } | null;
+    }
   | { error: string };
 
 /**
@@ -200,7 +208,11 @@ export async function verifyLeadOtp(leadId: string, code: string): Promise<Verif
   if (lead.status !== "awaiting_verification") {
     // Already done. Idempotent rather than an error — a customer who submits
     // the code twice has succeeded, not failed.
-    return { success: true, forwarded: false };
+    return {
+      success: true,
+      forwarded: false,
+      venue: await fetchVenueContactForLead({ leadId, customerId: user.id }),
+    };
   }
 
   if (await failedCheckLimitReached(lead.contact_phone)) {
@@ -234,7 +246,14 @@ export async function verifyLeadOtp(leadId: string, code: string): Promise<Verif
   }
 
   revalidatePath("/customer/enquiries");
-  return { success: true, forwarded: moved.forwarded };
+  return {
+    success: true,
+    forwarded: moved.forwarded,
+    // Read AFTER the promotion: fetchVenueContactForLead only releases a number
+    // for a lead that has actually reached the venue, so calling it earlier
+    // would correctly return nothing.
+    venue: await fetchVenueContactForLead({ leadId, customerId: user.id }),
+  };
 }
 
 export type WithdrawEnquiryResult = { success: true } | { error: string };

@@ -2,13 +2,14 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import {
   AlertCircle, Building2, CalendarDays, CheckCircle2,
-  IndianRupee, Plus, Sparkles, Clock, Wallet,
+  IndianRupee, Plus, Sparkles, Clock, Wallet, Inbox, Phone,
 } from "lucide-react";
 import { requireRole } from "@/lib/auth";
 import { fetchOwnerRow, fetchOwnerHalls, fetchOwnerStats, fetchOwnerCommissions } from "@/lib/owner";
 import { formatPrice } from "@/lib/mock-data";
 import { advanceFromTotal } from "@/lib/booking-payment";
 import { fetchPremiumPlans, PLAN_FEATURES } from "@/lib/premium-plans";
+import { countPendingLeads } from "@/lib/leads";
 import { Badge } from "@/components/ui/Badge";
 import { buttonVariants } from "@/components/ui/Button";
 import { AppHeader } from "@/components/app/AppHeader";
@@ -53,10 +54,17 @@ export default async function OwnerDashboardPage() {
 
   const halls   = await fetchOwnerHalls(ownerRow.id);
   const hallIds = halls.map((h) => h.id);
-  const [stats, commissions, plans] = await Promise.all([
+  const [stats, commissions, plans, pendingLeads] = await Promise.all([
     fetchOwnerStats(ownerRow.id, hallIds),
     fetchOwnerCommissions(hallIds),
     fetchPremiumPlans(),
+    // THE RELIABLE CHANNEL. A new enquiry also fires an SMS, but SMS in India
+    // is DLT-gated and an operator can refuse to deliver it — which is exactly
+    // what happened on the first real enquiry: MSG91 accepted the message and
+    // the operator returned "failed". A venue must not learn about a lead only
+    // through a channel a third party can silently drop, so the dashboard says
+    // it too, and the dashboard cannot be refused.
+    countPendingLeads(hallIds),
   ]);
   const paidPlans = plans.filter((p) => p.monthly_price > 0 && p.is_purchasable);
 
@@ -100,6 +108,38 @@ export default async function OwnerDashboardPage() {
           )}
         </div>
 
+        {/* ── ENQUIRIES WAITING ON YOU ────────────────────────────────────
+            Placed ABOVE the stats grid, not inside it. A number in a tile is
+            something you read; this is something you have to act on, and it is
+            the only thing on this page with a customer waiting at the other
+            end of it. It disappears entirely at zero rather than sitting there
+            as a permanent "0 enquiries" — a banner that is always present
+            stops being read by the time it matters. */}
+        {pendingLeads > 0 && (
+          <Link
+            href="/owner/leads"
+            className="flex items-start gap-3 rounded-2xl border-2 border-maroon-300 bg-maroon-50 p-4 shadow-card transition active:scale-[0.99] motion-reduce:active:scale-100"
+          >
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-maroon-600">
+              <Inbox className="h-5 w-5 text-white" aria-hidden />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block font-serif text-base font-bold text-maroon-900">
+                {pendingLeads === 1
+                  ? "1 enquiry is waiting for your reply"
+                  : `${pendingLeads} enquiries are waiting for your reply`}
+              </span>
+              <span className="mt-0.5 block text-xs leading-relaxed text-maroon-900/80">
+                A customer asked about your venue and verified their mobile number. Open it to
+                see their contact details and confirm what you agreed.
+              </span>
+              <span className="mt-1.5 inline-flex items-center gap-1 text-xs font-semibold text-maroon-700">
+                <Phone className="h-3.5 w-3.5" aria-hidden /> View enquiries
+              </span>
+            </span>
+          </Link>
+        )}
+
         {/* Stats grid */}
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
           <StatCard
@@ -119,6 +159,12 @@ export default async function OwnerDashboardPage() {
             highlight={stats.pendingBookings > 0}
           />
           <StatCard
+            icon={<Inbox className="h-5 w-5 text-maroon-600" />}
+            label="Open Enquiries"
+            value={pendingLeads}
+            highlight={pendingLeads > 0}
+          />
+          <StatCard
             icon={<IndianRupee className="h-5 w-5 text-emerald-600" />}
             label="Total Revenue"
             value={formatPrice(stats.totalRevenue)}
@@ -133,6 +179,9 @@ export default async function OwnerDashboardPage() {
           </Link>
           <Link href="/owner/bookings" className={buttonVariants({ variant: "outline", size: "sm" })}>
             <CalendarDays className="h-4 w-4" /> View Bookings
+          </Link>
+          <Link href="/owner/leads" className={buttonVariants({ variant: "outline", size: "sm" })}>
+            <Inbox className="h-4 w-4" /> Enquiries
           </Link>
           <Link href="/owner/revenue" className={buttonVariants({ variant: "outline", size: "sm" })}>
             <IndianRupee className="h-4 w-4" /> Revenue

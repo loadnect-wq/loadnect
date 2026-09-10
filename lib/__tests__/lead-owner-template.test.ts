@@ -97,11 +97,19 @@ describe("the substituted message the venue actually receives", () => {
     return renderTemplate(r.templateKey, coerceVariables(r.templateKey, r.templateVariables));
   }
 
-  it("THE CUSTOMER'S PHONE SURVIVES — it is the thing the venue paid for", () => {
-    // The one value that must not be lost. sanitizeNotificationText strips runs
-    // of 7+ digits from free text, so a careless refactor that routed this
-    // through it would deliver a message with the number filed off.
-    expect(rendered()).toContain("+919876543210");
+  it("CARRIES NO PHONE NUMBER — an operator rejected the version that did", () => {
+    // Reversed on evidence, not on taste. The first live enquiry put the
+    // customer's number in a variable and the carrier refused delivery:
+    // MSG91 accepted it, the DLR came back "failed". Operators filter variable
+    // content that looks like injected contact details, because that is how a
+    // registered template gets used to deliver unregistered content.
+    //
+    // The number is on the dashboard instead — which the approved body already
+    // tells the owner to open — and the dashboard cannot be refused by a third
+    // party.
+    const msg = rendered();
+    expect(msg).not.toContain("+919876543210");
+    expect(msg).not.toMatch(/\d{6,}/);
   });
 
   it("names the venue, the customer and the date", () => {
@@ -109,6 +117,22 @@ describe("the substituted message the venue actually receives", () => {
     expect(msg).toContain("Sri Meenakshi Mahal");
     expect(msg).toContain("Priya");
     expect(msg).toContain("12 Jan 2027");
+  });
+
+  it("keeps every variable within the 30-char DLT cap operators commonly apply", () => {
+    // MAX_VARIABLE_LENGTH is 60, which is this codebase's limit, not the
+    // carrier's. The rejected message had a 48-character variable.
+    const r = ownerLeadNotification(LEAD);
+    for (const v of coerceVariables(r.templateKey, r.templateVariables)) {
+      expect(v.length, `"${v}" is ${v.length} chars`).toBeLessThanOrEqual(30);
+    }
+  });
+
+  it("truncates a very long venue name rather than overflowing the cap", () => {
+    const r = ownerLeadNotification({ ...LEAD, hallName: "A".repeat(80) });
+    for (const v of coerceVariables(r.templateKey, r.templateVariables)) {
+      expect(v.length).toBeLessThanOrEqual(30);
+    }
   });
 
   it("keeps the DLT-REGISTERED wording byte-for-byte", () => {
@@ -121,24 +145,24 @@ describe("the substituted message the venue actually receives", () => {
   });
 
   it("tells the owner it needs an answer", () => {
-    expect(rendered()).toContain("Awaiting your reply");
+    expect(rendered()).toContain("New enquiry awaiting reply");
   });
 
-  it("no variable overflows the DLT length cap, so nothing truncates mid-number", () => {
+  it("no variable overflows this codebase's own cap either", () => {
     const r = ownerLeadNotification(LEAD);
     for (const v of coerceVariables(r.templateKey, r.templateVariables)) {
       expect(v.length).toBeLessThanOrEqual(MAX_VARIABLE_LENGTH);
-      expect(v).not.toContain("...");
     }
   });
 
-  it("still says something useful when the lead carries no phone", () => {
-    const r = ownerLeadNotification({ ...LEAD, contactPhone: null });
-    const msg = renderTemplate(r.templateKey, coerceVariables(r.templateKey, r.templateVariables));
-    expect(msg).toContain("Priya");
-    expect(msg).toContain(LEAD.ref);
+  it("reads the same whether or not the lead carries a phone", () => {
+    // The message no longer depends on the number, so a lead without one is
+    // not a degraded message — it is the same message.
+    const withPhone = ownerLeadNotification(LEAD);
+    const without = ownerLeadNotification({ ...LEAD, contactPhone: null });
+    expect(without.templateVariables).toEqual(withPhone.templateVariables);
     // No empty slot: DLT operators drop messages with blank variables.
-    for (const v of coerceVariables(r.templateKey, r.templateVariables)) {
+    for (const v of coerceVariables(without.templateKey, without.templateVariables)) {
       expect(v.trim()).not.toBe("");
     }
   });

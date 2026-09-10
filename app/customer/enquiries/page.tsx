@@ -1,9 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { CalendarDays, Inbox, Users } from "lucide-react";
+import { CalendarDays, Inbox, Phone, Users } from "lucide-react";
 import { requireRole } from "@/lib/auth";
 import { getSession } from "@/lib/auth";
-import { fetchLeadsForCustomer, type LeadStatus } from "@/lib/leads";
+import { fetchLeadsForCustomer, fetchVenueContactsForCustomer, type LeadStatus } from "@/lib/leads";
 import { formatBookingDates } from "@/lib/dates";
 import { Badge } from "@/components/ui/Badge";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -54,7 +54,16 @@ export default async function CustomerEnquiriesPage() {
   const user = await getSession();
   if (!user) return null;
 
-  const leads = await fetchLeadsForCustomer(user.id);
+  const [leads, venueContacts] = await Promise.all([
+    fetchLeadsForCustomer(user.id),
+    // THE VENUE'S NUMBER, released only for enquiries that actually reached
+    // them. Deliberately not on the public venue page: a lead venue earns
+    // Hallnect nothing but the commission on a confirmed enquiry, and a phone
+    // number in the listing lets a customer ring the venue directly — no lead,
+    // no confirmation, no commission, and no record that Hallnect made the
+    // introduction. Here the introduction has already been made and recorded.
+    fetchVenueContactsForCustomer(user.id),
+  ]);
 
   return (
     <div className="min-h-screen bg-ivory-100 pb-20">
@@ -106,6 +115,41 @@ export default async function CustomerEnquiriesPage() {
                   </div>
 
                   <p className="mt-2 text-[11px] leading-relaxed text-charcoal-600">{cfg.note}</p>
+
+                  {/* Call the venue. A tap-to-call link, not text to copy out —
+                      this is the number they have been waiting for, and they
+                      are on a phone. Only rendered for a lead that reached the
+                      venue; fetchVenueContactsForCustomer returns nothing for
+                      one still awaiting OTP, so an unverified enquiry cannot
+                      be used to harvest venue numbers. */}
+                  {(() => {
+                    const contact = venueContacts.get(lead.id);
+                    if (!contact) return null;
+                    return contact.phone ? (
+                      <a
+                        href={`tel:${contact.phone}`}
+                        className="mt-2.5 flex items-center gap-2 rounded-xl border border-maroon-200 bg-maroon-50 px-3 py-2.5 active:bg-maroon-100"
+                      >
+                        <Phone className="h-4 w-4 shrink-0 text-maroon-700" aria-hidden />
+                        <span className="min-w-0 flex-1">
+                          <span className="block text-xs font-semibold text-maroon-900">
+                            Call {contact.businessName}
+                          </span>
+                          <span className="block font-mono text-[11px] text-maroon-800">
+                            {contact.phone}
+                          </span>
+                        </span>
+                      </a>
+                    ) : (
+                      // Says why rather than showing nothing: a missing number
+                      // looks like a broken page, and the customer has a real
+                      // question they still need answered.
+                      <p className="mt-2.5 rounded-xl border border-border bg-ivory-50 px-3 py-2 text-[11px] text-charcoal-600">
+                        This venue has not published a contact number. They have your details and
+                        will call you — contact Hallnect support if you do not hear back.
+                      </p>
+                    );
+                  })()}
 
                   {lead.status === "rejected" && lead.cancel_reason && (
                     <p className="mt-1 text-[11px] text-charcoal-500">
