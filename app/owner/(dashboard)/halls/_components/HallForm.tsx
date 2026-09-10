@@ -475,11 +475,30 @@ export function HallForm({ ownerId, amenities, hall }: Props) {
           same list the server schema and the database CHECK use, so the three
           can never drift apart. */}
       <FormSection title="Hallnect Commission">
-        <p className="-mt-1 text-xs text-charcoal-500">
-          Choose the commission percentage you are willing to give Hallnect for bookings made
-          through our platform. It is retained from the advance we collect — never charged on
-          top of your price, and never shown to customers.
-        </p>
+        {/* THE RATE IS THE SAME NUMBER; HOW IT IS COLLECTED IS THE OPPOSITE.
+            On a direct booking Hallnect holds the customer's advance and keeps
+            its commission out of it, so the owner is genuinely never billed.
+            On a lead Hallnect never touches the customer's money — the venue
+            collects in full and is INVOICED afterwards.
+
+            Saying "retained from the advance we collect — never charged" to a
+            lead-generation owner is not a rough edge, it is a false statement
+            about money at the exact moment they agree to the rate, and it is
+            contradicted by the Pay Commission button they will meet later. */}
+        {bookingMode === "LEAD_GENERATION" ? (
+          <p className="-mt-1 text-xs text-charcoal-500">
+            Choose the commission percentage you are willing to give Hallnect for enquiries we
+            send you. Because you collect the customer&apos;s payment yourself, this is{" "}
+            <strong>billed to you</strong> after you confirm an enquiry — you pay it here by
+            card, UPI or net banking. It is never shown to customers.
+          </p>
+        ) : (
+          <p className="-mt-1 text-xs text-charcoal-500">
+            Choose the commission percentage you are willing to give Hallnect for bookings made
+            through our platform. It is retained from the advance we collect — never charged on
+            top of your price, and never shown to customers.
+          </p>
+        )}
         <div
           role="radiogroup"
           aria-label="Hallnect commission percentage"
