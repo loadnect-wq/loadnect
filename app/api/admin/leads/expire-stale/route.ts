@@ -15,8 +15,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { NextResponse } from "next/server";
-import { getProfile } from "@/lib/auth";
-import { hasValidCronSecret } from "@/lib/cron-auth";
+import { hasValidCronSecret, maintenanceAdmin } from "@/lib/cron-auth";
 import { expireStaleLeads } from "@/lib/lead-expiry";
 
 export const runtime = "nodejs";
@@ -58,13 +57,9 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   const cronAuthorized = hasValidCronSecret(request);
 
-  let adminAuthorized = false;
-  if (!cronAuthorized) {
-    const profile = await getProfile();
-    adminAuthorized = profile?.role === "admin";
-  }
-
-  if (!cronAuthorized && !adminAuthorized) {
+  // maintenanceAdmin also requires an ACTIVE account and a same-origin request;
+  // the old check read role alone.
+  if (!cronAuthorized && !(await maintenanceAdmin(request))) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

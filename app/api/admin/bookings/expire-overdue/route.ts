@@ -17,8 +17,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { NextResponse } from "next/server";
-import { getProfile } from "@/lib/auth";
-import { hasValidCronSecret } from "@/lib/cron-auth";
+import { hasValidCronSecret, maintenanceAdmin } from "@/lib/cron-auth";
 import { expireOverdueBookingRequests } from "@/lib/booking-expiry";
 import { reportOverdueRefunds } from "@/lib/refund-sla";
 import { reconcileOpenPayouts } from "@/lib/payout-dispatch";
@@ -340,10 +339,13 @@ export async function POST(request: Request) {
   // boolean `adminAuthorized` had already thrown that away by this point.
   if (hasValidCronSecret(request)) return run({ via: "cron" });
 
-  const profile = await getProfile();
-  if (profile?.role !== "admin") {
+  // maintenanceAdmin, not a bare role read: it also requires the account to be
+  // ACTIVE (a route handler never reaches requireAuth, so suspension was not
+  // enforced here) and the request to be same-origin.
+  const admin = await maintenanceAdmin(request);
+  if (!admin) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  return run({ via: "admin", id: profile.id, email: profile.email });
+  return run({ via: "admin", id: admin.id, email: admin.email });
 }

@@ -23,6 +23,7 @@
 import "server-only";
 
 import { timingSafeEqual } from "node:crypto";
+import { getProfile } from "@/lib/auth";
 
 /** Constant-time bearer check against CRON_SECRET. False when the secret is
  *  unset, so a project without one simply has no machine access. */
@@ -40,4 +41,57 @@ export function hasValidCronSecret(request: Request): boolean {
   // length of a secret is not the part worth hiding.
   if (a.length !== b.length) return false;
   return timingSafeEqual(a, b);
+}
+
+/**
+ * Is this request coming from our own site?
+ *
+ * Judged from Sec-Fetch-Site where the browser sends it — it is the browser's
+ * own assertion and script cannot set it — falling back to comparing Origin
+ * against the request URL's origin. A request with NEITHER header is allowed:
+ * that is a non-browser client, which cannot be CSRF'd, and refusing it would
+ * break curl and the platform's own callers.
+ */
+export function isSameOriginRequest(request: Request): boolean {
+  const site = request.headers.get("sec-fetch-site");
+  if (site) return site === "same-origin" || site === "same-site" || site === "none";
+
+  const origin = request.headers.get("origin");
+  if (!origin) return true;  // no browser context to forge from
+  try {
+    return new URL(origin).origin === new URL(request.url).origin;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The admin-session half of a maintenance POST: a real, ACTIVE admin, asking
+ * from our own site. Returns the profile, or null to refuse.
+ *
+ * TWO THINGS ALL FOUR MAINTENANCE ROUTES GOT WRONG, each in its own way.
+ *
+ * 1. is_active WAS NEVER CHECKED. Every route tested `profile?.role === "admin"`
+ *    and nothing else. requireAuth() is what enforces suspension, and these are
+ *    route handlers — they never call it. So a suspended admin kept the sweeps
+ *    for as long as their access token lived. Narrow today, because the user
+ *    list refuses to suspend an admin and therefore none exists; closed here
+ *    because that refusal is a screen's rule, not an invariant.
+ *
+ * 2. ORIGIN IS NOW CHECKED, as defence in depth and NOT as the primary control.
+ *    The header comment above is right that a cross-origin POST is far weaker
+ *    than an image load, and the actual reason belongs written down: the
+ *    Supabase session cookies are SameSite=Lax, and Lax does not attach cookies
+ *    to a cross-site POST at all, so a forged form already arrives with no
+ *    session and dies at getProfile(). This adds a second, explicit refusal
+ *    that does not depend on a cookie attribute set in another module staying
+ *    as it is.
+ */
+export async function maintenanceAdmin(
+  request: Request,
+): Promise<{ id: string; email: string | null } | null> {
+  if (!isSameOriginRequest(request)) return null;
+  const profile = await getProfile();
+  if (!profile || profile.role !== "admin" || profile.is_active === false) return null;
+  return { id: profile.id, email: profile.email ?? null };
 }

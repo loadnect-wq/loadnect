@@ -51,8 +51,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { NextResponse } from "next/server";
-import { getProfile } from "@/lib/auth";
-import { hasValidCronSecret } from "@/lib/cron-auth";
+import { hasValidCronSecret, maintenanceAdmin } from "@/lib/cron-auth";
 import { reconcileOpenPayouts } from "@/lib/payout-dispatch";
 
 export const runtime = "nodejs";
@@ -70,11 +69,9 @@ export const maxDuration = 300;
 
 export async function POST(request: Request) {
   const viaCron = hasValidCronSecret(request);
-  if (!viaCron) {
-    const profile = await getProfile();
-    if (profile?.role !== "admin") {
-      return NextResponse.json({ error: "Not authorised" }, { status: 401 });
-    }
+  if (!viaCron && !(await maintenanceAdmin(request))) {
+    // Active admin, same origin. The old check read role alone.
+    return NextResponse.json({ error: "Not authorised" }, { status: 401 });
   }
 
   try {
