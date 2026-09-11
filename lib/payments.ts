@@ -536,7 +536,30 @@ export async function verifyAndApplyPayment(
   //    Re-assert the side effects (heal any partial state from a previous crash)
   //    and report. Every side effect below is individually idempotent, so it is
   //    always safe to repeat on a webhook retry.
-  if (payment.status === "payment_success") {
+  //
+  //    ONE EXCEPTION, AND IT IS THE POINT OF THIS GUARD: a booking still sitting
+  //    in pending_payment has NOT been finalised, however finished the payments
+  //    row looks. The two writes are separate — the payment is stamped
+  //    payment_success first and the booking is moved second — so a transient
+  //    failure of the second (a deadlock, a dropped connection: anything that
+  //    is not the slot race, which is handled) left money captured, the calendar
+  //    blocked and a commission recorded against a booking still marked
+  //    pending_payment. Cashfree then retried the webhook, this branch saw
+  //    payment_success, re-ran the side effects, reported success and NEVER
+  //    re-attempted the transition. Hours later the expiry sweep cancelled the
+  //    booking, and the refund_state='owed' write that would have put it in the
+  //    admin refund queue only ever runs on the first attempt's zero-row branch.
+  //    The customer was charged for a booking that no longer existed and nothing
+  //    in the product knew they were owed anything.
+  //
+  //    Falling through re-runs the real path, which is safe precisely because
+  //    every step of it is already idempotent: the payments update carries
+  //    .neq("status","payment_success"), the tax invoice is keyed on payment_id,
+  //    the transition is guarded by .eq("status","pending_payment"), and the
+  //    side effects repeat harmlessly. It costs two Cashfree reads on a rare
+  //    heal path, and it brings the slot-conflict and zero-row handling —
+  //    including the refund record — with it instead of reimplementing them.
+  if (payment.status === "payment_success" && booking?.status !== "pending_payment") {
     if (booking) await applyPaidSideEffects(db, booking);
     // Heal notifications from a prior partial run — dedupe keys make this a
     // no-op when they were already recorded, so webhook retries send nothing.
@@ -577,6 +600,20 @@ export async function verifyAndApplyPayment(
       .update({ status: "payment_failed", payment_message: `Order ${status}` })
       .eq("id", payment.id)
       .neq("status", "payment_success"); // never downgrade a confirmed payment
+    // NEVER TELL A PAYING CUSTOMER THEIR PAYMENT FAILED. The .neq above already
+    // refuses to downgrade a confirmed payment; this refuses to ANNOUNCE the
+    // downgrade it did not make. Reachable now that a payment_success row whose
+    // booking never transitioned falls through to this path to be healed: if
+    // Cashfree then reports the order EXPIRED — contradicting the capture we
+    // hold — the honest response is a log and a quiet return, not a message to
+    // someone who has been charged.
+    if (payment.status === "payment_success") {
+      logSideEffectError("expiredOrderOnCapturedPayment", {
+        code: "order_expired_after_capture",
+        message: `order ${orderId} reports ${status} but payment ${payment.id} is payment_success`,
+      });
+      return { state: "success", bookingId: payment.booking_id };
+    }
     // Keyed on the ORDER, not the booking: a retry payment's failure must
     // still notify even though an earlier attempt already failed.
     await notifyBookingEvent("payment.failed", payment.booking_id, { keySuffix: orderId });
@@ -951,6 +988,9 @@ export async function verifyAndApplyPayment(
 
 type ApplyBooking = {
   id:            string;
+  /** The booking's CURRENT status. Needed by the idempotent webhook branch to
+   *  tell "already finalised" from "paid but never transitioned". */
+  status:        string;
   hall_id:       string;
   customer_id:   string;
   event_date:    string;
@@ -985,6 +1025,7 @@ async function loadBookingForApply(
     v == null || !Number.isFinite(Number(v)) ? null : Number(v);
   return {
     id:            data.id,
+    status:        String(data.status ?? ""),
     hall_id:       data.hall_id,
     customer_id:   data.customer_id,
     event_date:    data.event_date,

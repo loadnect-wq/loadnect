@@ -1611,8 +1611,29 @@ export async function markNotificationRead(notificationId: string): Promise<Acti
 /** Stable, unique refund id for a booking. Reused on every retry ON PURPOSE:
  *  Cashfree treats refund_id as the idempotency key, so replaying it returns
  *  the existing refund instead of issuing a second one. */
-function refundIdFor(bookingId: string): string {
-  return `HNR_${bookingId.replace(/-/g, "").slice(0, 24)}`;
+/**
+ * The Cashfree refund_id for ONE payment row.
+ *
+ * KEYED ON THE PAYMENT, NOT THE BOOKING, and that is the whole point.
+ * issueRefund was deliberately rewritten to take a payment id so that a
+ * DOUBLE-CAPTURED booking could have both captures refunded — but this helper
+ * still derived the id from the booking, so every payments row on that booking
+ * produced the same `HNR_<booking>`. payments.cashfree_refund_id is UNIQUE
+ * (migration 0033), so once one row claimed it the claim UPDATE for the second
+ * row failed with 23505 — and the caller read only `count`, discarded `error`,
+ * and told the admin "This refund is already being processed".
+ *
+ * The second refund could therefore never be issued from the product. A
+ * customer charged twice got one capture back and the other required somebody
+ * to go into the Cashfree dashboard by hand.
+ *
+ * The payment id is a uuid, so this is unique under the strictest reading of
+ * Cashfree's scope (per merchant), not merely per order. Still deterministic,
+ * which is what makes it an idempotency key: re-issuing the same refund cannot
+ * become a second one.
+ */
+function refundIdFor(paymentId: string): string {
+  return `HNR_${paymentId.replace(/-/g, "").slice(0, 24)}`;
 }
 
 /**
@@ -1760,11 +1781,11 @@ export async function issueRefund(paymentId: string): Promise<ActionResult> {
     return { error: "This booking has no gateway order — it must be refunded outside Hallnect." };
   }
 
-  const refundId = payment.cashfree_refund_id ?? refundIdFor(bookingId);
+  const refundId = payment.cashfree_refund_id ?? refundIdFor(String(payment.id));
 
   // CLAIM FIRST. A second admin clicking at the same moment matches zero rows
   // and stops here, rather than both of them calling Cashfree.
-  const { count: claimed } = await db
+  const { count: claimed, error: claimErr } = await db
     .from("payments")
     .update(
       {
@@ -1778,6 +1799,23 @@ export async function issueRefund(paymentId: string): Promise<ActionResult> {
     )
     .eq("id", payment.id)
     .in("refund_state", ["owed", "failed"]);
+
+  // THE ERROR WAS DISCARDED HERE, and that is how the bug above stayed
+  // invisible: a 23505 on cashfree_refund_id left `claimed` undefined, which
+  // fell into the same branch as a lost race and reported the refund as
+  // already in progress. A unique-violation is not contention — it means two
+  // payment rows are trying to use one refund id, which after the change above
+  // should be impossible and is worth saying out loud rather than absorbing.
+  if (claimErr) {
+    if (claimErr.code === "23505") {
+      console.error("[refund] refund id collision on payment", payment.id, refundId);
+      return {
+        error:
+          "That refund id is already in use on another payment. This needs a look before it is sent — nothing has been refunded.",
+      };
+    }
+    return { error: sanitizeError(claimErr, "admin") };
+  }
 
   if ((claimed ?? 0) === 0) {
     return { error: "This refund is already being processed." };
