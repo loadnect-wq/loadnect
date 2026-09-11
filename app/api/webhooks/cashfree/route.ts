@@ -354,7 +354,24 @@ export async function POST(request: Request) {
     console.error("[cashfree-webhook] signature verification error:", e instanceof Error ? e.message : e);
   }
   if (!verified) {
-    // Do not reveal why; just reject.
+    // LOG THE REJECTION. The response deliberately says nothing — revealing why
+    // a signature failed helps whoever is probing — but silence to the CLIENT
+    // is not a reason for silence in OUR logs. A rejected webhook is either
+    // somebody forging settlement callbacks or our own secret being wrong after
+    // a rotation, and the two look identical from the outside. Without this
+    // line the second one presents as "payments silently stopped settling" with
+    // nothing at all to find.
+    //
+    // No body, no signature, no header values: those are the attacker's input
+    // and the forged content is exactly what must not be echoed into a log.
+    // Presence and length only, which is enough to tell a missing header from a
+    // wrong digest.
+    console.error(
+      "[cashfree-webhook] REJECTED: signature verification failed",
+      `signature=${signature ? `present(${signature.length})` : "absent"}`,
+      `timestamp=${timestamp ? "present" : "absent"}`,
+      `bodyBytes=${rawBody.length}`,
+    );
     return NextResponse.json({ ok: false, error: "invalid signature" }, { status: 401 });
   }
 

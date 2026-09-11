@@ -23,6 +23,7 @@
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { readHallCommissionRates, readBookingCommissions } from "@/lib/hall-commission";
 import { toBookingMode, type BookingMode } from "@/lib/booking-mode";
+import { buildFreeTextOrFilter } from "@/lib/halls";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import { getProfile } from "@/lib/auth";
 import { PLATFORM_FEE_RUPEES } from "@/lib/booking-payment";
@@ -1340,10 +1341,20 @@ export async function fetchAuditLog(opts: {
   if (opts.entityType) q = q.eq("entity_type", opts.entityType);
   if (opts.action)     q = q.eq("action", opts.action);
   if (opts.search) {
-    // Escape PostgREST's `or` filter separators so a search string can't alter
-    // the filter expression.
-    const term = opts.search.replace(/[(),*]/g, " ").trim().slice(0, 80);
-    if (term) q = q.or(`actor_email.ilike.%${term}%,reason.ilike.%${term}%,action.ilike.%${term}%`);
+    // buildFreeTextOrFilter, not a character blocklist. This used to strip
+    // [(),*] and interpolate the rest, which is the weaker half of the fix
+    // lib/halls.ts already made for the PUBLIC search and this file never
+    // adopted: a blocklist has to be right about every separator, whereas
+    // quoting the value makes commas, parentheses, dots and colons literal by
+    // construction.
+    //
+    // It also stops mangling ordinary searches. An admin looking for
+    // "Sri Krishna, Madurai" or an action logged as "coupon.create" was
+    // silently searching for something else.
+    const term = opts.search.trim().slice(0, 80);
+    if (term) {
+      q = q.or(buildFreeTextOrFilter(term, ["actor_email", "reason", "action"]));
+    }
   }
 
   const { data, error, count } = await q;
@@ -1476,10 +1487,14 @@ export async function fetchNotifications(opts: {
     q = q.or(prefixes.map((pre) => `event_type.like.${pre}*`).join(","));
   }
   if (opts.search) {
-    // Strip PostgREST `or` filter separators so search terms cannot alter the
-    // filter expression.
-    const term = opts.search.replace(/[(),*]/g, " ").trim().slice(0, 80);
-    if (term) q = q.or(`recipient_phone.ilike.%${term}%,event_type.ilike.%${term}%,message.ilike.%${term}%`);
+    // Same reasoning as the audit-log search above: quote the value rather
+    // than blocklisting separators. Searching the notification log for a phone
+    // number or an event type like "lead.created" is the normal case, and the
+    // old form stripped and mangled both.
+    const term = opts.search.trim().slice(0, 80);
+    if (term) {
+      q = q.or(buildFreeTextOrFilter(term, ["recipient_phone", "event_type", "message"]));
+    }
   }
 
   const { data, error, count } = await q;

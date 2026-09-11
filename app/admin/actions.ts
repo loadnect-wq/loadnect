@@ -240,6 +240,34 @@ async function moderateHall(
 // Approve owner = set profile.role to 'owner_approved' AND verify hall_owners row.
 // Both writes are gated by `is_admin()` in RLS + triggers.
 
+/**
+ * What role the target currently holds, so a role change can refuse to act on
+ * the wrong kind of account.
+ *
+ * WHY THIS EXISTS: approveOwner and rejectOwner took a profile id and wrote a
+ * new role with NO look at the old one. rejectOwner(anotherAdminId) demoted a
+ * fellow admin to customer — locking them out of /admin entirely — and
+ * approveOwner(anyCustomerId) promoted a plain customer to owner_approved
+ * without them ever having applied. Neither is reachable from the owners
+ * screen, which only lists applicants, but both are server actions and a
+ * server action is a public endpoint that takes whatever id it is given.
+ *
+ * The user list already refuses to suspend an admin ("Admin accounts cannot be
+ * suspended from this screen"). These two are the same intent, unenforced.
+ *
+ * Deliberately NOT an ownership check — an admin may legitimately act on other
+ * people's accounts. It is a check on WHAT KIND of account, which is the part
+ * that was missing.
+ */
+async function targetRole(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  db: any,
+  profileId: string,
+): Promise<string | null> {
+  const { data } = await db.from("profiles").select("role").eq("id", profileId).maybeSingle();
+  return (data?.role as string | undefined) ?? null;
+}
+
 export async function approveOwner(profileId: string): Promise<ActionResult> {
   const actor = await requireAdminActor();
   if (!actor.ok) return { error: actor.error };
@@ -248,6 +276,17 @@ export async function approveOwner(profileId: string): Promise<ActionResult> {
   if (idErr) return { error: idErr };
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = actor.supabase as any;
+
+  // Only an actual applicant may be approved. Approving a customer who never
+  // applied hands them an owner dashboard; approving an admin would demote one.
+  const current = await targetRole(db, profileId);
+  if (current === null) return { error: "That account could not be found." };
+  if (current === "admin") {
+    return { error: "That is an admin account. Change an admin's role from the user list, not the owner queue." };
+  }
+  if (current !== "owner_pending" && current !== "owner_approved") {
+    return { error: "That account has not applied to list a venue, so there is nothing to approve." };
+  }
 
   // 1. Promote profile role to owner_approved. count:"exact" because an
   //    RLS-filtered update reports 0 rows with NO error — reporting success for
@@ -301,6 +340,19 @@ export async function rejectOwner(profileId: string): Promise<ActionResult> {
   if (idErr) return { error: idErr };
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = actor.supabase as any;
+
+  // See targetRole. Without this, rejectOwner(anotherAdminId) quietly demoted a
+  // fellow admin to customer and locked them out of /admin.
+  const current = await targetRole(db, profileId);
+  if (current === null) return { error: "That account could not be found." };
+  if (current === "admin") {
+    return { error: "That is an admin account. Change an admin's role from the user list, not the owner queue." };
+  }
+  if (current === "customer") {
+    // Already where this would put them. Idempotent rather than an error, but
+    // it must not write an audit entry claiming a change happened.
+    return { success: true };
+  }
 
   // Downgrade to customer.
   const { error, count } = await db
@@ -869,7 +921,10 @@ export async function cleanupExpiredBookings(): Promise<
       .lt("expires_at", new Date().toISOString())
       .select("id");
 
-    if (fallback.error) return { error: fallback.error.message };
+    // sanitizeError, like every other error return in this file. The raw
+    // PostgREST message names tables, columns, constraints and trigger
+    // functions, and this was the one place it went straight to the client.
+    if (fallback.error) return { error: sanitizeError(fallback.error, "admin") };
     revalidatePath("/admin/bookings");
     revalidatePath("/admin/dashboard");
     return { success: true, cleaned: fallback.data?.length ?? 0 };
@@ -924,11 +979,22 @@ export async function createPremiumListing(input: {
 
   if (error) return { error: sanitizeError(error, "admin") };
 
+  // AUDITED. A premium listing is a paid placement on the homepage granted by
+  // hand, so "who granted this venue prominence, when, and for how much" is
+  // exactly the question an audit trail exists to answer. It was unlogged.
+  await recordAdminAction({
+    action:     "premium.grant",
+    entityType: "premium_listing",
+    entityId:   listing.id,
+    newStatus:  `${v.planSlug} ${v.startDate} to ${v.endDate}, Rs.${Math.round(v.amount * 100) / 100}`,
+  });
+
   // Non-critical owner message — respects the owner's notification preference.
   await notifyPremiumChanged(listing.id, v.hallId, true, v.planSlug === "pro" ? "Pro" : "Premium");
 
   revalidatePath("/admin/premium-listings");
   revalidatePath("/admin/dashboard");
+  revalidatePath("/admin/audit-logs");
   return { success: true };
 }
 
@@ -963,8 +1029,18 @@ export async function updatePremiumPlan(input: {
 
   if (error)       return { error: sanitizeError(error, "admin") };
   if (count === 0) return { error: "That plan could not be updated — check you are signed in as an admin." };
+
+  // Audited: this is the price every owner is charged for a plan.
+  await recordAdminAction({
+    action:     "premium.plan_price",
+    entityType: "premium_plan",
+    entityId:   null,
+    newStatus:  `${v.slug} Rs.${Math.round(v.monthly_price * 100) / 100} / ${v.duration_days} days`,
+  });
+
   revalidatePath("/admin/settings");
   revalidatePath("/owner/premium/upgrade");
+  revalidatePath("/admin/audit-logs");
   return { success: true };
 }
 
@@ -1011,9 +1087,25 @@ export async function updateCommissionPercent(
   // Never report a rate change that touched no row — the admin would go on
   // believing venues are charged what they typed. Same guard as updatePremiumPlan.
   if ((count ?? 0) === 0) return { error: "The commission rate could not be saved. Reload and try again." };
+
+  // AUDITED, because this is the single number every venue in the country is
+  // charged on, and it was the largest unlogged change in the product: the live
+  // admin_audit_log carried fifteen distinct actions and not one settings.*
+  // entry, despite the rate having been configured in production. previous is
+  // read from the value we just replaced so the trail says what it moved FROM,
+  // which is the only part that makes a rate change reviewable after the fact.
+  await recordAdminAction({
+    action:         "settings.commission_percent",
+    entityType:     "platform_settings",
+    entityId:       null,
+    previousStatus: String(live.commission),
+    newStatus:      String(clean),
+  });
+
   revalidatePath("/admin/settings");
   revalidatePath("/admin/commissions");
   revalidatePath("/admin/dashboard");
+  revalidatePath("/admin/audit-logs");
   return { success: true };
 }
 
@@ -1159,8 +1251,21 @@ export async function updatePlatformPaymentSettings(input: {
   );
 
   if (error) return { error: sanitizeError(error, "admin") };
+
+  // Audited for the same reason as the commission rate: the advance percentage
+  // decides what every customer is asked to pay up front, and the online-payment
+  // switch can stop the platform taking money at all. Both were unlogged.
+  await recordAdminAction({
+    action:         "settings.payment",
+    entityType:     "platform_settings",
+    entityId:       null,
+    previousStatus: `advance ${liveRates.advance}%`,
+    newStatus:      `advance ${advancePct}%, online payment ${input.enableOnlineCustomerPayment ? "on" : "off"}`,
+  });
+
   revalidatePath("/admin/settings");
   revalidatePath("/admin/commissions");
+  revalidatePath("/admin/audit-logs");
   return { success: true };
 }
 
@@ -1225,8 +1330,21 @@ export async function respondToTicket(
   // A reply that reached no row must not report success — the customer would
   // never see it and the admin would believe it was sent.
   if ((count ?? 0) === 0) return { error: "Ticket not found, or you do not have permission to respond to it." };
+
+  // Audited: a ticket response is Hallnect speaking to a customer in its own
+  // voice, and it can close a complaint. The reply TEXT is not recorded here —
+  // it already lives on the ticket, and copying customer correspondence into a
+  // second table widens where personal data sits for no investigative gain.
+  await recordAdminAction({
+    action:     "ticket.respond",
+    entityType: "support_ticket",
+    entityId:   ticketId,
+    newStatus:  v.status,
+  });
+
   revalidatePath("/admin/support-tickets");
   revalidatePath("/admin/dashboard");
+  revalidatePath("/admin/audit-logs");
   return { success: true };
 }
 
