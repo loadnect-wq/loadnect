@@ -32,6 +32,7 @@ import { releaseAvailabilityForBooking } from "@/lib/availability-release";
 import { isOwnerResponseOverdue } from "@/lib/booking-expiry";
 import { isPayoutsConfigured } from "@/lib/cashfree-payouts";
 import { registerBeneficiary, refreshBeneficiary } from "@/lib/payout-dispatch";
+import { publicUrlForStoragePath } from "@/lib/supabase/storage";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 
 type ActionResult = { success: true; id?: string } | { error: string };
@@ -693,6 +694,20 @@ export async function addHallImage(data: {
     return { error: "Storage path does not match hall." };
   }
 
+  // THE URL IS DERIVED, NOT ACCEPTED. `v.url` arrives from the client and was
+  // stored verbatim while only the PATH was checked, so an owner could upload a
+  // real photo to their own folder and register any http(s) address as the
+  // picture. Today the CSP's img-src stops such a URL actually rendering, which
+  // is the only reason this was not worse than broken images — but hall_images
+  // .url is also read by the sitemap and the structured-data feed, and a
+  // control in a different layer is not a reason to store a value we know is
+  // wrong. Computing it removes the mismatch instead of policing it: there is
+  // now one client-controlled field, already constrained to `<hallId>/`.
+  const derivedUrl = publicUrlForStoragePath(v.storagePath);
+  if (!derivedUrl) {
+    return { error: "Image storage is not configured. Please try again shortly." };
+  }
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = supabase as any;
 
@@ -721,7 +736,7 @@ export async function addHallImage(data: {
 
   const { error } = await db.from("hall_images").insert({
     hall_id:      v.hallId,
-    url:          v.url,
+    url:          derivedUrl,
     storage_path: v.storagePath,
     alt_text:     v.altText || null,
     is_cover:     v.isCover,
