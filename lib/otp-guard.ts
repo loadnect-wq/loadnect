@@ -32,6 +32,25 @@ const MAX_SENDS_PER_PHONE_PER_DAY = 10;
 export const MAX_FAILED_CHECKS = 5;
 export const FAILED_CHECK_WINDOW_MINUTES = 15;
 
+// See failedCheckLimitReached for why these three exist rather than one.
+// MAX_FAILED_CHECKS above is now the per-(account, phone) budget: the one that
+// belongs to the person actually verifying, so a stranger cannot spend it.
+/** Anti-brute-force fuse for a number, across every account. Twenty guesses
+ *  against a million values is not an attack that is going anywhere; five was
+ *  a number chosen for typos, and using it here made lockout trivial. */
+const MAX_FAILED_CHECKS_PER_PHONE = 20;
+/** What one account may get wrong across ALL numbers, so ceiling 1 cannot be
+ *  reset simply by typing a different number. */
+const MAX_FAILED_CHECKS_PER_ACCOUNT = 15;
+/** How long a code request stays valid as authorisation to CHECK that number.
+ *  Longer than the OTP itself on purpose — see hasRecentSendFor. */
+const SEND_BINDING_WINDOW_MINUTES = 30;
+
+/** One message for every check-side refusal. Distinguishing them would tell an
+ *  attacker which ceiling they hit, and therefore what other accounts have been
+ *  doing with that number. */
+const TOO_MANY_ATTEMPTS = "Too many incorrect attempts. Request a new code in a few minutes.";
+
 // EVERY CEILING ABOVE IS SCOPED TO ONE PHONE NUMBER, WHICH LEAVES A HOLE.
 //
 // The resend cooldown and the hourly cap are keyed on (user_id, phone); the
@@ -289,24 +308,82 @@ export async function guardOtpSend(input: {
 }
 
 /**
- * The check-side guard: has this NUMBER used up its failed attempts?
+ * True when this account has recently asked for a code for this number.
  *
- * Scoped to the PHONE, not the account: a 6-digit code has a million values,
- * and an attacker with several accounts pointed at one number would otherwise
- * get a fresh allowance with each of them.
+ * The window is generous on purpose — a code is typed minutes after it lands,
+ * sometimes after a resend, and refusing a real verification is a far worse
+ * outcome than the narrow abuse this closes.
  */
-export async function failedCheckLimitReached(phone: string): Promise<boolean> {
+export async function hasRecentSendFor(userId: string, phone: string): Promise<boolean> {
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const db = getSupabaseAdminClient() as any;
-    const failed = await countAttempts(db, {
-      phone, kind: "check", succeeded: false, sinceIso: since(FAILED_CHECK_WINDOW_MINUTES),
+    const sends = await countAttempts(db, {
+      userId, phone, kind: "send", sinceIso: since(SEND_BINDING_WINDOW_MINUTES),
     });
-    return failed !== null && failed >= MAX_FAILED_CHECKS;
+    // null means the table could not be read. Allow, for the same reason every
+    // other ceiling here allows: a broken counter must not block a real user.
+    return sends === null || sends > 0;
+  } catch {
+    return true;
+  }
+}
+
+/**
+ * The check-side guard. Returns the message to show, or null to proceed.
+ *
+ * THE ORIGINAL WAS SCOPED TO THE PHONE ALONE, AND THAT WAS A LOCKOUT PRIMITIVE.
+ * The reasoning for phone-scoping was sound as far as it went — a 6-digit code
+ * has a million values, and an attacker with several accounts pointed at one
+ * number would otherwise get a fresh allowance with each. But verifyPhoneOtp
+ * takes the phone FROM THE CLIENT, so any signed-in account could submit five
+ * wrong codes for a stranger's number and consume the whole pool. The victim's
+ * own correct code was then refused for fifteen minutes, repeatable forever,
+ * against any number the attacker cared to name. A venue owner needs
+ * phone_verified to see leads at all, so that is a denial of their business.
+ *
+ * Three ceilings now, because one number cannot express both concerns:
+ *
+ *   1. PER (ACCOUNT, PHONE) — the real lockout budget, and it belongs to the
+ *      person doing the verifying. A stranger's failures can no longer spend it.
+ *   2. PER PHONE — kept as the anti-brute-force fuse the original was aiming
+ *      at, but at a threshold that is about guessing, not about typos. Twenty
+ *      guesses against a million values is still nowhere, so raising it costs
+ *      no real resistance while removing the cheap lockout.
+ *   3. PER ACCOUNT ACROSS ALL NUMBERS — bounds one account walking a list.
+ *      Without it, ceiling 1 resets on every new number, which is exactly the
+ *      hole the send-side ceilings above this already had to close.
+ *
+ * RESIDUAL, AND IT IS DELIBERATE: someone who genuinely sends a code to a
+ * number can still spend that number's per-phone fuse. Closing that completely
+ * means abandoning phone-scoped brute-force resistance, which is the wrong
+ * trade. What bounds it is the send side — 5 per hour per (account, phone),
+ * 10 per day per phone, 15 per day per account — plus a row in otp_attempts
+ * with the attacker's user_id on it for every single attempt.
+ */
+export async function failedCheckLimitReached(
+  phone: string,
+  userId: string,
+): Promise<string | null> {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const db = getSupabaseAdminClient() as any;
+    const sinceIso = since(FAILED_CHECK_WINDOW_MINUTES);
+
+    const [mine, thisPhone, myTotal] = await Promise.all([
+      countAttempts(db, { phone, userId, kind: "check", succeeded: false, sinceIso }),
+      countAttempts(db, { phone,         kind: "check", succeeded: false, sinceIso }),
+      countAttempts(db, { userId,        kind: "check", succeeded: false, sinceIso }),
+    ]);
+
+    if (mine !== null && mine >= MAX_FAILED_CHECKS) return TOO_MANY_ATTEMPTS;
+    if (thisPhone !== null && thisPhone >= MAX_FAILED_CHECKS_PER_PHONE) return TOO_MANY_ATTEMPTS;
+    if (myTotal !== null && myTotal >= MAX_FAILED_CHECKS_PER_ACCOUNT) return TOO_MANY_ATTEMPTS;
+    return null;
   } catch {
     // Allow, matching countAttempts' own reasoning: a rate-limit table that
     // cannot be read must not lock a legitimate user out of their own code.
-    return false;
+    return null;
   }
 }
 

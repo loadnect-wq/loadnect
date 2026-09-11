@@ -215,9 +215,14 @@ export async function verifyLeadOtp(leadId: string, code: string): Promise<Verif
     };
   }
 
-  if (await failedCheckLimitReached(lead.contact_phone)) {
-    return { error: "Too many incorrect attempts. Request a new code in a few minutes." };
-  }
+  // No send-binding check here, unlike verify-phone, and the asymmetry is
+  // deliberate: this phone is not client-supplied. loadOwnEnquiry resolved the
+  // lead by (leadId, user.id), so contact_phone is the number on an enquiry
+  // this caller already owns and cannot be pointed at a stranger. The ceilings
+  // still apply, and they are now per-account as well as per-phone, so a
+  // stranger's failures elsewhere can no longer spend this customer's budget.
+  const ceiling = await failedCheckLimitReached(lead.contact_phone, user.id);
+  if (ceiling) return { error: ceiling };
 
   const result = await checkVerificationOtp(lead.contact_phone, clean);
 

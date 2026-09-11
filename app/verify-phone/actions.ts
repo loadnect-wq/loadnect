@@ -34,6 +34,7 @@ import {
 import {
   guardOtpSend,
   failedCheckLimitReached,
+  hasRecentSendFor,
   recordCheckAttempt,
   RESEND_COOLDOWN_SECONDS,
   GENERIC_SEND_ERROR,
@@ -113,10 +114,26 @@ export async function verifyPhoneOtp(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const anyDb = db as any;
 
-  // Brute-force ceiling, scoped to the PHONE rather than the account.
-  if (await failedCheckLimitReached(phone)) {
-    return { error: "Too many incorrect attempts. Request a new code in a few minutes." };
+  // THE PHONE HERE COMES FROM THE CLIENT, which is what made the check-side
+  // ceiling a weapon: five wrong codes for a stranger's number used to consume
+  // that number's whole budget, and the owner of it — who needs phone_verified
+  // to see a single lead — was refused their own correct code for the next
+  // fifteen minutes, repeatable indefinitely.
+  //
+  // So a check is only allowed for a number THIS ACCOUNT ASKED FOR A CODE FOR.
+  // Refused before MSG91 is consulted and before anything is recorded, so a
+  // request for somebody else's number cannot spend their allowance, cannot
+  // bill us for a provider call, and leaves no trace on their ceiling.
+  //
+  // The message is the generic one: saying "you never requested a code for
+  // that number" would confirm to an attacker which numbers they have not yet
+  // touched, and saying anything about the number's state would be worse.
+  if (!(await hasRecentSendFor(user.id, phone))) {
+    return { error: "That code is incorrect or has expired." };
   }
+
+  const ceiling = await failedCheckLimitReached(phone, user.id);
+  if (ceiling) return { error: ceiling };
 
   const result = await checkVerificationOtp(phone, clean);
 
