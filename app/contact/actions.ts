@@ -13,13 +13,14 @@
 //   • validation is strict and server-side (the client form is a convenience);
 //   • the INSERT goes through the service-role client — the table has NO anon
 //     insert policy, so PostgREST cannot be spammed directly;
-//   • a global hourly cap bounds worst-case abuse. Per-IP limiting is not
-//     available to a server action, so the cap is deliberately platform-wide
-//     and fails CLOSED: when the counter cannot be read, we do not accept.
+//   • TWO hourly caps: a small one per SENDER, and a large platform-wide
+//     backstop. The per-sender one is the important one — see below.
 //   • a honeypot field silently swallows bot submissions (they see success,
 //     nothing is stored — telling a bot it failed just trains it).
 // ─────────────────────────────────────────────────────────────────────────────
 
+import { createHash } from "node:crypto";
+import { headers } from "next/headers";
 import { z } from "zod";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
@@ -27,7 +28,28 @@ import { getAdminNotificationPhone, dispatchAll } from "@/lib/notifications/serv
 import { sanitizeNotificationText } from "@/lib/notifications/phone";
 import { gsm7OrFallback } from "@/lib/notifications/sms-templates";
 
-const MAX_MESSAGES_PER_HOUR = 20;
+/**
+ * THE PLATFORM-WIDE CAP WAS 20, AND THAT WAS A MUTE BUTTON FOR THE WHOLE SITE.
+ *
+ * Twenty valid submissions from one script exhausted it, and every genuine
+ * visitor for the rest of the hour was told "We are receiving a lot of messages
+ * right now" — repeatable, so indefinitely. On a marketplace this young the
+ * contact form is how venue owners arrive, and the same flood also suppressed
+ * the admin SMS alert, which is bucketed one per UTC hour: fill the bucket and
+ * a real message that hour raises nothing.
+ *
+ * The old comment said per-IP limiting "is not available to a server action".
+ * It is — a server action reads headers() like any other server code, and
+ * Vercel sets x-vercel-forwarded-for itself. So the dimension that bounds one
+ * sender was available the whole time.
+ *
+ * Now a small per-sender cap does the real work, and the global number becomes
+ * a genuine backstop against a distributed flood rather than the front line.
+ * Raised to 200 because at 20 it WAS the front line, and a busy hour of real
+ * enquiries must never look like an attack.
+ */
+const MAX_MESSAGES_PER_SENDER_PER_HOUR = 3;
+const MAX_MESSAGES_PER_HOUR = 200;
 
 const contactSchema = z.object({
   name:    z.string().trim().min(1, "Please tell us your name.").max(120),
@@ -40,6 +62,43 @@ const contactSchema = z.object({
 });
 
 export type ContactResult = { success: true } | { error: string };
+
+/**
+ * A stable, non-reversible label for "the same sender", or null.
+ *
+ * NEVER THE ADDRESS ITSELF. An IP is personal data and this row is read by the
+ * admin support screen; abuse control only needs "same sender or not", which a
+ * keyed hash answers just as well.
+ *
+ * THE SALT IS NOT OPTIONAL DECORATION. IPv4 has about four billion values, so
+ * an unsalted hash is reversible by brute force in seconds — it would store the
+ * address while looking like it did not. With no CONTACT_IP_SALT configured
+ * this returns null and the platform-wide backstop carries the load alone,
+ * which is honest about what is and is not in force.
+ *
+ * x-vercel-forwarded-for FIRST: on Vercel the platform sets it and a client
+ * cannot forge it. x-forwarded-for is client-appendable, so its LEFTMOST entry
+ * is attacker-controlled — taking it would let one sender mint a fresh bucket
+ * per request and walk straight through the cap. It is read only as a fallback
+ * for non-Vercel hosting, and the first entry is used knowing that caveat.
+ */
+async function senderBucket(): Promise<string | null> {
+  const salt = (process.env.CONTACT_IP_SALT ?? "").trim();
+  if (!salt) return null;
+  try {
+    const h = await headers();
+    const raw =
+      h.get("x-vercel-forwarded-for") ??
+      h.get("x-forwarded-for") ??
+      h.get("x-real-ip") ??
+      "";
+    const ip = raw.split(",")[0]?.trim() ?? "";
+    if (!ip) return null;
+    return createHash("sha256").update(`${salt}|${ip}`).digest("hex").slice(0, 32);
+  } catch {
+    return null;
+  }
+}
 
 export async function submitContactMessage(input: {
   name: string; email: string; subject: string; message: string; company?: string;
@@ -57,9 +116,36 @@ export async function submitContactMessage(input: {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = admin as any;
 
-  // Global cap, counting in-hour rows. Fails CLOSED: if the count cannot be
-  // read we refuse rather than accepting unmetered anonymous writes.
   const hourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+  const bucket = await senderBucket();
+
+  // 1. PER SENDER. This is the cap that stops one script silencing the form for
+  //    everybody, so it comes first and it is small — three enquiries an hour
+  //    from one origin is already generous for a contact form.
+  //
+  //    Fails OPEN, unlike the global cap below, and the asymmetry is the point:
+  //    a sender we cannot identify must fall through to the backstop rather
+  //    than be refused, because the most likely reason we cannot identify them
+  //    is our own configuration, not their behaviour. Turning that into a
+  //    rejection would re-create the exact failure being fixed — a real
+  //    customer told to go away.
+  if (bucket) {
+    const { count: mine, error: mineErr } = await db
+      .from("contact_messages")
+      .select("id", { count: "exact", head: true })
+      .eq("sender_bucket", bucket)
+      .gte("created_at", hourAgo);
+    if (!mineErr && mine != null && mine >= MAX_MESSAGES_PER_SENDER_PER_HOUR) {
+      // Deliberately the same wording as the global refusal. Telling this
+      // sender they specifically are limited invites them to go and find
+      // another address; the generic line does not.
+      return { error: "We are receiving a lot of messages right now. Please try again in a little while, or email us directly." };
+    }
+  }
+
+  // 2. PLATFORM-WIDE BACKSTOP, for a flood spread across many senders. Fails
+  //    CLOSED: if the count cannot be read we refuse rather than accept
+  //    unmetered anonymous writes.
   const { count, error: countErr } = await db
     .from("contact_messages")
     .select("id", { count: "exact", head: true })
@@ -78,6 +164,7 @@ export async function submitContactMessage(input: {
 
   const { error } = await db.from("contact_messages").insert({
     name: v.name, email: v.email, subject: v.subject, message: v.message, user_id: userId,
+    sender_bucket: bucket,
   });
   if (error) {
     console.error("[contact] insert failed:", error.message);
