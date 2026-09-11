@@ -15,7 +15,7 @@
 
 import "server-only";
 
-import { constants, publicEncrypt } from "node:crypto";
+import { constants, createHash, publicEncrypt } from "node:crypto";
 import { optionalEnv } from "@/lib/env";
 
 const PAYOUT_API_VERSION = "2024-01-01";
@@ -157,13 +157,48 @@ export function hasPayoutSignatureKey(): boolean {
 // ── Identifier shaping — Cashfree's charsets are narrow and they differ ──────
 
 /**
+ * Stable fingerprint of WHERE THE MONEY GOES. Account plus IFSC, nothing else,
+ * so it changes exactly when the destination changes. Never the raw account
+ * number: this value is stored, compared and logged, and a bank account number
+ * should not be any of those things.
+ */
+export function destinationDigest(account: string | null, ifsc: string | null): string {
+  return createHash("sha256")
+    .update(`${(account ?? "").trim()}|${(ifsc ?? "").trim().toUpperCase()}`)
+    .digest("hex")
+    .slice(0, 32);
+}
+
+/**
  * beneficiary_id: alphanumeric plus _ | . — NO HYPHEN, max 50.
  * Our hall_owners.id is a UUID, whose hyphens are rejected. Stripping them
  * keeps all 32 hex characters, so the mapping back to the owner row stays exact
  * and collision-free. Easy Split already learned this the hard way.
+ *
+ * THE DIGEST SUFFIX IS A CORRECTNESS FIX, NOT DECORATION. This id used to be
+ * derived from the owner id alone, which made it STABLE FOR THE LIFE OF THE
+ * OWNER — and Cashfree's POST /beneficiary only ever CREATES. So when an owner
+ * changed bank accounts, the POST came back 409 beneficiary_id_already_exists,
+ * upsertBeneficiary fell through to a GET, and that GET returned the status of
+ * the OLD destination. The new account was silently discarded at Cashfree while
+ * our row recorded it as registered and VERIFIED. Payouts kept going to the
+ * account the owner had just left.
+ *
+ * Binding the id to the destination fixes both halves at once:
+ *   • a changed account yields a DIFFERENT id, so it is genuinely registered
+ *     rather than colliding with the old one;
+ *   • an unchanged account yields the SAME id, so the 409-then-GET fallback
+ *     becomes sound — the id encodes the destination, so the beneficiary that
+ *     already exists provably holds these exact details.
+ *
+ * Length: 32 hex of owner id + 8 of digest = 40, inside the 50 limit, and
+ * alphanumeric throughout. Truncating the owner id would break the mapping
+ * back to the row, so the digest is what gets shortened if anything does.
  */
-export function toBeneficiaryId(hallOwnerId: string): string {
-  return hallOwnerId.replace(/[^a-zA-Z0-9]/g, "").slice(0, 50);
+export function toBeneficiaryId(hallOwnerId: string, digest: string): string {
+  const owner = hallOwnerId.replace(/[^a-zA-Z0-9]/g, "").slice(0, 40);
+  const suffix = digest.replace(/[^a-zA-Z0-9]/g, "").slice(0, 8);
+  return `${owner}${suffix}`.slice(0, 50);
 }
 
 /**
@@ -282,9 +317,16 @@ export type BeneficiaryState = {
 };
 
 /**
- * Registers a payout destination. Idempotent from our side: a 409 for an id
- * that already exists is treated as success and followed by a read, because the
- * owner genuinely does have a beneficiary.
+ * Registers a payout destination. Create-only at Cashfree — there is no update
+ * verb for a beneficiary — so everything here turns on the beneficiary_id.
+ *
+ * Idempotent from our side: a 409 for an id that already exists is treated as
+ * success and followed by a read. THAT IS ONLY SOUND BECAUSE THE CALLER PASSES
+ * A DESTINATION-DERIVED ID (see toBeneficiaryId). The id encodes the account
+ * and IFSC, so "this id already exists" means "this exact destination is
+ * already registered", and reading its status answers the question we asked.
+ * With an owner-only id it answered a different question — the status of
+ * whatever account was registered FIRST — and silently discarded the new one.
  *
  * The OTHER 409 is not a retry and must never be auto-resolved:
  * `beneficiary_already_exists` means this account+IFSC pair is already

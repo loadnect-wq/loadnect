@@ -16,12 +16,12 @@
 
 import "server-only";
 
-import { createHash } from "node:crypto";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import { toPaise, PAISE_PER_RUPEE } from "@/lib/money";
 import {
   isPayoutsConfigured, buildTransferId, toBeneficiaryId, toBeneficiaryName,
   createTransfer, getTransfer, upsertBeneficiary, getBeneficiary, classifyTransfer,
+  destinationDigest as digestOf,
 } from "@/lib/cashfree-payouts";
 import { notifyAdminOperational } from "@/lib/notifications/events";
 
@@ -33,13 +33,12 @@ export type DispatchResult =
   | { state: "failed";      reason: string };
 
 /** Stable fingerprint of where the money is going, snapshotted at dispatch so a
- *  later change to the owner's bank details is a comparison, not a guess. */
-export function destinationDigest(account: string | null, ifsc: string | null): string {
-  return createHash("sha256")
-    .update(`${(account ?? "").trim()}|${(ifsc ?? "").trim().toUpperCase()}`)
-    .digest("hex")
-    .slice(0, 32);
-}
+ *  later change to the owner's bank details is a comparison, not a guess.
+ *
+ *  Lives in lib/cashfree-payouts.ts now, because the beneficiary id is derived
+ *  from it and that module cannot import this one. Re-exported here so the
+ *  existing call sites and the payout tests keep their import path. */
+export { destinationDigest } from "@/lib/cashfree-payouts";
 
 // ── Beneficiary registration ────────────────────────────────────────────────
 
@@ -83,7 +82,11 @@ export async function registerBeneficiary(hallOwnerId: string): Promise<Benefici
     return { ok: false, error: "The account holder name has no letters in it — Cashfree accepts alphabets and spaces only." };
   }
 
-  const beneficiaryId = toBeneficiaryId(hallOwnerId);
+  // THE ID FOLLOWS THE DESTINATION. See toBeneficiaryId: an owner-only id made
+  // every re-registration collide with the first one, so a changed bank account
+  // was discarded at Cashfree while we recorded it as live.
+  const digest = digestOf(account, ifsc);
+  const beneficiaryId = toBeneficiaryId(hallOwnerId, digest);
   const res = await upsertBeneficiary({
     beneficiaryId,
     name,
@@ -97,11 +100,18 @@ export async function registerBeneficiary(hallOwnerId: string): Promise<Benefici
   if (!res.ok) {
     // Two owners claiming one bank account. Never auto-resolve this.
     const conflict = res.status === 409 && res.code === "beneficiary_already_exists";
+    // A FAILED REGISTRATION MUST NOT LOOK LIKE A FRESH SYNC. This used to stamp
+    // payout_beneficiary_synced_at on the way out, which is precisely the value
+    // dispatchOwnerPayout compares against payout_details_changed_at to refuse
+    // a destination changed after verification — so a failure here silently
+    // re-armed the very interlock it should have tripped. The status and digest
+    // are cleared instead, which makes dispatch refuse on both counts.
     await db.from("hall_owners").update({
       payout_beneficiary_last_error: conflict
         ? "This bank account is already registered to a different owner."
         : res.error,
-      payout_beneficiary_synced_at: now,
+      payout_beneficiary_status: null,
+      payout_beneficiary_digest: null,
     }).eq("id", hallOwnerId);
     if (conflict) {
       await notifyAdminOperational({
@@ -115,8 +125,13 @@ export async function registerBeneficiary(hallOwnerId: string): Promise<Benefici
     return { ok: false, error: res.error, conflict };
   }
 
+  // The digest is stored ALONGSIDE the id, and it is what dispatch compares.
+  // Recording which destination this registration actually covers is the whole
+  // point: a timestamp only says when we last talked to Cashfree, never what
+  // we talked about.
   await db.from("hall_owners").update({
     payout_beneficiary_id:         beneficiaryId,
+    payout_beneficiary_digest:     digest,
     payout_beneficiary_status:     res.data.status,
     payout_beneficiary_synced_at:  now,
     payout_beneficiary_last_error: null,
@@ -128,20 +143,36 @@ export async function registerBeneficiary(hallOwnerId: string): Promise<Benefici
 /** Re-reads a beneficiary's status without changing it. */
 export async function refreshBeneficiary(hallOwnerId: string): Promise<BeneficiaryOutcome> {
   if (!isPayoutsConfigured()) return { ok: false, error: "Cashfree Payouts is not configured." };
-  const beneficiaryId = toBeneficiaryId(hallOwnerId);
-  const res = await getBeneficiary(beneficiaryId);
+
   const db = getSupabaseAdminClient() as unknown as {
-    from: (t: string) => { update: (v: Record<string, unknown>) => { eq: (a: string, b: string) => Promise<{ error: unknown }> } };
+    from: (t: string) => {
+      select: (c: string) => { eq: (a: string, b: string) => { maybeSingle: () => Promise<{ data: Record<string, unknown> | null }> } };
+      update: (v: Record<string, unknown>) => { eq: (a: string, b: string) => Promise<{ error: unknown }> };
+    };
   };
+
+  // READ THE STORED ID, never re-derive it. The id now encodes the destination,
+  // so re-deriving it here would ask Cashfree about whatever bank details the
+  // row happens to hold right now — which, after an edit that has not been
+  // registered yet, is an id that does not exist. That would report the owner's
+  // working payout account as missing.
+  const { data: owner } = await db.from("hall_owners")
+    .select("id, payout_beneficiary_id").eq("id", hallOwnerId).maybeSingle();
+  const beneficiaryId = String(owner?.payout_beneficiary_id ?? "").trim();
+  if (!beneficiaryId) {
+    return { ok: false, error: "This owner has no registered payout account yet." };
+  }
+
+  const res = await getBeneficiary(beneficiaryId);
   if (!res.ok) {
     await db.from("hall_owners").update({
       payout_beneficiary_last_error: res.error,
-      payout_beneficiary_synced_at: new Date().toISOString(),
     }).eq("id", hallOwnerId);
     return { ok: false, error: res.error };
   }
+  // Status only. The id and digest are not touched here, because a read cannot
+  // change which destination is registered and must not appear to.
   await db.from("hall_owners").update({
-    payout_beneficiary_id:        beneficiaryId,
     payout_beneficiary_status:    res.data.status,
     payout_beneficiary_synced_at: new Date().toISOString(),
     payout_beneficiary_last_error: null,
@@ -204,7 +235,7 @@ export async function dispatchOwnerPayout(
 
   // 3. The destination, and that it is the one Cashfree verified.
   const { data: owner } = await db.from("hall_owners")
-    .select("id, payout_account_number, payout_ifsc, payout_beneficiary_id, payout_beneficiary_status, payout_beneficiary_synced_at, payout_details_changed_at")
+    .select("id, payout_account_number, payout_ifsc, payout_beneficiary_id, payout_beneficiary_digest, payout_beneficiary_status, payout_beneficiary_synced_at, payout_details_changed_at")
     .eq("id", (await db.from("halls").select("owner_id").eq("id", booking.hall_id).maybeSingle()).data?.owner_id)
     .maybeSingle();
   if (!owner) return { state: "refused", reason: "The venue has no owner record." };
@@ -214,21 +245,39 @@ export async function dispatchOwnerPayout(
       reason: `The owner's payout account is ${owner.payout_beneficiary_status ?? "not registered"} — it must be VERIFIED before money can be sent.`,
     };
   }
-  const beneficiaryId = String(owner.payout_beneficiary_id ?? toBeneficiaryId(String(owner.id)));
-  const digest = destinationDigest(owner.payout_account_number, owner.payout_ifsc);
+  // NO FALLBACK. This used to read `?? toBeneficiaryId(owner.id)`, which
+  // fabricated an id for an owner who had never been registered and sent it to
+  // Cashfree as a destination. An unregistered owner is a refusal, not a guess.
+  const beneficiaryId = String(owner.payout_beneficiary_id ?? "").trim();
+  if (!beneficiaryId) {
+    return { state: "refused", reason: "The owner has no registered payout account — register it before sending money." };
+  }
+  const digest = digestOf(owner.payout_account_number, owner.payout_ifsc);
 
-  // THE DESTINATION MUST BE THE ONE CASHFREE VERIFIED. This is the control the
-  // scope specifies against a compromised owner account redirecting payouts,
-  // and it was HALF built: 0068 stamps payout_details_changed_at on every
-  // destination edit and every payout records a destination_digest, so it read
-  // as implemented — but nothing compared either value, so a destination
-  // changed after verification was paid without comment.
-  //
-  // Two independent checks, because they catch different things:
-  //   • changed AFTER the beneficiary was last synced with Cashfree — the
-  //     account-takeover case, where VERIFIED refers to an older destination;
+  // THE REGISTERED DESTINATION MUST BE THE CURRENT ONE. This is the direct
+  // form of the check the two below approximate: payout_beneficiary_digest
+  // records the account and IFSC that payout_beneficiary_id was actually
+  // registered with, so a mismatch means Cashfree is holding a destination
+  // that is not the one in our row — whatever the timestamps say.
+  const registered = String(owner.payout_beneficiary_digest ?? "").trim();
+  if (!registered || registered !== digest) {
+    return {
+      state: "refused",
+      reason: "The owner's bank details are not the ones registered with Cashfree. Re-register the payout account before sending money.",
+    };
+  }
+
+  // Two further checks, kept as defence in depth BEHIND the digest comparison
+  // above. They are timestamp- and history-based, so each can be defeated by a
+  // write that merely looks like progress — which is exactly what happened:
+  // registerBeneficiary stamped payout_beneficiary_synced_at even when the
+  // registration failed or silently no-opped, which re-armed the first check
+  // every time. They are retained because they catch things the digest cannot:
+  //   • changed AFTER the beneficiary was last synced with Cashfree — an edit
+  //     racing a sync that has not finished writing its digest yet;
   //   • different from what the last completed transfer actually paid — which
-  //     also catches a change made while a beneficiary sync was in flight.
+  //     catches a destination that changed between two payouts even if both
+  //     were registered correctly at the time.
   const changedAt = owner.payout_details_changed_at ? Date.parse(String(owner.payout_details_changed_at)) : null;
   const syncedAt  = owner.payout_beneficiary_synced_at ? Date.parse(String(owner.payout_beneficiary_synced_at)) : null;
   if (changedAt != null && syncedAt != null && changedAt > syncedAt) {

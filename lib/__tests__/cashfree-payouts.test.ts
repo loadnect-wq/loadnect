@@ -1,16 +1,64 @@
 import { describe, it, expect } from "vitest";
 import {
   toBeneficiaryId, buildTransferId, toBeneficiaryName, toTransferRemarks, classifyTransfer,
+  destinationDigest,
 } from "@/lib/cashfree-payouts";
 
 const BOOKING = "9e816700-1c3a-4f21-9b77-0a2d5c4e11ff";
+const OWNER   = "ef52cf9c-717e-4a1b-9c2d-0f1e2a3b4c5d";
+
+const ACCOUNT_A = "50100123456789";
+const ACCOUNT_B = "91800987654321";
+const IFSC      = "HDFC0001234";
 
 describe("Cashfree Payouts identifier shaping", () => {
   it("strips hyphens from a beneficiary id — Cashfree rejects them outright", () => {
-    const id = toBeneficiaryId("ef52cf9c-717e-4a1b-9c2d-0f1e2a3b4c5d");
-    expect(id).toBe("ef52cf9c717e4a1b9c2d0f1e2a3b4c5d");
+    const id = toBeneficiaryId(OWNER, destinationDigest(ACCOUNT_A, IFSC));
     expect(id).toMatch(/^[A-Za-z0-9]+$/);
     expect(id.length).toBeLessThanOrEqual(50);
+    // The owner id is still recoverable by prefix, which is what keeps the
+    // beneficiary mappable back to the row.
+    expect(id.startsWith("ef52cf9c717e4a1b9c2d0f1e2a3b4c5d")).toBe(true);
+  });
+
+  // ── The bug this signature exists to prevent ──────────────────────────────
+  // Cashfree's POST /beneficiary only creates; there is no update verb. When
+  // the id was derived from the owner alone it was stable for life, so a
+  // changed bank account collided with the first registration, came back 409,
+  // and upsertBeneficiary read back the OLD destination's status and reported
+  // success. The new account never reached Cashfree.
+  it("gives a CHANGED bank account a DIFFERENT beneficiary id", () => {
+    const first  = toBeneficiaryId(OWNER, destinationDigest(ACCOUNT_A, IFSC));
+    const second = toBeneficiaryId(OWNER, destinationDigest(ACCOUNT_B, IFSC));
+    expect(second).not.toBe(first);
+  });
+
+  it("gives an UNCHANGED bank account the SAME id, so a retry is still idempotent", () => {
+    // This is what keeps the 409-then-GET fallback sound rather than merely
+    // convenient: the same destination must land on the same id.
+    expect(toBeneficiaryId(OWNER, destinationDigest(ACCOUNT_A, IFSC)))
+      .toBe(toBeneficiaryId(OWNER, destinationDigest(ACCOUNT_A, IFSC)));
+  });
+
+  it("treats a changed IFSC as a changed destination, not just the account number", () => {
+    const sameAccountOtherBranch = toBeneficiaryId(OWNER, destinationDigest(ACCOUNT_A, "HDFC0009999"));
+    expect(sameAccountOtherBranch).not.toBe(toBeneficiaryId(OWNER, destinationDigest(ACCOUNT_A, IFSC)));
+  });
+
+  it("keeps two owners apart even when they somehow share a destination", () => {
+    const other = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
+    const d = destinationDigest(ACCOUNT_A, IFSC);
+    expect(toBeneficiaryId(OWNER, d)).not.toBe(toBeneficiaryId(other, d));
+  });
+
+  it("never puts the account number in the digest, and normalises the IFSC", () => {
+    const d = destinationDigest(ACCOUNT_A, IFSC);
+    expect(d).toMatch(/^[a-f0-9]{32}$/);
+    expect(d).not.toContain(ACCOUNT_A);
+    // Case and padding on the IFSC must not read as a different bank account,
+    // or an owner re-saving identical details would re-register every time.
+    expect(destinationDigest(ACCOUNT_A, " hdfc0001234 ")).toBe(d);
+    expect(destinationDigest(" 50100123456789", IFSC)).toBe(d);
   });
 
   it("emits a transfer id in the INTERSECTION of Cashfree's two contradictory charsets", () => {

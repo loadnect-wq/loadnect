@@ -53,6 +53,39 @@ async function getAuthUser() {
   return { supabase, user };
 }
 
+/**
+ * AUTHENTICATION IS NOT AUTHORISATION, and a server action is a public HTTP
+ * endpoint. The (dashboard) layout requires owner_approved, but the layout only
+ * decides what is RENDERED — every action in this file is directly invocable by
+ * anyone with a session cookie, and most of them gate on getAuthUser() alone.
+ *
+ * That is tolerable where RLS is the real authority. It is NOT tolerable for
+ * the two actions that reach Cashfree Payouts: hall_owners_insert lets any
+ * signed-in account create its own owner row, so a plain customer could walk
+ * straight into beneficiary onboarding and register a payout destination in
+ * Hallnect's Payouts account. No money could move — dispatch still requires an
+ * accepted booking on an approved hall — but the third-party account is real,
+ * the admin conflict alerts are real, and someone who knows a venue's account
+ * number and IFSC could pre-claim it so the genuine owner is refused.
+ *
+ * Returns the role so the caller can shape its own error type.
+ */
+async function getApprovedOwner() {
+  const { supabase, user } = await getAuthUser();
+  if (!user) return { supabase, user: null, denied: "Not authenticated" };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: profileRow } = await (supabase as any)
+    .from("profiles").select("role").eq("id", user.id).maybeSingle();
+  if (profileRow?.role !== "owner_approved") {
+    return {
+      supabase,
+      user: null,
+      denied: "Your owner account is awaiting admin approval before you can set up payouts.",
+    };
+  }
+  return { supabase, user, denied: null };
+}
+
 // ── Upsert owner business profile row ────────────────────────────────────────
 // Security:
 //   • hall_owners_insert WITH CHECK: profile_id = auth.uid(), is_verified = false
@@ -984,8 +1017,8 @@ function isOwnerActionableVendorError(error: string): boolean {
  * a PATCH just to read a value back.
  */
 export async function refreshPayoutStatus(): Promise<ActionResult> {
-  const { user } = await getAuthUser();
-  if (!user) return { error: "Not authenticated" };
+  const { user, denied } = await getApprovedOwner();
+  if (!user) return { error: denied ?? "Not authenticated" };
 
   // The owner row is resolved from the signed-in user, so the privileged read
   // and write below can only ever touch that one row.
@@ -1004,6 +1037,13 @@ export async function refreshPayoutStatus(): Promise<ActionResult> {
   if (!owner) return { error: "No owner profile found." };
   if (!owner.payout_account_number) {
     return { error: "No payout account is connected yet." };
+  }
+  // Details saved but never registered — a distinct state from "connected", and
+  // the owner can fix it themselves by saving the form again. Without this the
+  // refusal from refreshBeneficiary falls through the vendor-error filter below
+  // and is reported as a provider outage, which is both wrong and unactionable.
+  if (!owner.payout_beneficiary_id) {
+    return { error: "Your bank details are saved but not registered yet. Save them again to finish setting up payouts." };
   }
   if (!isPayoutsConfigured()) {
     return { error: "Automatic payouts are not switched on yet. Hallnect will contact you when they are." };
@@ -1183,8 +1223,10 @@ export async function savePayoutDetails(data: {
   pan:           string;
   phone:         string;
 }): Promise<PayoutSetupResult> {
-  const { supabase, user } = await getAuthUser();
-  if (!user) return { state: "error", error: "Not authenticated" };
+  // Role gate BEFORE anything else: this action ends in a real registration at
+  // Cashfree. See getApprovedOwner.
+  const { supabase, user, denied } = await getApprovedOwner();
+  if (!user) return { state: "error", error: denied ?? "Not authenticated" };
 
   const parsed = parseSafe(payoutDetailsSchema, data);
   if (!parsed.ok) return { state: "error", error: parsed.error };
