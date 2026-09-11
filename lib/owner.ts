@@ -433,6 +433,27 @@ export async function fetchHallImages(hallId: string): Promise<HallImage[]> {
 // hand-maintained grid, which no longer exists. The owner calendar is derived
 // from the records that actually create a claim — see lib/owner-calendar.ts.
 
+/**
+ * Booking statuses at which the customer's phone number is the venue's to have.
+ *
+ * Everything here means the customer either paid or asked the venue to act.
+ * pending_payment does NOT: the row exists because checkout was opened, which
+ * is not a relationship with the venue. Terminal failure states are excluded
+ * for the same reason — a checkout that expired or was cancelled before
+ * payment never became a booking, and the number should not outlive it.
+ */
+const PHONE_VISIBLE_STATUSES = new Set([
+  "payment_success",
+  "booking_requested",
+  "owner_confirmed",
+  "completed",
+  // Cancelled and refunded AFTER money moved: the venue may genuinely need to
+  // reach the customer about a date they had held, so the number stays.
+  "cancelled",
+  "refunded",
+  "owner_rejected",
+]);
+
 // ── Fetch bookings for owner's halls ─────────────────────────────────────────
 
 // SECURITY: RLS bookings_select — owns_hall(hall_id) — limits to this owner's halls.
@@ -475,7 +496,24 @@ export async function fetchOwnerBookings(
     owner_notes:    row.owner_notes ?? null,
     cancel_reason:  row.cancel_reason ?? null,
     created_at:     row.created_at,
-    contact_phone:  row.contact_phone ?? null,
+    // THE NUMBER IS RELEASED WHEN THE BOOKING BECOMES REAL, NOT WHEN CHECKOUT
+    // STARTS. A bookings row exists with the customer's typed contact_phone
+    // from the moment they open checkout — before any money moves and before
+    // the request is ever put to the venue. The dashboard rendered that as a
+    // clickable tel: link on a card badged "Payment Pending", so a customer who
+    // got as far as the payment page and changed their mind had handed the
+    // venue their phone number. Abandoned checkouts then sit there until the
+    // expiry cron runs, hours later.
+    //
+    // The lead flow already draws this line correctly — a customer's number
+    // reaches the venue only after OTP verification, and the venue's number
+    // reaches the customer only once the lead is pending (lib/leads.ts). The
+    // booking flow simply never had the equivalent gate. This is it.
+    //
+    // Withheld rather than the row hidden: the owner still needs to see that a
+    // date is being held, and hiding the booking entirely would make the
+    // calendar lie.
+    contact_phone:  PHONE_VISIBLE_STATUSES.has(String(row.status)) ? (row.contact_phone ?? null) : null,
     owner_response_due_at: row.owner_response_due_at ?? null,
     // Only a gateway-verified payment counts as money received — and only its
     // ADVANCE portion. payments.amount now includes the customer's ₹200
