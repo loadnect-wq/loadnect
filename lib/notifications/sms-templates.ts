@@ -90,66 +90,15 @@ function def(
 }
 
 // ── GSM-7 ────────────────────────────────────────────────────────────────────
+//
+// Moved to lib/notifications/gsm7.ts and re-exported here so existing import
+// paths keep working. It had to leave this file because phone.ts needs it:
+// sanitizeNotificationText must run on the GSM-7 form, which is the string that
+// is actually sent, and phone.ts is client-importable while this module reads
+// process.env and holds the whole DLT registry.
 
-/**
- * The GSM 03.38 basic alphabet plus its extension table. Anything outside this
- * set forces the whole message to UCS-2.
- */
-const GSM7_BASIC =
-  "@£$¥èéùìòÇ\nØø\rÅåΔ_ΦΓΛΩΠΨΣΘΞÆæßÉ !\"#¤%&'()*+,-./0123456789:;<=>?" +
-  "¡ABCDEFGHIJKLMNOPQRSTUVWXYZÄÖÑÜ§¿abcdefghijklmnopqrstuvwxyzäöñüà";
-const GSM7_EXTENDED = "^{}\\[~]|€";
-const GSM7 = new Set([...GSM7_BASIC, ...GSM7_EXTENDED]);
-
-/** Characters that have a faithful GSM-7 equivalent worth keeping. */
-const TRANSLITERATE: ReadonlyArray<[RegExp, string]> = [
-  [/₹/g, "Rs."],   // ₹  — the single most common offender
-  [/[‘’‛]/g, "'"],
-  [/[“”]/g, '"'],
-  [/[–—−]/g, "-"],
-  [/…/g, "..."],
-  [/ /g, " "],
-  [/[•·]/g, "-"],
-  [/™/g, "(TM)"],
-  [/®/g, "(R)"],
-  [/°/g, " deg"],
-];
-
-/**
- * Makes text safe for a single-byte SMS: transliterates the characters we
- * expect, then DROPS anything still outside GSM-7 rather than letting one
- * stray glyph triple the cost and halve the length of every message.
- */
-export function toGsm7(raw: string): string {
-  let out = raw;
-  for (const [pattern, replacement] of TRANSLITERATE) out = out.replace(pattern, replacement);
-  return [...out].filter((ch) => GSM7.has(ch)).join("").replace(/\s+/g, " ").trim();
-}
-
-/** True when every character survives GSM-7 encoding. */
-export function isGsm7(raw: string): boolean {
-  return [...raw].every((ch) => GSM7.has(ch));
-}
-
-/**
- * The GSM-7 form of `candidate`, or `fallback` when NOTHING survives.
- *
- * THE BUG THIS CLOSES: GSM 03.38 contains no Indic script at all, so a Tamil
- * venue name — on a Tamil Nadu marketplace, an ordinary name, not an exotic
- * one — filters down to "". Call sites that pick a fallback the usual way
- *     sanitizeSomething(name) ?? "your venue"
- * have already committed to the real value by then: the candidate is a
- * perfectly good non-empty string, so the fallback is not taken, and the empty
- * result is what ships. The customer gets "your hall booking at  on 12 Jan".
- *
- * So the encoding decision and the fallback decision have to be the SAME
- * decision, which is what this function is. Sanitise first, THEN ask whether
- * anything is left.
- */
-export function gsm7OrFallback(candidate: string | null | undefined, fallback: string): string {
-  const safe = candidate ? toGsm7(candidate) : "";
-  return safe === "" ? toGsm7(fallback) : safe;
-}
+export { toGsm7, isGsm7, gsm7OrFallback } from "@/lib/notifications/gsm7";
+import { toGsm7, isGsm7, gsm7OrFallback } from "@/lib/notifications/gsm7";
 
 /**
  * Longest a single interpolated value may be.

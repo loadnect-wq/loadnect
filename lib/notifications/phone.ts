@@ -9,6 +9,8 @@
 // "server-only"; the lib/msg91 barrel re-exports it for server call sites.
 // ─────────────────────────────────────────────────────────────────────────────
 
+import { toGsm7 } from "@/lib/notifications/gsm7";
+
 /**
  * Normalises a phone number to E.164. Defaults to India (+91) for bare
  * 10-digit numbers, but passes through any explicit +country number, so
@@ -95,12 +97,44 @@ export function sanitizeName(
  */
 export function sanitizeNotificationText(raw: string | null | undefined, maxLen = 140): string | null {
   if (!raw) return null;
-  const cleaned = raw
+
+  // ── STEP 1: SANITISE THE STRING WE ACTUALLY SEND ──────────────────────────
+  // This line is the fix for a real bypass, and the ordering is the whole of
+  // it. These regexes used to run on the RAW input, but the text that reaches
+  // MSG91 and the handset is the GSM-7 form, and toGsm7 DROPS every character
+  // outside GSM-7. A zero-width space is neither \s nor \w, so it defeated
+  // every pattern below — and was then deleted downstream, reassembling the
+  // payload in the delivered message:
+  //
+  //   raw        "Call 98765<U+200B>43210 to rebook direct"
+  //   sanitised  unchanged — no regex matches across the invisible character
+  //   delivered  "Call 9876543210 to rebook direct"   <- from OUR sender header
+  //
+  // Normalising first collapses that entire class of attack at once — every
+  // zero-width space, joiner, bidi mark, byte-order mark and soft hyphen is
+  // simply gone before anything tries to pattern-match. It also means the two
+  // steps can never drift apart again, which a hand-maintained list of
+  // invisible characters here certainly would.
+  const text = toGsm7(raw);
+
+  const cleaned = text
     .replace(/https?:\/\/\S+/gi, "")            // explicit URLs
     .replace(/\bwww\.\S+/gi, "")                // www.…
+    // "evil (dot) com" / "evil dot com" — written out to survive a naive
+    // domain filter. Rewritten to a real dot so the domain rules below see it.
+    .replace(/\s*[([{]?\s*(?:dot|DOT)\s*[)\]}]?\s*(?=[a-z]{2,}\b)/g, ".")
     .replace(/\b[\w-]+(\.[\w-]{2,})+\S*/g, "")  // bare domains (evil.link/x)
     .replace(/@\S+/g, "")                       // handles / emails remnant
-    .replace(/[\d\s\-()+]{7,}/g, " ")           // phone/account number runs
+    // ── STEP 2: COUNT DIGITS, NOT CHARACTERS ────────────────────────────────
+    // The old rule matched 7+ characters drawn from [\d\s\-()+], which misses
+    // every other filler a person would actually use: 98765.43210,
+    // 98765_43210, 98765/43210. This matches SEVEN OR MORE DIGITS however they
+    // are separated, which is the property that makes something a phone or
+    // account number. A booking reference (four digits) and a date are
+    // untouched; both are covered by tests.
+    .replace(/\d(?:[\s\-()+._,:/\\|]*\d){6,}/g, " ")
+    .replace(/[\d\s\-()+]{7,}/g, " ")           // kept: the original rule still
+                                                // catches loose digit/space runs
     .replace(/[<>]/g, "")
     .replace(/\s+/g, " ")
     .trim()
