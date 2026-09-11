@@ -1673,6 +1673,36 @@ export async function checkCommissionPaymentStatus(
     return { error: "That payment reference is not a commission payment." };
   }
 
+  // SIGNED IN IS NOT THE SAME AS ENTITLED — the rule the two sibling status
+  // actions already follow (checkPlanPurchaseStatus, checkPlanSubscriptionStatus)
+  // and this one did not. Without the lookup below, ANY signed-in account —
+  // a customer's is enough — could pass another venue's HNC_ order id and both
+  // learn whether that venue had paid its commission AND drive the
+  // service-role settlement side effects on somebody else's debt. The order id
+  // is not a secret: it rides in the Cashfree return URL, so it reaches browser
+  // history, the Referer header and any shared screenshot.
+  //
+  // Resolved with the ADMIN client because owner_commission_payments is
+  // RLS-gated to the owner — a session-client lookup would return nothing for
+  // the attacker and nothing for the legitimate owner's own poll alike, which
+  // would read as "not found" for everyone. The admin read is immediately
+  // narrowed by ownerRowBelongsToUser against the session's profile id.
+  //
+  // "not_found" is deliberately returned for both a missing row and someone
+  // else's row: an attacker probing ids must not be able to tell the two apart.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const adminDb = getSupabaseAdminClient() as any;
+  const { data: settlement } = await adminDb
+    .from("owner_commission_payments")
+    .select("id, owner_id")
+    .eq("cashfree_order_id", orderId)
+    .maybeSingle();
+
+  if (!settlement) return { state: "not_found" };
+  if (!(await ownerRowBelongsToUser(adminDb, settlement.owner_id, user.id))) {
+    return { state: "not_found" };
+  }
+
   const res = await verifyAndApplyCommissionPayment(orderId);
 
   if (res.state === "paid") {

@@ -13,6 +13,7 @@ import { readHallCommissionRateStrict } from "@/lib/hall-commission";
 import { calculateBookingPayment, advanceFromTotal, PENDING_PAYMENT_TIMEOUT_MIN } from "@/lib/booking-payment";
 import { bookingSchema, paymentSessionSchema, uuidSchema, parseSafe } from "@/lib/validation/schemas";
 import { sanitizeError } from "@/lib/errors";
+import { isLeadGeneration } from "@/lib/booking-mode";
 import { LEGAL_LAST_UPDATED } from "@/lib/content";
 import { normalizePhoneE164 } from "@/lib/notifications/phone";
 import { notifyBookingEvent } from "@/lib/notifications/events";
@@ -184,12 +185,32 @@ export async function createBookingRequest(
   // ── Recompute price from DB (don't trust any client-provided price) ─────────
   const { data: hall, error: hallErr } = await db
     .from("halls")
-    .select("id, status, capacity_max, price_per_day, price_morning, price_evening")
+    .select("id, status, booking_mode, capacity_max, price_per_day, price_morning, price_evening")
     .eq("id", v.hallId)
     .maybeSingle();
 
   if (hallErr || !hall) return { error: "This hall is no longer available." };
   if (hall.status !== "approved") return { error: "This hall is not currently accepting bookings." };
+
+  // THE MODE GATE, SERVER-SIDE. /book/[slug]/page.tsx redirects a
+  // lead-generation venue to /enquiry — and its own comment says a page
+  // redirect protects nobody who posts to the action directly. This is that
+  // protection, and it is the mirror of the one createLeadEnquiry already has
+  // (lib/leads.ts:249) refusing an enquiry against a direct-booking hall.
+  //
+  // WITHOUT IT a signed-in customer who posts this action with a lead venue's
+  // id gets a real pending_payment booking: it takes the slot in
+  // uq_booking_active_slot so the venue's calendar shows a date sold that the
+  // venue never agreed to sell, it can be paid for, and on payment it raises a
+  // commission retained from an advance — against a venue whose whole
+  // arrangement is that it collects its own money and is invoiced separately.
+  // A lead venue also has no payout beneficiary, so the advance would have no
+  // route back out to them.
+  if (isLeadGeneration(hall.booking_mode)) {
+    return {
+      error: "This venue takes enquiries rather than online bookings. Please send an enquiry instead.",
+    };
+  }
   if (v.guestCount > hall.capacity_max) {
     return { error: `Guest count exceeds the hall capacity (${hall.capacity_max}).` };
   }
