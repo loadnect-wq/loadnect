@@ -18,6 +18,16 @@ function supabaseImageHost(): string {
 }
 
 const nextConfig: NextConfig = {
+  // VAPT: the response carried `X-Powered-By: Next.js` on every request, naming
+  // the framework and therefore the advisory list worth trying. It buys an
+  // attacker a little reconnaissance and buys us nothing — Next sends it by
+  // default and it is one flag to stop.
+  //
+  // NOT a security control by itself: the stack is still inferable from
+  // /_next/ paths and build-manifest shapes. This removes a free hint, it does
+  // not hide anything, and nothing else should be built on top of that belief.
+  poweredByHeader: false,
+
   images: {
     // SECURITY: this was hostname "**", which matches EVERY host. Next's image
     // optimizer will fetch and re-serve any URL it is given, so a wildcard
@@ -122,6 +132,17 @@ const nextConfig: NextConfig = {
             key: "Permissions-Policy",
             value: 'camera=(), microphone=(), geolocation=(), payment=(self "https://payments.cashfree.com" "https://payments-test.cashfree.com")',
           },
+          // A year, subdomains included. `preload` is DELIBERATELY ABSENT and
+          // should stay absent until somebody decides to submit the domain.
+          //
+          // The directive is not the commitment — submitting hallnect.com to
+          // hstspreload.org is, and that ships the rule inside browsers where
+          // it cannot be withdrawn on our timetable: removal takes months and
+          // reaches users only as they update. Until every current and future
+          // subdomain is certain to serve HTTPS for ever, the honest state is
+          // this header without the claim. Sending `preload` while not
+          // submitted is worse than either: it reads as done to anyone
+          // auditing the header and does nothing at all.
           {
             key: "Strict-Transport-Security",
             value: "max-age=31536000; includeSubDomains",
