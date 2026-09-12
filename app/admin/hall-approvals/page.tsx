@@ -69,12 +69,20 @@ export default async function HallApprovalsPage() {
                            width IS the requirement here — unlike object-cover,
                            where a landscape photo in a squarish cell is
                            height-bound and needs cellHeight x aspect. */
-                        /* 608px, not 640: the box is min(100vw - 32, 560), so
-                           it reaches its 560 cap at exactly 608. Declaring
-                           `100vw` up to 639 made a DPR-2 client in that window
-                           ask for 1240 and take the 1920 candidate for a 560px
-                           box. */
-                        sizes="(min-width: 608px) 560px, calc(100vw - 32px)"
+                        /* 592px, not 640: the box is min(100vw - 32, 560), so
+                           it reaches its 560 cap at 592 — the page padding here
+                           is px-4, and sm:px-6 does not start until 640.
+                           Declaring `100vw` up to 639 made a DPR-2 client in
+                           that window ask for 1240 and take the 1920 candidate
+                           for a 560px box.
+
+                           calc() is also load-bearing: Next's srcset generator
+                           only treats a value as viewport-relative when a vw
+                           token follows start-of-string or whitespace, and here
+                           it follows "(", so the small imageSizes candidates
+                           stay available and a 343px mobile box takes 384
+                           rather than 640. */
+                        sizes="(min-width: 592px) 560px, calc(100vw - 32px)"
                         className="object-contain"
                       />
                     ) : (

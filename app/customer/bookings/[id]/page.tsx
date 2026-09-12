@@ -149,8 +149,15 @@ export default async function BookingDetailPage({ params }: Props) {
                          the optimizer returns 112x63 for a 16:9 cover, and cover
                          then blows it up 1.78x — worse than the band this
                          replaced. Declaring 224/160 picks the 256 candidate and
-                         the worst case becomes 0.78x, a downscale for all nine
+                         the worst case becomes 0.80x, a downscale for all nine
                          real photos at DPR 1, 2 and 3.
+
+                         16/9 IS AN ASSUMPTION, not a guarantee — owners upload
+                         what they like. The binding case is sm+ at DPR 3 (the
+                         750 candidate against a 336px requirement), which holds
+                         up to a source aspect of 2.23:1. A true panorama cover
+                         would upscale about 1.34x; nothing in the current
+                         inventory is wider than 1.78.
 
                          No vw token anywhere in the value, also deliberately:
                          Next's srcset generator only offers the small imageSizes
@@ -162,7 +169,16 @@ export default async function BookingDetailPage({ params }: Props) {
                     />
                 </div>
                 )}
-                <div className="min-w-0">
+                {/* break-words, NOT just min-w-0. min-w-0 is needed so the
+                    flex child can shrink below its content, but it also removes
+                    the min-content floor that used to keep this column wide
+                    enough — after which a long compound venue name (Tamil names
+                    are routinely one 17+ character word) overflowed its ~131px
+                    column at 375px and painted underneath the status badge,
+                    which has an opaque background and comes later in DOM order.
+                    overflow-wrap is inherited, so one class here covers the
+                    heading, the city line and the address. */}
+                <div className="min-w-0 break-words">
                   <h1 className="font-serif text-lg font-bold text-charcoal-900">
                     {booking.hall_name}
                   </h1>
