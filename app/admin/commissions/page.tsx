@@ -93,7 +93,7 @@ export default async function AdminCommissionsPage({ searchParams }: Props) {
 
   return (
     <div>
-      <AdminPageHeader title="Commissions" description="2.5% of the hall price, retained out of the customer advance at settlement. Owners are never billed for it. Records are written by the server after verified payment — never by the browser." />
+      <AdminPageHeader title="Commissions" description="A percentage of the hall price, set per venue, retained out of the customer advance at settlement. Owners are never billed for it. Records are written by the server after verified payment — never by the browser. Each row below shows the rate that booking was actually charged, which is the only rate that means anything — a single headline number was wrong the moment halls gained their own commission_rate." />
 
       <div className="px-4 py-4 sm:px-6 lg:px-8 space-y-4">
 
