@@ -117,7 +117,7 @@ export async function startLeadEnquiry(input: {
     return { success: true, leadId: created.leadId, alreadySent: true };
   }
 
-  const guard = await guardOtpSend({ userId: user.id, phone });
+  const guard = await guardOtpSend({ actor: { userId: user.id }, phone });
   if (!guard.ok) {
     // The lead survives a refused send. It is un-forwarded, resumable, and the
     // customer can try again once the cooldown passes — deleting it here would
@@ -163,7 +163,7 @@ export async function resendLeadOtp(leadId: string): Promise<ResendEnquiryOtpRes
     return { error: "This enquiry has already been sent to the venue." };
   }
 
-  const guard = await guardOtpSend({ userId: user.id, phone: lead.contact_phone });
+  const guard = await guardOtpSend({ actor: { userId: user.id }, phone: lead.contact_phone });
   if (!guard.ok) return { error: guard.error };
 
   const sent = await resendVerificationOtp(lead.contact_phone);
@@ -221,7 +221,7 @@ export async function verifyLeadOtp(leadId: string, code: string): Promise<Verif
   // this caller already owns and cannot be pointed at a stranger. The ceilings
   // still apply, and they are now per-account as well as per-phone, so a
   // stranger's failures elsewhere can no longer spend this customer's budget.
-  const ceiling = await failedCheckLimitReached(lead.contact_phone, user.id);
+  const ceiling = await failedCheckLimitReached(lead.contact_phone, { userId: user.id });
   if (ceiling) return { error: ceiling };
 
   const result = await checkVerificationOtp(lead.contact_phone, clean);
@@ -233,7 +233,7 @@ export async function verifyLeadOtp(leadId: string, code: string): Promise<Verif
     return { error: "Could not verify the code right now. Please try again." };
   }
 
-  await recordCheckAttempt({ userId: user.id, phone: lead.contact_phone, approved: result.approved });
+  await recordCheckAttempt({ actor: { userId: user.id }, phone: lead.contact_phone, approved: result.approved });
 
   if (!result.approved) return { error: "That code is incorrect or has expired." };
 

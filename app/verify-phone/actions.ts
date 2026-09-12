@@ -66,7 +66,7 @@ export async function sendPhoneOtp(rawPhone: string, resend = false): Promise<Ot
   const phone = normalizePhoneE164(rawPhone);
   if (!phone) return { error: "Enter a valid mobile number." };
 
-  const guard = await guardOtpSend({ userId: user.id, phone });
+  const guard = await guardOtpSend({ actor: { userId: user.id }, phone });
   if (!guard.ok) return { error: guard.error };
 
   const result = resend
@@ -131,11 +131,11 @@ export async function verifyPhoneOtp(
   // The message is the generic one: saying "you never requested a code for
   // that number" would confirm to an attacker which numbers they have not yet
   // touched, and saying anything about the number's state would be worse.
-  if (!(await hasRecentSendFor(user.id, phone))) {
+  if (!(await hasRecentSendFor({ userId: user.id }, phone))) {
     return { error: "That code is incorrect or has expired." };
   }
 
-  const ceiling = await failedCheckLimitReached(phone, user.id);
+  const ceiling = await failedCheckLimitReached(phone, { userId: user.id });
   if (ceiling) return { error: ceiling };
 
   const result = await checkVerificationOtp(phone, clean);
@@ -146,7 +146,7 @@ export async function verifyPhoneOtp(
     return { error: "Could not verify the code right now. Please try again." };
   }
 
-  await recordCheckAttempt({ userId: user.id, phone, approved: result.approved });
+  await recordCheckAttempt({ actor: { userId: user.id }, phone, approved: result.approved });
 
   if (!result.approved) {
     return { error: "That code is incorrect or has expired." };

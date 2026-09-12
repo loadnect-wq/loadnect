@@ -74,6 +74,35 @@ function since(minutes: number): string {
 }
 
 /**
+ * WHO IS ASKING. Either a signed-in account or, for the sign-in-by-mobile flow,
+ * an anonymous client identified by a salted hash of its address.
+ *
+ * SIGNING IN BY MOBILE MEANS THE SENDER HAS NO ACCOUNT YET, so every per-actor
+ * ceiling in this file needed something other than a user id to key on.
+ * Migration 0087 added otp_attempts.actor_key for exactly that, with a CHECK
+ * that exactly one of the two is ever set — both would be counted twice, and
+ * neither is an attempt nobody can be held to.
+ *
+ * AN actor_key IS NOT AN IDENTITY, and nothing here should be read as claiming
+ * it is. An address is shed by changing network. It raises the cost of walking
+ * a list of strangers' numbers and bounds the blast radius; the ceilings that
+ * an attacker CANNOT shed — 10/day per phone and the fail-closed 300/day global
+ * fuse — are the real backstop, and they are shared with the signed-in flows so
+ * moving between endpoints resets nothing.
+ */
+export type OtpActor =
+  | { userId: string; actorKey?: undefined }
+  | { actorKey: string; userId?: undefined };
+
+/** The column this actor is recorded and counted under. */
+function actorColumn(actor: OtpActor): "user_id" | "actor_key" {
+  return actor.userId ? "user_id" : "actor_key";
+}
+function actorValue(actor: OtpActor): string {
+  return (actor.userId ?? actor.actorKey) as string;
+}
+
+/**
  * Counts prior attempts. Returns null when the table is missing (an
  * un-migrated environment) so the caller can decide — and it decides to ALLOW,
  * because a missing rate-limit table must not lock every user out of
@@ -85,7 +114,15 @@ export async function countAttempts(
   db: any,
   // `phone` is optional so the same helper can count the two ceilings that must
   // NOT be scoped to a number — per account, and platform-wide.
-  filters: { phone?: string; userId?: string; kind: "send" | "check"; succeeded?: boolean; sinceIso: string },
+  filters: {
+    phone?: string;
+    /** Count only this actor's rows. Omit to count across every actor, which is
+     *  how the per-phone and global fuses are measured. */
+    actor?: OtpActor;
+    kind: "send" | "check";
+    succeeded?: boolean;
+    sinceIso: string;
+  },
 ): Promise<number | null> {
   let q = db
     .from("otp_attempts")
@@ -93,7 +130,7 @@ export async function countAttempts(
     .eq("kind", filters.kind)
     .gte("created_at", filters.sinceIso);
   if (filters.phone) q = q.eq("phone", filters.phone);
-  if (filters.userId) q = q.eq("user_id", filters.userId);
+  if (filters.actor) q = q.eq(actorColumn(filters.actor), actorValue(filters.actor));
   if (filters.succeeded !== undefined) q = q.eq("succeeded", filters.succeeded);
 
   const { count, error } = await q;
@@ -117,10 +154,12 @@ export type Reservation = { id: string; createdAt: string };
 export async function recordAttempt(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   db: any,
-  row: { userId: string; phone: string; kind: "send" | "check"; succeeded: boolean },
+  row: { actor: OtpActor; phone: string; kind: "send" | "check"; succeeded: boolean },
 ): Promise<Reservation | null> {
   const { data, error } = await db.from("otp_attempts").insert({
-    user_id: row.userId,
+    // Exactly one of these is non-null, which otp_attempts_one_actor enforces.
+    user_id:   row.actor.userId ?? null,
+    actor_key: row.actor.actorKey ?? null,
     phone: row.phone,
     kind: row.kind,
     succeeded: row.succeeded,
@@ -158,14 +197,14 @@ export async function markAttemptSucceeded(
 export async function cooldownRemaining(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   db: any,
-  userId: string,
+  actor: OtpActor,
   phone: string,
   reservation?: Reservation,
 ): Promise<number> {
   let q = db
     .from("otp_attempts")
     .select("created_at")
-    .eq("user_id", userId)
+    .eq(actorColumn(actor), actorValue(actor))
     .eq("phone", phone)
     .eq("kind", "send");
   if (reservation) {
@@ -194,10 +233,10 @@ export async function cooldownRemaining(
  */
 export async function ceilingReached(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  db: any, userId: string, phone: string, own: 0 | 1,
+  db: any, actor: OtpActor, phone: string, own: 0 | 1,
 ): Promise<string | null> {
   const perUser = await countAttempts(db, {
-    phone, userId, kind: "send", sinceIso: since(60),
+    phone, actor, kind: "send", sinceIso: since(60),
   });
   if (perUser !== null && perUser >= MAX_SENDS_PER_USER_PHONE_PER_HOUR + own) {
     return "Too many codes requested. Please try again in an hour.";
@@ -215,7 +254,7 @@ export async function ceilingReached(
   // Not scoped to a phone: this is what stops ONE account rotating through
   // other people's numbers, where every phone-keyed counter above reads zero.
   const perAccount = await countAttempts(db, {
-    userId, kind: "send", sinceIso: since(60 * 24),
+    actor, kind: "send", sinceIso: since(60 * 24),
   });
   if (perAccount !== null && perAccount >= MAX_SENDS_PER_ACCOUNT_PER_DAY + own) {
     return "Too many codes requested from this account today. Please try again tomorrow.";
@@ -264,7 +303,10 @@ export type OtpSendGuard =
   | { ok: false; error: string };
 
 export async function guardOtpSend(input: {
-  userId: string;
+  /** The signed-in account, or an anonymous client key for sign-in by mobile.
+   *  See OtpActor: the per-phone and global fuses are shared either way, so an
+   *  attacker cannot reset a number's budget by switching endpoints. */
+  actor: OtpActor;
   phone: string;
 }): Promise<OtpSendGuard> {
   let db: ReturnType<typeof getSupabaseAdminClient>;
@@ -276,27 +318,27 @@ export async function guardOtpSend(input: {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const anyDb = db as any;
 
-  const wait = await cooldownRemaining(anyDb, input.userId, input.phone);
+  const wait = await cooldownRemaining(anyDb, input.actor, input.phone);
   if (wait > 0) {
     return { ok: false, error: `Please wait ${wait}s before requesting another code.` };
   }
 
-  const blocked = await ceilingReached(anyDb, input.userId, input.phone, 0);
+  const blocked = await ceilingReached(anyDb, input.actor, input.phone, 0);
   if (blocked) return { ok: false, error: blocked };
 
   const reservation = await recordAttempt(anyDb, {
-    userId: input.userId, phone: input.phone, kind: "send", succeeded: false,
+    actor: input.actor, phone: input.phone, kind: "send", succeeded: false,
   });
   // No reservation means nothing is counting this send. Same call as the global
   // fuse makes: refuse rather than spend unmetered.
   if (!reservation) return { ok: false, error: GENERIC_SEND_ERROR };
 
-  const raceWait = await cooldownRemaining(anyDb, input.userId, input.phone, reservation);
+  const raceWait = await cooldownRemaining(anyDb, input.actor, input.phone, reservation);
   if (raceWait > 0) {
     return { ok: false, error: `Please wait ${raceWait}s before requesting another code.` };
   }
 
-  const raceBlocked = await ceilingReached(anyDb, input.userId, input.phone, 1);
+  const raceBlocked = await ceilingReached(anyDb, input.actor, input.phone, 1);
   if (raceBlocked) return { ok: false, error: raceBlocked };
 
   return {
@@ -314,12 +356,12 @@ export async function guardOtpSend(input: {
  * sometimes after a resend, and refusing a real verification is a far worse
  * outcome than the narrow abuse this closes.
  */
-export async function hasRecentSendFor(userId: string, phone: string): Promise<boolean> {
+export async function hasRecentSendFor(actor: OtpActor, phone: string): Promise<boolean> {
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const db = getSupabaseAdminClient() as any;
     const sends = await countAttempts(db, {
-      userId, phone, kind: "send", sinceIso: since(SEND_BINDING_WINDOW_MINUTES),
+      actor, phone, kind: "send", sinceIso: since(SEND_BINDING_WINDOW_MINUTES),
     });
     // null means the table could not be read. Allow, for the same reason every
     // other ceiling here allows: a broken counter must not block a real user.
@@ -363,7 +405,7 @@ export async function hasRecentSendFor(userId: string, phone: string): Promise<b
  */
 export async function failedCheckLimitReached(
   phone: string,
-  userId: string,
+  actor: OtpActor,
 ): Promise<string | null> {
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -371,9 +413,9 @@ export async function failedCheckLimitReached(
     const sinceIso = since(FAILED_CHECK_WINDOW_MINUTES);
 
     const [mine, thisPhone, myTotal] = await Promise.all([
-      countAttempts(db, { phone, userId, kind: "check", succeeded: false, sinceIso }),
-      countAttempts(db, { phone,         kind: "check", succeeded: false, sinceIso }),
-      countAttempts(db, { userId,        kind: "check", succeeded: false, sinceIso }),
+      countAttempts(db, { phone, actor, kind: "check", succeeded: false, sinceIso }),
+      countAttempts(db, { phone,        kind: "check", succeeded: false, sinceIso }),
+      countAttempts(db, { actor,        kind: "check", succeeded: false, sinceIso }),
     ]);
 
     if (mine !== null && mine >= MAX_FAILED_CHECKS) return TOO_MANY_ATTEMPTS;
@@ -389,7 +431,7 @@ export async function failedCheckLimitReached(
 
 /** Records the outcome of one code check. Never records the code. */
 export async function recordCheckAttempt(input: {
-  userId: string;
+  actor: OtpActor;
   phone: string;
   approved: boolean;
 }): Promise<void> {
@@ -397,7 +439,7 @@ export async function recordCheckAttempt(input: {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const db = getSupabaseAdminClient() as any;
     await recordAttempt(db, {
-      userId: input.userId, phone: input.phone, kind: "check", succeeded: input.approved,
+      actor: input.actor, phone: input.phone, kind: "check", succeeded: input.approved,
     });
   } catch (e) {
     console.error("[otp-guard] check record failed:", e instanceof Error ? e.message : e);
