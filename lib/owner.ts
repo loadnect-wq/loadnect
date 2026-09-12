@@ -209,6 +209,75 @@ function handleError(fn: string, error: { code?: string; message: string }) {
 // Returns the hall_owners row for the current authenticated user, or null if
 // it hasn't been created yet (owner needs to complete their business profile).
 // RLS: profile_id = auth.uid()
+/**
+ * Does this owner have any venue that takes payment through Hallnect?
+ *
+ * WHY THIS EXISTS: a payout account is only ever needed by a DIRECT_BOOKING
+ * venue. Under that mode the customer pays the advance to Hallnect, which then
+ * transfers the owner's share — so there has to be a destination. A
+ * LEAD_GENERATION venue is the opposite flow end to end: the customer contacts
+ * the venue and pays the venue directly, and the OWNER later pays Hallnect its
+ * commission. No money ever travels toward the owner, so there is nothing to
+ * pay out and no account to ask for.
+ *
+ * Asking anyway is not merely a redundant field. It is asking a stranger for
+ * their bank account, their PAN and their account-holder name for a purpose
+ * that does not exist, on the first screen they see — which is both a privacy
+ * cost we have no justification for and the sort of thing that makes a venue
+ * owner close the tab.
+ *
+ * EVERY STATUS COUNTS, not just approved. An owner whose direct-booking hall is
+ * still in review will need a payout account the moment it goes live, and
+ * discovering that at the first booking is too late.
+ *
+ * Returns false when the owner has no halls at all: at that point nothing is
+ * known about how they intend to sell, and the honest thing is to ask once
+ * there is something to be paid for.
+ */
+export type PayoutNeed = {
+  /** True when at least one venue takes payment through Hallnect. */
+  takesOnlinePayments: boolean;
+  /** How many venues this owner has at all, in ANY status. Lets the caller tell
+   *  "your venues take enquiries" from "you have no venues yet", which are
+   *  different sentences and only one of them is ever true. */
+  hallCount: number;
+};
+
+export async function ownerTakesOnlinePayments(): Promise<PayoutNeed> {
+  const supabase = await getSupabaseServerClient();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const db = supabase as any;
+
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { takesOnlinePayments: false, hallCount: 0 };
+
+  const { data: owner } = await db
+    .from("hall_owners").select("id").eq("profile_id", user.id).maybeSingle();
+  if (!owner?.id) return { takesOnlinePayments: false, hallCount: 0 };
+
+  // Modes only — no other column, because this runs on every profile render.
+  // RLS (owns_hall) already scopes it to this owner; the explicit owner_id is
+  // defence in depth, matching the rest of this file.
+  const { data, error } = await db
+    .from("halls")
+    .select("booking_mode")
+    .eq("owner_id", owner.id);
+
+  // A failed read must not HIDE the payout form from somebody who needs it:
+  // an owner who cannot see the field cannot get paid, which is worse than an
+  // owner seeing a field they do not need. Fails toward showing it.
+  if (error) {
+    handleError("ownerTakesOnlinePayments", error);
+    return { takesOnlinePayments: true, hallCount: 0 };
+  }
+
+  const rows = (data ?? []) as { booking_mode: string | null }[];
+  return {
+    takesOnlinePayments: rows.some((r) => toBookingMode(r.booking_mode) === "DIRECT_BOOKING"),
+    hallCount: rows.length,
+  };
+}
+
 export async function fetchOwnerRow(): Promise<OwnerRow | null> {
   const supabase = await getSupabaseServerClient();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

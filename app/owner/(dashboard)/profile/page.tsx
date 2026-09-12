@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { LogOut } from "lucide-react";
 import { requireRole } from "@/lib/auth";
-import { fetchOwnerRow } from "@/lib/owner";
+import { fetchOwnerRow, ownerTakesOnlinePayments } from "@/lib/owner";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { AppHeader } from "@/components/app/AppHeader";
 import { OwnerProfileForm } from "./_components/OwnerProfileForm";
@@ -14,6 +15,12 @@ export const metadata: Metadata = { title: "Owner Profile" };
 export default async function OwnerProfilePage() {
   const profile  = await requireRole(["owner_approved"]);
   const ownerRow = await fetchOwnerRow();
+
+  // A payout account is only ever needed by a venue that takes payment THROUGH
+  // Hallnect. See ownerTakesOnlinePayments — a lead-generation venue is paid by
+  // the customer directly and owes Hallnect a commission, so money never
+  // travels toward the owner and there is nothing to pay out.
+  const payoutNeed = await ownerTakesOnlinePayments();
 
   // Personal phone + notification preference live on profiles (not in requireRole's
   // cached shape). This page previously passed phone={null} hard-coded, so the
@@ -52,13 +59,22 @@ export default async function OwnerProfilePage() {
           </div>
         </div>
 
-        {/* Payout setup, first: it is the one thing an owner must do before
-            they can be paid, and it now carries its own fields rather than
-            depending on a second form further down the page. */}
+        {/* PAYOUT SETUP, AND ONLY WHEN IT MEANS SOMETHING.
+            It used to render for every owner. Asking a lead-generation venue
+            for a bank account, a PAN and an account-holder name is asking a
+            stranger for their banking details for a purpose that does not
+            exist — they are paid by the customer directly and owe Hallnect a
+            commission, so nothing is ever paid TO them. It was also the first
+            thing on the page, which is a poor first impression for a field
+            nobody needs.
+
+            Kept first for those who DO need it: it is the one thing that must
+            be done before they can be paid. */}
         {/* payoutsEnabled is server-only — it reads an env var, so a client
             component cannot ask. Passed down because BOTH halves must be true
             before an owner is told payouts are automatic: the product switched
             on AND their own account VERIFIED by Cashfree. */}
+        {payoutNeed.takesOnlinePayments ? (
         <PayoutSetup
           easySplitEnabled={isPayoutsConfigured()}
           vendorId={ownerRow?.payout_beneficiary_id ?? null}
@@ -73,6 +89,36 @@ export default async function OwnerProfilePage() {
             phone:         ownerRow?.business_phone        ?? null,
           }}
         />
+        ) : (
+          /* Not silence: an owner who has heard Hallnect handles payments
+             would wonder where the field went. This says why it is absent and
+             what replaces it, and it appears on its own the moment they add a
+             venue that takes online payment. */
+          <div className="rounded-2xl border border-border bg-white p-5 shadow-card">
+            <h3 className="font-serif text-sm font-semibold text-charcoal-900">
+              No payout account needed
+            </h3>
+            {payoutNeed.hallCount > 0 ? (
+              <p className="mt-1 text-xs leading-relaxed text-charcoal-600">
+                Your venues take enquiries rather than online payments, so customers
+                pay you directly and Hallnect never holds your money. You pay
+                Hallnect&apos;s commission from{" "}
+                <Link href="/owner/commissions" className="font-semibold text-maroon-700 underline">
+                  Commissions
+                </Link>
+                . If you later list a venue that takes payment online, the payout
+                fields will appear here.
+              </p>
+            ) : (
+              <p className="mt-1 text-xs leading-relaxed text-charcoal-600">
+                Nothing to set up yet. If you list a venue that takes payment
+                online, the payout fields will appear here so Hallnect can
+                transfer the advance to you. A venue that only takes enquiries
+                never needs one — customers pay you directly.
+              </p>
+            )}
+          </div>
+        )}
 
         <OwnerProfileForm
           ownerRow={ownerRow}

@@ -45,6 +45,11 @@ export default async function OwnerRevenuePage() {
   }
 
   const halls         = await fetchOwnerHalls(ownerRow.id);
+
+  // Derived from halls already in hand rather than a second round trip. True
+  // when any venue takes payment THROUGH Hallnect, which is the only case where
+  // money travels toward the owner and a payout account means anything.
+  const takesOnlinePayments = halls.some((h) => h.booking_mode === "DIRECT_BOOKING");
   const hallIds       = halls.map((h) => h.id);
   const [bookings, commissions, commissionPercent] = await Promise.all([
     fetchOwnerRevenue(hallIds),
@@ -222,7 +227,11 @@ export default async function OwnerRevenuePage() {
               mechanism as the reward for filling the form. It is not what
               saving these details switches on — Hallnect needs the account to
               transfer to it either way, which is the honest reason to add it. */}
-          {!payoutReady && (
+          {/* Only for an owner who can actually RECEIVE money. A
+              lead-generation venue is paid by the customer directly and owes
+              Hallnect a commission, so there is nothing to transfer and no
+              account to ask for — the prompt used to appear regardless. */}
+          {!payoutReady && takesOnlinePayments && (
             <> <Link href="/owner/profile" className="font-semibold underline">Add your payout account</Link> so Hallnect can transfer your advance to you.</>
           )}
         </div>
