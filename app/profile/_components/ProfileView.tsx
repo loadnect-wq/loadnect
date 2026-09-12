@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Bell, ChevronRight, CreditCard, FileText, HelpCircle,
-  LayoutDashboard, LogIn, LogOut, MapPin, Phone, Settings, ShieldCheck, User,
+  LayoutDashboard, LogIn, LogOut, Mail, MapPin, Phone, Settings, ShieldCheck, User,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { getSupabaseClient } from "@/lib/supabase/client";
@@ -111,21 +111,41 @@ export function ProfileView({
         </div>
       )}
 
+      {/* ── Contact information ──────────────────────────────────────────────
+          Both identities in one place, each with its state, because they are
+          now two ways into the SAME account rather than two unrelated fields.
+          A verified mobile is what makes "continue with mobile" work at
+          sign-in, so showing whether it is verified is showing whether that
+          door is open. */}
+      {profile && (
+        <SettingsGroup title="Contact information">
+          <ContactRow
+            icon={<Phone className="h-4 w-4" />}
+            label="Mobile number"
+            value={profile.phone ? formatPhone(profile.phone) : null}
+            emptyLabel="Not added yet"
+            verified={profile.phoneVerified}
+            // Unverified or missing, the action is the same page. Hidden
+            // entirely when MSG91 is unconfigured, so the row never leads to a
+            // dead end that reads as broken.
+            href={!profile.phoneVerified && phoneVerificationAvailable ? "/verify-phone" : undefined}
+            action={profile.phone ? "Verify" : "Add"}
+          />
+          <ContactRow
+            icon={<Mail className="h-4 w-4" />}
+            label="Email"
+            value={profile.email}
+            emptyLabel="Not added yet"
+            // An email on the account came from the identity provider that
+            // created it, so it is confirmed by definition. There is no
+            // separate email-verification step to be pending on.
+            verified={Boolean(profile.email)}
+          />
+        </SettingsGroup>
+      )}
+
       {/* Quick links */}
       <SettingsGroup title="Account">
-        {/* /verify-phone existed but nothing anywhere linked to it, so the
-            whole OTP flow was unreachable. It is the number booking updates
-            are sent to, which is worth telling people about. */}
-        {profile && (
-          (profile.phoneVerified || phoneVerificationAvailable) && (
-            <SettingsRow
-              icon={<Phone className="h-4 w-4" />}
-              label={profile.phoneVerified ? "Phone verified" : "Verify your phone"}
-              href={profile.phoneVerified ? undefined : "/verify-phone"}
-              badge={profile.phoneVerified ? "Verified" : undefined}
-            />
-          )
-        )}
         {/* Notifications is a real page — it was labelled "Soon" while working. */}
         {profile && (
           <SettingsRow icon={<Bell className="h-4 w-4" />} label="Notifications" href="/customer/notifications" />
@@ -212,5 +232,56 @@ function SettingsRow({
     <Link href={href} className={classes + " active:bg-ivory-200/60"}>
       {inner}
     </Link>
+  );
+}
+
+/** "+91 98765 43210" from stored E.164. The account holder is looking at their
+ *  OWN number, so it is shown in full — masking here would only make them
+ *  squint at their own data. */
+function formatPhone(e164: string): string {
+  const m = /^\+91(\d{5})(\d{5})$/.exec(e164);
+  return m ? `+91 ${m[1]} ${m[2]}` : e164;
+}
+
+function ContactRow({
+  icon, label, value, emptyLabel, verified, href, action,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: string | null;
+  emptyLabel: string;
+  verified: boolean;
+  href?: string;
+  action?: string;
+}) {
+  const body = (
+    <div className="flex items-center gap-3 px-4 py-3">
+      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-ivory-100 text-charcoal-500">
+        {icon}
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="text-xs text-charcoal-500">{label}</p>
+        <p className={`truncate text-sm ${value ? "font-medium text-charcoal-900" : "text-charcoal-400"}`}>
+          {value ?? emptyLabel}
+        </p>
+      </div>
+      {verified ? (
+        <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-green-50 px-2 py-0.5 text-[11px] font-semibold text-green-700">
+          <ShieldCheck className="h-3 w-3" aria-hidden />
+          Verified
+        </span>
+      ) : href ? (
+        <span className="inline-flex shrink-0 items-center gap-0.5 text-xs font-semibold text-maroon-700">
+          {action}
+          <ChevronRight className="h-3.5 w-3.5" aria-hidden />
+        </span>
+      ) : null}
+    </div>
+  );
+
+  return href ? (
+    <Link href={href} className="block transition hover:bg-ivory-50">{body}</Link>
+  ) : (
+    body
   );
 }
