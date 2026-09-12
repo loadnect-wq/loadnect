@@ -98,8 +98,17 @@ export type PayableCommission = {
   dueDate: string | null;
 };
 
-/** Commission statuses that mean the money has already been accounted for. */
-const SETTLED = ["paid", "collected", "paid_out", "waived", "refunded", "adjusted_from_owner_settlement"];
+/** Commission statuses that mean the money has already been accounted for.
+ *
+ *  EXPORTED so that anything telling an owner what they owe agrees with the
+ *  module that actually takes the payment. If a screen says a commission is
+ *  due, `assertLeadCommission` below must be willing to accept money for it;
+ *  a shorter list elsewhere would show a bill that cannot be paid, and a
+ *  longer one would hide a bill that can. */
+export const SETTLED_COMMISSION_STATUSES = [
+  "paid", "collected", "paid_out", "waived", "refunded", "adjusted_from_owner_settlement",
+];
+const SETTLED = SETTLED_COMMISSION_STATUSES;
 
 /**
  * Loads a commission and refuses everything that is not an unsettled LEAD debt.
@@ -196,6 +205,34 @@ export async function startCommissionPayment(input: {
 
   const db = admin();
 
+  // ── MONEY ALREADY TAKEN? Before anything else. ─────────────────────────────
+  //
+  // An attempt at 'verified' means Cashfree captured the payment and we recorded
+  // that fact; the commission is still unpaid only because markCommissionSettled
+  // failed afterwards (the state this module calls 'unsettled'). The in-flight
+  // lookup below filters on status='created' and therefore could not see such a
+  // row, so every one of its double-charge guards was skipped and a second
+  // payable order for the full debt was opened. The status page was telling the
+  // owner "do NOT pay again" while the button behind it still would.
+  //
+  // Retry the settlement — that is the part that failed — and refuse the order.
+  const { data: captured } = await db
+    .from("owner_commission_payments")
+    .select("id, cashfree_order_id, amount")
+    .eq("commission_id", commission.id)
+    .eq("status", "verified")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (captured?.id) {
+    await markCommissionSettled(commission.id, captured.id, Number(captured.amount));
+    return {
+      ok: false,
+      error: "We have already received this payment and are still recording it. Please do not pay again — refresh in a moment.",
+    };
+  }
+
   // ── Reuse an in-flight order rather than opening a second payable one ──────
   const { data: existing } = await db
     .from("owner_commission_payments")
@@ -246,8 +283,23 @@ export async function startCommissionPayment(input: {
       };
     }
 
-    // EXPIRED / TERMINATED / too stale / long-dead. Retire it so it leaves the
-    // open-attempt unique index and a fresh attempt is possible.
+    // STILL ACTIVE, just past the session-reuse window. Cashfree keeps an order
+    // payable for ORDER_TTL_MIN, which is three times that window, so this order
+    // can still take the owner's money. Retiring it locally and opening a second
+    // payable order left two live orders for the same debt — and if the first one
+    // then completed, the claim in verifyAndApplyCommissionPayment (guarded on
+    // status='created') matched nothing, so the capture was never recorded
+    // against it and /owner/commissions told the owner in writing that "nothing
+    // was charged". Refuse instead, and say what to do.
+    if (live.ok && live.data.order_status === "ACTIVE") {
+      return {
+        ok: false,
+        error: "You already have a payment in progress for this commission. Finish it, or wait a few minutes for it to lapse and try again — this is to make sure you are not charged twice.",
+      };
+    }
+
+    // EXPIRED / TERMINATED / long-dead and unreadable. Retire it so it leaves
+    // the open-attempt unique index and a fresh attempt is possible.
     await db
       .from("owner_commission_payments")
       .update({ status: "failed", raw_response: live.ok ? live.data : { error: live.error } })
@@ -430,20 +482,54 @@ export async function verifyAndApplyCommissionPayment(
     return { state: "error" };
   }
 
-  const { error: claimErr } = await db
+  // COUNT THE ROW. An RLS- or status-filtered UPDATE that matches nothing does
+  // NOT raise, so `claimErr === null` was being read as "claimed" even when the
+  // row had already moved on (e.g. retired to 'failed' by a later attempt). The
+  // code then went on to settle the commission while verified_at,
+  // cashfree_payment_id and raw_response were never written — losing the only
+  // record of which order the money came from.
+  const { error: claimErr, count: claimed } = await db
     .from("owner_commission_payments")
     .update({
       status: "verified",
       verified_at: new Date().toISOString(),
       cashfree_payment_id: order.data.cf_order_id ? String(order.data.cf_order_id) : null,
       raw_response: order.data,
-    })
+    }, { count: "exact" })
     .eq("id", payment.id)
     .eq("status", "created");
 
   if (claimErr) {
     console.error("[commission-payments] claim failed:", claimErr.message);
     return { state: "error" };
+  }
+
+  // CLAIMED NOTHING. The money is real — the order is PAID and the amount
+  // matches — but this row is no longer 'created', so the capture was not
+  // recorded against it. Two ways that happens, and they need opposite answers:
+  //
+  //   • Another caller (webhook vs return page) already claimed it and the row
+  //     is 'verified'. That is the intended race; settling is idempotent, so
+  //     carry on.
+  //   • The row was retired to 'failed' by a later attempt. Settling now would
+  //     write off the debt while verified_at, cashfree_payment_id and
+  //     raw_response stay empty — the capture would have no record of which
+  //     order it came from, and /owner/commissions would go on telling the owner
+  //     "nothing was charged" about money that was.
+  if (claimed === 0) {
+    const { data: after } = await db
+      .from("owner_commission_payments")
+      .select("status")
+      .eq("id", payment.id)
+      .maybeSingle();
+
+    if (after?.status !== "verified") {
+      console.error(
+        `[commission-payments] captured ${owed} on ${orderId} but attempt ${payment.id} ` +
+        `is '${after?.status ?? "missing"}', not 'created' — capture NOT recorded against it`,
+      );
+      return { state: "unsettled", commissionId: payment.commission_id, amount: owed };
+    }
   }
 
   return markCommissionSettled(payment.commission_id, payment.id, owed);

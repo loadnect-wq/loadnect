@@ -93,7 +93,7 @@ export default async function AdminCommissionsPage({ searchParams }: Props) {
 
   return (
     <div>
-      <AdminPageHeader title="Commissions" description="A percentage of the hall price, set per venue, retained out of the customer advance at settlement. Owners are never billed for it. Records are written by the server after verified payment — never by the browser. Each row below shows the rate that booking was actually charged, which is the only rate that means anything — a single headline number was wrong the moment halls gained their own commission_rate." />
+      <AdminPageHeader title="Commissions" description="A percentage of the hall price, set per venue. On a direct booking it is retained out of the customer's advance at settlement and the owner is never billed. On a lead enquiry the customer pays the venue directly, so the commission is invoiced to the owner with a due date and they settle it themselves — the Source column says which. Records are written by the server after verified payment, never by the browser. Each row shows the rate that was actually charged, which is the only rate that means anything: a single headline number was wrong the moment halls gained their own commission_rate." />
 
       <div className="px-4 py-4 sm:px-6 lg:px-8 space-y-4">
 
@@ -227,7 +227,7 @@ export default async function AdminCommissionsPage({ searchParams }: Props) {
             <table className="min-w-full text-sm">
               <thead className="bg-ivory-50 border-b border-border">
                 <tr>
-                  <Th>Booking</Th>
+                  <Th>Source</Th>
                   <Th>Hall / Owner</Th>
                   <Th>Booking ₹</Th>
                   <Th>Advance</Th>
@@ -244,7 +244,17 @@ export default async function AdminCommissionsPage({ searchParams }: Props) {
                   return (
                     <tr key={c.id} className="border-b border-border last:border-b-0 hover:bg-ivory-50/50">
                       <Td>
-                        <p className="font-mono text-[11px] text-charcoal-700">#{c.booking_id.slice(0,8).toUpperCase()}</p>
+                        {/* NULL-SAFE, and it says which model the row belongs to.
+                            `c.booking_id.slice(...)` threw on the first lead
+                            commission and took the whole ledger down with it —
+                            the adjustments table two sections up has always
+                            guarded the identical expression. */}
+                        <p className="font-mono text-[11px] text-charcoal-700">
+                          #{(c.booking_id ?? c.lead_id ?? "").slice(0, 8).toUpperCase() || "—"}
+                        </p>
+                        <p className="text-[10px] font-semibold uppercase tracking-wide text-charcoal-400">
+                          {c.lead_id ? "Enquiry · billed" : "Booking · retained"}
+                        </p>
                       </Td>
                       <Td>
                         <p className="font-medium truncate max-w-[180px]">{c.hall_name}</p>

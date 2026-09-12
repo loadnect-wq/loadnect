@@ -158,9 +158,14 @@ export default async function HallsPage({
             : "Wedding halls and event venues in Tamil Nadu"}
         </h1>
         <p className="mt-1 text-sm text-charcoal-600">
+          {/* NOT "live availability". This list mixes both booking modes, and a
+              lead-generation venue keeps no calendar here — see the Availability
+              section in HallDetailView. Promising it on the list page sends
+              customers to a venue page that (correctly) declines to make the
+              claim. */}
           {halls.length > 0
-            ? `${halls.length} ${halls.length === 1 ? "venue" : "venues"} with photos, capacity, pricing and live availability.`
-            : "Venues with photos, capacity, pricing and live availability."}
+            ? `${halls.length} ${halls.length === 1 ? "venue" : "venues"} with photos, capacity and pricing.`
+            : "Venues with photos, capacity and pricing."}
         </p>
       </section>
 

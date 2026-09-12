@@ -82,7 +82,14 @@ export function ImageGallery({ images, hallName, hallCity, hallId }: Props) {
               fill
               sizes="100vw"
               className="object-cover"
-              unoptimized
+              // NO `unoptimized`. It was a scaffold default from the first
+              // commit, with no reason recorded, and it made every gallery photo
+              // a raw Supabase JPEG with no srcset: 2.83 MB for nine images, one
+              // of them a 12.5 MP phone original served into a 375px slot.
+              // next.config's remotePatterns allow-lists exactly this Supabase
+              // host, and /_next/image serves these URLs (verified: 232,952 B ->
+              // 66,154 B at w=828). sizes="100vw" is already correct, so srcset
+              // generation needs nothing else.
               priority={i === 0}
             />
           </div>

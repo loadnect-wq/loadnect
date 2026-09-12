@@ -122,6 +122,24 @@ export async function startLeadEnquiry(input: {
     // The lead survives a refused send. It is un-forwarded, resumable, and the
     // customer can try again once the cooldown passes — deleting it here would
     // throw away the details they just typed.
+    //
+    // SAY THAT, though. The send ceilings are shared with /verify-phone (one
+    // counter per account+number, by design, so an attacker cannot reset a
+    // number's budget by switching endpoints), so a customer who verified their
+    // mobile during sign-up and reached this form inside the same minute used to
+    // get a bare "Please wait 34s before requesting another code." on the
+    // primary CTA — reading as though the enquiry they just submitted had
+    // failed, when in fact it is saved and resumable. createLeadEnquiry is
+    // idempotent on (hall, customer, event date) via uq_lead_active, so tapping
+    // again after the wait resumes this very row rather than creating another.
+    if (guard.retryAfterSeconds != null) {
+      return {
+        error:
+          `Your enquiry is saved. We sent a code to this number moments ago — wait ` +
+          `${guard.retryAfterSeconds}s and tap Send Enquiry again to get a new one, ` +
+          `or enter the code you already received.`,
+      };
+    }
     return { error: guard.error };
   }
 

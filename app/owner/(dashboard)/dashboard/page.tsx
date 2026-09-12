@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import {
-  AlertCircle, Building2, CalendarDays, CheckCircle2,
+  AlertCircle, Building2, CalendarDays, CheckCircle2, CreditCard,
   IndianRupee, Plus, Sparkles, Clock, Wallet, Inbox, Phone,
 } from "lucide-react";
 import { requireRole } from "@/lib/auth";
@@ -10,11 +10,17 @@ import { formatPrice } from "@/lib/mock-data";
 import { advanceFromTotal } from "@/lib/booking-payment";
 import { fetchPremiumPlans, PLAN_FEATURES } from "@/lib/premium-plans";
 import { countPendingLeads } from "@/lib/leads";
+import { SETTLED_COMMISSION_STATUSES } from "@/lib/commission-payments";
 import { Badge } from "@/components/ui/Badge";
 import { buttonVariants } from "@/components/ui/Button";
 import { AppHeader } from "@/components/app/AppHeader";
 
 export const metadata: Metadata = { title: "Owner Dashboard" };
+
+/** Same format as /owner/commissions, so a due date reads identically on both. */
+function fmtDueDate(iso: string) {
+  return new Date(iso).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+}
 
 const HALL_STATUS_CFG: Record<string, { label: string; variant: "success" | "warning" | "secondary" | "destructive" | "default" }> = {
   approved:         { label: "Live",     variant: "success"     },
@@ -71,22 +77,48 @@ export default async function OwnerDashboardPage() {
   // Settlement snapshot — all figures derived from server-fetched commission
   // rows (never client-supplied).
   //
-  // There is no 'outstanding' bucket any more: commission is retained from the
-  // customer's advance at settlement, so an owner never owes Hallnect anything
-  // and this panel is purely informational.
+  // THE SPLIT COMES FIRST, and it is the whole correctness of this panel.
+  // commissions_one_source (0073) guarantees exactly one of booking_id/lead_id
+  // is set, so lead_id is a total discriminator between the two money models:
   //
+  //   • BOOKING — the customer's advance passed through Hallnect, commission was
+  //     retained out of it, the owner is never billed.
+  //   • LEAD    — Hallnect took nothing. The customer pays the venue directly
+  //     and the commission is INVOICED to the owner with a due date.
+  //
+  // Merging them produced a panel that lied twice over on a lead-only venue: it
+  // invented a "gross advance" of 25% of the enquiry value that no one ever
+  // paid (advance_amount is explicitly NULL on a lead row, which the fetch maps
+  // to 0, which then hit the old-row estimate), derived a "net advance to you"
+  // from it, and stamped a green "Nothing to pay" over a real bill with a due
+  // date. /owner/commissions has always split them correctly; this panel did not.
+  const bookingCommissions = commissions.filter((c) => c.lead_id == null);
+  const leadCommissions    = commissions.filter((c) => c.lead_id != null);
+
   // Per the settlement model (lib/booking-payment.ts): gross advance paid by
   // customers, Hallnect's commission out of it, and the owner's NET ADVANCE
-  // (gross − commission). advance_amount is 0 only on very old rows — fall
-  // back to a 25% estimate from the booking amount for those.
-  const grossAdvance = commissions.reduce(
+  // (gross − commission). advance_amount is 0 only on very old BOOKING rows —
+  // fall back to a 25% estimate for those. Safe now only because lead rows,
+  // whose advance is legitimately absent, can no longer reach this line.
+  const grossAdvance = bookingCommissions.reduce(
     (s, c) => s + (c.advance_amount > 0 ? c.advance_amount : advanceFromTotal(c.booking_amount)), 0);
   // A waived commission was never taken, so it must not reduce the owner's net
   // advance — counting it understated what they actually received.
-  const totalCommission = commissions
+  const totalCommission = bookingCommissions
     .filter((c) => c.status !== "waived")
     .reduce((s, c) => s + c.commission_amount, 0);
   const netAdvance = Math.max(0, Math.round((grossAdvance - totalCommission) * 100) / 100);
+
+  // WHAT THE OWNER ACTUALLY OWES. Same list the payment module enforces, so a
+  // figure shown here is always one Cashfree checkout will accept.
+  const leadDue      = leadCommissions.filter((c) => !SETTLED_COMMISSION_STATUSES.includes(c.status));
+  const leadDueTotal = leadDue.reduce((s, c) => s + c.commission_amount, 0);
+  // Earliest due date across the unpaid bills — the one that matters.
+  const leadDueDate  = leadDue
+    .map((c) => c.due_date)
+    .filter((d): d is string => !!d)
+    .sort()[0] ?? null;
+  const hasDirectVenue = halls.some((h) => h.booking_mode === "DIRECT_BOOKING");
 
   return (
     <div className="min-h-screen bg-ivory-100">
@@ -187,7 +219,7 @@ export default async function OwnerDashboardPage() {
             <IndianRupee className="h-4 w-4" /> Revenue
           </Link>
           <Link href="/owner/commissions" className={buttonVariants({ variant: "outline", size: "sm" })}>
-            <Wallet className="h-4 w-4" /> Payouts
+            <Wallet className="h-4 w-4" /> Commissions
           </Link>
         </div>
 
@@ -198,19 +230,63 @@ export default async function OwnerDashboardPage() {
             <h2 className="font-serif text-base font-semibold text-charcoal-900">
               Settlement &amp; commission
             </h2>
-            <Badge variant="success" size="sm">Nothing to pay</Badge>
+            {/* DERIVED, never hardcoded. This badge used to read "Nothing to
+                pay" unconditionally — including over an unpaid invoice with a
+                due date. */}
+            {leadDueTotal > 0 ? (
+              <Badge variant="warning" size="sm">{formatPrice(leadDueTotal)} due</Badge>
+            ) : (
+              <Badge variant="success" size="sm">Nothing to pay</Badge>
+            )}
           </div>
 
-          <dl className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
-            <SettlementRow label="Gross advance" value={formatPrice(grossAdvance)} />
-            <SettlementRow label="Hallnect commission" value={formatPrice(totalCommission)} tone="commission" />
-            <SettlementRow label="Net advance to you" value={formatPrice(netAdvance)} tone="payout" />
-          </dl>
-          <p className="mt-2 text-[11px] text-charcoal-500">
-            The commission is retained from the advance — you are never billed for it, and the
-            customer&apos;s platform fee is never deducted from you. The venue balance is
-            collected by you directly.
-          </p>
+          {/* COMMISSION THE OWNER OWES. First, because it is the only part of
+              this panel that asks them to do something. */}
+          {leadDue.length > 0 && (
+            <Link
+              href="/owner/commissions"
+              className="mt-3 flex items-start gap-3 rounded-xl border border-maroon-200 bg-maroon-50 p-3 transition active:scale-[0.99] motion-reduce:active:scale-100"
+            >
+              <CreditCard className="mt-0.5 h-4 w-4 shrink-0 text-maroon-600" aria-hidden />
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-maroon-900">
+                  Commission due — {formatPrice(leadDueTotal)}
+                </p>
+                <p className="mt-0.5 text-[11px] leading-relaxed text-charcoal-600">
+                  On {leadDue.length === 1 ? "an enquiry" : `${leadDue.length} enquiries`} you confirmed,
+                  the customer paid you directly, so Hallnect invoices the commission instead of
+                  deducting it.
+                  {leadDueDate ? ` Due by ${fmtDueDate(leadDueDate)}.` : ""} Pay by card, UPI or net banking.
+                </p>
+              </div>
+            </Link>
+          )}
+
+          {/* THE ADVANCE FIGURES, and only for an owner who can actually have
+              one. On a lead-only venue these three numbers are all structurally
+              zero and the words around them describe a flow that will never
+              happen, so the block is replaced rather than shown empty. */}
+          {hasDirectVenue || bookingCommissions.length > 0 ? (
+            <>
+              <dl className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
+                <SettlementRow label="Gross advance" value={formatPrice(grossAdvance)} />
+                <SettlementRow label="Hallnect commission" value={formatPrice(totalCommission)} tone="commission" />
+                <SettlementRow label="Net advance to you" value={formatPrice(netAdvance)} tone="payout" />
+              </dl>
+              <p className="mt-2 text-[11px] text-charcoal-500">
+                On a venue that takes payment online, the commission is retained from the advance —
+                you are never billed for it, and the customer&apos;s platform fee is never deducted
+                from you. The venue balance is collected by you directly.
+              </p>
+            </>
+          ) : (
+            <p className="mt-3 text-[11px] leading-relaxed text-charcoal-500">
+              Your venues take enquiries, so customers pay you directly and in full — Hallnect never
+              holds your money and there is no advance to settle. Hallnect&apos;s commission is
+              invoiced to you once you confirm an enquiry, and is payable from{" "}
+              <span className="font-semibold text-maroon-700">Commissions</span>.
+            </p>
+          )}
 
         </section>
 

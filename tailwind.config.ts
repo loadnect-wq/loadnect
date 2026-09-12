@@ -139,7 +139,10 @@ const config: Config = {
       },
 
       backgroundImage: {
-        "gold-gradient":   "linear-gradient(135deg,#E0A820 0%,#C9901A 50%,#A87314 100%)",
+        // Stops measured against maroon-900 ink (see components/ui/Button.tsx,
+        // variant "gold"): 7.80:1, 5.97:1, 4.93:1 — all clear WCAG AA for normal
+        // text. The last stop was #A87314, which came in at 4.09:1.
+        "gold-gradient":   "linear-gradient(135deg,#E0A820 0%,#C9901A 50%,#BA8017 100%)",
         "maroon-gradient": "linear-gradient(135deg,#B82644 0%,#9B2038 50%,#7A1830 100%)",
         "hero-gradient":   "linear-gradient(135deg,#20050D 0%,#3D0A18 40%,#7A1830 80%,#9B2038 100%)",
         "shimmer-gradient":"linear-gradient(90deg,transparent 0%,rgba(255,255,255,.6) 50%,transparent 100%)",

@@ -70,10 +70,10 @@ function describeCity(
   const noun = venueCount === 1 ? "venue" : "venues";
   return (
     `Compare ${venueCount} owner-listed wedding ${noun} in ${city}${price} — real photos, ` +
-    `guest capacity, amenities and live availability. ` +
+    `guest capacity and amenities. ` +
     (allLeadGeneration
       ? `Send an enquiry and the venue will confirm your date.`
-      : `Book your date online with Hallnect.`)
+      : `Check live availability and book your date online with Hallnect.`)
   );
 }
 

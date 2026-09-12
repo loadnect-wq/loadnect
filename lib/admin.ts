@@ -138,7 +138,14 @@ export type AdminPaymentRow = {
 
 export type AdminCommissionRow = {
   id:                  string;
-  booking_id:          string;
+  /** NULL on a lead commission. commissions_one_source (0073) guarantees exactly
+   *  one of booking_id/lead_id is set, so the pair is the source discriminator —
+   *  and this field being typed non-nullable is what let the admin ledger render
+   *  `booking_id.slice(...)` and crash the whole page on the first confirmed
+   *  enquiry. */
+  booking_id:          string | null;
+  /** Set on a lead commission — the owner-billed model, with a due date. */
+  lead_id:             string | null;
   hall_owner_id:       string | null;
   owner_business:      string | null;
   hall_name:           string;
@@ -239,11 +246,19 @@ export type AdminStats = {
   revenue: {
     grossBookings:  number;
     grossAdvances:  number;
+    /** Commission RETAINED out of customers' advances — money Hallnect holds.
+     *  Booking commissions only: a lead commission is invoiced to the venue and
+     *  is a receivable, not revenue in hand. */
     commission:     number;
     platformFees:   number;
-    netRevenue:     number;   // commission + platform fees
+    netRevenue:     number;   // commission retained + platform fees
     ownerPayouts:   number;
     refunds:        number;
+    /** Lead commission BILLED to venues and settled by them. Earned, and in
+     *  hand, but it never passed through a customer advance. */
+    commissionBilledPaid:      number;
+    /** Lead commission billed and still unpaid — a receivable, not revenue. */
+    commissionBilledOutstanding: number;
   };
   open: {
     pendingHalls:   number;
@@ -292,7 +307,7 @@ export async function fetchAdminStats(): Promise<AdminStats> {
     users:    { total: 0, customers: 0, ownersPending: 0, ownersApproved: 0, admins: 0 },
     halls:    { total: 0, approved: 0, pending: 0, rejected: 0, suspended: 0 },
     bookings: { total: 0, requested: 0, confirmed: 0, completed: 0, cancelled: 0 },
-    revenue:  { grossBookings: 0, grossAdvances: 0, commission: 0, platformFees: 0, netRevenue: 0, ownerPayouts: 0, refunds: 0 },
+    revenue:  { grossBookings: 0, grossAdvances: 0, commission: 0, platformFees: 0, netRevenue: 0, ownerPayouts: 0, refunds: 0, commissionBilledPaid: 0, commissionBilledOutstanding: 0 },
     open:     { pendingHalls: 0, pendingOwners: 0, openTickets: 0, pendingAds: 0,
                 refundsOwed: 0, stuckPayouts: 0, failedNotifications: 0 },
     failed:   [],
@@ -312,7 +327,10 @@ export async function fetchAdminStats(): Promise<AdminStats> {
     db.from("profiles").select("role"),
     db.from("halls").select("status"),
     db.from("bookings").select("status, total_amount"),
-    db.from("commissions").select("commission_amount, owner_payout_amount, advance_amount, status"),
+    // lead_id is what separates the two money models (commissions_one_source,
+    // 0073). Without it every figure below merged a retained booking commission
+    // with an invoiced lead receivable.
+    db.from("commissions").select("lead_id, commission_amount, owner_payout_amount, advance_amount, status"),
     db.from("support_tickets").select("status"),
     db.from("advertisements").select("status"),
     // Platform fees + refunds live on payments (0031).
@@ -368,6 +386,7 @@ export async function fetchAdminStats(): Promise<AdminStats> {
     .reduce((sum, b) => sum + Number(b.total_amount), 0);
 
   const commissions = (commissionsRes.data ?? []) as {
+    lead_id: string | null;
     commission_amount: number | string; owner_payout_amount: number | string;
     advance_amount: number | string | null; status: string;
   }[];
@@ -376,11 +395,34 @@ export async function fetchAdminStats(): Promise<AdminStats> {
   // ownerPayouts had NO status filter at all, so it counted money promised on
   // bookings that never happened.
   const EARNED = (c: { status: string }) => c.status !== "waived" && c.status !== "refunded";
-  empty.revenue.commission    = commissions.filter(EARNED)
+
+  // TWO MODELS. Merging them made this page — the one used for reconciliation —
+  // misstate both halves the moment a lead commission existed:
+  //
+  //   • ownerPayouts counted a LEAD's owner_payout_amount (the whole agreed fee
+  //     less commission) as a payout, but on a lead the customer pays the venue
+  //     directly and Hallnect never receives or owes that money. One ₹1,60,000
+  //     enquiry would have added ₹1,56,800 of imaginary payout liability.
+  //   • commission / netRevenue counted an INVOICED lead commission as revenue
+  //     earned, when it is a receivable the venue may never settle — while
+  //     /admin/leads correctly called the same figure "Commission due".
+  const bookingRows = commissions.filter((c) => c.lead_id == null);
+  const leadRows    = commissions.filter((c) => c.lead_id != null);
+  const LEAD_PAID   = (c: { status: string }) =>
+    c.status === "paid" || c.status === "collected" || c.status === "paid_out";
+
+  empty.revenue.commission    = bookingRows.filter(EARNED)
     .reduce((s, c) => s + Number(c.commission_amount), 0);
-  empty.revenue.ownerPayouts  = commissions.filter(EARNED)
+  // Booking rows only — see above.
+  empty.revenue.ownerPayouts  = bookingRows.filter(EARNED)
     .reduce((s, c) => s + Number(c.owner_payout_amount), 0);
   empty.revenue.grossAdvances = commissions.reduce((s, c) => s + Number(c.advance_amount ?? 0), 0);
+
+  const earnedLeads = leadRows.filter(EARNED);
+  empty.revenue.commissionBilledPaid = earnedLeads.filter(LEAD_PAID)
+    .reduce((s, c) => s + Number(c.commission_amount), 0);
+  empty.revenue.commissionBilledOutstanding = earnedLeads.filter((c) => !LEAD_PAID(c))
+    .reduce((s, c) => s + Number(c.commission_amount), 0);
 
   const payments = (paymentsRes.data ?? []) as {
     status: string; amount: number | string;
@@ -403,7 +445,11 @@ export async function fetchAdminStats(): Promise<AdminStats> {
     return s + (fullRefund ? 0 : fee);
   }, 0);
   empty.revenue.refunds    = payments.reduce((s, p) => s + Number(p.refund_amount ?? 0), 0);
-  empty.revenue.netRevenue = empty.revenue.commission + empty.revenue.platformFees;
+  // MONEY IN HAND: commission retained from advances, commission venues have
+  // actually paid, and platform fees. Outstanding lead commission is deliberately
+  // NOT here — it is a receivable, reported separately below.
+  empty.revenue.netRevenue =
+    empty.revenue.commission + empty.revenue.commissionBilledPaid + empty.revenue.platformFees;
 
   empty.open.pendingHalls  = empty.halls.pending;
   // Owner joining approval was removed (migration 0019) — the hall is the only
@@ -1005,7 +1051,12 @@ export async function fetchAllCommissions(
 
   let query = db
     .from("commissions")
-    .select("id, booking_id, hall_id, hall_owner_id, booking_amount, advance_amount, commission_rate, commission_amount, owner_payout_amount, status, created_at, bookings(halls(name)), hall_owners(business_name)")
+    // halls!hall_id(name) is embedded ALONGSIDE the bookings join, not instead of
+    // it: a lead commission has no booking, so bookings(halls(name)) resolves to
+    // null and every lead row rendered as the literal word "Hall".
+    // commissions.hall_id carries its own FK, so the direct embed works for both
+    // shapes. Same fix lib/owner.ts already applies to the owner-facing list.
+    .select("id, booking_id, lead_id, hall_id, hall_owner_id, booking_amount, advance_amount, commission_rate, commission_amount, owner_payout_amount, status, created_at, due_date, halls!hall_id(name), bookings(halls(name)), hall_owners(business_name)")
     .order("created_at", { ascending: false })
     .limit(500);
 
@@ -1027,10 +1078,11 @@ export async function fetchAllCommissions(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return (data ?? []).map((row: any): AdminCommissionRow => ({
     id:                  row.id,
-    booking_id:          row.booking_id,
+    booking_id:          row.booking_id ?? null,
+    lead_id:             row.lead_id ?? null,
     hall_owner_id:       row.hall_owner_id ?? null,
     owner_business:      row.hall_owners?.business_name ?? null,
-    hall_name:           row.bookings?.halls?.name      ?? "Hall",
+    hall_name:           row.halls?.name ?? row.bookings?.halls?.name ?? "Hall",
     booking_amount:      Number(row.booking_amount),
     advance_amount:      row.advance_amount == null ? 0 : Number(row.advance_amount),
     commission_rate:     Number(row.commission_rate),

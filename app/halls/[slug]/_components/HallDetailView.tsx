@@ -207,6 +207,11 @@ export function HallDetailView({ hall, similar, isPreview, sidebarAd, advancePer
       status,
       // The tile itself shows only a one-letter weekday and a number, so the
       // full date and the status have to be carried by the accessible name.
+      //
+      // Both forms are built because a LEAD venue names the date WITHOUT a
+      // status — see the Availability section below for why it makes no
+      // availability claim at all.
+      dateLabel: formatIsoDateLabel(iso, { weekday: "long", day: "numeric", month: "long", year: "numeric" }),
       label: `${formatIsoDateLabel(iso, { weekday: "long", day: "numeric", month: "long", year: "numeric" })} — ${DAY_STATUS_TEXT[status]}`,
     };
   });
@@ -535,9 +540,26 @@ export function HallDetailView({ hall, similar, isPreview, sidebarAd, advancePer
               </div>
             </section>
 
-            {/* Availability calendar */}
+            {/* Availability calendar.
+
+                A LEAD VENUE MAKES NO AVAILABILITY CLAIM. getDayStatus returns
+                "available" when no row matches the date, which is right for a
+                direct-booking hall — no booking means the day is free — and
+                wrong for lead generation, where nobody maintains the table and
+                there is no workflow that would. The grid was therefore asserting
+                that all 30 upcoming days were free at a real third-party
+                business, unverified, and a screen reader read out each one:
+                "Saturday, 12 September 2026 — Available". A customer could pick a
+                date off it, enquire, and be told the hall was booked.
+
+                So under lead mode the same 30 days are shown neutrally, with no
+                status, no legend and no colour — a date window, not a promise.
+                The honest sentence at the bottom of the card was already there;
+                it is now the whole of what this section says. */}
             <section className="mt-6">
-              <h2 className="font-serif text-base font-semibold text-charcoal-900">Availability</h2>
+              <h2 className="font-serif text-base font-semibold text-charcoal-900">
+                {isLead ? "Next 30 days" : "Availability"}
+              </h2>
               <div className="mt-3 rounded-2xl bg-white p-3 shadow-card">
                 {/* A list, so each day is an element that can carry a name of
                     its own — aria-label on a bare <div> is ignored. role="list"
@@ -546,13 +568,15 @@ export function HallDetailView({ hall, similar, isPreview, sidebarAd, advancePer
                     visible spans are hidden from assistive tech: the label below
                     already says the date, and better. */}
                 <ul role="list" className="grid grid-cols-7 gap-1 sm:gap-1.5">
-                  {calDays.map(({ iso, day, wkd, status, label }) => (
+                  {calDays.map(({ iso, day, wkd, status, label, dateLabel }) => (
                     <li
                       key={iso}
-                      title={label}
+                      title={isLead ? dateLabel : label}
                       className={[
                         "flex flex-col items-center rounded-xl py-1.5 text-center",
-                        status === "unavailable"
+                        isLead
+                          ? "bg-ivory-100 text-charcoal-600"
+                          : status === "unavailable"
                           ? "bg-red-50 text-red-400 line-through"
                           : status === "partial"
                           ? "bg-amber-50 text-amber-700"
@@ -567,32 +591,41 @@ export function HallDetailView({ hall, similar, isPreview, sidebarAd, advancePer
                           everything. BookingFlow.tsx uses the same construction
                           for the same reason. sr-only is absolutely positioned,
                           so the flex layout is untouched. */}
-                      <span className="sr-only">{label}</span>
+                      {/* Under lead mode the accessible name is the DATE
+                          ONLY — `label` appends the status, which is exactly the
+                          claim being withdrawn. */}
+                      <span className="sr-only">{isLead ? dateLabel : label}</span>
                       <span aria-hidden className="text-[9px] font-semibold uppercase sm:text-[10px]">{wkd}</span>
                       <span aria-hidden className="text-xs font-bold sm:text-sm">{day}</span>
                     </li>
                   ))}
                 </ul>
 
-                {/* Legend */}
-                <div className="mt-3 flex flex-wrap gap-3 text-[11px] text-charcoal-500">
-                  <span className="flex items-center gap-1">
-                    <span className="h-2.5 w-2.5 rounded-sm bg-maroon-50 border border-maroon-200" />
-                    Available
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <span className="h-2.5 w-2.5 rounded-sm bg-amber-50 border border-amber-200" />
-                    Partially booked
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <span className="h-2.5 w-2.5 rounded-sm bg-red-50 border border-red-200" />
-                    Fully booked
-                  </span>
-                </div>
+                {/* Legend — only where the colours mean something. */}
+                {!isLead && (
+                  <div className="mt-3 flex flex-wrap gap-3 text-[11px] text-charcoal-500">
+                    <span className="flex items-center gap-1">
+                      <span className="h-2.5 w-2.5 rounded-sm bg-maroon-50 border border-maroon-200" />
+                      Available
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <span className="h-2.5 w-2.5 rounded-sm bg-amber-50 border border-amber-200" />
+                      Partially booked
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <span className="h-2.5 w-2.5 rounded-sm bg-red-50 border border-red-200" />
+                      Fully booked
+                    </span>
+                  </div>
+                )}
 
                 <p className="mt-3 text-[11px] text-charcoal-500">
                   {isLead ? (
-                    <>Tap <strong>Send Enquiry</strong> and the venue will confirm the date with you.</>
+                    <>
+                      Hallnect does not hold this venue&apos;s calendar, so no date here is shown as
+                      free or booked. Tap <strong>Send Enquiry</strong> and the venue will confirm
+                      your date with you.
+                    </>
                   ) : (
                     <>Tap <strong>Book Now</strong> to choose your exact date and slot.</>
                   )}
@@ -738,8 +771,16 @@ export function HallDetailView({ hall, similar, isPreview, sidebarAd, advancePer
                                 src={s.cover_url}
                                 alt={s.name}
                                 fill
+                                // The card is a fixed w-44 (176px) at every
+                                // breakpoint, so a constant sizes is exact.
+                                // Needed now that the image is optimised: with
+                                // `fill` and no sizes, Next falls back to 100vw
+                                // and picks a far larger source than the slot.
+                                sizes="176px"
                                 className="object-cover"
-                                unoptimized
+                                /* See ImageGallery: this strip was the third
+                                   `unoptimized` — raw full-size Supabase JPEGs,
+                                   inert at one listing and expensive at ten. */
                               />
                             ) : (
                               <div

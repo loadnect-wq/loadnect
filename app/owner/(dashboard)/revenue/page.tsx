@@ -100,10 +100,19 @@ export default async function OwnerRevenuePage() {
     Boolean(ownerRow.payout_beneficiary_id) &&
     ownerRow.payout_beneficiary_status === "VERIFIED";
 
-  const SETTLED_STATUSES = ["paid", "paid_out", "collected"];
-  const totalCommissionDeducted = commissions
-    .filter((c) => SETTLED_STATUSES.includes(c.status))
+  // TWO MODELS, TWO SENTENCES. This total used to merge them and describe the
+  // result as "retained from the customer's advance - never billed to you",
+  // which is the opposite of the truth for a lead: the owner was invoiced and
+  // paid it themselves. lead_id is the discriminator (commissions_one_source).
+  const COLLECTED_STATUSES = ["paid", "paid_out", "collected"];
+  const collected = commissions.filter((c) => COLLECTED_STATUSES.includes(c.status));
+  const commissionRetained = collected
+    .filter((c) => c.lead_id == null)
     .reduce((s, c) => s + c.commission_amount, 0);
+  const commissionBilled = collected
+    .filter((c) => c.lead_id != null)
+    .reduce((s, c) => s + c.commission_amount, 0);
+  const totalCommissionDeducted = commissionRetained + commissionBilled;
 
   // Has Hallnect actually paid this owner? Counts only — deliberately no rupee
   // total. A transfer an admin makes by hand records no amount, so summing
@@ -135,10 +144,25 @@ export default async function OwnerRevenuePage() {
             Labelling it "Est. Payout" read as "this is what Hallnect will send
             you", which on a Rs1,00,000 hall overstates the transfer roughly
             fourfold (Rs97,500 shown against a Rs22,500 transfer). */}
+        {/* Gated on the mode, because the two halves of this sentence only
+            exist for a venue that takes payment through Hallnect. Told to a
+            lead-only owner it promised an advance transfer that will never
+            arrive. takesOnlinePayments is already computed above for the payout
+            prompt; this page knew the answer and did not use it. */}
         <p className="-mt-2 text-[11px] text-charcoal-500">
-          <strong>Your share</strong> is the hall price less Hallnect&apos;s commission, across
-          both parts: the advance Hallnect transfers to you after the venue accepts, and the
-          balance you collect directly at the event. It is not a single payment from Hallnect.
+          {takesOnlinePayments ? (
+            <>
+              <strong>Your share</strong> is the hall price less Hallnect&apos;s commission, across
+              both parts: the advance Hallnect transfers to you after the venue accepts, and the
+              balance you collect directly at the event. It is not a single payment from Hallnect.
+            </>
+          ) : (
+            <>
+              <strong>Your share</strong> is the hall price less Hallnect&apos;s commission. Your
+              venues take enquiries, so you collect the whole amount from the customer yourself -
+              Hallnect never holds your money and never transfers you an advance.
+            </>
+          )}
         </p>
 
         {/* Platform commission summary — only the owner sees their own halls' commissions */}
@@ -146,7 +170,7 @@ export default async function OwnerRevenuePage() {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-[11px] font-semibold uppercase tracking-wide text-charcoal-500">
-                Platform commission deducted
+                {takesOnlinePayments ? "Platform commission deducted" : "Platform commission"}
               </p>
               <p className="mt-0.5 text-xl font-bold text-maroon-700">
                 {totalCommissionDeducted > 0 ? formatPrice(totalCommissionDeducted) : "—"}
@@ -156,9 +180,36 @@ export default async function OwnerRevenuePage() {
               {ratesVary ? "Your rates" : "Current rate"} {rateLabel}
             </span>
           </div>
+          {/* Says which mechanism produced the figure above. Stating "never
+              billed to you" over a commission the owner was invoiced for and
+              paid by card was simply false. */}
           <p className="mt-2 text-[11px] text-charcoal-500">
-            Retained from the customer&apos;s advance on successful payment, per booking — never billed
-            to you. You only see your own halls.
+            {commissionRetained > 0 && commissionBilled > 0 ? (
+              <>
+                {formatPrice(commissionRetained)} retained from customers&apos; advances on bookings,
+                and {formatPrice(commissionBilled)} invoiced to you and paid on confirmed enquiries.
+              </>
+            ) : commissionBilled > 0 ? (
+              <>
+                Invoiced to you on confirmed enquiries and paid - the customer paid you directly, so
+                there was no advance to retain it from.
+              </>
+            ) : takesOnlinePayments ? (
+              <>
+                Retained from the customer&apos;s advance on successful payment, per booking - never
+                billed to you.
+              </>
+            ) : (
+              <>
+                Billed to you when you confirm an enquiry, because the customer pays you directly.
+                Payable from{" "}
+                <Link href="/owner/commissions" className="font-semibold text-maroon-700 underline">
+                  Commissions
+                </Link>
+                .
+              </>
+            )}{" "}
+            You only see your own halls.
           </p>
         </div>
 
@@ -213,12 +264,28 @@ export default async function OwnerRevenuePage() {
         )}
 
         <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-xs text-blue-800">
+          {/* rateLabel comes from the owner's OWN halls, not the platform
+              default, so this is the rate they will actually be charged. The
+              sentence after it is the part that has to follow the mode: "never
+              billed separately" is true of a booking and false of an enquiry. */}
           Hallnect&apos;s commission is {rateLabel} of the hall price
-          {ratesVary && " — you set it per hall, so it differs between your venues"}, retained
-          from the customer&apos;s advance when you accept. You are never billed separately, and
-          the customer&apos;s platform fee is never deducted from you. The venue balance is
-          collected by you directly. Each booking keeps the rate that applied when it was made,
-          so changing a hall&apos;s rate never alters a booking you already have.
+          {ratesVary && " — you set it per hall, so it differs between your venues"}
+          {takesOnlinePayments ? (
+            <>
+              , retained from the customer&apos;s advance when you accept. You are never billed
+              separately, and the customer&apos;s platform fee is never deducted from you. The venue
+              balance is collected by you directly.
+            </>
+          ) : (
+            <>
+              . The customer pays you directly, so there is nothing to retain it from: Hallnect
+              invoices you once you confirm an enquiry, with a due date, payable by card, UPI or net
+              banking from{" "}
+              <Link href="/owner/commissions" className="font-semibold underline">Commissions</Link>.
+            </>
+          )}{" "}
+          Each {takesOnlinePayments ? "booking" : "enquiry"} keeps the rate that applied when it was
+          made, so changing a hall&apos;s rate never alters one you already have.
           {/* Keyed on what a payout ACTUALLY needs. This used to check
               payout_upi, which no payout uses: Cashfree settles owner payouts
               to a bank account, so an owner with a UPI id and no bank details
@@ -237,11 +304,19 @@ export default async function OwnerRevenuePage() {
         </div>
 
         {/* Bookings table */}
+        {/* "Confirmed and completed bookings will appear here" is a promise
+            that cannot come true for a lead-only venue: the book route
+            redirects those halls to /enquiry, so no booking row can ever exist.
+            Point at the page where their business actually is instead. */}
         {bookings.length === 0 ? (
           <EmptyState
             icon={<TrendingUp className="h-8 w-8" />}
-            title="No revenue yet"
-            description="Confirmed and completed bookings will appear here."
+            title={takesOnlinePayments ? "No revenue yet" : "Revenue is collected by you"}
+            description={
+              takesOnlinePayments
+                ? "Confirmed and completed bookings will appear here."
+                : "Your venues take enquiries, so customers pay you directly and nothing passes through Hallnect. See Enquiries for the enquiries you have confirmed."
+            }
             size="sm"
           />
         ) : (

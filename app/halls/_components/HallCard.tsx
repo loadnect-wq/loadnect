@@ -52,7 +52,8 @@ export function HallCard({ hall, advancePercent }: HallCardProps) {
             fill
             sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
             className="object-cover"
-            unoptimized
+            // See ImageGallery: the card thumbnail was pulling the full-size
+            // cover photo on /halls and on every city landing page.
           />
         ) : (
           <div

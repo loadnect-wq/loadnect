@@ -19,7 +19,7 @@ import { AppHeader } from "@/components/app/AppHeader";
 // every owner a rate Hallnect does not charge, on the page about what they
 // are charged.
 import { getCommissionPercent } from "@/lib/platform-settings";
-import { fetchCommissionPayments } from "@/lib/commission-payments";
+import { fetchCommissionPayments, SETTLED_COMMISSION_STATUSES } from "@/lib/commission-payments";
 import { PayCommission } from "./_components/PayCommission";
 
 export const metadata: Metadata = { title: "Commissions" };
@@ -43,8 +43,11 @@ export const metadata: Metadata = { title: "Commissions" };
 // rows are bills.
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** Commission is Hallnect's money already — retained at source, or settled at payout. */
-const SETTLED_STATUSES = ["collected", "paid", "paid_out"];
+/** Commission Hallnect ACTUALLY TOOK — retained at source, or settled at payout.
+ *  Deliberately narrower than SETTLED_COMMISSION_STATUSES: a waived or refunded
+ *  commission is not owed, but it was also never collected, so it must not be
+ *  added to the "what Hallnect kept" totals below. */
+const COLLECTED_STATUSES = ["collected", "paid", "paid_out"];
 
 function fmtDate(iso: string | null) {
   if (!iso) return "—";
@@ -101,12 +104,16 @@ export default async function OwnerCommissionsPage() {
 
   const payments = await fetchCommissionPayments(leadCommissions.map((c) => c.id));
 
-  const dueNow  = leadCommissions.filter((c) => !SETTLED_STATUSES.includes(c.status));
-  const paidOff = leadCommissions.filter((c) =>  SETTLED_STATUSES.includes(c.status));
+  // WHAT IS STILL OWED uses the payment module's own list, not a local one.
+  // A waived or refunded commission is not a debt, and assertLeadCommission
+  // REFUSES to take money for one — so listing it under "Commission due" with
+  // a Pay button offered a bill that the checkout would then reject.
+  const dueNow  = leadCommissions.filter((c) => !SETTLED_COMMISSION_STATUSES.includes(c.status));
+  const paidOff = leadCommissions.filter((c) =>  SETTLED_COMMISSION_STATUSES.includes(c.status));
   const totalDue  = dueNow.reduce((sum, c) => sum + c.commission_amount, 0);
   const totalPaid = paidOff.reduce((sum, c) => sum + c.commission_amount, 0);
 
-  const settled = commissions.filter((c) => SETTLED_STATUSES.includes(c.status));
+  const settled = commissions.filter((c) => COLLECTED_STATUSES.includes(c.status));
   const totalCommission = settled.reduce((s, c) => s + c.commission_amount, 0);
   const totalPayout     = settled.reduce((s, c) => s + c.owner_payout_amount, 0);
 
@@ -130,7 +137,14 @@ export default async function OwnerCommissionsPage() {
             <ul className="mt-3 space-y-2.5">
               {dueNow.map((c) => {
                 const attempts = payments.get(c.id) ?? [];
-                const lastFailed = attempts.find((a) => a.status === "failed");
+                // MONEY ALREADY TAKEN, settlement not yet written — the state
+                // lib/commission-payments.ts calls 'unsettled'. The status page
+                // says "do NOT pay again"; this list used to ignore it entirely
+                // and keep a live Pay button next to the full amount, so coming
+                // back here and tapping it opened a second real order for a debt
+                // already paid.
+                const captured   = attempts.some((a) => a.status === "verified");
+                const lastFailed = captured ? undefined : attempts.find((a) => a.status === "failed");
                 return (
                   <li key={c.id} className="rounded-xl border border-border bg-ivory-50 p-3">
                     <div className="flex flex-wrap items-start justify-between gap-3">
@@ -145,11 +159,25 @@ export default async function OwnerCommissionsPage() {
                           {c.commission_rate}% of {formatPrice(c.booking_amount)} agreed
                         </p>
                       </div>
-                      <PayCommission
-                        commissionId={c.id}
-                        amountLabel={formatPrice(c.commission_amount)}
-                      />
+                      {captured ? (
+                        <span className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-green-50 px-3 py-2 text-[11px] font-semibold text-green-800">
+                          <CheckCircle2 className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                          Payment received
+                        </span>
+                      ) : (
+                        <PayCommission
+                          commissionId={c.id}
+                          amountLabel={formatPrice(c.commission_amount)}
+                        />
+                      )}
                     </div>
+                    {captured && (
+                      <p className="mt-2 flex items-start gap-1.5 text-[11px] text-green-800">
+                        <CheckCircle2 className="mt-0.5 h-3 w-3 shrink-0" aria-hidden />
+                        We have your payment and are still recording it against this enquiry.
+                        Please do not pay again — this will clear on its own shortly.
+                      </p>
+                    )}
                     {/* A failed attempt is shown rather than swallowed: an owner
                         who tried and saw nothing happen needs to know it was the
                         payment that failed, not the button. */}

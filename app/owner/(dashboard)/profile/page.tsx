@@ -52,9 +52,25 @@ export default async function OwnerProfilePage() {
             <div className="min-w-0">
               <p className="truncate font-serif text-lg font-bold">{profile.full_name ?? "Owner"}</p>
               <p className="truncate text-xs text-ivory-400">{profile.email}</p>
-              <span className="mt-1 inline-block rounded-full bg-gold-400/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-gold-300">
-                Verified Owner
-              </span>
+              {/* This badge used to read "Verified Owner" unconditionally, which
+                  contradicted the two places on this same screen that get it
+                  right: the Business Details heading only shows its Verified
+                  pill when hall_owners.is_verified, and /owner/dashboard shows
+                  an "awaiting verification" banner when it is false. The first
+                  real owner on the platform was therefore told both things at
+                  once. is_verified is an admin decision (admin/actions.ts sets
+                  it with the service role, and a trigger stops an owner setting
+                  it themselves), so it is the only thing entitled to colour
+                  this badge. */}
+              {ownerRow?.is_verified ? (
+                <span className="mt-1 inline-block rounded-full bg-gold-400/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-gold-300">
+                  Verified Owner
+                </span>
+              ) : (
+                <span className="mt-1 inline-block rounded-full bg-ivory-100/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-ivory-300">
+                  Verification pending
+                </span>
+              )}
             </div>
           </div>
         </div>

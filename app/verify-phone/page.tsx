@@ -20,7 +20,7 @@ export const metadata: Metadata = noindexMetadata("Verify Phone");
  *  like /verify-phone?next=//evil.example would bounce a signed-in user off the
  *  site. Only the dashboards and the ordinary browsing paths are nameable, and
  *  anything else silently becomes the safe default. */
-const ALLOWED_NEXT_PREFIXES = ["/customer", "/owner/", "/admin", "/halls", "/book/", "/profile"];
+const ALLOWED_NEXT_PREFIXES = ["/customer", "/owner/", "/admin", "/halls", "/book/", "/enquiry/", "/profile"];
 
 function safeNext(raw: string | undefined): string {
   const fallback = "/customer";

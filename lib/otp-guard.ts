@@ -300,7 +300,11 @@ export async function ceilingReached(
  */
 export type OtpSendGuard =
   | { ok: true; settle: (delivered: boolean) => Promise<void> }
-  | { ok: false; error: string };
+  /** retryAfterSeconds is set ONLY for the 60-second cooldown, which is a wait.
+   *  Every other refusal is a ceiling, which is not — a caller must not invite a
+   *  retry for one. It exists so a caller can say what the customer should do
+   *  next instead of surfacing a bare countdown. */
+  | { ok: false; error: string; retryAfterSeconds?: number };
 
 export async function guardOtpSend(input: {
   /** The signed-in account, or an anonymous client key for sign-in by mobile.
@@ -320,7 +324,11 @@ export async function guardOtpSend(input: {
 
   const wait = await cooldownRemaining(anyDb, input.actor, input.phone);
   if (wait > 0) {
-    return { ok: false, error: `Please wait ${wait}s before requesting another code.` };
+    return {
+      ok: false,
+      error: `Please wait ${wait}s before requesting another code.`,
+      retryAfterSeconds: wait,
+    };
   }
 
   const blocked = await ceilingReached(anyDb, input.actor, input.phone, 0);

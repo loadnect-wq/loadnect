@@ -17,6 +17,11 @@ import { AUTH_NEXT_COOKIE, OWNER_INTENT_COOKIE } from "@/lib/app-url";
 const ALLOWED_REDIRECT_PREFIXES = [
   "/auth/redirect",
   "/book/",
+  // The enquiry deep link, so "continue with Google" returns the visitor to the
+  // form they came from. Must stay in step with ALLOWED_NEXT_PREFIXES on the
+  // login page: that list decides what goes INTO the cookie, this one decides
+  // what may come out of it, and a path missing from either is discarded.
+  "/enquiry/",
   "/customer",
   "/owner",
   "/halls",

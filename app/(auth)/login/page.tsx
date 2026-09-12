@@ -56,7 +56,14 @@ import { startPhoneSignIn, verifyPhoneSignIn } from "./phone-actions";
 // travels in its own cookie that only /owner/register writes, and this list
 // makes the login page unable to name a privileged marker even if one is added
 // later. DO NOT loosen it.
-const ALLOWED_NEXT_PREFIXES = ["/auth/redirect", "/book/", "/customer", "/owner/", "/halls"];
+//
+// "/enquiry/" belongs here for the same reason "/book/" does, and its absence
+// broke the whole lead funnel: a visitor who taps "Send Enquiry" on a
+// LEAD_GENERATION venue is sent to /login?next=/enquiry/<slug>, this list
+// refused the value, and they were dropped on /customer having lost the venue
+// they came for. It is exactly as safe as "/book/": slug-only, auth-gated,
+// notFound on an unknown slug, no privileged side effect.
+const ALLOWED_NEXT_PREFIXES = ["/auth/redirect", "/book/", "/enquiry/", "/customer", "/owner/", "/halls"];
 
 function safeNextPath(raw: string | null): string {
   const fallback = "/auth/redirect";

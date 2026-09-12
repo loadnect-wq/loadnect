@@ -188,10 +188,18 @@ export default async function AdminDashboardPage() {
             />
             <RevenueCard
               icon={<Wallet className="h-5 w-5 text-maroon-600" />}
-              // Not labelled "2.5%": the sum spans historical bookings that
-              // carry their own snapshotted rate from the previous model.
-              label="Commission earned"
+              // Not labelled with a rate: the sum spans bookings that carry
+              // their own snapshotted rate. "retained" is the important word —
+              // this is commission taken out of customers' advances, which is
+              // the only kind Hallnect holds without invoicing anyone.
+              label="Commission retained"
               value={money(stats.revenue.commission, "commissions")}
+              highlight
+            />
+            <RevenueCard
+              icon={<Wallet className="h-5 w-5 text-maroon-600" />}
+              label="Commission billed & paid"
+              value={money(stats.revenue.commissionBilledPaid, "commissions")}
               highlight
             />
             <RevenueCard
@@ -212,6 +220,17 @@ export default async function AdminDashboardPage() {
               value={money(stats.revenue.ownerPayouts, "commissions")}
             />
           </div>
+          {/* OUTSTANDING, not earned. A lead commission is invoiced to the venue
+              with a due date and nothing yet chases it, so it has to be visible
+              as a debt somewhere an operator looks — and it must not sit inside
+              "Net Hallnect revenue", which is money in hand. */}
+          {stats.revenue.commissionBilledOutstanding > 0 && !stats.failed.includes("commissions") && (
+            <p className="mt-2 text-xs font-semibold text-amber-800">
+              Commission billed to venues and still unpaid:{" "}
+              {formatPrice(stats.revenue.commissionBilledOutstanding)} — a receivable, not counted in
+              net revenue.
+            </p>
+          )}
           {/* Hidden when the payments read failed: a missing note is honest,
               "Refunds issued: Rs 0" would not be. */}
           {stats.revenue.refunds > 0 && !stats.failed.includes("payments") && (

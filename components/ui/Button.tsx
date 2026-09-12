@@ -26,8 +26,11 @@ export const buttonVariants = cva(
         secondary:
           "bg-ivory-200 text-charcoal-800 hover:bg-ivory-300",
         // Royal gold gradient – premium / featured CTA
+        // MAROON INK, NOT WHITE. White on this gradient failed WCAG AA at every
+        // stop (2.14:1 at the lightest, where the label starts). See the
+        // gold-gradient note in tailwind.config.ts for the measurements.
         gold:
-          "bg-gold-gradient text-white shadow-sm hover:opacity-90 active:opacity-100",
+          "bg-gold-gradient text-maroon-900 shadow-sm hover:opacity-90 active:opacity-100",
         // Ghost – subtle, no background
         ghost:
           "bg-transparent text-charcoal-700 hover:bg-maroon-50 hover:text-maroon-700",
