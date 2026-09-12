@@ -109,9 +109,11 @@ export function ProfileView({
         <div className="rounded-2xl bg-white p-5 shadow-card">
           <p className="font-serif text-lg font-bold text-charcoal-900">You&apos;re not signed in</p>
           <p className="mt-1 text-sm text-charcoal-600">Sign in to manage bookings, save halls, and book venues.</p>
-          <div className="mt-4 grid grid-cols-2 gap-2">
-            <Link href="/login"><Button variant="outline" className="w-full"><LogIn className="h-4 w-4" /> Sign In</Button></Link>
-            <Link href="/signup"><Button variant="gold" className="w-full">Sign Up</Button></Link>
+          {/* One button: /signup now redirects to /login, because both doors
+              there create an account on first use. Two buttons to one screen
+              is a choice between synonyms. */}
+          <div className="mt-4">
+            <Link href="/login"><Button variant="gold" className="w-full"><LogIn className="h-4 w-4" /> Sign in</Button></Link>
           </div>
         </div>
       )}

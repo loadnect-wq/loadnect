@@ -1,21 +1,30 @@
 "use client";
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Sign in. Google leads, mobile follows, email is a link.
+// Sign in. Two doors: Google, and a mobile number.
 //
-// THE ORDER IS THE DESIGN, and it is ranked by how likely each is to just work:
-//   1. GOOGLE — no typing, no code, no carrier involved, and every account that
-//      exists today is already a Google identity. After it, /auth/redirect asks
-//      once for a mobile number, skippable, because the number is what venues
-//      actually reach people on.
-//   2. MOBILE — one number, one code, and it BOTH signs in and signs up: a
-//      number with no account gets one the moment MSG91 approves the code.
-//   3. EMAIL — a text link, not a button. It is the slowest of the three and,
-//      until custom SMTP is configured on the Supabase project, a link does not
-//      reach anyone. The error below says so rather than spinning.
+// THE EMAIL LINK AND THE PASSWORD FIELD WERE REMOVED, and the reason belongs
+// here because it will look like a regression to whoever arrives next.
 //
-// Password sign-in is kept behind the email step for anyone who has one. No
-// live account does.
+//   • The email sign-in LINK needed an email transport this project does not
+//     have. Supabase's built-in sender is a testing facility — rate limited,
+//     and on newer projects restricted to team addresses — so it was a button
+//     that mostly could not work.
+//   • The PASSWORD field had never signed anybody in. Every account that has
+//     ever existed here is a Google identity, and a check of auth.users found
+//     ZERO accounts with a password set. It also implied a reset flow the
+//     product did not have, so the choice was to build password recovery for
+//     nobody or to stop offering a credential nobody could recover. This is
+//     the second.
+//
+// What is left is what people already used: Google, which proves an email
+// address in one tap, and a mobile number, which both signs in and signs up.
+// Nobody is locked out, and there is no longer a credential in the product
+// that cannot be recovered.
+//
+// SIGNING IN AND SIGNING UP ARE THE SAME ACTION. A number with no account gets
+// one the moment MSG91 approves the code, and Google creates one on first use,
+// so there is no separate "create an account" path to link to.
 //
 // The step machine is deliberately flat: one screen does one thing, and Back
 // always returns to the chooser. A single form that grows extra fields as you
@@ -26,16 +35,14 @@ import { useEffect, useState, useTransition } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowLeft, Loader2, Lock, Mail, Phone, Smartphone } from "lucide-react";
+import { ArrowLeft, Loader2, Phone, Smartphone } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { buildAuthCallbackUrl, rememberAuthNext } from "@/lib/app-url";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { toast } from "@/hooks/use-toast";
 import { GoogleIcon } from "@/components/icons/GoogleIcon";
 import { OtpInput } from "@/components/auth/OtpInput";
-import { loginSchema } from "@/lib/validation/schemas";
 import { startPhoneSignIn, verifyPhoneSignIn } from "./phone-actions";
 
 // Destinations a ?next= on the LOGIN page may name. This mirrors the callback's
@@ -71,25 +78,7 @@ const AUTH_ERROR_MESSAGES: Record<string, string> = {
 };
 
 const OTP_LENGTH = 6;
-type Step = "choose" | "mobile" | "code" | "email";
-
-/**
- * Is this address one Google already signs in?
- *
- * Every account on Hallnect today is @gmail.com, and for those people the email
- * LINK is strictly the worse path: it needs an inbox round trip, it depends on
- * an email transport this project does not have, and the Google button proves
- * the same address instantly. Recognising them and saying so is better than
- * sending them to a link that may never arrive.
- *
- * Consumer domains only. A Google Workspace address on a custom domain is
- * indistinguishable from any other domain without a DNS lookup, and guessing
- * wrong would push somebody at a button that cannot sign them in.
- */
-function isGoogleAddress(email: string): boolean {
-  const domain = email.trim().toLowerCase().split("@")[1] ?? "";
-  return domain === "gmail.com" || domain === "googlemail.com";
-}
+type Step = "choose" | "mobile" | "code";
 
 /** "+91 98765 43210" from the ten digits, for the confirmation line. */
 function prettyPhone(ten: string): string {
@@ -106,17 +95,9 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
-  // Mobile
   const [ten, setTen] = useState("");
   const [digits, setDigits] = useState<string[]>(Array(OTP_LENGTH).fill(""));
   const [cooldown, setCooldown] = useState(0);
-
-  // Email
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
-  const [linkSent, setLinkSent] = useState(false);
-  const [useGoogleInstead, setUseGoogleInstead] = useState(false);
 
   useEffect(() => {
     if (cooldown <= 0) return;
@@ -129,7 +110,6 @@ export default function LoginPage() {
     setStep(next);
   }
 
-  // ── Mobile ────────────────────────────────────────────────────────────────
   function sendCode(resend = false) {
     setError(null);
     startTransition(async () => {
@@ -154,61 +134,9 @@ export default function LoginPage() {
         return;
       }
       // A number with no account got one, so there is no "please sign up"
-      // branch to handle — signing in and signing up end in the same place.
-      // The session cookie is already written by the server action. refresh()
-      // makes the server components re-read it before we navigate.
-      router.refresh();
-      router.push(nextPath);
-    });
-  }
-
-  // ── Email ─────────────────────────────────────────────────────────────────
-  function sendMagicLink() {
-    setError(null);
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
-      setError("Enter a valid email address.");
-      return;
-    }
-    // A Gmail address never needs the link. Handled before the network call so
-    // nobody waits on a request whose best outcome is still slower than the
-    // button one tap away.
-    if (isGoogleAddress(email)) {
-      setUseGoogleInstead(true);
-      return;
-    }
-
-    startTransition(async () => {
-      rememberAuthNext(nextPath);
-      const { error: e } = await getSupabaseClient().auth.signInWithOtp({
-        email: email.trim(),
-        options: { emailRedirectTo: buildAuthCallbackUrl() },
-      });
-      if (e) {
-        // Almost always the project's email transport, not the address. Saying
-        // "check your email" here would leave somebody waiting for a message
-        // that is never coming.
-        setError(
-          "We could not send the sign-in link. Please use Google or your mobile number for now.",
-        );
-        return;
-      }
-      setLinkSent(true);
-    });
-  }
-
-  function passwordLogin(e: React.FormEvent) {
-    e.preventDefault();
-    const parsed = loginSchema.safeParse({ email, password });
-    if (!parsed.success) {
-      toast({ title: "Check your details", description: parsed.error.issues[0].message, variant: "destructive" });
-      return;
-    }
-    startTransition(async () => {
-      const { error: e } = await getSupabaseClient().auth.signInWithPassword({
-        email: parsed.data.email,
-        password: parsed.data.password,
-      });
-      if (e) { setError("That email and password did not match."); return; }
+      // branch — signing in and signing up end in the same place. The session
+      // cookie is already written by the server action; refresh() makes the
+      // server components re-read it before we navigate.
       router.refresh();
       router.push(nextPath);
     });
@@ -256,13 +184,10 @@ export default function LoginPage() {
           )}
 
           {/* ── Choose a door ─────────────────────────────────────────────── */}
-          {/* GOOGLE FIRST, and sized like the answer rather than an option.
-              Every account that exists today is a Google identity, it needs no
-              code and no typing, and it is the one path that cannot fail on a
-              carrier. Mobile sits under it for people coming back to a number
-              they have already verified. Email is a text link because it is the
-              slowest of the three and, until SMTP is configured, the least
-              likely to work. */}
+          {/* Google first, and sized like the answer rather than an option: no
+              typing, no code, no carrier involved, and every account that
+              exists today is already a Google identity. Mobile sits under it
+              for anyone who would rather not use Google at all. */}
           {step === "choose" && (
             <div className="space-y-3">
               <button
@@ -286,13 +211,7 @@ export default function LoginPage() {
               </button>
 
               <p className="pt-1 text-center text-xs text-charcoal-500">
-                <button
-                  type="button"
-                  onClick={() => go("email")}
-                  className="font-semibold text-charcoal-600 underline-offset-2 hover:text-maroon-700 hover:underline"
-                >
-                  Use email instead
-                </button>
+                New here? Either option creates your account.
               </p>
             </div>
           )}
@@ -378,111 +297,14 @@ export default function LoginPage() {
               </div>
             </div>
           )}
-
-          {/* ── Email ─────────────────────────────────────────────────────── */}
-          {step === "email" && (
-            <div className="space-y-4">
-              <BackLink onClick={() => { setLinkSent(false); setUseGoogleInstead(false); go("choose"); }} />
-
-              {linkSent ? (
-                <div className="rounded-xl border border-green-200 bg-green-50 p-5 text-center">
-                  <Mail className="mx-auto h-8 w-8 text-green-600" aria-hidden />
-                  <p className="mt-2 font-serif text-lg font-bold text-charcoal-900">Check your email</p>
-                  <p className="mt-1 text-sm text-charcoal-600">
-                    We sent a sign-in link to <span className="font-medium">{email.trim()}</span>.
-                  </p>
-                </div>
-              ) : (
-                <>
-                  <div>
-                    <Label htmlFor="email">Email address</Label>
-                    <div className="relative mt-1.5">
-                      <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-charcoal-400" aria-hidden />
-                      <Input
-                        id="email"
-                        type="email"
-                        autoComplete="email"
-                        autoFocus
-                        placeholder="you@example.com"
-                        className="min-h-[48px] pl-9"
-                        value={email}
-                        onChange={(e) => { setEmail(e.target.value); setUseGoogleInstead(false); }}
-                      />
-                    </div>
-                  </div>
-
-                  {useGoogleInstead && (
-                    <div className="rounded-xl border border-gold-200 bg-gold-50 p-4 text-center">
-                      <p className="text-sm text-charcoal-800">
-                        That is a Google address. Signing in with Google is faster and
-                        needs no code.
-                      </p>
-                      <button
-                        type="button"
-                        onClick={googleLogin}
-                        className="mt-3 flex min-h-[48px] w-full items-center justify-center gap-3 rounded-xl bg-charcoal-900 px-4 text-sm font-semibold text-white transition hover:bg-charcoal-800"
-                      >
-                        <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white">
-                          <GoogleIcon />
-                        </span>
-                        Continue with Google
-                      </button>
-                    </div>
-                  )}
-
-                  {showPassword ? (
-                    <form onSubmit={passwordLogin} className="space-y-3">
-                      <div>
-                        <Label htmlFor="password">Password</Label>
-                        <div className="relative mt-1.5">
-                          <Lock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-charcoal-400" aria-hidden />
-                          <Input
-                            id="password"
-                            type="password"
-                            autoComplete="current-password"
-                            placeholder="••••••••"
-                            className="min-h-[48px] pl-9"
-                            value={password}
-                            onChange={(e) => setPassword(e.target.value)}
-                            minLength={6}
-                          />
-                        </div>
-                      </div>
-                      <Button type="submit" className="w-full" isLoading={pending}>Sign in</Button>
-                    </form>
-                  ) : (
-                    <Button className="w-full" onClick={sendMagicLink} isLoading={pending}>
-                      {pending ? "Sending…" : "Email me a sign-in link"}
-                    </Button>
-                  )}
-
-                  <button
-                    type="button"
-                    onClick={() => { setShowPassword((v) => !v); setError(null); }}
-                    className="w-full text-center text-xs font-semibold text-maroon-700 hover:underline"
-                  >
-                    {showPassword ? "Email me a link instead" : "I have a password"}
-                  </button>
-                </>
-              )}
-            </div>
-          )}
         </div>
 
-        <div className="mt-6 space-y-1.5 text-center text-sm text-charcoal-600">
-          <p>
-            New to Hallnect?{" "}
-            <Link href="/signup" className="font-semibold text-maroon-600 hover:underline">
-              Create an account
-            </Link>
-          </p>
-          <p className="text-xs">
-            Own a venue?{" "}
-            <Link href="/owner/register" className="font-semibold text-maroon-600 hover:underline">
-              List your hall
-            </Link>
-          </p>
-        </div>
+        <p className="mt-6 text-center text-xs text-charcoal-600">
+          Own a venue?{" "}
+          <Link href="/owner/register" className="font-semibold text-maroon-600 hover:underline">
+            List your hall
+          </Link>
+        </p>
       </div>
     </div>
   );

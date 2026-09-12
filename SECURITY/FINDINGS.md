@@ -429,9 +429,15 @@ table that cannot be read must not lock a real user out of their own code),
 are not `HttpOnly` — the Supabase SSR default), **PRIV-7** (an owner can move
 their own approved hall back to draft — that is theirs to do).
 
-Open and carried to the remediation plan: **AUTH-4** (there is no password
-reset or password change flow anywhere in the product — a product gap, not a
-vulnerability, but one a launched marketplace cannot go without), **AUTH-5**
+**AUTH-4 is now CLOSED BY DELETION.** There was no password reset or change
+flow anywhere in the product while email-and-password sign-in was offered. The
+resolution was not to build recovery but to remove the credential: no account
+had ever had a password set (0 of 4 in `auth.users`), so nothing was lost, and
+sign-in is now Google or a mobile OTP — neither of which can be forgotten. That
+also retired the only two consumers of email delivery, so the custom-SMTP
+dependency went with it.
+
+Still open and carried to the remediation plan: **AUTH-5**
 (single admin account, no MFA), **OTP-5** (the admin alert SMS budget has no
 per-account ceiling; partially mitigated now that contact alerts are bucketed),
 **OTP-6** (no country allowlist on OTP destinations), **LOGIC-4** (account

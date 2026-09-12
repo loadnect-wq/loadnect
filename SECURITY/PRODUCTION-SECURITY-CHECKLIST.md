@@ -12,59 +12,20 @@ the gap named.
 - [ ] **`CONTACT_IP_SALT` set in Vercel** (Production, Preview, Development).
       Until it is, the contact form's per-sender rate limit is dormant and only
       the platform-wide backstop applies. See `REMEDIATION-PLAN.md` §1.1.
-- [ ] **Password reset / change flow, or remove password sign-in.** Offering a
-      credential with no recovery path is the gap; either half closes it.
-      See §1.1b — with Google and mobile both working, removing it is the
-      cheaper half.
+- [x] **Password sign-in removed** — AUTH-4 is closed by deletion rather than
+      by building recovery. No account in this product ever had a password set
+      (checked: 0 of 4 in `auth.users`), the field implied a reset flow that did
+      not exist, and there is now no credential in the product that cannot be
+      recovered. Sign-in is Google or a mobile number; both create an account on
+      first use, so `/signup` redirects to `/login`.
+- [x] **Custom SMTP no longer needed.** It had exactly two consumers and both
+      are gone with the email option: the sign-in link and the password-signup
+      confirmation. Everything else — booking updates, enquiry alerts, owner
+      notifications, OTP — is SMS over MSG91 and always has been. Tax invoices
+      record a `recipient_email` and nothing has ever sent one. If email is ever
+      wanted again, the provider settings are preserved in git history at
+      commit `8a1b164`.
 
-### 1.1b Custom SMTP — optional, and smaller than it looks
-
-**Nothing is blocked on this.** SMTP has exactly two consumers in Hallnect, and
-both are redundant today:
-
-| Consumer | Status without SMTP |
-|---|---|
-| Email sign-in link | Redundant. Google proves the same address instantly, and a Gmail address is now routed to the Google button before any send is attempted. |
-| Email/password signup confirmation | Redundant. No live account has a password; all four are Google identities. |
-
-Everything else in the product — booking updates, enquiry alerts, owner
-notifications, OTP — is SMS over MSG91 and always has been
-(`lib/notifications/service.ts`: "SMS over MSG91 is the sole channel"). Tax
-invoices record a `recipient_email` but nothing has ever emailed them.
-
-Supabase's built-in sender currently **accepts** a send (tested against the
-owner's own address). It is documented as a testing facility: heavily rate
-limited, and on newer projects restricted to team addresses. So it is fine for
-you and not something to launch a marketplace on.
-
-**If you do want it**, it is a ten-minute job the assistant cannot do for you —
-it requires creating an account at a provider and entering an SMTP password,
-which are both credential operations:
-
-1. Create an account at a transactional provider. **Resend** is the simplest;
-   **Brevo** is a common India-based alternative with a larger free tier.
-2. Verify `hallnect.com` there. The provider issues SPF and DKIM records to add
-   to your DNS — use the values it gives you, not any written here.
-3. Supabase Dashboard → Project Settings → Authentication → SMTP Settings →
-   **Enable Custom SMTP**, then:
-
-   | Field | Resend |
-   |---|---|
-   | Host | `smtp.resend.com` |
-   | Port | `465` |
-   | Username | `resend` |
-   | Password | the API key from step 1 |
-   | Sender email | something at your verified domain, e.g. `no-reply@hallnect.com` |
-   | Sender name | `Hallnect` |
-
-4. Re-test by sending yourself a sign-in link from `/login` → "Use email
-   instead", using a NON-Gmail address so the Google shortcut does not
-   intercept it.
-
-**Do this only if you want the email link to work.** If you would rather not
-run an email transport at all, the honest alternative is to remove the email
-option from `/login` and the password field from `/signup`, leaving Google and
-mobile — which is what every current user already uses.
 - [ ] **2-Step Verification on the admin Google account.** One account can
       change the commission rate, approve venues, issue refunds and release
       payouts. Half an hour, and the largest single risk reduction available.
@@ -93,7 +54,7 @@ mobile — which is what every current user already uses.
 - [x] Maintenance routes require an **active** admin, from the same origin
 - [~] Signup role is client-supplied metadata — `owner` yields `owner_approved` by design, `admin` is rejected, and listing still needs admin approval. Accepted
 - [~] Session cookies are not `HttpOnly` — the Supabase SSR default. Accepted; revisit with the nonce CSP
-- [ ] No password reset or change flow (see §1)
+- [x] No password credential exists at all — the field was removed rather than given a reset flow (see §1)
 - [ ] No MFA on the single admin account (see §1)
 
 ---

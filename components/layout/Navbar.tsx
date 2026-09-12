@@ -207,14 +207,15 @@ export function Navbar() {
               </>
             ) : (
               <>
-                <Link href="/login" className={buttonVariants({ variant: "ghost", size: "sm" })}>
-                  Sign In
-                </Link>
+                {/* One CTA, not two. Signing in and signing up are the same
+                    action now — both doors on /login create an account on
+                    first use — so "Sign In" and "Get Started" pointed at the
+                    same screen and made a visitor choose between synonyms. */}
                 <Link href="/owner/register" className={buttonVariants({ variant: "outline", size: "sm" })}>
                   List Your Hall
                 </Link>
-                <Link href="/signup" className={buttonVariants({ variant: "gold", size: "sm" })}>
-                  Get Started
+                <Link href="/login" className={buttonVariants({ variant: "gold", size: "sm" })}>
+                  Sign In
                 </Link>
               </>
             )}
@@ -286,17 +287,10 @@ export function Navbar() {
                 <>
                   <Link
                     href="/login"
-                    className={buttonVariants({ variant: "outline", size: "sm", className: "w-full justify-center" })}
-                    onClick={() => setMobileOpen(false)}
-                  >
-                    Sign In
-                  </Link>
-                  <Link
-                    href="/signup"
                     className={buttonVariants({ variant: "gold", size: "sm", className: "w-full justify-center" })}
                     onClick={() => setMobileOpen(false)}
                   >
-                    Get Started
+                    Sign In
                   </Link>
                 </>
               )}
