@@ -42,7 +42,10 @@ import {
 
 export type OtpActionResult =
   | { success: true; cooldownSeconds?: number }
-  | { error: string };
+  /** `conflict` marks the one failure a retry can never fix: the number is
+   *  verified on a DIFFERENT account. The UI must offer support, not "try
+   *  again" — see the pre-check in verifyPhoneOtp. */
+  | { error: string; conflict?: true };
 
 /**
  * Sends a code to the caller's chosen number.
@@ -149,6 +152,45 @@ export async function verifyPhoneOtp(
     return { error: "That code is incorrect or has expired." };
   }
 
+  // ── DOES THIS NUMBER ALREADY BELONG TO SOMEBODY? ──────────────────────────
+  //
+  // THIS BLOCK REPLACES A SILENT TRANSFER. The previous code verified the
+  // number onto the caller's row and THEN cleared the verified flag on any
+  // other account holding it, with the comment that the loser "may have
+  // released the SIM long ago". That was defensible while a verified phone was
+  // only a notification-routing hint. It is not defensible now: migration 0086
+  // makes a verified number resolve to exactly one account, which is what lets
+  // a person sign in with it — so moving one silently is moving an account.
+  //
+  // The losing account was never told, never asked, and could not object. That
+  // is the "silently merge two accounts" case the linking design forbids.
+  //
+  // Refused instead, and the caller is told to contact support. Deliberately a
+  // human step: proving the number is genuinely theirs now — rather than
+  // theirs because they hold the SIM this minute — is exactly the judgement a
+  // machine should not make on its own when the outcome is somebody else's
+  // account. The number is not revealed to be linked to any particular person.
+  //
+  // Checked BEFORE the write, not after: uq_profiles_verified_phone would
+  // refuse the UPDATE with 23505 anyway, but a raw constraint error reaches the
+  // user as "we could not save it", which is both wrong and unactionable.
+  const { data: holder } = await anyDb
+    .from("profiles")
+    .select("id")
+    .eq("phone", phone)
+    .eq("phone_verified", true)
+    .neq("id", user.id)
+    .maybeSingle();
+
+  if (holder) {
+    return {
+      error:
+        "This mobile number is already verified on another Hallnect account. " +
+        "Contact support so we can check it belongs to you and link the two.",
+      conflict: true,
+    };
+  }
+
   // Success — record verification on the caller's OWN profile row.
   //
   // WRITTEN WITH THE SERVICE ROLE, and the reason is the whole point of this
@@ -173,27 +215,22 @@ export async function verifyPhoneOtp(
   if (upErr?.code === "42703") {
     ({ error: upErr } = await anyDb.from("profiles").update({ phone }).eq("id", user.id));
   }
+  // 23505 = uq_profiles_verified_phone. The pre-check above should have caught
+  // this, so reaching here means somebody verified the same number in the
+  // moment between that read and this write. The constraint is what actually
+  // guarantees one account per verified number; the pre-check only exists to
+  // produce a sentence a person can act on. Both say the same thing.
+  if (upErr?.code === "23505") {
+    return {
+      error:
+        "This mobile number is already verified on another Hallnect account. " +
+        "Contact support so we can check it belongs to you and link the two.",
+      conflict: true,
+    };
+  }
   if (upErr) {
     console.error("[verify-phone] profile update failed:", upErr.message);
     return { error: "Verified, but we could not save it. Please try again." };
-  }
-
-  // Only ONE person can control a number at a time. Any OTHER profile still
-  // claiming this number as verified proves nothing any more — that account
-  // may have released the SIM long ago — so its verified flag is cleared.
-  // The number itself is left in place: it is that account's contact detail,
-  // and silently blanking it would strand its bookings. Best-effort; a failure
-  // here must not undo the verification we just completed.
-  try {
-    await anyDb
-      .from("profiles")
-      .update({ phone_verified: false, phone_verified_at: null })
-      .eq("phone", phone)
-      .eq("phone_verified", true)
-      .neq("id", user.id);
-  } catch (e) {
-    console.error("[verify-phone] stale verification cleanup failed:",
-      e instanceof Error ? e.message : "unknown");
   }
 
   revalidatePath("/verify-phone");
