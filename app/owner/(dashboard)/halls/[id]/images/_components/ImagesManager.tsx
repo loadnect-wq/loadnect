@@ -7,7 +7,7 @@ import { getSupabaseClient } from "@/lib/supabase/client";
 import { type HallImage } from "@/lib/owner";
 import { validateImageFile, IMAGE_LIMITS } from "@/lib/validation/schemas";
 import { ConfirmationDialog } from "@/components/ui/ConfirmationDialog";
-import { IMAGE_CACHE_CONTROL } from "@/lib/supabase/storage";
+import { IMAGE_CACHE_CONTROL, sniffImageType } from "@/lib/supabase/storage";
 import {
   addHallImage,
   setCoverImage,
@@ -95,21 +95,39 @@ export function ImagesManager({ hallId, initial }: Props) {
     setError(null);
 
     // Validate everything up front so one bad file doesn't half-upload a batch.
-    const accepted: File[] = [];
+    //
+    // TWO CHECKS, AND THE SECOND IS THE REAL ONE. validateImageFile reads the
+    // browser's DECLARED type (file.type) and the size — both attacker-supplied
+    // and both trivially wrong. sniffImageType reads the first twelve bytes.
+    // A mismatch is rejected rather than corrected: a .png whose bytes are a
+    // JPEG is at best a confused client and at worst a deliberate one, and
+    // neither is worth guessing for. The SNIFFED type is what gets stored as
+    // the object's content type below, so Supabase can never be talked into
+    // serving something as an image type it is not.
+    const accepted: { file: File; type: string }[] = [];
     for (const file of files) {
       const check = validateImageFile(file);
       if (!check.ok) {
         setError(`${file.name}: ${check.error}`);
         continue;
       }
-      accepted.push(file);
+      const actual = await sniffImageType(file);
+      if (!actual) {
+        setError(`${file.name}: that file is not a JPG, PNG or WebP image.`);
+        continue;
+      }
+      if (actual !== file.type) {
+        setError(`${file.name}: it says it is ${file.type} but its contents are ${actual}. Re-save it and try again.`);
+        continue;
+      }
+      accepted.push({ file, type: actual });
     }
     if (accepted.length === 0) {
       if (fileRef.current) fileRef.current.value = "";
       return;
     }
 
-    const items: QueueItem[] = accepted.map((f, i) => ({
+    const items: QueueItem[] = accepted.map(({ file: f }, i) => ({
       key:     `${Date.now()}-${i}-${f.name}`,
       name:    f.name,
       preview: URL.createObjectURL(f),               // local preview, not "uploaded"
@@ -122,9 +140,11 @@ export function ImagesManager({ hallId, initial }: Props) {
 
     // Sequential: keeps ordering deterministic and avoids hammering storage.
     for (let i = 0; i < accepted.length; i++) {
-      const file = accepted[i];
+      const { file, type } = accepted[i];
       const item = items[i];
-      const ext  = EXT_BY_MIME[file.type] ?? "jpg";
+      // Extension from the SNIFFED type, so the stored name agrees with the
+      // bytes and with the content type sent below.
+      const ext  = EXT_BY_MIME[type] ?? "jpg";
       const path = `${hallId}/${crypto.randomUUID()}.${ext}`;
 
       try {
@@ -132,7 +152,9 @@ export function ImagesManager({ hallId, initial }: Props) {
           .from("hall-images")
           .upload(path, file, {
             upsert: false,
-            contentType: file.type,
+            // THE SNIFFED TYPE, never the declared one — this is the header
+            // Supabase serves the object with.
+            contentType: type,
             // A year, not the one-hour default: these objects are immutable (uuid
             // filename, upsert:false) and Supabase egress is the meter that fills
             // first here. See IMAGE_CACHE_CONTROL in lib/supabase/storage.ts.

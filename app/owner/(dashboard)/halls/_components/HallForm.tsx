@@ -13,7 +13,7 @@ import { createHall, updateHall } from "@/app/owner/(dashboard)/actions";
 import { normalizeAmenityName, CUSTOM_AMENITY_LIMITS, validateImageFile } from "@/lib/validation/schemas";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { addHallImage } from "@/app/owner/(dashboard)/actions";
-import { IMAGE_CACHE_CONTROL } from "@/lib/supabase/storage";
+import { IMAGE_CACHE_CONTROL, sniffImageType } from "@/lib/supabase/storage";
 
 // Extension comes from the validated MIME type, never the untrusted filename.
 const EXT_BY_MIME: Record<string, string> = {
@@ -98,7 +98,10 @@ export function HallForm({ ownerId, amenities, hall }: Props) {
   // Photos chosen in THIS form. They are local previews until the hall exists —
   // a hall id is required before an image can be permanently associated, so the
   // upload happens immediately after createHall returns (see handleSubmit).
-  const [photos, setPhotos] = useState<{ key: string; file: File; preview: string }[]>([]);
+  // `type` is the SNIFFED content type, decided when the photo was picked and
+  // carried to the upload — never file.type, which the browser takes from the
+  // client and which a crafted upload controls.
+  const [photos, setPhotos] = useState<{ key: string; file: File; type: string; preview: string }[]>([]);
   const [photoError, setPhotoError] = useState<string | null>(null);
   const [uploadNote, setUploadNote] = useState<string | null>(null);
   const photoRef = useRef<HTMLInputElement>(null);
@@ -135,14 +138,26 @@ export function HallForm({ ownerId, amenities, hall }: Props) {
     setCustomDraft("");
   }
 
-  function handlePhotoPick(e: React.ChangeEvent<HTMLInputElement>) {
+  async function handlePhotoPick(e: React.ChangeEvent<HTMLInputElement>) {
     const picked = Array.from(e.target.files ?? []);
     setPhotoError(null);
     const accepted: typeof photos = [];
     for (const file of picked) {
       const check = validateImageFile(file);
       if (!check.ok) { setPhotoError(`${file.name}: ${check.error}`); continue; }
-      accepted.push({ key: `${Date.now()}-${file.name}-${accepted.length}`, file, preview: URL.createObjectURL(file) });
+      // MAGIC BYTES, not the declared MIME type. See the same pair of checks in
+      // ImagesManager for why a mismatch is refused rather than corrected; the
+      // sniffed type is carried through to the upload's contentType.
+      const actual = await sniffImageType(file);
+      if (!actual) {
+        setPhotoError(`${file.name}: that file is not a JPG, PNG or WebP image.`);
+        continue;
+      }
+      if (actual !== file.type) {
+        setPhotoError(`${file.name}: it says it is ${file.type} but its contents are ${actual}. Re-save it and try again.`);
+        continue;
+      }
+      accepted.push({ key: `${Date.now()}-${file.name}-${accepted.length}`, file, type: actual, preview: URL.createObjectURL(file) });
     }
     setPhotos((prev) => [...prev, ...accepted]);
     if (photoRef.current) photoRef.current.value = "";
@@ -163,15 +178,16 @@ export function HallForm({ ownerId, amenities, hall }: Props) {
     let failed = 0;
 
     for (let i = 0; i < photos.length; i++) {
-      const { file } = photos[i];
+      const { file, type } = photos[i];
       setUploadNote(`Uploading photo ${i + 1} of ${photos.length}…`);
-      const ext  = EXT_BY_MIME[file.type] ?? "jpg";
+      const ext  = EXT_BY_MIME[type] ?? "jpg";
       const path = `${hallId}/${crypto.randomUUID()}.${ext}`;
       try {
         const { error: sErr } = await supabase.storage
           .from("hall-images").upload(path, file, {
             upsert: false,
-            contentType: file.type,
+            // The SNIFFED type, set when the photo was picked.
+            contentType: type,
             // See IMAGE_CACHE_CONTROL in lib/supabase/storage.ts — immutable
             // objects, and egress is the first meter to fill on this project.
             cacheControl: IMAGE_CACHE_CONTROL,

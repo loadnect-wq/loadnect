@@ -127,6 +127,22 @@ export async function sniffImageType(file: File): Promise<"image/jpeg" | "image/
   return null;
 }
 
+/**
+ * NOT THE LIVE UPLOAD PATH. Nothing in the app calls this — only
+ * lib/__tests__/image-upload-sniff.test.ts does.
+ *
+ * The two real upload paths are ImagesManager.handleFiles (editing a hall's
+ * photos) and HallForm.handlePhotoPick/uploadPhotos (the new-hall wizard), and
+ * both talk to supabase.storage directly. For a while that meant the magic-byte
+ * check below existed, was tested, and was NEVER REACHED: both live paths sent
+ * `contentType: file.type`, the browser's declared type, and neither sniffed
+ * anything. The security checklist claimed otherwise.
+ *
+ * The sniff now runs in both live paths. This function is kept because its
+ * tests pin sniffImageType's behaviour, but it is a second implementation of
+ * something that lives elsewhere — if you change the rules, change them THERE
+ * first, and do not read this function as evidence of what production does.
+ */
 export async function uploadHallImage(
   hallId: string,
   file: File,

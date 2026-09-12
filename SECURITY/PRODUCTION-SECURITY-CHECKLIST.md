@@ -122,7 +122,24 @@ the gap named.
 - [x] PostgREST `or()` filters quote the value rather than blocklisting separators, in both public and admin search
 - [x] Errors sanitised before reaching a client — no raw PostgREST messages
 - [x] Hall image URLs **derived** from the storage path, plus a database constraint requiring our own bucket
-- [x] Uploads validated by **magic bytes**, and stored with the sniffed content type rather than the declared one
+- [x] Uploads validated by **magic bytes**, and stored with the sniffed content
+      type rather than the declared one.
+      **CORRECTION (12 September 2026):** this line was wrong when first
+      written. `sniffImageType` and `uploadHallImage` in
+      `lib/supabase/storage.ts` were tested but **never called** — the only
+      reference to them in the whole repo was
+      `lib/__tests__/image-upload-sniff.test.ts`. Both live upload paths
+      (`ImagesManager.handleFiles` and `HallForm.handlePhotoPick`) called
+      `supabase.storage.upload()` directly with `contentType: file.type`, the
+      browser's *declared* type, and validated only MIME string, size ≤ 5 MB
+      and size ≠ 0 via `lib/validation/schemas.ts`. So for the whole period this
+      checklist claimed the control, it did not exist. The sniff now runs in
+      both live paths and the sniffed type is what is stored; `uploadHallImage`
+      is marked in-file as not the live path so it cannot be mistaken for
+      evidence again. Found by an audit of every hall-photo surface, not by the
+      original review — a claim about a control was taken from the module that
+      looked like the upload path rather than from the path the app actually
+      takes.
 - [x] Storage path bound to the hall id; storage RLS enforces the same
 - [x] Per-hall image cap
 - [x] `next.config.ts` image `remotePatterns` scoped to this project's Supabase host — it was `**`, matching every host on the internet
