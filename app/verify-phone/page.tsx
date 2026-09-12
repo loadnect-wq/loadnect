@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { noindexMetadata } from "@/lib/seo/metadata";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { ShieldCheck } from "lucide-react";
 import { getProfile } from "@/lib/auth";
@@ -12,7 +13,33 @@ import { OtpForm } from "./_components/OtpForm";
 export const metadata: Metadata = noindexMetadata("Verify Phone");
 
 // Any signed-in role may verify their phone; verification never changes roles.
-export default async function VerifyPhonePage() {
+/** Where to go once the number is verified or skipped.
+ *
+ *  ALLOW-LIST, not a pass-through. This value ends up in a client-side
+ *  router.push, so an open `next` would make /verify-phone a redirector: a link
+ *  like /verify-phone?next=//evil.example would bounce a signed-in user off the
+ *  site. Only the dashboards and the ordinary browsing paths are nameable, and
+ *  anything else silently becomes the safe default. */
+const ALLOWED_NEXT_PREFIXES = ["/customer", "/owner/", "/admin", "/halls", "/book/", "/profile"];
+
+function safeNext(raw: string | undefined): string {
+  const fallback = "/customer";
+  if (!raw) return fallback;
+  if (!raw.startsWith("/") || raw.startsWith("//") || raw.startsWith("/\\")) return fallback;
+  return ALLOWED_NEXT_PREFIXES.some((p) => raw === p || raw.startsWith(p)) ? raw : fallback;
+}
+
+export default async function VerifyPhonePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ next?: string; welcome?: string }>;
+}) {
+  const sp = await searchParams;
+  const next = safeNext(sp.next);
+  // Sent here right after signing in, rather than having navigated here on
+  // purpose. Changes the copy from "verify your phone" to "one last step", and
+  // is what puts a Skip on the page at all.
+  const welcome = sp.welcome === "1";
   const profile = await getProfile();
   if (!profile) redirect("/login?next=/verify-phone");
 
@@ -47,10 +74,12 @@ export default async function VerifyPhonePage() {
             <ShieldCheck className="h-6 w-6" aria-hidden />
           </span>
           <h1 className="mt-3 font-serif text-2xl font-bold text-charcoal-900">
-            Verify your phone
+            {welcome ? "One last step" : "Verify your phone"}
           </h1>
           <p className="mt-1 text-sm text-charcoal-600">
-            A verified number helps venue owners and our team reach you about your bookings.
+            {welcome
+              ? "Add your mobile number so venues can reach you about your bookings."
+              : "A verified number helps venue owners and our team reach you about your bookings."}
           </p>
         </div>
 
@@ -58,9 +87,14 @@ export default async function VerifyPhonePage() {
           <div className="rounded-2xl border border-green-200 bg-green-50 p-5 text-center text-sm text-green-800">
             <p className="font-semibold">Already verified</p>
             <p className="mt-1">{phone} is linked to your account.</p>
+            {/* Without this the page is a dead end for anyone who arrives with
+                a number already verified. */}
+            <Link href={next} className="mt-3 inline-block font-semibold text-maroon-700 hover:underline">
+              Continue
+            </Link>
           </div>
         ) : (
-          <OtpForm initialPhone={phone} configured={isOtpConfigured()} />
+          <OtpForm initialPhone={phone} configured={isOtpConfigured()} next={next} skippable={welcome} />
         )}
       </div>
     </div>

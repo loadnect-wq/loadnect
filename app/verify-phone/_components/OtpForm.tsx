@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { CheckCircle2, Loader2, Phone, ShieldCheck } from "lucide-react";
 import { sendPhoneOtp, verifyPhoneOtp } from "../actions";
 
@@ -10,9 +11,16 @@ interface Props {
   initialPhone: string | null;
   /** False when MSG91's auth key or OTP template id is missing. */
   configured:   boolean;
+  /** Where to go once this is done. Already allow-listed by the page. */
+  next?:        string;
+  /** True when the visitor was sent here straight after signing in, rather than
+   *  choosing to come. They get a Skip, because a verification wall on the very
+   *  first visit costs more customers than the missing numbers are worth. */
+  skippable?:   boolean;
 }
 
-export function OtpForm({ initialPhone, configured }: Props) {
+export function OtpForm({ initialPhone, configured, next, skippable }: Props) {
+  const router = useRouter();
   const [step, setStep]         = useState<"phone" | "code" | "done">("phone");
   const [phone, setPhone]       = useState(initialPhone ?? "");
   const [digits, setDigits]     = useState<string[]>(Array(OTP_LENGTH).fill(""));
@@ -52,6 +60,12 @@ export function OtpForm({ initialPhone, configured }: Props) {
       const r = await verifyPhoneOtp(phone, code);
       if ("error" in r) { setError(r.error); return; }
       setStep("done");
+      if (next) {
+        // refresh() first so the server components re-read the now-verified
+        // profile; without it the destination can render the old state.
+        router.refresh();
+        router.push(next);
+      }
     });
   }
 
@@ -198,6 +212,17 @@ export function OtpForm({ initialPhone, configured }: Props) {
       )}
 
       {error && <p className="mt-3 text-xs text-red-600">{error}</p>}
+
+      {/* The done branch returns earlier, so reaching here means unverified. */}
+      {skippable && next && (
+        <button
+          type="button"
+          onClick={() => { router.refresh(); router.push(next); }}
+          className="mt-4 min-h-[44px] w-full text-center text-xs font-semibold text-charcoal-500 hover:text-charcoal-800"
+        >
+          Skip for now
+        </button>
+      )}
     </div>
   );
 }

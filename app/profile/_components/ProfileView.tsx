@@ -82,11 +82,16 @@ export function ProfileView({
         <div className="rounded-2xl bg-gradient-to-br from-maroon-800 to-maroon-950 p-5 text-ivory-100 shadow-elevated">
           <div className="flex items-center gap-3">
             <div className="flex h-14 w-14 items-center justify-center rounded-full bg-gold-400 text-maroon-900 font-serif text-xl font-bold">
-              {(profile.fullName ?? profile.email ?? "?").slice(0, 1).toUpperCase()}
+              {(profile.fullName ?? profile.email ?? "H").slice(0, 1).toUpperCase()}
             </div>
             <div className="min-w-0">
               <p className="truncate font-serif text-lg font-bold">{profile.fullName ?? "Welcome"}</p>
-              <p className="truncate text-xs text-ivory-400">{profile.email}</p>
+              {/* A mobile-only account has no email at all — its auth record
+                  carries a placeholder that must never be shown. Falling back
+                  to the number keeps the card from rendering a blank line. */}
+              <p className="truncate text-xs text-ivory-400">
+                {profile.email ?? (profile.phone ? formatPhone(profile.phone) : "No contact details yet")}
+              </p>
               <span className="mt-1 inline-block rounded-full bg-gold-400/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-gold-300">
                 {profile.role.replace("_", " ")}
               </span>

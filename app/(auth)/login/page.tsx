@@ -1,22 +1,21 @@
 "use client";
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Sign in. Two primary doors — mobile and email — plus Google.
+// Sign in. Google leads, mobile follows, email is a link.
 //
-// WHY THREE AND NOT TWO. The brief asks for mobile and email. Google stays
-// because EVERY account that exists today is a Google identity with no
-// password (verified: 4 of 4), so removing it would lock out the entire live
-// user base to satisfy a layout.
+// THE ORDER IS THE DESIGN, and it is ranked by how likely each is to just work:
+//   1. GOOGLE — no typing, no code, no carrier involved, and every account that
+//      exists today is already a Google identity. After it, /auth/redirect asks
+//      once for a mobile number, skippable, because the number is what venues
+//      actually reach people on.
+//   2. MOBILE — one number, one code, and it BOTH signs in and signs up: a
+//      number with no account gets one the moment MSG91 approves the code.
+//   3. EMAIL — a text link, not a button. It is the slowest of the three and,
+//      until custom SMTP is configured on the Supabase project, a link does not
+//      reach anyone. The error below says so rather than spinning.
 //
-// WHAT ACTUALLY WORKS RIGHT NOW, stated here so nobody is surprised by a
-// screen that looks finished:
-//   • Mobile  — fully working for an account whose number is verified. MSG91
-//     proves possession, the server resolves the account and mints a session.
-//   • Google  — unchanged, works.
-//   • Email link — implemented, and it needs custom SMTP on the Supabase
-//     project before a link actually reaches anyone. The error below says so
-//     rather than spinning.
-//   • Password — kept for anyone who has one. No live account does.
+// Password sign-in is kept behind the email step for anyone who has one. No
+// live account does.
 //
 // The step machine is deliberately flat: one screen does one thing, and Back
 // always returns to the chooser. A single form that grows extra fields as you
@@ -135,12 +134,8 @@ export default function LoginPage() {
         setDigits(Array(OTP_LENGTH).fill(""));
         return;
       }
-      if ("noAccount" in r) {
-        setError(
-          "That number is not linked to a Hallnect account yet. Sign in with email or Google once, then add your mobile from your profile.",
-        );
-        return;
-      }
+      // A number with no account got one, so there is no "please sign up"
+      // branch to handle — signing in and signing up end in the same place.
       // The session cookie is already written by the server action. refresh()
       // makes the server components re-read it before we navigate.
       router.refresh();
@@ -234,50 +229,44 @@ export default function LoginPage() {
           )}
 
           {/* ── Choose a door ─────────────────────────────────────────────── */}
+          {/* GOOGLE FIRST, and sized like the answer rather than an option.
+              Every account that exists today is a Google identity, it needs no
+              code and no typing, and it is the one path that cannot fail on a
+              carrier. Mobile sits under it for people coming back to a number
+              they have already verified. Email is a text link because it is the
+              slowest of the three and, until SMTP is configured, the least
+              likely to work. */}
           {step === "choose" && (
             <div className="space-y-3">
               <button
                 type="button"
-                onClick={() => go("mobile")}
-                className="flex min-h-[56px] w-full items-center gap-3 rounded-xl border border-border bg-white px-4 text-left transition hover:border-maroon-300 hover:bg-ivory-50 active:scale-[0.99] motion-reduce:active:scale-100"
-              >
-                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-maroon-50 text-maroon-700">
-                  <Smartphone className="h-5 w-5" aria-hidden />
-                </span>
-                <span className="min-w-0">
-                  <span className="block text-sm font-semibold text-charcoal-900">Continue with mobile</span>
-                  <span className="block text-xs text-charcoal-500">We will text you a code</span>
-                </span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => go("email")}
-                className="flex min-h-[56px] w-full items-center gap-3 rounded-xl border border-border bg-white px-4 text-left transition hover:border-maroon-300 hover:bg-ivory-50 active:scale-[0.99] motion-reduce:active:scale-100"
-              >
-                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gold-50 text-gold-700">
-                  <Mail className="h-5 w-5" aria-hidden />
-                </span>
-                <span className="min-w-0">
-                  <span className="block text-sm font-semibold text-charcoal-900">Continue with email</span>
-                  <span className="block text-xs text-charcoal-500">Sign in with a link or password</span>
-                </span>
-              </button>
-
-              <div className="relative flex items-center py-1">
-                <div className="flex-1 border-t border-border" />
-                <span className="mx-3 shrink-0 text-xs text-charcoal-400">or</span>
-                <div className="flex-1 border-t border-border" />
-              </div>
-
-              <button
-                type="button"
                 onClick={googleLogin}
-                className="flex min-h-[48px] w-full items-center justify-center gap-3 rounded-xl border border-border bg-white px-4 text-sm font-medium text-charcoal-700 transition hover:border-maroon-300 hover:bg-ivory-50"
+                className="flex min-h-[52px] w-full items-center justify-center gap-3 rounded-xl bg-charcoal-900 px-4 text-sm font-semibold text-white transition hover:bg-charcoal-800 active:scale-[0.99] motion-reduce:active:scale-100"
               >
-                <GoogleIcon />
+                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white">
+                  <GoogleIcon />
+                </span>
                 Continue with Google
               </button>
+
+              <button
+                type="button"
+                onClick={() => go("mobile")}
+                className="flex min-h-[52px] w-full items-center justify-center gap-3 rounded-xl border border-border bg-white px-4 text-sm font-semibold text-charcoal-800 transition hover:border-maroon-300 hover:bg-ivory-50 active:scale-[0.99] motion-reduce:active:scale-100"
+              >
+                <Smartphone className="h-5 w-5 text-maroon-700" aria-hidden />
+                Continue with mobile
+              </button>
+
+              <p className="pt-1 text-center text-xs text-charcoal-500">
+                <button
+                  type="button"
+                  onClick={() => go("email")}
+                  className="font-semibold text-charcoal-600 underline-offset-2 hover:text-maroon-700 hover:underline"
+                >
+                  Use email instead
+                </button>
+              </p>
             </div>
           )}
 
