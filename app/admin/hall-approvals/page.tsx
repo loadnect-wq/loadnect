@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { requireRole } from "@/lib/auth";
+import Image from "next/image";
 import Link from "next/link";
 import { Building2, ClipboardCheck, ExternalLink, Sparkles } from "lucide-react";
 import { fetchAllHalls } from "@/lib/admin";
@@ -52,13 +53,40 @@ export default async function HallApprovalsPage() {
             <div className="space-y-3">
               {halls.map((h) => (
                 <div key={h.id} className="rounded-2xl bg-white shadow-card overflow-hidden">
-                  {/* Cover */}
-                  <div className="aspect-[3/1] w-full overflow-hidden bg-maroon-50">
+                  {/* Cover — the WHOLE photo, uncropped. See the note above:
+                      aspect-[3/1] against an unbounded content column upscaled
+                      the owner's portrait shots 3.11x at 2560 and showed 18.7%
+                      of them at every width, which is not enough to review a
+                      listing on. object-contain on a bounded box shows exactly
+                      what was submitted, at its real shape. */}
+                  <div className="relative mx-auto aspect-[3/2] w-full max-w-[560px] overflow-hidden bg-charcoal-100">
                     {h.cover_url ? (
-                      <img src={h.cover_url} alt="" className="h-full w-full object-cover" />
+                      <Image
+                        src={h.cover_url}
+                        alt=""
+                        fill
+                        /* contain never paints wider than the box, so the box
+                           width IS the requirement here — unlike object-cover,
+                           where a landscape photo in a squarish cell is
+                           height-bound and needs cellHeight x aspect. */
+                        /* 608px, not 640: the box is min(100vw - 32, 560), so
+                           it reaches its 560 cap at exactly 608. Declaring
+                           `100vw` up to 639 made a DPR-2 client in that window
+                           ask for 1240 and take the 1920 candidate for a 560px
+                           box. */
+                        sizes="(min-width: 608px) 560px, calc(100vw - 32px)"
+                        className="object-contain"
+                      />
                     ) : (
-                      <div className="flex h-full w-full items-center justify-center text-maroon-300">
-                        <Building2 className="h-10 w-10" />
+                      <div className="flex h-full w-full flex-col items-center justify-center gap-1.5 text-maroon-600">
+                        {/* maroon-600 on charcoal-100 is 6.59:1; the maroon-300
+                            this replaced was 2.35:1, under the 3:1 WCAG 1.4.11
+                            asks of a graphic that carries meaning. */}
+                        <Building2 className="h-10 w-10" aria-hidden />
+                        {/* The icon is an aria-hidden SVG, so without this a
+                            screen-reader admin cannot tell "no cover submitted"
+                            — a rejection-worthy fact — from "cover present". */}
+                        <span className="text-xs font-semibold">No cover photo submitted</span>
                       </div>
                     )}
                   </div>

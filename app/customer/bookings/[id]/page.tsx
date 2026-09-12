@@ -1,5 +1,6 @@
 import { formatBookingDates, todayInBusinessTz } from "@/lib/dates";
 import { notFound } from "next/navigation";
+import Image from "next/image";
 import Link from "next/link";
 import type { Metadata } from "next";
 import {
@@ -103,30 +104,76 @@ export default async function BookingDetailPage({ params }: Props) {
 
       <div className="px-4 py-4 sm:px-6 lg:px-8 space-y-4">
 
-        {/* ── Hall header ────────────────────────────────────────── */}
+        {/* ── Hall header ──────────────────────────────────────────
+            A SQUARE THUMBNAIL, not a full-width band. This was
+            `h-36 w-full object-cover`, which measured 343x144 on a phone but
+            864x144 from 1440 up — a 6:1 strip, because the height was pinned
+            while the width followed the layout. object-cover then showed 9.4%
+            of a portrait photo's height and 17% averaged over the nine real
+            photos on the platform: the worst crop in the product, on the screen
+            a customer lands on immediately after paying an advance. It was also
+            a raw <img> with no srcset, so the full Supabase original — up to
+            the 3060x4080, 1.1MB file — downloaded to fill a 144px strip.
+
+            A band cannot be rescued by picking a better ratio: with
+            object-cover, lifting a 9:16 photo above ~50% visible needs a box
+            aspect near 1.0, and an 864x864 hero on a confirmation screen is
+            absurd. A square thumbnail is orientation-agnostic (56% of a 9:16
+            and of a 16:9 alike, 85% averaged over the nine), matches the
+            pattern the bookings LIST uses one screen earlier, and lifts the
+            status and the money higher up the page. */}
         <div className="rounded-2xl bg-white shadow-card overflow-hidden">
-          {booking.hall_cover_url ? (
-            <img
-              src={booking.hall_cover_url}
-              alt={booking.hall_name}
-              className="h-36 w-full object-cover"
-            />
-          ) : (
-            <div className="h-36 w-full bg-maroon-100" />
-          )}
           <div className="p-4">
             <div className="flex items-start justify-between gap-3">
-              <div>
-                <h1 className="font-serif text-lg font-bold text-charcoal-900">
-                  {booking.hall_name}
-                </h1>
-                <p className="mt-0.5 flex items-center gap-1 text-sm text-charcoal-500">
-                  <MapPin className="h-3.5 w-3.5 shrink-0 text-maroon-500" />
-                  {booking.hall_city}{booking.hall_state ? `, ${booking.hall_state}` : ""}
-                </p>
-                {booking.hall_address && (
-                  <p className="mt-0.5 text-xs text-charcoal-400">{booking.hall_address}</p>
+              <div className="flex min-w-0 items-start gap-3">
+                {/* Rendered ONLY when there is a photo. An always-present
+                    coloured square would take 92px out of a 311px row at 375px
+                    and say nothing; without it the heading reclaims the width. */}
+                {booking.hall_cover_url && (
+                <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-xl bg-maroon-100 sm:h-28 sm:w-28">
+                    <Image
+                      src={booking.hall_cover_url}
+                      /* alt="" — DECORATIVE. The <h1> beside this is the venue's
+                         name; repeating it here makes a screen reader announce
+                         it twice in a row. Same choice the bookings list makes
+                         for the same thumbnail-beside-the-name pattern. */
+                      alt=""
+                      fill
+                      /* 224/160, NOT 112/80 — and the difference is visible. object-cover scales until both axes are covered:
+                         s = max(boxW/w, boxH/h). A SQUARE box is therefore
+                         HEIGHT-bound for any landscape photo, so what has to be
+                         sharp is not the box width but boxHeight x photoAspect
+                         — 112 x 16/9 = 199px for the sm+ thumbnail, and
+                         80 x 16/9 = 142px on mobile. Declaring the BOX WIDTH
+                         instead makes the browser fetch the 112-wide candidate,
+                         the optimizer returns 112x63 for a 16:9 cover, and cover
+                         then blows it up 1.78x — worse than the band this
+                         replaced. Declaring 224/160 picks the 256 candidate and
+                         the worst case becomes 0.78x, a downscale for all nine
+                         real photos at DPR 1, 2 and 3.
+
+                         No vw token anywhere in the value, also deliberately:
+                         Next's srcset generator only offers the small imageSizes
+                         candidates (32-384) when `sizes` has no vw unit. With
+                         one, the floor is 640 and this thumbnail would pull a
+                         640-wide file. */
+                      sizes="(min-width: 640px) 224px, 160px"
+                      className="object-cover"
+                    />
+                </div>
                 )}
+                <div className="min-w-0">
+                  <h1 className="font-serif text-lg font-bold text-charcoal-900">
+                    {booking.hall_name}
+                  </h1>
+                  <p className="mt-0.5 flex items-center gap-1 text-sm text-charcoal-500">
+                    <MapPin className="h-3.5 w-3.5 shrink-0 text-maroon-500" />
+                    {booking.hall_city}{booking.hall_state ? `, ${booking.hall_state}` : ""}
+                  </p>
+                  {booking.hall_address && (
+                    <p className="mt-0.5 text-xs text-charcoal-400">{booking.hall_address}</p>
+                  )}
+                </div>
               </div>
               <Badge variant={cfg.variant}>{cfg.label}</Badge>
             </div>
