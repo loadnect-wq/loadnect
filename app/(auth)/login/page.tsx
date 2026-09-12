@@ -73,6 +73,24 @@ const AUTH_ERROR_MESSAGES: Record<string, string> = {
 const OTP_LENGTH = 6;
 type Step = "choose" | "mobile" | "code" | "email";
 
+/**
+ * Is this address one Google already signs in?
+ *
+ * Every account on Hallnect today is @gmail.com, and for those people the email
+ * LINK is strictly the worse path: it needs an inbox round trip, it depends on
+ * an email transport this project does not have, and the Google button proves
+ * the same address instantly. Recognising them and saying so is better than
+ * sending them to a link that may never arrive.
+ *
+ * Consumer domains only. A Google Workspace address on a custom domain is
+ * indistinguishable from any other domain without a DNS lookup, and guessing
+ * wrong would push somebody at a button that cannot sign them in.
+ */
+function isGoogleAddress(email: string): boolean {
+  const domain = email.trim().toLowerCase().split("@")[1] ?? "";
+  return domain === "gmail.com" || domain === "googlemail.com";
+}
+
 /** "+91 98765 43210" from the ten digits, for the confirmation line. */
 function prettyPhone(ten: string): string {
   return ten.length === 10 ? `+91 ${ten.slice(0, 5)} ${ten.slice(5)}` : `+91 ${ten}`;
@@ -98,6 +116,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [linkSent, setLinkSent] = useState(false);
+  const [useGoogleInstead, setUseGoogleInstead] = useState(false);
 
   useEffect(() => {
     if (cooldown <= 0) return;
@@ -150,6 +169,14 @@ export default function LoginPage() {
       setError("Enter a valid email address.");
       return;
     }
+    // A Gmail address never needs the link. Handled before the network call so
+    // nobody waits on a request whose best outcome is still slower than the
+    // button one tap away.
+    if (isGoogleAddress(email)) {
+      setUseGoogleInstead(true);
+      return;
+    }
+
     startTransition(async () => {
       rememberAuthNext(nextPath);
       const { error: e } = await getSupabaseClient().auth.signInWithOtp({
@@ -355,7 +382,7 @@ export default function LoginPage() {
           {/* ── Email ─────────────────────────────────────────────────────── */}
           {step === "email" && (
             <div className="space-y-4">
-              <BackLink onClick={() => { setLinkSent(false); go("choose"); }} />
+              <BackLink onClick={() => { setLinkSent(false); setUseGoogleInstead(false); go("choose"); }} />
 
               {linkSent ? (
                 <div className="rounded-xl border border-green-200 bg-green-50 p-5 text-center">
@@ -379,10 +406,29 @@ export default function LoginPage() {
                         placeholder="you@example.com"
                         className="min-h-[48px] pl-9"
                         value={email}
-                        onChange={(e) => setEmail(e.target.value)}
+                        onChange={(e) => { setEmail(e.target.value); setUseGoogleInstead(false); }}
                       />
                     </div>
                   </div>
+
+                  {useGoogleInstead && (
+                    <div className="rounded-xl border border-gold-200 bg-gold-50 p-4 text-center">
+                      <p className="text-sm text-charcoal-800">
+                        That is a Google address. Signing in with Google is faster and
+                        needs no code.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={googleLogin}
+                        className="mt-3 flex min-h-[48px] w-full items-center justify-center gap-3 rounded-xl bg-charcoal-900 px-4 text-sm font-semibold text-white transition hover:bg-charcoal-800"
+                      >
+                        <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white">
+                          <GoogleIcon />
+                        </span>
+                        Continue with Google
+                      </button>
+                    </div>
+                  )}
 
                   {showPassword ? (
                     <form onSubmit={passwordLogin} className="space-y-3">
