@@ -231,12 +231,18 @@ export function HallDetailView({ hall, similar, isPreview, sidebarAd, advancePer
         </div>
       )}
 
-      {/* ── Hero image gallery ────────────────────────────────── */}
-      <div className="relative">
+      {/* ── Hero image gallery ──────────────────────────────────
+          lg:mx-auto lg:max-w-6xl lg:px-6 is a deliberate COPY of the content
+          container below, so the gallery's left edge is the main column's left
+          edge and its right edge is the booking card's right edge. Keeping the
+          two strings identical is the point; if one changes, change both. */}
+      <div className="relative lg:mx-auto lg:max-w-6xl lg:px-6">
         <ImageGallery images={hall.images} hallName={hall.name} hallCity={hall.city} hallId={hall.id} />
 
-        {/* Overlay action bar */}
-        <div className="absolute inset-x-0 top-0 flex items-center justify-between p-4">
+        {/* Overlay action bar. lg:px-10 = the wrapper's px-6 (24px) plus the
+            16px inset p-4 already gives, so the buttons stay 16px inside the
+            photo instead of hanging off its rounded corner. */}
+        <div className="absolute inset-x-0 top-0 flex items-center justify-between p-4 lg:px-10">
           <button
             type="button"
             onClick={() => router.back()}
