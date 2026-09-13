@@ -41,8 +41,18 @@ export async function fetchIndexableVenues(): Promise<SitemapVenue[]> {
       .limit(5000);
 
     if (error) {
+      // THROW, DO NOT RETURN []. The sitemap is the one document whose empty
+      // state is a positive claim: "these URLs no longer exist." Returning []
+      // here published that claim with an HTTP 200 every time a transient
+      // database error happened to land on a revalidation. app/sitemap.ts is
+      // ISR (revalidate 3600), so throwing makes Next keep serving the last
+      // good sitemap — stale by up to an hour, which costs nothing, instead of
+      // correct-looking and wrong.
+      //
+      // A genuinely empty catalogue is NOT this case: it returns ok with zero
+      // rows and the sitemap simply carries its static entries.
       console.error("[seo/sitemap] venue query failed:", error.message);
-      return [];
+      throw new Error(`[seo/sitemap] venue query failed: ${error.message}`);
     }
 
     return ((data ?? []) as { slug: string; city: string; updated_at: string | null; created_at: string }[])
@@ -53,7 +63,10 @@ export async function fetchIndexableVenues(): Promise<SitemapVenue[]> {
         updatedAt: h.updated_at ?? h.created_at,
       }));
   } catch (e) {
-    console.error("[seo/sitemap] failed:", e instanceof Error ? e.message : e);
-    return [];
+    // Rethrow rather than swallow, for the reason above. The log stays so the
+    // failure is visible in Vercel's function logs either way.
+    const reason = e instanceof Error ? e.message : String(e);
+    console.error("[seo/sitemap] failed:", reason);
+    throw e instanceof Error ? e : new Error(reason);
   }
 }

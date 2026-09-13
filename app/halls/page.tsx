@@ -41,23 +41,43 @@ type SearchParams = Promise<{
   available?: string;
 }>;
 
+/**
+ * The parameters that genuinely produce a different result set. `sort` is
+ * deliberately absent: re-ordering the same venues is the same collection, so
+ * /halls?sort=rating stays indexable and consolidates to /halls.
+ */
+const FILTER_KEYS = [
+  "city", "area", "capacity", "priceMin", "priceMax",
+  "q", "category", "amenity", "date", "available",
+] as const;
+
 export async function generateMetadata({
   searchParams,
 }: {
   searchParams: SearchParams;
 }): Promise<Metadata> {
   const sp = await searchParams;
-  const filtered = Object.entries(sp).some(
-    ([k, v]) => k !== "sort" && typeof v === "string" && v.trim() !== "",
-  );
+  // NAME THE FILTERS, do not enumerate whatever arrived. The old test treated
+  // every unknown parameter as a filter, so /halls?fbclid=… and /halls?utm_
+  // source=whatsapp — the exact URLs a shared link carries — went noindex and
+  // canonicalised away. A tracking parameter is not a filter; it is the same
+  // page with a label stuck on it.
+  const filtered = FILTER_KEYS.some((k) => {
+    const v = sp[k];
+    return typeof v === "string" && v.trim() !== "";
+  });
 
   // A filtered view is a slice of the same collection: keep it out of the
-  // index, keep the canonical pointed at /halls, keep following venue links.
+  // index and keep following venue links. It does NOT also get a canonical
+  // pointing at /halls — noindex plus a cross-canonical is a contradictory
+  // pair (one says "index that instead", the other "index nothing"), and the
+  // combination risks carrying the noindex over to /halls itself. noindex
+  // alone does the job; buildMetadata self-canonicalises to path otherwise.
   return buildMetadata({
     title: filtered ? "Wedding Hall Search Results" : "Browse Wedding Halls & Event Venues",
     description:
       "Browse every wedding hall, marriage hall and event venue listed on Hallnect. " +
-      "Filter by city, guest capacity, budget, date and amenities, then book your date online.",
+      "Filter by city, guest capacity, budget, date and amenities.",
     path: "/halls",
     indexable: !filtered,
   });
@@ -191,6 +211,7 @@ export default async function HallsPage({
                 advancePercent={advancePercent}
                 revealIndex={i}
                 revealNow={i < 3}
+                eager={i === 0}
               />
             ))}
           </div>

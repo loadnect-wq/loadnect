@@ -46,11 +46,29 @@ export function cityFromSlug(slug: string): string | null {
 }
 
 /**
- * Live approved-venue counts per city, straight from the database.
- * Uses the session client, so RLS applies: only publicly visible (approved)
- * halls are ever counted, which is precisely the indexability question.
+ * THREE STATES, NOT TWO. A failed query and a genuinely empty catalogue are
+ * different facts and this module must never conflate them.
+ *
+ * Returning [] for a failed read is the defect that made this refactor
+ * necessary: fetchCityInventoryBySlug turns an absent city into
+ * `{ venueCount: 0, indexable: false }`, so ONE swallowed database error was
+ * enough to re-render /wedding-halls/madurai — the only page on this site that
+ * targets "wedding halls in Madurai" — as noindex, and to empty the sitemap
+ * behind an HTTP 200. Both pages would have looked perfectly healthy.
+ *
+ * So the query reports failure, and each caller decides what to do with it:
+ *   - UI that can degrade (the homepage's city tiles) takes the lenient
+ *     wrapper and shows nothing.
+ *   - Anything that decides INDEXABILITY takes the strict one and throws.
+ *     Both the city page and the sitemap are ISR, so a throw during
+ *     revalidation makes Next keep serving the last good version — which is
+ *     exactly the behaviour we want from a transient database blip.
  */
-export async function fetchCityInventory(): Promise<CityInventory[]> {
+type InventoryResult =
+  | { ok: true; rows: CityInventory[] }
+  | { ok: false; reason: string };
+
+async function queryCityInventory(): Promise<InventoryResult> {
   try {
     // Cookie-free: reading cookies makes the route dynamic, and this page
     // has nothing per-visitor on it — counts approved halls per city.
@@ -64,7 +82,7 @@ export async function fetchCityInventory(): Promise<CityInventory[]> {
 
     if (error) {
       console.error("[seo/cities] inventory query failed:", error.message);
-      return [];
+      return { ok: false, reason: error.message };
     }
 
     const counts = new Map<string, number>();
@@ -78,7 +96,7 @@ export async function fetchCityInventory(): Promise<CityInventory[]> {
     // legitimately have zero and therefore stay out of the index).
     const names = new Set<string>([...counts.keys(), ...SERVICE_AREA_CITIES]);
 
-    return [...names]
+    const rows = [...names]
       .map((city) => {
         const venueCount = counts.get(city) ?? 0;
         return {
@@ -89,17 +107,47 @@ export async function fetchCityInventory(): Promise<CityInventory[]> {
         };
       })
       .sort((a, b) => b.venueCount - a.venueCount || a.city.localeCompare(b.city));
+
+    return { ok: true, rows };
   } catch (e) {
-    console.error("[seo/cities] inventory failed:", e instanceof Error ? e.message : e);
-    return [];
+    const reason = e instanceof Error ? e.message : String(e);
+    console.error("[seo/cities] inventory failed:", reason);
+    return { ok: false, reason };
   }
+}
+
+/**
+ * Lenient: [] on failure. ONLY for UI that can honestly render nothing — the
+ * homepage's city tiles disappear, which is a smaller lie than a 500. Never
+ * use this to decide whether a page is indexable.
+ */
+export async function fetchCityInventory(): Promise<CityInventory[]> {
+  const result = await queryCityInventory();
+  return result.ok ? result.rows : [];
+}
+
+/**
+ * Strict: throws on failure. For every caller whose answer changes what search
+ * engines are told. Both such callers are ISR, so the throw preserves the last
+ * good render instead of publishing a wrong one.
+ */
+export async function fetchCityInventoryStrict(): Promise<CityInventory[]> {
+  const result = await queryCityInventory();
+  if (!result.ok) {
+    throw new Error(
+      `[seo/cities] refusing to decide indexability from a failed read: ${result.reason}`,
+    );
+  }
+  return result.rows;
 }
 
 /** Inventory for one city, or null when the slug is not a service area. */
 export async function fetchCityInventoryBySlug(slug: string): Promise<CityInventory | null> {
   const city = cityFromSlug(slug);
   if (!city) return null;
-  const all = await fetchCityInventory();
+  // STRICT. This value becomes the page's `indexable` flag; a swallowed error
+  // here is how a live city page silently goes noindex.
+  const all = await fetchCityInventoryStrict();
   return (
     all.find((c) => c.slug === citySlug(city)) ?? {
       city,
@@ -112,5 +160,7 @@ export async function fetchCityInventoryBySlug(slug: string): Promise<CityInvent
 
 /** Only the cities that have earned indexing — the sitemap's source. */
 export async function fetchIndexableCities(): Promise<CityInventory[]> {
-  return (await fetchCityInventory()).filter((c) => c.indexable);
+  // STRICT: an empty sitemap served with a 200 tells Google these URLs are
+  // gone. Better to throw and let ISR keep serving the previous sitemap.
+  return (await fetchCityInventoryStrict()).filter((c) => c.indexable);
 }

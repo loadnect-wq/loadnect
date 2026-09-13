@@ -6,7 +6,7 @@ import { legalUpdatedLabel } from "@/lib/content";
 export const metadata: Metadata = buildMetadata({
   title: "Refund Policy",
   description:
-    "When a Hallnect booking advance is refundable, the cancellation refund schedule, and how the platform fee and its GST are treated on customer and venue cancellations.",
+    "When a Hallnect booking advance is refundable, the cancellation refund schedule, and how the platform fee and its GST are treated.",
   path: "/refund-policy",
 });
 

@@ -9,6 +9,7 @@ import { Toaster }    from "@/components/ui/toaster";
 import { APP_NAME, APP_DESCRIPTION } from "@/lib/constants";
 import { getAppUrl } from "@/lib/env";
 import { REVEAL_BOOT_SCRIPT } from "@/lib/motion";
+import { SITE_LANG } from "@/lib/seo/config";
 import { RevealObserver } from "@/components/motion/RevealObserver";
 
 const inter = Inter({
@@ -53,7 +54,9 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html
-      lang="en"
+      // en-IN, matching SITE_LOCALE/og:locale. Plain "en" contradicted the
+      // Indian-English locale every page declares, and left SITE_LANG unused.
+      lang={SITE_LANG}
       suppressHydrationWarning
       data-scroll-behavior="smooth"
       className={`${inter.variable} ${playfair.variable}`}

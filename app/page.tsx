@@ -51,19 +51,19 @@ const CITY_GRADIENT_FALLBACK = "linear-gradient(135deg,#6B1525 0%,#9B2038 100%)"
 
 const HOW_IT_WORKS = [
   { step: "01", title: "Discover", body: "Browse wedding halls across Tamil Nadu with photos, capacity, pricing and amenities, as listed by each venue." },
-  { step: "02", title: "Compare",  body: "Filter by city, capacity, budget, and amenities. Check availability instantly." },
-  { step: "03", title: "Book",     body: "Pay a small advance to secure your date. Settle the balance with the venue directly." },
+  { step: "02", title: "Compare",  body: "Filter by city, capacity, budget, and amenities. Venues that publish a calendar show their open dates." },
+  { step: "03", title: "Book or enquire", body: "Some venues take an online advance to hold your date. Others take a free enquiry and confirm the details with you directly." },
 ];
 
 const FAQ_ITEMS = [
   { q: "How do I book a venue?",
-    a: `Pick a hall, choose your date and slot, then pay the advance plus a ${platformFeeDisclosure()} through Cashfree. On a small booking the fee is capped at a quarter of the advance, so it can be less. A promotional code can waive it. The exact amount is shown before you pay, and your booking is confirmed once the venue owner accepts it.` },
+    a: `It depends on the venue, and each listing says which it is. Where a venue books online, you pick your date and slot and pay the advance plus a ${platformFeeDisclosure()} through Cashfree — capped at a quarter of the advance on a small booking, and waivable with a promotional code — and the booking is confirmed once the owner accepts it. Where a venue takes enquiries instead, you send a free enquiry, verify your mobile number, and the venue contacts you to agree the date and price directly.` },
   { q: "Is the advance payment refundable?",
     a: "It depends when you cancel: the full advance is refundable more than 30 days before the event, and partially up to 7 days before. The platform fee and its GST, where charged, are non-refundable on customer cancellations." },
   { q: "Can I see the venue before booking?",
-    a: "Yes. We strongly recommend visiting in person. Contact details for the venue owner are shared once a booking is confirmed." },
+    a: "Yes. We strongly recommend visiting in person. On an online booking the owner's contact details are shared once the booking is confirmed; on an enquiry the venue contacts you as soon as you verify your mobile number." },
   { q: "How much does Hallnect charge?",
-    a: `You pay the venue advance plus a ${platformFeeDisclosure()} at checkout, shown clearly before you pay. On a small booking the fee is capped at a quarter of the advance. A promotional code can reduce it to zero. There are no other charges from Hallnect.` },
+    a: `On an online booking you pay the venue advance plus a ${platformFeeDisclosure()} at checkout, shown clearly before you pay; on a small booking the fee is capped at a quarter of the advance, and a promotional code can reduce it to zero. On an enquiry you pay Hallnect nothing at all — the venue settles its commission with us. There are no other charges from Hallnect.` },
   { q: "I'm a venue owner — how do I list?",
     a: "Register as an owner, complete your business profile, and submit your venue for approval. Listings are reviewed within 48 hours." },
 ];
@@ -78,7 +78,10 @@ const FAQ_ITEMS = [
 // homepage snippet is the one line most people ever read about Hallnect, and it
 // was ending on a word we did not choose. Count before you lengthen it.
 export const metadata: Metadata = buildMetadata({
-  title: "Wedding Halls & Marriage Halls in Tamil Nadu",
+  // The brand is written in literally, NOT left to title.template: a layout's
+  // template does not apply to a page in its own segment, which is why this
+  // one page shipped brandless while all twelve others read "… | Hallnect".
+  title: "Wedding Halls & Marriage Halls in Tamil Nadu | Hallnect",
   description:
     "Find and book wedding halls, marriage halls and event venues across Tamil Nadu. " +
     "Compare owner-submitted photos, capacity and pricing, then reserve online.",
@@ -192,7 +195,7 @@ export default async function HomePage() {
         <AppHeader />
 
         <section className="container-app pt-3">
-          <div data-reveal="up" className="flex items-end justify-between gap-3">
+          <div data-hero style={heroDelay(0)} className="flex items-end justify-between gap-3">
             <div>
               <p className="text-xs font-semibold uppercase tracking-widest text-maroon-500">Welcome</p>
               {/* THE page H1. Google indexes mobile-first, so the keyword- and
@@ -216,7 +219,9 @@ export default async function HomePage() {
           <HomeLocation cities={citiesWithVenues} />
         </section>
 
-        <section data-reveal="up" style={revealDelay(2, 80)} className="container-app mt-4">
+        {/* Above the fold on every phone: a CSS keyframe, never a scroll
+            reveal. See the note on the title block above. */}
+        <section data-hero style={heroDelay(1)} className="container-app mt-4">
           <HomeSearchEntry />
         </section>
 
@@ -226,7 +231,7 @@ export default async function HomePage() {
 
         {/* Column count follows the number of tiles: a grid-cols-3 holding one
             or two tiles left a visible hole once the Premium action was gated. */}
-        <section data-reveal="scale" style={revealDelay(3, 80)} className="container-app mt-5">
+        <section data-hero style={heroDelay(2)} className="container-app mt-5">
           <div className={`grid gap-2 ${premiumCount > 0 ? "grid-cols-3" : "grid-cols-2"}`}>
             <QuickAction href="/halls" label="Browse" Icon={Search} />
             <QuickAction href="/halls?available=today" label="Free today" Icon={Zap} />

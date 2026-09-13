@@ -49,6 +49,16 @@ interface HallCardProps {
    * effect altogether. It no longer has to be.
    */
   revealNow?: boolean;
+  /**
+   * True for the first card in a grid — the LCP element on both listing pages.
+   *
+   * next/image lazy-loads by default, which for the largest above-the-fold
+   * image means the fetch does not start until layout has run. `loading="eager"`
+   * plus `fetchPriority="high"` is what Next's own docs recommend over a manual
+   * preload, and it is scoped to ONE card so nothing else competes for the
+   * early connection.
+   */
+  eager?: boolean;
 }
 
 // Deterministic gradient fallback when no cover image is available
@@ -58,7 +68,7 @@ function gradientForId(id: string): string {
   return CARD_GRADIENTS[Math.abs(hash) % CARD_GRADIENTS.length];
 }
 
-export function HallCard({ hall, advancePercent, revealIndex, revealNow }: HallCardProps) {
+export function HallCard({ hall, advancePercent, revealIndex, revealNow, eager }: HallCardProps) {
   // WRAP, DO NOT DECORATE. The entrance lives on this div and the hover lives
   // on the Link, so the two never share an element — the reveal's transition
   // cannot stretch the 300ms hover, and the keyframe's final `transform: none`
@@ -88,6 +98,10 @@ export function HallCard({ hall, advancePercent, revealIndex, revealNow }: HallC
             alt={`${hall.name}, a wedding hall in ${hall.city}`}
             fill
             sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+            // The LCP element on a listing page. Default lazy loading delays
+            // the fetch of the single largest above-the-fold image until after
+            // layout; these two attributes start it with the document.
+            {...(eager ? { loading: "eager" as const, fetchPriority: "high" as const } : {})}
             // Slower than the 300ms card lift on purpose: the photo settles
             // while the card snaps up, which is what separates a considered
             // hover from a twitch.

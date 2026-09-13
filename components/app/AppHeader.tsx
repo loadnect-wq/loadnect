@@ -51,7 +51,8 @@ export function AppHeader({
           ) : (
             <Link href="/" className="flex items-center gap-1.5" aria-label={`${APP_NAME} home`}>
               <span className="relative block h-7 w-7 shrink-0">
-                <Image src="/logo.png" alt="" fill sizes="28px" className="object-contain" priority />
+                {/* No `priority` — see the note in Navbar.tsx. */}
+                <Image src="/logo.png" alt="" fill sizes="28px" className="object-contain" />
               </span>
               <span className="font-serif text-base font-bold text-maroon-800">{APP_NAME}</span>
             </Link>

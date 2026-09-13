@@ -28,7 +28,7 @@ import { CONTACT } from "@/lib/constants";
 export const metadata: Metadata = buildMetadata({
   title: "Grievance Redressal",
   description:
-    "How to raise a complaint with Hallnect, who handles it, and how long we take. Grievance officer details published under the Consumer Protection (E-Commerce) Rules, 2020.",
+    "How to raise a complaint with Hallnect, who handles it, and how long we take. Grievance officer details published under the E-Commerce Rules, 2020.",
   path: "/grievance-redressal",
 });
 

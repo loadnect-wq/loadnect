@@ -69,11 +69,14 @@ function describeCity(
   const price = priceFrom ? ` from ₹${Math.round(priceFrom).toLocaleString("en-IN")} per day` : "";
   const noun = venueCount === 1 ? "venue" : "venues";
   return (
-    `Compare ${venueCount} owner-listed wedding ${noun} in ${city}${price} — real photos, ` +
-    `guest capacity and amenities. ` +
+    // Counted against the LONGEST live case, not the shortest: a one-venue city
+    // with a six-figure price renders the widest string, and that is the one
+    // that was hitting the 158-char clamp and ending on "the venue will…".
+    `Compare ${venueCount} wedding ${noun} in ${city}${price} — photos, ` +
+    `capacity and amenities. ` +
     (allLeadGeneration
       ? `Send an enquiry and the venue will confirm your date.`
-      : `Check live availability and book your date online with Hallnect.`)
+      : `Check availability and book your date online.`)
   );
 }
 
@@ -157,21 +160,39 @@ export default async function CityPage({ params }: Props) {
   const pricedFrom = halls.map((h) => h.price_per_day).filter(hasPrice);
   const priceFrom = pricedFrom.length ? Math.min(...pricedFrom) : null;
   const largest = halls.length ? Math.max(...halls.map((h) => h.capacity_max)) : null;
-  const description = describeCity(city, halls.length, priceFrom, allLead(halls));
+  // Hoisted: describeCity and the FAQ below must answer from the SAME fact.
+  // When every venue in this city is enquiry-only, three of the four answers
+  // change — see the comment on the FAQ array.
+  const everyVenueIsEnquiryOnly = allLead(halls);
+  const description = describeCity(city, halls.length, priceFrom, everyVenueIsEnquiryOnly);
 
   // FAQs answered from THIS city's real numbers, and rendered visibly below —
   // which is what makes the FAQPage markup legitimate.
+  //
+  // AND ANSWERED FROM ITS REAL BOOKING MODE. Two of these answers used to
+  // describe the direct-booking flow unconditionally: an availability calendar
+  // for "the next 30 days", and "Yes" to booking online with an advance through
+  // Cashfree. Every venue currently listed in Madurai is LEAD_GENERATION, which
+  // has no calendar and no checkout — so the only indexable city page on the
+  // site was telling searchers, and telling Google in FAQPage structured data,
+  // to expect a booking flow that does not exist for anything they can click.
+  // Structured data that contradicts the page is a manual-action risk; telling
+  // a couple they can pay a deposit online when they cannot is worse than that.
   const faqs = [
     {
       q: `How much does a wedding hall in ${city} cost?`,
       a: priceFrom
         ? `Wedding halls listed in ${city} on Hallnect start from ₹${Math.round(priceFrom).toLocaleString("en-IN")} per day. ` +
           `The exact price depends on the date, the slot you choose and the venue's own tariff, and is shown on each listing.`
-        : `Pricing varies by venue, date and slot. Each Hallnect listing shows the venue's day rate and the advance payable before you book.`,
+        : everyVenueIsEnquiryOnly
+          ? `Pricing varies by venue, date and slot, and these venues quote on request. Send a free enquiry and the venue replies with its rate for your date.`
+          : `Pricing varies by venue, date and slot. Each Hallnect listing shows the venue's day rate and the advance payable before you book.`,
     },
     {
       q: `How do I check whether a ${city} hall is free on my date?`,
-      a: `Open any venue and its availability calendar shows the next 30 days, marked by morning, evening and full-day slots. Availability is re-checked on the server when you book, so two people cannot hold the same date.`,
+      a: everyVenueIsEnquiryOnly
+        ? `Hallnect does not hold these venues' calendars. Send a free enquiry with your date and guest count, verify your mobile number, and the venue contacts you directly to confirm whether the date is open and on what terms.`
+        : `Open any venue and its availability calendar shows the next 30 days, marked by morning, evening and full-day slots. Availability is re-checked on the server when you book, so two people cannot hold the same date.`,
     },
     {
       q: `Can I book a wedding hall in ${city} online?`,
@@ -180,7 +201,9 @@ export default async function CityPage({ params }: Props) {
       // fetches it above — the hardcoded "25%" quoted a figure the customer
       // would not actually be asked for the moment an admin changed it, on the
       // one page Google shows for "book wedding hall in <city>".
-      a: `Yes. Choose your date and slot, then pay the ${advancePercent}% advance plus a ${platformFeeDisclosure()} through Cashfree — or ₹0 with a promotional code. On a small booking the fee is capped at a quarter of the advance. The booking is confirmed once the venue owner accepts it, and the balance is paid directly to the venue.`,
+      a: everyVenueIsEnquiryOnly
+        ? `Not yet for the venues currently listed in ${city} — these take enquiries rather than online payment. You send a free enquiry, verify your mobile number with a one-time password, and the venue contacts you to agree the date, the price and the advance directly. Hallnect never takes a payment from you for these venues.`
+        : `Yes. Choose your date and slot, then pay the ${advancePercent}% advance plus a ${platformFeeDisclosure()} through Cashfree — or ₹0 with a promotional code. On a small booking the fee is capped at a quarter of the advance. The booking is confirmed once the venue owner accepts it, and the balance is paid directly to the venue.`,
     },
     ...(largest
       ? [{
@@ -266,6 +289,7 @@ export default async function CityPage({ params }: Props) {
                   advancePercent={advancePercent}
                   revealIndex={i}
                   revealNow={i < 3}
+                  eager={i === 0}
                 />
               ))}
             </div>

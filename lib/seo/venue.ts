@@ -65,7 +65,31 @@ export function venueDescription(hall: HallDetail): string {
     );
   }
 
-  return clamp(bits.join(" "), 158);
+  // BUDGET, DO NOT CLAMP. The owner's description is appended whole and then
+  // cut to fit, which is how the only venue on the site shipped a snippet
+  // ending "…is a premium wedding and event venue located in…" — the sentence
+  // stops on a preposition, in the one line Google prints under the result.
+  //
+  // The facts sentence is never sacrificed: it is built from structured data
+  // and is the part that answers the searcher. Whatever room is left goes to
+  // whole sentences of the owner's prose, and a sentence that does not fit is
+  // dropped rather than halved. If none fits, the facts stand alone — a short
+  // true description beats a long truncated one.
+  const facts = bits[0];
+  const rest = bits.slice(1).join(" ");
+  if (!rest) return clamp(facts, 158);
+
+  const room = 158 - facts.length - 1; // -1 for the joining space
+  if (room < 40) return clamp(facts, 158);
+
+  let out = "";
+  for (const sentence of rest.match(/[^.!?]+[.!?]+(\s|$)/g) ?? [rest]) {
+    const candidate = (out + sentence).trimEnd();
+    if (candidate.length > room) break;
+    out = candidate + " ";
+  }
+  out = out.trim();
+  return out ? `${facts} ${out}` : facts;
 }
 
 /**

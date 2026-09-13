@@ -9,8 +9,7 @@ export const metadata: Metadata = buildMetadata({
   // enabled at the gateway, and a description is a promise Google will quote.
   description:
     "List your wedding hall or event venue on Hallnect for free. Reach couples across " +
-    "Tamil Nadu, approve every booking yourself, and keep 97.5% of the hall price — " +
-    "one commission, taken from the advance, with no bill and no monthly fee.",
+    "Tamil Nadu, approve every booking yourself, and pay one commission.",
   path: "/owner/register",
 });
 

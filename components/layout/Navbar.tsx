@@ -138,7 +138,10 @@ export function Navbar() {
           {/* Logo */}
           <Link href="/" className="group flex items-center gap-2.5" aria-label={`${APP_NAME} home`}>
             <span className="relative block h-9 w-9 shrink-0 transition-transform group-hover:scale-105 motion-reduce:transition-none motion-reduce:group-hover:scale-100">
-              <Image src="/logo.png" alt="" fill sizes="36px" className="object-contain" priority />
+              {/* No `priority`: a 36px mark cannot be an LCP candidate, and
+                  preloading it took the early image slot from the venue photo
+                  that is. */}
+              <Image src="/logo.png" alt="" fill sizes="36px" className="object-contain" />
             </span>
             <span className="font-serif text-xl font-bold tracking-tight text-maroon-800 transition-colors group-hover:text-maroon-600">
               {APP_NAME}
