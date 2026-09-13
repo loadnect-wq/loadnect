@@ -179,16 +179,18 @@ export default async function HallsPage({
         {halls.length > 0 ? (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {halls.map((hall, i) => (
-              /* revealIndex is withheld from the first three cards on purpose.
-                 The grid is 3-up at lg, so those are the row above the fold and
-                 contain the page's LCP candidate — an element at opacity 0 is
-                 excluded from LCP until it paints, which would hand Google a
-                 worse number for a scroll effect nobody sees. */
+              /* EVERY card animates, including the first row. `revealNow` puts
+                 the top three on the CSS-keyframe path instead of the scroll
+                 reveal: a keyframe finishes without JavaScript, so their paint
+                 is gated on the blocking head script rather than on hydration
+                 and the LCP cost is bounded to the stagger delay. That is what
+                 previously forced the first row to sit the effect out. */
               <HallCard
                 key={hall.id}
                 hall={hall}
                 advancePercent={advancePercent}
-                revealIndex={i >= 3 ? i - 3 : undefined}
+                revealIndex={i}
+                revealNow={i < 3}
               />
             ))}
           </div>

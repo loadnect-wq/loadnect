@@ -12,7 +12,7 @@ import { POPULAR_CITIES } from "@/lib/content";
 import { getAdvancePercent } from "@/lib/platform-settings";
 import { platformFeeDisclosure } from "@/lib/booking-payment";
 import { AdSlot } from "@/components/ads/AdSlot";
-import { revealDelay } from "@/lib/motion";
+import { heroDelay, revealDelay } from "@/lib/motion";
 import { HeroSearch } from "@/components/sections/HeroSearch";
 import { HallCard } from "@/app/halls/_components/HallCard";
 import { countActivePremiumHalls, fetchHalls, type HallListing } from "@/lib/halls";
@@ -192,7 +192,7 @@ export default async function HomePage() {
         <AppHeader />
 
         <section className="container-app pt-3">
-          <div className="flex items-end justify-between gap-3">
+          <div data-reveal="up" className="flex items-end justify-between gap-3">
             <div>
               <p className="text-xs font-semibold uppercase tracking-widest text-maroon-500">Welcome</p>
               {/* THE page H1. Google indexes mobile-first, so the keyword- and
@@ -205,20 +205,22 @@ export default async function HomePage() {
           </div>
           {/* Real service areas that actually have venues, and the picker now
               navigates. See app/_components/HomeLocation.tsx. */}
-          <HomeLocation cities={citiesWithVenues} />
+          <div data-reveal="up" style={revealDelay(1, 80)}>
+            <HomeLocation cities={citiesWithVenues} />
+          </div>
         </section>
 
-        <section className="container-app mt-4">
+        <section data-reveal="up" style={revealDelay(2, 80)} className="container-app mt-4">
           <HomeSearchEntry />
         </section>
 
-        <section className="container-app mt-4">
+        <section data-reveal="fade" className="container-app mt-4">
           <AdSlot placement="homepage_banner" limit={1} />
         </section>
 
         {/* Column count follows the number of tiles: a grid-cols-3 holding one
             or two tiles left a visible hole once the Premium action was gated. */}
-        <section className="container-app mt-5">
+        <section data-reveal="scale" style={revealDelay(3, 80)} className="container-app mt-5">
           <div className={`grid gap-2 ${premiumCount > 0 ? "grid-cols-3" : "grid-cols-2"}`}>
             <QuickAction href="/halls" label="Browse" Icon={Search} />
             <QuickAction href="/halls?available=today" label="Free today" Icon={Zap} />
@@ -240,9 +242,9 @@ export default async function HomePage() {
             linkHref="/halls"
           />
           {featured.length === 0 ? (
-            <div className="container-app"><EmptyVenues /></div>
+            <div data-reveal="up" style={revealDelay(1, 120)} className="container-app"><EmptyVenues /></div>
           ) : (
-            <div className="no-scrollbar overflow-x-auto">
+            <div data-reveal="up" style={revealDelay(1, 120)} className="no-scrollbar overflow-x-auto">
               <div className="flex w-max gap-3 px-4 pb-1 sm:px-6">
                 {featured.map((h) => (
                   <div key={h.id} className="w-64 shrink-0">
@@ -270,7 +272,8 @@ export default async function HomePage() {
         <section className="relative overflow-hidden bg-hero-gradient">
           <div
             aria-hidden
-            className="pointer-events-none absolute inset-0 opacity-[0.06]"
+            data-parallax="0.18"
+            className="pointer-events-none absolute -inset-y-32 inset-x-0 opacity-[0.06]"
             style={{
               backgroundImage:
                 "radial-gradient(circle at 20% 20%, white 1px, transparent 1px), radial-gradient(circle at 80% 60%, white 1px, transparent 1px)",
@@ -285,14 +288,22 @@ export default async function HomePage() {
                   sitemap lists one state's cities — so the badge claimed a
                   national footprint the same screen contradicts. Say what the
                   page can actually show. */}
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-gold-400/40 bg-white/5 px-3 py-1 text-[11px] font-semibold uppercase tracking-widest text-gold-300 backdrop-blur">
+              <span
+                data-hero
+                style={heroDelay(0)}
+                className="inline-flex items-center gap-1.5 rounded-full border border-gold-400/40 bg-white/5 px-3 py-1 text-[11px] font-semibold uppercase tracking-widest text-gold-300 backdrop-blur"
+              >
                 <Sparkles className="h-3 w-3" /> Wedding Venues across Tamil Nadu
               </span>
               {/* Visually the desktop hero headline, but NOT an <h1>: the
                   homepage already emits its H1 in the mobile tree above, and
                   two H1s in one document is what a crawler actually receives
                   (both trees ship in the same HTML). */}
-              <p className="mt-5 font-serif text-5xl font-bold leading-tight text-ivory-100 xl:text-6xl">
+              <p
+                data-hero
+                style={heroDelay(1)}
+                className="mt-5 font-serif text-5xl font-bold leading-tight text-ivory-100 xl:text-6xl"
+              >
                 Find the venue that makes your day{" "}
                 <span className="bg-gradient-to-r from-gold-300 to-gold-500 bg-clip-text text-transparent">
                   unforgettable
@@ -302,23 +313,29 @@ export default async function HomePage() {
                   "Owner-submitted listings" all along, and Terms section 5 says
                   we do not independently verify every listing detail. The hero
                   and the strip now agree. */}
-              <p className="mx-auto mt-5 max-w-xl text-base text-ivory-300/90">
+              <p
+                data-hero
+                style={heroDelay(2)}
+                className="mx-auto mt-5 max-w-xl text-base text-ivory-300/90"
+              >
                 Discover, compare, and book wedding halls across Tamil Nadu.
                 Owner-submitted listings, transparent pricing, and a clear answer from the venue.
               </p>
             </div>
 
             {/* Search */}
-            <div className="mt-10 flex justify-center">
+            <div data-hero style={heroDelay(3)} className="mt-10 flex justify-center">
               <HeroSearch />
             </div>
 
             {/* Trust strip — honest launch-stage messaging (no fabricated numbers) */}
             <div className="mt-10 grid grid-cols-2 gap-4 border-t border-white/10 pt-8 sm:grid-cols-4">
-              <TrustItem text="Launching in Tamil Nadu" />
-              <TrustItem text="Owner-submitted listings" />
-              <TrustItem text="Secure booking flow" />
-              <TrustItem text="Owner-approved venues" />
+              {/* heroIndex continues the sequence rather than restarting at 0,
+                  so the strip follows the search bar instead of racing it. */}
+              <TrustItem heroIndex={4} text="Launching in Tamil Nadu" />
+              <TrustItem heroIndex={5} text="Owner-submitted listings" />
+              <TrustItem heroIndex={6} text="Secure booking flow" />
+              <TrustItem heroIndex={7} text="Owner-approved venues" />
             </div>
           </div>
         </section>
@@ -330,9 +347,9 @@ export default async function HomePage() {
               <Link
                 key={c.key}
                 href={c.href}
-                data-reveal
-                style={revealDelay(i, 45)}
-                className="group flex flex-col items-center gap-2 rounded-2xl border border-border bg-white p-4 transition-all hover:-translate-y-0.5 hover:border-maroon-300 hover:shadow-card"
+                data-reveal="scale"
+                style={revealDelay(i, 60)}
+                className="group flex flex-col items-center gap-2 rounded-2xl border border-border bg-white p-4 transition-all hover:-translate-y-1 hover:border-maroon-300 hover:shadow-card-hover"
               >
                 <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-maroon-50 text-maroon-600 transition-colors group-hover:bg-maroon-100">
                   {CATEGORY_ICONS[c.icon]}
@@ -344,7 +361,7 @@ export default async function HomePage() {
         </section>
 
         {/* ── Sponsored banner ─────────────────────────────────── */}
-        <section className="container-page pb-4">
+        <section data-reveal="fade" className="container-page pb-4">
           <AdSlot placement="homepage_banner" limit={1} />
         </section>
 
@@ -395,8 +412,8 @@ export default async function HomePage() {
                 key={c.name}
                 href={`/wedding-halls/${c.slug}`}
                 data-reveal="scale"
-                className="group relative h-44 overflow-hidden rounded-2xl shadow-card transition-transform hover:-translate-y-1 hover:shadow-card-hover"
-                style={{ background: c.gradient, ...revealDelay(i) }}
+                className="group relative h-44 overflow-hidden rounded-2xl shadow-card transition-transform hover:-translate-y-1.5 hover:shadow-card-hover"
+                style={{ background: c.gradient, ...revealDelay(i, 70) }}
               >
                 <div className="absolute inset-0 bg-gradient-to-t from-black/55 via-black/20 to-transparent" />
                 <div className="absolute inset-x-4 bottom-4 text-white">
@@ -425,9 +442,9 @@ export default async function HomePage() {
               {HOW_IT_WORKS.map((s, i) => (
                 <div
                   key={s.step}
-                  data-reveal
-                  style={revealDelay(i, 90)}
-                  className="relative rounded-2xl border border-border bg-ivory-50 p-7 transition-shadow hover:shadow-card"
+                  data-reveal="up"
+                  style={revealDelay(i, 140)}
+                  className="relative rounded-2xl border border-border bg-ivory-50 p-7 transition-all hover:-translate-y-1 hover:shadow-card-hover"
                 >
                   <span className="absolute -top-4 left-7 rounded-full bg-maroon-gradient px-3 py-1 text-xs font-bold text-white shadow-maroon">
                     {s.step}
@@ -444,7 +461,7 @@ export default async function HomePage() {
         <section className="container-page py-16">
           <div className="overflow-hidden rounded-3xl bg-maroon-gradient shadow-elevated">
             <div className="grid grid-cols-5 items-center gap-8 p-10 xl:p-12">
-              <div className="col-span-3">
+              <div data-reveal="left" className="col-span-3">
                 <span className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-widest text-gold-300">
                   <Crown className="h-3 w-3" /> For Venue Owners
                 </span>
@@ -475,9 +492,9 @@ export default async function HomePage() {
                 </div>
               </div>
               <div className="col-span-2 space-y-3">
-                <OwnerPerk Icon={Shield} text="Verified payments via Cashfree" />
-                <OwnerPerk Icon={Star}   text="Premium placement at the top" />
-                <OwnerPerk Icon={CheckCircle2} text="Free to list — pay only on booking" />
+                <OwnerPerk revealIndex={1} Icon={Shield} text="Verified payments via Cashfree" />
+                <OwnerPerk revealIndex={2} Icon={Star}   text="Premium placement at the top" />
+                <OwnerPerk revealIndex={3} Icon={CheckCircle2} text="Free to list — pay only on booking" />
               </div>
             </div>
           </div>
@@ -511,10 +528,10 @@ export default async function HomePage() {
           booking/[id]/status (lg:max-w-xl) all override it the same way — every
           one of them WIDENS, since max-w-lg is 32rem and even xl is 36rem. */}
       <section className="container-app border-t border-border py-10 lg:max-w-3xl">
-        <h2 className="font-serif text-xl font-bold text-charcoal-900">
+        <h2 data-reveal="up" className="font-serif text-xl font-bold text-charcoal-900">
           Wedding halls and marriage halls across Tamil Nadu
         </h2>
-        <div className="mt-3 space-y-3 text-sm leading-relaxed text-charcoal-600">
+        <div data-reveal="up" style={revealDelay(1, 80)} className="mt-3 space-y-3 text-sm leading-relaxed text-charcoal-600">
           {/* "Every venue is reviewed by our team before it goes live" claimed
               more than Hallnect does. An admin does approve each listing before
               it publishes — that part is real — but Terms section 5 states we
@@ -538,7 +555,7 @@ export default async function HomePage() {
         </div>
 
         {citiesWithVenues.length > 0 && (
-          <div className="mt-6">
+          <div data-reveal="up" className="mt-6">
             <h3 className="text-sm font-semibold text-charcoal-900">Browse by city</h3>
             <ul className="mt-2 flex flex-wrap gap-2">
               {citiesWithVenues.map((c) => (
@@ -555,7 +572,7 @@ export default async function HomePage() {
           </div>
         )}
 
-        <div className="mt-6">
+        <div data-reveal="up" style={revealDelay(1, 80)} className="mt-6">
           <h3 className="text-sm font-semibold text-charcoal-900">Popular searches</h3>
           <ul className="mt-2 flex flex-wrap gap-2 text-xs">
             {popularSearches.map((c) => (
@@ -573,18 +590,18 @@ export default async function HomePage() {
             what makes the markup eligible — do not move it back inside either
             the mobile or the desktop tree, and do not add a second copy. */}
         <div className="mt-8">
-          <h3 className="font-serif text-lg font-bold text-charcoal-900">
+          <h3 data-reveal="up" className="font-serif text-lg font-bold text-charcoal-900">
             Frequently asked questions
           </h3>
           <dl className="mt-3 space-y-4">
-            {FAQ_ITEMS.map((f) => (
-              <div key={f.q}>
+            {FAQ_ITEMS.map((f, i) => (
+              <div key={f.q} data-reveal="up" style={revealDelay(i, 90)}>
                 <dt className="text-sm font-semibold text-charcoal-900">{f.q}</dt>
                 <dd className="mt-1 text-sm leading-relaxed text-charcoal-600">{f.a}</dd>
               </div>
             ))}
           </dl>
-          <p className="mt-4 text-sm text-charcoal-600">
+          <p data-reveal="fade" style={revealDelay(5, 90)} className="mt-4 text-sm text-charcoal-600">
             Still have questions?{" "}
             <Link href="/contact" className="text-maroon-600 underline underline-offset-2 hover:text-maroon-800">
               Contact our team
@@ -604,7 +621,9 @@ function MobileSectionTitle({ title, linkLabel, linkHref }: {
   linkHref?: string;
 }) {
   return (
-    <div className="container-app mb-3 flex items-center justify-between">
+    // Each mobile section heading leads its own row, so every section below the
+    // fold gets a two-beat entrance instead of one flat block move.
+    <div data-reveal="up" className="container-app mb-3 flex items-center justify-between">
       <h2 className="font-serif text-lg font-semibold text-charcoal-900">{title}</h2>
       {linkLabel && linkHref && (
         <Link href={linkHref} className="text-xs font-semibold text-maroon-600 hover:underline">
@@ -646,7 +665,13 @@ function DesktopSectionHeader({
   centered?: boolean;
 }) {
   return (
-    <div className={centered ? "text-center" : "flex items-end justify-between gap-6"}>
+    // Every desktop section opens with its eyebrow/title/blurb rising, which is
+    // what makes the page read as being presented section by section. Done
+    // inside the helper rather than at three call sites so it cannot drift.
+    <div
+      data-reveal="up"
+      className={centered ? "text-center" : "flex items-end justify-between gap-6"}
+    >
       <div className={centered ? "mx-auto max-w-2xl" : "max-w-2xl"}>
         <span className="text-xs font-semibold uppercase tracking-widest text-gold-600">{eyebrow}</span>
         <h2 className="mt-2 font-serif text-3xl font-bold text-charcoal-900">{title}</h2>
@@ -661,18 +686,32 @@ function DesktopSectionHeader({
   );
 }
 
-function TrustItem({ text }: { text: string }) {
+function TrustItem({ text, heroIndex }: { text: string; heroIndex?: number }) {
   return (
-    <div className="flex items-center justify-center gap-2 text-center text-sm font-medium text-ivory-200">
+    <div
+      {...(heroIndex === undefined ? {} : { "data-hero": "", style: heroDelay(heroIndex) })}
+      className="flex items-center justify-center gap-2 text-center text-sm font-medium text-ivory-200"
+    >
       <CheckCircle2 className="h-4 w-4 shrink-0 text-gold-300" aria-hidden />
       {text}
     </div>
   );
 }
 
-function OwnerPerk({ Icon, text }: { Icon: React.ComponentType<{ className?: string }>; text: string }) {
+function OwnerPerk({
+  Icon, text, revealIndex,
+}: {
+  Icon: React.ComponentType<{ className?: string }>;
+  text: string;
+  revealIndex?: number;
+}) {
   return (
-    <div className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/5 px-4 py-3 backdrop-blur">
+    <div
+      {...(revealIndex === undefined
+        ? {}
+        : { "data-reveal": "right", style: revealDelay(revealIndex, 110) })}
+      className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/5 px-4 py-3 backdrop-blur"
+    >
       <Icon className="h-5 w-5 text-gold-300" />
       <span className="text-sm font-medium text-ivory-100">{text}</span>
     </div>

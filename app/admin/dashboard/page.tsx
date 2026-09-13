@@ -8,6 +8,7 @@ import {
 import { fetchAdminStats, fetchAuditLog } from "@/lib/admin";
 import { formatPrice } from "@/lib/mock-data";
 import { AdminPageHeader } from "../_components/AdminPageHeader";
+import { CountUp } from "@/components/motion/CountUp";
 
 export const metadata: Metadata = { title: "Admin Dashboard" };
 
@@ -28,9 +29,11 @@ export default async function AdminDashboardPage() {
 
   // A figure whose source query did not run is not zero, it is unknown. Printing
   // "Rs 0" for it is the precise mistake this audit was chasing, so each money
-  // card asks whether its own source loaded and prints an em dash if it did not.
-  const money = (value: number, ...sources: string[]) =>
-    sources.some((src) => stats.failed.includes(src)) ? "—" : formatPrice(value);
+  // card asks whether its own source loaded and returns null if it did not —
+  // RevenueCard prints an em dash for null and never counts up to it. An
+  // animated zero would be the same lie told more confidently.
+  const money = (value: number, ...sources: string[]): number | null =>
+    sources.some((src) => stats.failed.includes(src)) ? null : value;
 
   const queue: { count: number; label: string; href: string; color: string }[] = [
     {
@@ -134,7 +137,9 @@ export default async function AdminDashboardPage() {
                 ].join(" ")}
               >
                 <div className="flex items-start justify-between">
-                  <p className="text-3xl font-bold leading-none">{q.count}</p>
+                  <p className="text-3xl font-bold leading-none">
+                    <CountUp value={q.count} />
+                  </p>
                   {q.count > 0 && <AlertCircle className="h-4 w-4 mt-0.5" />}
                 </div>
                 <p className="mt-2 text-xs font-medium">{q.label}</p>
@@ -333,7 +338,7 @@ function StatRow({
         "font-bold tabular-nums",
         highlight ? "text-amber-600" : "text-charcoal-900",
       ].join(" ")}>
-        {value}
+        {typeof value === "number" ? <CountUp value={value} /> : value}
       </span>
     </div>
   );
@@ -344,7 +349,8 @@ function RevenueCard({
 }: {
   icon:       React.ReactNode;
   label:      string;
-  value:      string;
+  /** null means the read that produced it failed. Renders an em dash. */
+  value:      number | null;
   highlight?: boolean;
 }) {
   return (
@@ -356,7 +362,9 @@ function RevenueCard({
         <span className="flex h-8 w-8 items-center justify-center rounded-full bg-ivory-200">{icon}</span>
       </div>
       <p className="text-[11px] font-semibold uppercase tracking-wide text-charcoal-500">{label}</p>
-      <p className="mt-0.5 text-xl font-bold text-charcoal-900">{value}</p>
+      <p className="mt-0.5 text-xl font-bold text-charcoal-900">
+        {value === null ? "—" : <CountUp value={value} prefix="₹" />}
+      </p>
     </div>
   );
 }

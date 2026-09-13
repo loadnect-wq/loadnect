@@ -83,10 +83,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           Skip to main content
         </a>
 
-        {/* Desktop navbar (hidden on mobile) */}
-        <div className="hidden lg:block">
-          <Navbar />
-        </div>
+        {/* Desktop navbar. NOT wrapped in a `hidden lg:block` div any more:
+            a position:sticky element can only travel within its containing
+            block, and that wrapper was exactly the header's own height, so the
+            navbar scrolled away instead of sticking (measured: top -1750px at
+            scrollY 1750). The breakpoint lives on the <header> itself now, so
+            its containing block is <body> and it can actually stick. */}
+        <Navbar />
 
         {/* tabIndex={-1} is what makes the skip link actually land: following a
             fragment link does not move focus to a non-focusable element in

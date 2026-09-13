@@ -3,7 +3,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { useEffect, useState, useSyncExternalStore } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { Menu, X, LogOut, LayoutDashboard } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { buttonVariants } from "@/components/ui/Button";
@@ -38,8 +38,8 @@ function hasSessionCookie(): boolean {
 
 export function Navbar() {
   const router = useRouter();
+  const pathname = usePathname() ?? "/";
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [scrolled, setScrolled] = useState(false);
   // undefined = NOT YET KNOWN, and that is the whole fix. This used to start at
   // null, i.e. "signed out" — an assertion, made before anything had been
   // checked. Every page then painted "Sign In / Get Started" to a signed-in
@@ -65,12 +65,6 @@ export function Navbar() {
   const authView: NavUser | undefined =
     user !== undefined ? user : cookieHint === "signed-out" ? null : undefined;
   const [signingOut, setSigningOut] = useState(false);
-
-  useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 12);
-    window.addEventListener("scroll", onScroll, { passive: true });
-    return () => window.removeEventListener("scroll", onScroll);
-  }, []);
 
   useEffect(() => {
     const onResize = () => {
@@ -134,14 +128,11 @@ export function Navbar() {
   const dashboardPath = authView ? getDashboardPath(authView.role) : "/";
 
   return (
-    <header
-      className={cn(
-        "sticky top-0 z-50 w-full transition-all duration-300",
-        scrolled
-          ? "border-b border-border bg-white/95 shadow-sm backdrop-blur-md"
-          : "border-b border-transparent bg-ivory-100/80 backdrop-blur-sm",
-      )}
-    >
+    // `hallnect-header` is styled in app/globals.css against `html.is-scrolled`,
+    // which the one shared scroll listener in RevealObserver already maintains.
+    // Pure CSS, so crossing the threshold no longer re-renders this component —
+    // and `hidden lg:block` moved here off the deleted wrapper (see layout.tsx).
+    <header className="hallnect-header hidden lg:block sticky top-0 z-50 w-full border-b">
       <div className="container-page">
         <nav className="flex h-16 items-center justify-between" aria-label="Main navigation">
           {/* Logo */}
@@ -156,22 +147,38 @@ export function Navbar() {
 
           {/* Desktop nav links */}
           <ul className="hidden items-center gap-7 lg:flex" role="list">
-            {NAV_LINKS.map((link) => (
-              <li key={link.href}>
-                <Link
-                  href={link.href}
-                  className={cn(
-                    "relative text-sm font-medium text-charcoal-600",
-                    "transition-colors duration-150 hover:text-maroon-700",
-                    "after:absolute after:-bottom-0.5 after:left-0 after:h-px after:w-0",
-                    "after:bg-maroon-500 after:transition-[width] after:duration-200",
-                    "hover:after:w-full",
-                  )}
-                >
-                  {link.label}
-                </Link>
-              </li>
-            ))}
+            {NAV_LINKS.map((link) => {
+              // A prefix match so /halls/ns-khalyaana-mahal still marks
+              // "Browse Halls", and an exact match for "/" so the home link
+              // would not light up on every page. aria-current carries the
+              // same fact to a screen reader, which the underline alone did
+              // not — the nav gave no indication of where you were at all.
+              // Widened off the `as const` tuple on purpose: no nav link is "/"
+              // today, and narrowing would make the home case a type error
+              // rather than dead-but-correct code if one is ever added.
+              const href: string = link.href;
+              const active = href === "/" ? pathname === "/" : pathname.startsWith(href);
+              return (
+                <li key={link.href}>
+                  <Link
+                    href={link.href}
+                    aria-current={active ? "page" : undefined}
+                    className={cn(
+                      "relative text-sm font-medium",
+                      "transition-colors duration-150 hover:text-maroon-700",
+                      "after:absolute after:-bottom-0.5 after:left-0 after:h-px",
+                      "after:bg-maroon-500 after:transition-[width] after:duration-200",
+                      "hover:after:w-full",
+                      active
+                        ? "text-maroon-700 after:w-full"
+                        : "text-charcoal-600 after:w-0",
+                    )}
+                  >
+                    {link.label}
+                  </Link>
+                </li>
+              );
+            })}
           </ul>
 
           {/* Desktop CTAs */}

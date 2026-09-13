@@ -9,7 +9,7 @@ interface Category {
 
 export function CategoryRow({ categories }: { categories: Category[] }) {
   return (
-    <div className="no-scrollbar overflow-x-auto">
+    <div data-reveal="up" className="no-scrollbar overflow-x-auto">
       <ul className="flex w-max gap-3 px-4 sm:px-6">
         {categories.map((c) => (
           <li key={c.key}>

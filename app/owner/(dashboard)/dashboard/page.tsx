@@ -14,6 +14,8 @@ import { SETTLED_COMMISSION_STATUSES } from "@/lib/commission-payments";
 import { Badge } from "@/components/ui/Badge";
 import { buttonVariants } from "@/components/ui/Button";
 import { AppHeader } from "@/components/app/AppHeader";
+import { CountUp } from "@/components/motion/CountUp";
+import { revealDelay } from "@/lib/motion";
 
 export const metadata: Metadata = { title: "Owner Dashboard" };
 
@@ -172,25 +174,31 @@ export default async function OwnerDashboardPage() {
           </Link>
         )}
 
-        {/* Stats grid */}
-        <div data-reveal className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+        {/* Stats grid. The tiles carry the entrance individually rather than
+            the grid carrying one for all six, which is the difference between
+            a block appearing and a row dealing itself out. */}
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
           <StatCard
+            revealIndex={0}
             icon={<Building2 className="h-5 w-5 text-maroon-600" />}
             label="Total Halls"
             value={stats.totalHalls}
           />
           <StatCard
+            revealIndex={1}
             icon={<CheckCircle2 className="h-5 w-5 text-green-600" />}
             label="Live Halls"
             value={stats.approvedHalls}
           />
           <StatCard
+            revealIndex={2}
             icon={<CalendarDays className="h-5 w-5 text-amber-600" />}
             label="Pending Requests"
             value={stats.pendingBookings}
             highlight={stats.pendingBookings > 0}
           />
           <StatCard
+            revealIndex={3}
             icon={<Inbox className="h-5 w-5 text-maroon-600" />}
             label="Open Enquiries"
             value={pendingLeads}
@@ -225,7 +233,7 @@ export default async function OwnerDashboardPage() {
 
         {/* ── Settlement & commission snapshot ──────────────────────────────
             Mobile-first: single column, stacks cleanly; side-by-side from sm.  */}
-        <section data-reveal className="rounded-2xl border border-border bg-white p-4 shadow-card">
+        <section data-reveal="up" className="rounded-2xl border border-border bg-white p-4 shadow-card">
           <div className="flex items-center justify-between gap-3">
             <h2 className="font-serif text-base font-semibold text-charcoal-900">
               Settlement &amp; commission
@@ -291,7 +299,7 @@ export default async function OwnerDashboardPage() {
         </section>
 
         {/* ── Subscription upgrade ──────────────────────────────────────── */}
-        <section data-reveal className="overflow-hidden rounded-2xl bg-gradient-to-br from-maroon-900 to-maroon-950 p-4 text-ivory-100 shadow-elevated">
+        <section data-reveal="scale" className="overflow-hidden rounded-2xl bg-gradient-to-br from-maroon-900 to-maroon-950 p-4 text-ivory-100 shadow-elevated">
           <p className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-gold-300">
             <Sparkles className="h-3.5 w-3.5" /> Grow your bookings
           </p>
@@ -320,7 +328,7 @@ export default async function OwnerDashboardPage() {
         </section>
 
         {/* Halls summary */}
-        <section data-reveal>
+        <section data-reveal="up">
           <div className="flex items-center justify-between mb-3">
             <h2 className="font-serif text-base font-semibold text-charcoal-900">My Halls</h2>
             <Link href="/owner/halls" className="text-xs font-semibold text-maroon-600 hover:underline">
@@ -417,16 +425,30 @@ function PlanTile({ name, price, perks }: { name: string; price: string; perks: 
 }
 
 function StatCard({
-  icon, label, value, highlight = false, wide = false,
+  icon, label, value, highlight = false, wide = false, revealIndex,
 }: {
-  icon:       React.ReactNode;
-  label:      string;
-  value:      string | number;
-  highlight?: boolean;
-  wide?:      boolean;
+  icon:        React.ReactNode;
+  label:       string;
+  value:       string | number;
+  highlight?:  boolean;
+  wide?:       boolean;
+  /**
+   * Position in the grid, which staggers this tile's entrance.
+   *
+   * `data-reveal-now` and not `data-reveal`: this grid is the first thing on
+   * the page, so it animates from a CSS keyframe that finishes on its own
+   * rather than waiting for the scroll observer to hydrate. Above the fold,
+   * the two look identical when the bundle is warm and very different when it
+   * is not.
+   */
+  revealIndex?: number;
 }) {
   return (
-    <div className={[
+    <div
+      {...(revealIndex === undefined
+        ? {}
+        : { "data-reveal-now": "", style: revealDelay(revealIndex, 70) })}
+      className={[
       "rounded-2xl bg-white p-4 shadow-card",
       highlight ? "ring-2 ring-amber-300" : "",
       wide ? "col-span-2 sm:col-span-1" : "",
@@ -437,7 +459,9 @@ function StatCard({
         </span>
       </div>
       <p className="text-[11px] font-semibold uppercase tracking-wide text-charcoal-500">{label}</p>
-      <p className="mt-0.5 text-xl font-bold text-charcoal-900">{value}</p>
+      <p className="mt-0.5 text-xl font-bold text-charcoal-900">
+        {typeof value === "number" ? <CountUp value={value} /> : value}
+      </p>
     </div>
   );
 }

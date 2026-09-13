@@ -8,7 +8,7 @@ interface City {
 
 export function CitiesRow({ cities }: { cities: readonly City[] }) {
   return (
-    <div className="no-scrollbar overflow-x-auto">
+    <div data-reveal="scale" className="no-scrollbar overflow-x-auto">
       <ul className="flex w-max gap-3 px-4 sm:px-6">
         {cities.map((c) => (
           <li key={c.name}>

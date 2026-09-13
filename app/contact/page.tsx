@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "@/hooks/use-toast";
 import { APP_NAME, CONTACT, SUPPORT_HOURS } from "@/lib/constants";
+import { heroDelay, revealDelay } from "@/lib/motion";
 import { submitContactMessage } from "./actions";
 
 const CONTACT_ITEMS = [
@@ -51,11 +52,15 @@ export default function ContactPage() {
       {/* ── Hero ─────────────────────────────────────────────── */}
       <section className="bg-maroon-950 py-16 text-center">
         <div className="container-page">
-          <p className="ornament-row mb-4 text-sm text-gold-400">✦</p>
-          <h1 className="font-serif text-4xl font-bold text-ivory-100 sm:text-5xl">
+          <p data-hero="" style={heroDelay(0)} className="ornament-row mb-4 text-sm text-gold-400">✦</p>
+          <h1
+            data-hero=""
+            style={heroDelay(1)}
+            className="font-serif text-4xl font-bold text-ivory-100 sm:text-5xl"
+          >
             Get in Touch
           </h1>
-          <p className="mx-auto mt-4 max-w-md text-base text-ivory-400">
+          <p data-hero="" style={heroDelay(2)} className="mx-auto mt-4 max-w-md text-base text-ivory-400">
             Whether you&apos;re a couple planning a wedding or an owner with a question — we&apos;re here to help.
           </p>
         </div>
@@ -63,10 +68,13 @@ export default function ContactPage() {
 
       {/* ── Contact grid ─────────────────────────────────────── */}
       <section className="container-page py-16">
-        <div className="grid gap-10 lg:grid-cols-3">
+        {/* data-reveal-clip: the form column below travels in from +80px, and
+            its right edge IS the container's right edge — without a clip that is
+            80px of horizontal scrollbar. See app/globals.css. */}
+        <div data-reveal-clip="" className="grid gap-10 lg:grid-cols-3">
 
           {/* Info */}
-          <div className="space-y-8">
+          <div data-reveal="left" className="space-y-8">
             <div>
               <h2 className="font-serif text-2xl font-semibold text-charcoal-900">Contact Info</h2>
               <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
@@ -74,8 +82,8 @@ export default function ContactPage() {
               </p>
             </div>
             <ul className="space-y-5">
-              {CONTACT_ITEMS.map(({ Icon, label, value, href }) => (
-                <li key={label} className="flex items-start gap-4">
+              {CONTACT_ITEMS.map(({ Icon, label, value, href }, i) => (
+                <li key={label} data-reveal="up" style={revealDelay(i, 90)} className="flex items-start gap-4">
                   <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-maroon-50 text-maroon-600">
                     <Icon className="h-5 w-5" aria-hidden />
                   </div>
@@ -99,7 +107,7 @@ export default function ContactPage() {
           </div>
 
           {/* Form */}
-          <div className="lg:col-span-2">
+          <div data-reveal="right" style={revealDelay(1, 120)} className="lg:col-span-2">
             <div className="rounded-2xl bg-white p-8 shadow-card">
               <h2 className="font-serif text-2xl font-semibold text-charcoal-900">Send a Message</h2>
               <form onSubmit={handleSubmit} className="mt-6 space-y-5">

@@ -28,9 +28,13 @@ export function AppHeader({
 
   return (
     <header
+      // `hallnect-appbar` is styled in app/globals.css against
+      // `html.is-scrolled`, the class the one shared scroll listener in
+      // RevealObserver already maintains. Pure CSS, so the bar elevating on
+      // scroll costs neither a listener nor a re-render on any mobile page.
       className={cn(
-        "sticky top-0 z-30 w-full lg:hidden",
-        transparent ? "bg-transparent" : "border-b border-border bg-white/95 backdrop-blur-md",
+        "hallnect-appbar sticky top-0 z-30 w-full border-b border-border lg:hidden",
+        transparent && "hallnect-appbar-float",
       )}
     >
       <div className="flex h-14 items-center justify-between px-4">
