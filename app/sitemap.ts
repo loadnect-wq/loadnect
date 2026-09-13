@@ -43,6 +43,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     // page Google was not told about. High priority: with no venues there is no
     // marketplace.
     { url: absoluteUrl("/owner/register"), lastModified: now, changeFrequency: "monthly", priority: 0.8 },
+    { url: absoluteUrl("/about"), lastModified: now, changeFrequency: "monthly", priority: 0.4 },
     { url: absoluteUrl("/contact"), lastModified: now, changeFrequency: "yearly", priority: 0.3 },
     // Legal pages: low priority, but genuine, unique, indexable content that
     // Google likes to see on a marketplace handling payments.

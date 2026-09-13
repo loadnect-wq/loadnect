@@ -4,6 +4,8 @@ interface City {
   name: string;
   state: string;
   gradient: string;
+  /** Canonical city slug — the link target must be the indexable landing page. */
+  slug: string;
 }
 
 export function CitiesRow({ cities }: { cities: readonly City[] }) {
@@ -13,7 +15,11 @@ export function CitiesRow({ cities }: { cities: readonly City[] }) {
         {cities.map((c) => (
           <li key={c.name}>
             <Link
-              href={`/halls?city=${encodeURIComponent(c.name)}`}
+              // /wedding-halls/<slug>, NOT /halls?city=… — the filtered
+              // listing is deliberately noindex, so linking to it here spent
+              // the mobile homepage's internal links on a page that cannot
+              // rank while the city landing page received none.
+              href={`/wedding-halls/${c.slug}`}
               className="relative block h-32 w-40 overflow-hidden rounded-2xl shadow-card transition-transform active:scale-95"
             >
               <div className="absolute inset-0" style={{ background: c.gradient }} aria-hidden />

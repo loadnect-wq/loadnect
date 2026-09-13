@@ -4,7 +4,9 @@ import { buildMetadata } from "@/lib/seo/metadata";
 // Client Component page — metadata must live on a server layout.
 // This one IS indexable: venue owners search for how to list a hall.
 export const metadata: Metadata = buildMetadata({
-  title: "List Your Wedding Hall on Hallnect",
+  // No brand in the page-owned half: the root layout's title.template appends
+  // " | Hallnect" and this read "List Your Wedding Hall on Hallnect | Hallnect".
+  title: "List Your Wedding Hall or Event Venue",
   // NB: no payout-timing claim. The automatic split is built but not yet
   // enabled at the gateway, and a description is a promise Google will quote.
   description:

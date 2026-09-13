@@ -29,6 +29,14 @@ const nextConfig: NextConfig = {
   poweredByHeader: false,
 
   images: {
+    // AVIF first, WebP as the fallback. The LCP element on /, /halls and every
+    // venue page is a photograph, which is the case AVIF compresses best —
+    // typically 20-30% under WebP at the same quality. Anything that does not
+    // send `Accept: image/avif` still gets WebP, so nothing regresses; the cost
+    // is one extra transformation per (image, width) on a cache miss, and the
+    // whole catalogue is nine photos.
+    formats: ["image/avif", "image/webp"],
+
     // SECURITY: this was hostname "**", which matches EVERY host. Next's image
     // optimizer will fetch and re-serve any URL it is given, so a wildcard
     // turns /_next/image into an open proxy on our own domain: an attacker
@@ -46,6 +54,21 @@ const nextConfig: NextConfig = {
         pathname: "/storage/v1/object/public/**",
       },
     ],
+  },
+
+  /**
+   * /pricing is an alias for /premium, and it is the only route on the site
+   * that was in neither the sitemap, the disallow list nor a noindex — an
+   * orphan that redirected with a 307 TEMPORARY, which tells Google to keep
+   * the old URL and re-check it forever. 308 says the move is permanent and
+   * passes the signal on to /premium.
+   *
+   * Declared here rather than as a page that calls redirect(): this way the
+   * alias never invokes a function, and the route stops existing as far as the
+   * App Router is concerned.
+   */
+  async redirects() {
+    return [{ source: "/pricing", destination: "/premium", permanent: true }];
   },
 
   /**

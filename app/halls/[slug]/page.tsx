@@ -110,6 +110,7 @@ export default async function HallDetailPage({ params }: Props) {
       )}
       <HallDetailView
       hall={hall}
+      citySlug={citySlug(hall.city)}
       advancePercent={advancePercent}
       similar={similar}
       isPreview={isPreview}

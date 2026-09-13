@@ -141,11 +141,21 @@ interface Props {
   similar:     HallListing[];
   isPreview:   boolean;
   sidebarAd?:  React.ReactNode;
+  /**
+   * Slug of this venue's city landing page.
+   *
+   * Passed in rather than derived here: citySlug lives in lib/seo/cities.ts,
+   * which is "server-only", and this is a Client Component. The page already
+   * computes the same value for the BreadcrumbList, so passing it guarantees
+   * the visible breadcrumb and the structured data name the same URL — which
+   * is the whole point of rendering one.
+   */
+  citySlug:    string;
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export function HallDetailView({ hall, similar, isPreview, sidebarAd, advancePercent }: Props) {
+export function HallDetailView({ hall, similar, isPreview, sidebarAd, advancePercent, citySlug }: Props) {
   const router = useRouter();
 
   useEffect(() => { recordRecentlyViewed(hall.id); }, [hall.id]);
@@ -307,6 +317,34 @@ export function HallDetailView({ hall, similar, isPreview, sidebarAd, advancePer
               This was the file's only animation-library usage, so the import
               goes with it. */}
           <div className="relative -mt-4 rounded-t-3xl bg-ivory-100 px-4 pb-36 pt-5 lg:mt-6 lg:rounded-none lg:bg-transparent lg:px-0 lg:pb-16">
+            {/* Visible breadcrumb — mirrors the BreadcrumbList in
+                app/halls/[slug]/page.tsx exactly, rung for rung.
+
+                The markup already claimed this trail in structured data while
+                the page rendered none of it, and the "Tamil Nadu / {city}"
+                rungs were the ONLY route by which a reader or a crawler could
+                get from a venue to its city landing page — there was no link
+                to it anywhere on this page. Structured data that describes
+                navigation the page does not offer is both a ranking risk and,
+                more simply, a promise to the reader that was not kept. */}
+            <nav aria-label="Breadcrumb" className="mb-2">
+              <ol className="flex flex-wrap items-center gap-1 text-[11px] text-charcoal-500">
+                <li><Link href="/" className="hover:text-maroon-700">Home</Link></li>
+                <li aria-hidden="true">/</li>
+                <li><Link href="/halls" className="hover:text-maroon-700">Tamil Nadu</Link></li>
+                <li aria-hidden="true">/</li>
+                <li>
+                  <Link href={`/wedding-halls/${citySlug}`} className="hover:text-maroon-700">
+                    {hall.city}
+                  </Link>
+                </li>
+                <li aria-hidden="true">/</li>
+                <li className="min-w-0 truncate font-medium text-charcoal-700" aria-current="page">
+                  {hall.name}
+                </li>
+              </ol>
+            </nav>
+
             {/* Title block */}
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">

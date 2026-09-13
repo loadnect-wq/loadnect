@@ -26,6 +26,34 @@ function compact<T extends Record<string, unknown>>(obj: T): Record<string, unkn
   return out;
 }
 
+/**
+ * The state name as an entity, not as the owner typed it.
+ *
+ * `halls.state` is free text on the owner's form, so it arrives as "Tamilnadu",
+ * "TAMIL NADU", "tamil  nadu". Whatever they typed was written straight into
+ * addressRegion, where it disagreed with the "Tamil Nadu" every other node on
+ * the site publishes — and two spellings of one region is exactly the kind of
+ * inconsistency that stops a knowledge graph merging two references into one
+ * place. Unrecognised values pass through untouched: normalising is for
+ * spellings we know, not for guessing at ones we do not.
+ */
+export function canonicalState(state: string | null | undefined): string {
+  const raw = (state ?? "").replace(/\s+/g, " ").trim();
+  if (!raw) return "Tamil Nadu";
+  const key = raw.toLowerCase().replace(/[^a-z]/g, "");
+  const KNOWN: Record<string, string> = {
+    tamilnadu: "Tamil Nadu",
+    tn: "Tamil Nadu",
+    tamilnad: "Tamil Nadu",
+    puducherry: "Puducherry",
+    pondicherry: "Puducherry",
+    kerala: "Kerala",
+    karnataka: "Karnataka",
+    andhrapradesh: "Andhra Pradesh",
+  };
+  return KNOWN[key] ?? raw;
+}
+
 export const ORGANIZATION_ID = `${SITE_URL}/#organization`;
 export const WEBSITE_ID = `${SITE_URL}/#website`;
 
@@ -158,6 +186,10 @@ export function venueJsonLd(v: VenueJsonLdInput) {
   return compact({
     "@type": "EventVenue",
     "@id": `${absoluteUrl(`/halls/${v.slug}`)}#venue`,
+    // Ties the venue to the site entity. Without it this node floated free of
+    // the graph, so nothing connected the venue to the publisher that vouches
+    // for it.
+    isPartOf: { "@id": WEBSITE_ID },
     name: v.name,
     description: v.description,
     url: absoluteUrl(`/halls/${v.slug}`),
@@ -166,7 +198,12 @@ export function venueJsonLd(v: VenueJsonLdInput) {
       "@type": "PostalAddress",
       streetAddress: v.address,
       addressLocality: v.city,
-      addressRegion: v.state ?? "Tamil Nadu",
+      // NORMALISED. This is a free-text column an owner fills in, so it
+      // arrives as "Tamilnadu", "TAMIL NADU", "tamil nadu" — and whatever they
+      // typed was published straight into structured data, disagreeing with
+      // every other node on the site, which says "Tamil Nadu". An unrecognised
+      // value is passed through untouched rather than forced.
+      addressRegion: canonicalState(v.state),
       postalCode: v.pincode,
       addressCountry: "IN",
     }),
@@ -180,16 +217,14 @@ export function venueJsonLd(v: VenueJsonLdInput) {
       name: a,
       value: true,
     })),
-    // priceRange is a plain string in Schema.org; this is the real day rate.
-    // OMITTED, not zeroed, for a venue that publishes no price: Math.round(null)
-    // is 0, and "INR 0 per day" is a structured-data claim that this wedding
-    // hall is free — published to Google, in a field it may show in a rich
-    // result. compact() drops undefined keys, so an absent price simply means
-    // no priceRange rather than a false one.
-    priceRange:
-      v.pricePerDay != null && Number.isFinite(v.pricePerDay) && v.pricePerDay > 0
-        ? `INR ${Math.round(v.pricePerDay).toLocaleString("en-IN")} per day`
-        : undefined,
+    // NO priceRange HERE. Schema.org defines priceRange on LocalBusiness, not
+    // on EventVenue (which descends from Place), so it was an invalid property
+    // on this node. The day rate is not lost — it reaches search through the
+    // meta description (lib/seo/venue.ts), the visible Pricing section, and the
+    // city page's first FAQ answer. Do not re-add it by multi-typing this node
+    // as ["EventVenue","LocalBusiness"] either: a LocalBusiness claim implies a
+    // storefront Hallnect does not operate, and it would contradict the Google
+    // Business Profile, which is registered as a service-area business.
     aggregateRating: hasRatings
       ? compact({
           "@type": "AggregateRating",
@@ -247,6 +282,9 @@ export function cityCollectionJsonLd(input: {
             position: i + 1,
             name: v.name,
             url: absoluteUrl(`/halls/${v.slug}`),
+            // By @id, so the list references the SAME node the venue page
+            // publishes rather than a second, thinner description of it.
+            item: { "@id": `${absoluteUrl(`/halls/${v.slug}`)}#venue` },
           })),
         }
       : undefined,

@@ -13,6 +13,7 @@ import { AdSlot } from "@/components/ads/AdSlot";
 import { buildMetadata } from "@/lib/seo/metadata";
 import { JsonLd } from "@/components/seo/JsonLd";
 import { jsonLdGraph, breadcrumbJsonLd } from "@/lib/seo/jsonld";
+import { fetchCityInventory } from "@/lib/seo/cities";
 
 /**
  * CRAWL-TRAP CONTROL. This route accepts TEN independent query parameters
@@ -115,15 +116,22 @@ export default async function HallsPage({
   // empty array from a genuine no-match are the same value, and this page's
   // whole job is to say which. Especially now, when zero venues is the expected
   // state and a failure would hide inside the ordinary empty screen.
-  const [advancePercent, hallsResult, premiumCount] = await Promise.all([
+  const [advancePercent, hallsResult, premiumCount, cityInventory] = await Promise.all([
     getAdvancePercent(),
     fetchHallsResult({
       city, area, capacity, priceMin, priceMax, q, category, amenity,
       date: effectiveDate, sort,
     }),
     countActivePremiumHalls(),
+    // Lenient by design: if this read fails the "Browse by city" block simply
+    // does not render. A browse page must not 500 because a secondary
+    // navigation aid could not load.
+    fetchCityInventory(),
   ]);
   const { halls, failed: hallsFailed } = hallsResult;
+  // Only cities that actually hold inventory get a link — the same gate that
+  // decides whether their landing page is indexable at all.
+  const citiesWithVenues = cityInventory.filter((c) => c.venueCount > 0);
 
   // effectiveDate, not date — an "Available Today" visit with no matches must
   // read as a filter that found nothing, not as "no halls are listed yet".
@@ -197,6 +205,13 @@ export default async function HallsPage({
       {/* ── Results ──────────────────────────────────────────────── */}
       <section className="container-app py-4 lg:max-w-7xl">
         {halls.length > 0 ? (
+          <>
+            {/* The document went h1 -> h3 (the card titles), skipping a level.
+                Invisible, no layout change, and it names the result set for a
+                screen reader rather than leaving the grid unlabelled. */}
+            <h2 className="sr-only">
+              {city ? `Venues in ${city}` : "Venues across Tamil Nadu"}
+            </h2>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {halls.map((hall, i) => (
               /* EVERY card animates, including the first row. `revealNow` puts
@@ -215,6 +230,7 @@ export default async function HallsPage({
               />
             ))}
           </div>
+          </>
         ) : (
           <EmptyState
             icon={<Building2 className="h-8 w-8" />}
@@ -241,6 +257,37 @@ export default async function HallsPage({
           />
         )}
       </section>
+
+      {/* ── Browse by city ────────────────────────────────────────────
+          /halls linked to no city landing page at all, which left
+          /wedding-halls/<city> — the pages built specifically to rank for
+          "wedding halls in <city>" — reachable only from the homepage. This is
+          a real crawl path and a real reader path, rendered from live
+          inventory so a city appears here on the same condition it becomes
+          indexable: it has venues. Nothing renders when nothing qualifies, so
+          there is no empty shell to maintain. */}
+      {citiesWithVenues.length > 0 && (
+        <section data-reveal="fade" className="container-app border-t border-border py-8 lg:max-w-7xl">
+          <h2 className="font-serif text-base font-semibold text-charcoal-900">
+            Browse wedding halls by city
+          </h2>
+          <ul className="mt-3 flex flex-wrap gap-2">
+            {citiesWithVenues.map((c) => (
+              <li key={c.slug}>
+                <Link
+                  href={`/wedding-halls/${c.slug}`}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-border bg-white px-3 py-1.5 text-xs font-medium text-charcoal-700 transition-colors hover:border-maroon-300 hover:text-maroon-700"
+                >
+                  {c.city}
+                  <span className="text-charcoal-400">
+                    {c.venueCount}
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
     </div>
   );
 }
