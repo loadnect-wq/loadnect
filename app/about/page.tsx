@@ -28,7 +28,11 @@ import { CONTACT, SUPPORT_HOURS, APP_NAME } from "@/lib/constants";
 import { SERVICE_AREA_CITIES } from "@/lib/seo/service-areas";
 
 export const metadata: Metadata = buildMetadata({
-  title: "About Hallnect",
+  // "About Us", not "About Hallnect": buildMetadata's template appends
+  // " | Hallnect", so the latter renders "About Hallnect | Hallnect" — the
+  // exact duplication this pass removed from two other pages. Caught by
+  // lib/__tests__/seo-invariants.test.ts on the page I had just written.
+  title: "About Us",
   description:
     "Hallnect is a wedding hall marketplace for Tamil Nadu, operated by HALLNECT LLP " +
     "from Madurai. How listings, enquiries and bookings work, and what we charge.",
