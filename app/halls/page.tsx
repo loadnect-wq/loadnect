@@ -178,8 +178,18 @@ export default async function HallsPage({
       <section className="container-app py-4 lg:max-w-7xl">
         {halls.length > 0 ? (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {halls.map((hall) => (
-              <HallCard key={hall.id} hall={hall} advancePercent={advancePercent} />
+            {halls.map((hall, i) => (
+              /* revealIndex is withheld from the first three cards on purpose.
+                 The grid is 3-up at lg, so those are the row above the fold and
+                 contain the page's LCP candidate — an element at opacity 0 is
+                 excluded from LCP until it paints, which would hand Google a
+                 worse number for a scroll effect nobody sees. */
+              <HallCard
+                key={hall.id}
+                hall={hall}
+                advancePercent={advancePercent}
+                revealIndex={i >= 3 ? i - 3 : undefined}
+              />
             ))}
           </div>
         ) : (

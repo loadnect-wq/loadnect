@@ -187,3 +187,119 @@
     @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2;
   }
 }
+
+/* ─── Scroll reveal ──────────────────────────────────────────────────────────
+   A UI-only motion layer. Deliberately NOT a React wrapper per element: a page
+   adds `data-reveal` to an ordinary element, so server components stay server
+   components and there is no per-use JavaScript. lib/motion.ts holds the boot
+   script and the stagger helper; components/motion/RevealObserver.tsx holds the
+   single IntersectionObserver.
+
+   THE SAFETY ARGUMENT IS THE RULE ORDER, and it matters more than the effect:
+
+   1. NOTHING HERE HIDES ANYTHING until `.reveal-js` is on <html>. That class is
+      added by a small blocking script in the document head, and only after it
+      has checked that IntersectionObserver exists. No JS, an old browser, a
+      bundle that fails to load — the page is simply the page, fully visible.
+      The same script removes the class again if the observer has not announced
+      itself within 2s, so a hydration failure self-heals instead of leaving a
+      marketplace's listings permanently invisible.
+   2. prefers-reduced-motion wins over all of it, with no transform and no
+      transition at all, so a reduced-motion user never depends on the observer
+      having run.
+   3. Only `opacity` and `transform` are animated. Both are compositor
+      properties: no layout, no reflow, so a reveal cannot cause layout shift.
+
+   These rules sit OUTSIDE @layer on purpose. Tailwind's utilities live in
+   @layer utilities, and an unlayered rule is evaluated after every layer — so a
+   stray `opacity-*` utility on the same element cannot strand it invisible.
+
+   WHICH IS ALSO THE FOOTGUN, so note how it is defused: if the revealed state
+   asserted `transform: none` it would outrank the layered `hover:-translate-y-1`
+   and `active:scale-95` utilities this codebase already uses on cards and tiles,
+   silently killing a hover effect that still looks present in the markup. So the
+   `transform` is declared ONLY while hidden. After the reveal this stylesheet
+   asserts no transform at all.
+
+   THE HOUSE RULE THAT FOLLOWS: WRAP, DO NOT DECORATE. Put `data-reveal` on a
+   wrapper and leave the hover/active transform on the child that already has
+   it. They then never share an element, so the leftover `transition` cannot
+   slow a hover down either.
+   ------------------------------------------------------------------------- */
+
+/* Every tunable lives on the base selector, NOT on the hidden state. A custom
+   property does nothing on its own, and `--reveal-duration` has to still be in
+   scope at the moment `data-revealed` lands — otherwise the transition it is
+   about to drive would fall back to the desktop default and the mobile tuning
+   below would never once apply. */
+.reveal-js [data-reveal] {
+  --reveal-y: 18px;
+  --reveal-scale: 1;
+  --reveal-duration: 560ms;
+  /* THE INDIRECTION IS DELIBERATE. A call site staggering a grid sets
+     `--reveal-delay-base` as an INLINE style, and an inline style beats any
+     stylesheet rule — so if the transition read that property directly, the
+     mobile media query could never halve it. The stylesheet owns
+     `--reveal-delay` and derives it from the call site's base value. */
+  --reveal-delay: var(--reveal-delay-base, 0ms);
+  transition:
+    opacity   var(--reveal-duration) cubic-bezier(0.22, 0.61, 0.36, 1) var(--reveal-delay),
+    transform var(--reveal-duration) cubic-bezier(0.22, 0.61, 0.36, 1) var(--reveal-delay);
+}
+
+/* Variants only set properties; one transform rule below reads them. */
+.reveal-js [data-reveal="fade"]  { --reveal-y: 0px; }
+.reveal-js [data-reveal="scale"] { --reveal-y: 8px; --reveal-scale: 0.97; }
+/* For photography: settles out of a slight over-scale, which reads as the image
+   arriving rather than sliding. No translate, so it cannot nudge a layout. */
+.reveal-js [data-reveal="image"] { --reveal-y: 0px; --reveal-scale: 1.03; }
+
+/* The hidden state, and the ONLY place opacity/transform are asserted. */
+.reveal-js [data-reveal]:not([data-revealed]) {
+  opacity: 0;
+  /* translate3d rather than translateY to keep it on the compositor. */
+  transform: translate3d(0, var(--reveal-y), 0) scale(var(--reveal-scale));
+}
+
+/* An element at opacity 0 is still focusable, so a keyboard user can tab into a
+   region the observer has not reached yet. Show it instantly when that happens
+   rather than leaving them on something they cannot see. `transform: none` is
+   safe here precisely because :focus-within is not a state a hover transform is
+   competing for. */
+.reveal-js [data-reveal]:focus-within {
+  opacity: 1;
+  transform: none;
+  transition: none;
+}
+
+/* Mobile gets a shorter throw and a shorter duration — the same motion at phone
+   size reads as sluggish, and the viewport is short enough that a long travel
+   distance looks like a jump rather than a reveal. */
+@media (max-width: 767px) {
+  .reveal-js [data-reveal] {
+    --reveal-y: 12px;
+    --reveal-duration: 440ms;
+    /* Stagger halved. A grid that is four columns on desktop is one column on a
+       phone, so the same per-item step stops reading as a row arriving together
+       and starts reading as a queue the user has to wait through. */
+    --reveal-delay: calc(var(--reveal-delay-base, 0ms) / 2);
+  }
+  .reveal-js [data-reveal="scale"] { --reveal-y: 6px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reveal-js [data-reveal],
+  .reveal-js [data-reveal]:not([data-revealed]) {
+    opacity: 1 !important;
+    transform: none !important;
+    transition: none !important;
+  }
+}
+
+/* Printing a page mid-scroll must not print blank sections. */
+@media print {
+  .reveal-js [data-reveal]:not([data-revealed]) {
+    opacity: 1 !important;
+    transform: none !important;
+  }
+}

@@ -7,6 +7,7 @@ import { CARD_GRADIENTS, formatPrice } from "@/lib/mock-data";
 import { advanceFromTotal } from "@/lib/booking-payment";
 import { hasPrice, isLeadGeneration, PRICE_ON_REQUEST } from "@/lib/booking-mode";
 import { SaveHeart } from "@/app/_components/SaveHeart";
+import { revealDelay } from "@/lib/motion";
 
 // Booking advance — the same central calculation the checkout uses
 // (lib/booking-payment.ts). Shown with "≈" because the authoritative amount is
@@ -28,6 +29,18 @@ interface HallCardProps {
   hall: HallListing;
   /** Live advance % from platform_settings. Omitted falls back to the constant. */
   advancePercent?: number;
+  /**
+   * Position in a grid, which staggers this card's scroll reveal against its
+   * siblings. OMITTED MEANS NO REVEAL, and that default is deliberate: a card
+   * in the first row of /halls is the page's LCP candidate, and an element at
+   * opacity 0 is excluded from LCP until it paints. Pages opt in per card, so
+   * the row above the fold can stay out of it.
+   *
+   * Also not used inside the horizontal strips on the homepage: those scroll
+   * sideways, so a card parked off to the right never intersects the viewport
+   * and would sit hidden until swiped to.
+   */
+  revealIndex?: number;
 }
 
 // Deterministic gradient fallback when no cover image is available
@@ -37,10 +50,13 @@ function gradientForId(id: string): string {
   return CARD_GRADIENTS[Math.abs(hash) % CARD_GRADIENTS.length];
 }
 
-export function HallCard({ hall, advancePercent }: HallCardProps) {
+export function HallCard({ hall, advancePercent, revealIndex }: HallCardProps) {
   return (
     <Link
       href={`/halls/${hall.slug}`}
+      {...(revealIndex === undefined
+        ? {}
+        : { "data-reveal": "", style: revealDelay(revealIndex) })}
       className="group block overflow-hidden rounded-2xl bg-white shadow-card transition-all active:scale-[0.99] hover:shadow-card-hover"
     >
       {/* ── Image / Gradient hero ── */}

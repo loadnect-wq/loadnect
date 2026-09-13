@@ -19,7 +19,11 @@ export function Footer() {
 
       <div className="container-page py-14">
         {/* ── Grid ─────────────────────────────────────────────── */}
-        <div className="grid grid-cols-1 gap-10 sm:grid-cols-2 lg:grid-cols-4">
+        {/* One reveal for the whole grid rather than four staggered columns.
+            The footer is the last thing on the page and is usually already in
+            view by the time a user reaches it, so a stagger here would just
+            delay the site-wide link graph for no perceptible gain. */}
+        <div data-reveal="fade" className="grid grid-cols-1 gap-10 sm:grid-cols-2 lg:grid-cols-4">
 
           {/* Brand column */}
           <div className="space-y-5 lg:col-span-1">

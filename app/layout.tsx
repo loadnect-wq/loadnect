@@ -8,6 +8,8 @@ import { BottomNav }  from "@/components/app/BottomNav";
 import { Toaster }    from "@/components/ui/toaster";
 import { APP_NAME, APP_DESCRIPTION } from "@/lib/constants";
 import { getAppUrl } from "@/lib/env";
+import { REVEAL_BOOT_SCRIPT } from "@/lib/motion";
+import { RevealObserver } from "@/components/motion/RevealObserver";
 
 const inter = Inter({
   subsets:  ["latin"],
@@ -56,6 +58,15 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       data-scroll-behavior="smooth"
       className={`${inter.variable} ${playfair.variable}`}
     >
+      <head>
+        {/* Scroll-reveal boot. BLOCKING AND INLINE ON PURPOSE: it has to run
+            before the body paints, or the page would render visible, then be
+            hidden by the CSS once the class landed, and flash. It only ever
+            ADDS the ability to hide — see lib/motion.ts and the contract at the
+            bottom of app/globals.css. `unsafe-inline` is already in the CSP's
+            script-src, so this needs no config change. */}
+        <script dangerouslySetInnerHTML={{ __html: REVEAL_BOOT_SCRIPT }} />
+      </head>
       <body className="flex min-h-screen flex-col bg-ivory-100 text-foreground antialiased">
         {/* Skip link — the first focusable thing on every page (WCAG 2.4.1).
             Without it, a keyboard or screen-reader user has to tab past the
@@ -110,6 +121,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             from cache identically to everyone, so reading a consent cookie on
             the server would make every route dynamic again. */}
         <AnalyticsConsent />
+
+        {/* The single IntersectionObserver behind every `data-reveal` in the
+            app. Renders nothing; mounted here so one instance covers every
+            route, including content added after the first paint. */}
+        <RevealObserver />
 
         <Toaster />
       </body>
