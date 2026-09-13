@@ -259,12 +259,13 @@ export default async function CityPage({ params }: Props) {
             <h2 className="sr-only">Venues in {city}</h2>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {halls.map((hall, i) => (
-                /* Same first-row exclusion as /halls — see the note there. */
+                /* Same treatment as /halls — see the note there. */
                 <HallCard
                   key={hall.id}
                   hall={hall}
                   advancePercent={advancePercent}
-                  revealIndex={i >= 3 ? i - 3 : undefined}
+                  revealIndex={i}
+                  revealNow={i < 3}
                 />
               ))}
             </div>

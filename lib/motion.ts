@@ -34,7 +34,7 @@ setTimeout(function(){if(!r.hasAttribute('${REVEAL_READY_ATTR}'))r.classList.rem
 }catch(e){}})();`;
 
 /** Default step between staggered siblings, in milliseconds. */
-const STAGGER_STEP_MS = 70;
+const STAGGER_STEP_MS = 100;
 
 /**
  * The cap is the important argument here. Without one, item 30 of a hall list
@@ -43,7 +43,7 @@ const STAGGER_STEP_MS = 70;
  * the delay means a row or two carries the sense of sequence and everything
  * after it behaves like the rest of the page.
  */
-const STAGGER_MAX_MS = 280;
+const STAGGER_MAX_MS = 600;
 
 /**
  * Inline style that staggers a reveal against its siblings.
@@ -65,4 +65,26 @@ export function revealDelay(
   // The cast is unavoidable: React's CSSProperties does not model custom
   // properties, though the DOM accepts them.
   return { "--reveal-delay-base": `${ms}ms` } as CSSProperties;
+}
+
+/** Step between hero load-sequence elements, in milliseconds. */
+const HERO_STEP_MS = 80;
+
+/**
+ * Inline style that places an element in the hero's load sequence.
+ *
+ *   <p data-hero style={heroDelay(1)}>...</p>
+ *
+ * Mirrors revealDelay, but writes `--hero-delay` and drives a CSS KEYFRAME
+ * rather than a scroll reveal. That difference is the whole reason the hero is
+ * safe to animate above the fold: a keyframe animation with `both` fill
+ * finishes on its own, with no JavaScript and no observer, so the headline
+ * cannot be left hidden by a bundle that never arrives.
+ *
+ * Deliberately short steps. The hero is the first paint and the LCP candidate
+ * lives in it, so the whole sequence is over inside ~600ms rather than being
+ * drawn out for effect.
+ */
+export function heroDelay(index: number, step: number = HERO_STEP_MS): CSSProperties {
+  return { "--hero-delay": `${Math.max(index, 0) * step}ms` } as CSSProperties;
 }

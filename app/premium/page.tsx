@@ -6,6 +6,7 @@ import { buttonVariants } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { SectionHeader } from "@/components/sections/SectionHeader";
 import { fetchPremiumPlans, PLAN_FEATURES, type PremiumTier } from "@/lib/premium-plans";
+import { heroDelay, revealDelay } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 
 export const metadata: Metadata = buildMetadata({
@@ -54,11 +55,21 @@ export default async function PremiumPage() {
       {/* ── Hero ─────────────────────────────────────────────────── */}
       <section className="bg-hero-gradient py-20 text-center">
         <div className="container-page">
-          <Badge variant="gold" size="md" className="mb-5">✦ Premium Listings</Badge>
-          <h1 className="font-serif text-4xl font-bold text-ivory-100 sm:text-5xl">
+          <div data-hero="" style={heroDelay(0)}>
+            <Badge variant="gold" size="md" className="mb-5">✦ Premium Listings</Badge>
+          </div>
+          <h1
+            data-hero=""
+            style={heroDelay(1)}
+            className="font-serif text-4xl font-bold text-ivory-100 sm:text-5xl"
+          >
             Boost your hall&apos;s visibility
           </h1>
-          <p className="mx-auto mt-5 max-w-xl text-base leading-relaxed text-ivory-400">
+          <p
+            data-hero=""
+            style={heroDelay(2)}
+            className="mx-auto mt-5 max-w-xl text-base leading-relaxed text-ivory-400"
+          >
             Premium-listed halls appear at the top of search results and on the Hallnect homepage,
             so couples searching in Tamil Nadu find your venue first.
           </p>
@@ -74,14 +85,23 @@ export default async function PremiumPage() {
         />
 
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-          {plans.map((plan) => {
+          {plans.map((plan, i) => {
             const features = PLAN_FEATURES[plan.slug as PremiumTier] ?? [];
             const isPopular = plan.slug === "premium";
             return (
               <div
                 key={plan.slug}
+                // The cards deal themselves left to right, then each lifts on
+                // hover. Safe on one element because the reveal's attributes
+                // are removed once it has played, so nothing is left behind to
+                // fight the hover transform.
+                data-reveal="card"
+                style={revealDelay(i, 110)}
                 className={cn(
-                  "relative flex flex-col rounded-2xl border p-8 shadow-card transition-shadow hover:shadow-card-hover",
+                  "relative flex flex-col rounded-2xl border p-8 shadow-card",
+                  "transition-[transform,box-shadow] duration-300 ease-out",
+                  "hover:-translate-y-1.5 hover:shadow-card-hover",
+                  "motion-reduce:transition-none motion-reduce:hover:translate-y-0",
                   isPopular ? "border-gold-400 bg-white ring-2 ring-gold-400" : "border-border bg-white",
                 )}
               >
@@ -130,7 +150,7 @@ export default async function PremiumPage() {
           })}
         </div>
 
-        <p className="mt-8 text-center text-sm text-muted-foreground">
+        <p data-reveal="fade" className="mt-8 text-center text-sm text-muted-foreground">
           All plans require an approved owner account.{" "}
           <Link href="/owner/register" className="font-semibold text-maroon-600 hover:underline">
             Register as owner →
@@ -141,7 +161,10 @@ export default async function PremiumPage() {
       {/* ── Comparison callout ───────────────────────────────────── */}
       <section className="bg-ivory-200/60 py-16">
         <div className="container-page">
-          <div className="mx-auto max-w-3xl rounded-2xl border border-gold-200 bg-gold-50 p-8 text-center">
+          <div
+            data-reveal="scale"
+            className="mx-auto max-w-3xl rounded-2xl border border-gold-200 bg-gold-50 p-8 text-center"
+          >
             <h2 className="font-serif text-2xl font-semibold text-charcoal-900">
               Not sure which plan to choose?
             </h2>

@@ -65,6 +65,7 @@ import Image from "next/image";
 import { ChevronLeft, ChevronRight, Expand, X } from "lucide-react";
 import { CARD_GRADIENTS } from "@/lib/mock-data";
 import { type HallImage } from "@/lib/halls";
+import { revealDelay } from "@/lib/motion";
 
 interface Props {
   /** Venue city — makes each photo's alt text specific and locally relevant. */
@@ -309,8 +310,16 @@ export function ImageGallery({ images, hallName, hallCity, hallId }: Props) {
             return (
               <div
                 key={`${img.url}-${i}`}
+                // `image` reveal: the CELL stays exactly where it is and the
+                // photo inside settles out of a 1.12 over-scale. The cell
+                // already clips (rounded/overflow on the block and on each
+                // thumb), so the zoom cannot paint outside its frame and the
+                // layout box never changes — no shift, and the mosaic geometry
+                // measured earlier is untouched.
+                data-reveal="image"
+                style={revealDelay(i, 90)}
                 className={[
-                  "relative h-full w-full shrink-0 snap-center lg:h-auto lg:w-auto",
+                  "relative h-full w-full shrink-0 snap-center lg:h-auto lg:w-auto overflow-hidden",
                   isHero && total >= 3 ? "lg:col-span-2 lg:row-span-2" : "",
                   hidden ? "lg:hidden" : "",
                   i > 0 ? "lg:overflow-hidden lg:rounded-lg" : "",

@@ -18,7 +18,10 @@ export function SectionHeader({
   className,
 }: SectionHeaderProps) {
   return (
-    <div className={cn(centered && "text-center", className)}>
+    // The whole header rises as one block rather than ornament-then-title-then
+    // blurb: three staggered lines in a 120px-tall element reads as a stutter,
+    // not a sequence.
+    <div data-reveal="up" className={cn(centered && "text-center", className)}>
       <div className={cn("ornament-row mb-4 text-sm", light ? "text-gold-400" : "text-gold-500")}>
         {ornament}
       </div>

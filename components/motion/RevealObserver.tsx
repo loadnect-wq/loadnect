@@ -152,6 +152,11 @@ export function RevealObserver() {
             observer.observe(el);
           }
           observe(el);
+          // A navigation can swap in a whole new tree of parallax layers.
+          if (el.hasAttribute("data-parallax") || el.querySelector?.("[data-parallax]")) {
+            indexParallax();
+            schedule();
+          }
         }
       }
     });
@@ -178,33 +183,76 @@ export function RevealObserver() {
     // NOT the per-element scroll handling the brief rules out: one listener,
     // one rect read per element still waiting, and the whole thing detaches
     // itself the moment nothing is left to reveal.
+    // ONE LISTENER, THREE JOBS. The brief rules out "dozens of independent
+    // scroll listeners", and it is right to: each one costs a main-thread
+    // callback per scroll event. So the reveal sweep, the parallax layers and
+    // the header's scrolled state all ride the same rAF-coalesced tick, which
+    // means at most one layout read per frame no matter how much is animating.
     let frame = 0;
-    function sweep() {
+    let parallaxNodes: HTMLElement[] = [];
+    let headerScrolled = false;
+
+    /** Re-read which elements want parallax. Cheap, and only on real changes. */
+    function indexParallax() {
+      parallaxNodes = [...document.querySelectorAll<HTMLElement>("[data-parallax]")];
+    }
+    indexParallax();
+
+    function tick() {
       frame = 0;
-      const waiting = document.querySelectorAll("[data-reveal]:not([data-revealed])");
-      if (waiting.length === 0) {
-        // Nothing left anywhere on the page: stop listening entirely.
-        window.removeEventListener("scroll", schedule);
-        window.removeEventListener("resize", schedule);
-        return;
-      }
       const limit = window.innerHeight;
+
+      // ── 1. Reveal anything that has reached the viewport ──────────────────
+      const waiting = document.querySelectorAll("[data-reveal]:not([data-revealed])");
       for (const el of waiting) {
         // Top edge has reached the viewport — or is above it, which is the case
-        // IntersectionObserver misses when the scroll position jumps.
+        // IntersectionObserver misses when the scroll position jumps, because
+        // `isIntersecting` goes false to false and it never calls back.
         if (el.getBoundingClientRect().top < limit) {
           el.setAttribute("data-revealed", "");
           observer.unobserve(el);
           scheduleCleanup(el);
         }
       }
+
+      // ── 2. Parallax ───────────────────────────────────────────────────────
+      // Offset is measured from the element's own centre against the viewport
+      // centre, so a layer sits at its authored position when centred and
+      // drifts symmetrically either side. Written as a custom property; the
+      // stylesheet owns the actual transform, so nothing here touches layout.
+      for (const node of parallaxNodes) {
+        const rect = node.getBoundingClientRect();
+        // Skip anything nowhere near the screen: no point paying for it.
+        if (rect.bottom < -limit || rect.top > limit * 2) continue;
+        const factor = Number(node.dataset.parallax) || 0.15;
+        const fromCentre = rect.top + rect.height / 2 - limit / 2;
+        node.style.setProperty("--parallax-y", `${(-fromCentre * factor).toFixed(1)}px`);
+      }
+
+      // ── 3. Header state ───────────────────────────────────────────────────
+      // A class toggle, NOT a reveal. The navbar and app header are sticky and
+      // use backdrop-blur: a transform or an opacity below 1 on them (or on any
+      // ancestor) would re-parent fixed children and flatten the frosted
+      // backdrop. Toggling one class does neither.
+      // Hysteresis, not a single threshold: 12px sits inside trackpad
+      // rubber-band noise, so a page at rest could strobe between states.
+      // Enter at 24, leave at 8.
+      const scrolled = headerScrolled ? window.scrollY > 8 : window.scrollY > 24;
+      if (scrolled !== headerScrolled) {
+        headerScrolled = scrolled;
+        root.classList.toggle("is-scrolled", scrolled);
+      }
     }
+
     function schedule() {
       if (frame) return;
-      frame = window.requestAnimationFrame(sweep);
+      frame = window.requestAnimationFrame(tick);
     }
     window.addEventListener("scroll", schedule, { passive: true });
     window.addEventListener("resize", schedule, { passive: true });
+    // Run once on mount so a restored scroll position gets the right header
+    // state and the right parallax offsets before the user touches anything.
+    schedule();
 
     return () => {
       observer.disconnect();
@@ -212,6 +260,8 @@ export function RevealObserver() {
       window.removeEventListener("scroll", schedule);
       window.removeEventListener("resize", schedule);
       if (frame) window.cancelAnimationFrame(frame);
+      root.classList.remove("is-scrolled");
+      parallaxNodes = [];
       for (const id of pending) window.clearTimeout(id);
       pending.clear();
       root.removeAttribute(REVEAL_READY_ATTR);

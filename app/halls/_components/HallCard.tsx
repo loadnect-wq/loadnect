@@ -30,17 +30,25 @@ interface HallCardProps {
   /** Live advance % from platform_settings. Omitted falls back to the constant. */
   advancePercent?: number;
   /**
-   * Position in a grid, which staggers this card's scroll reveal against its
-   * siblings. OMITTED MEANS NO REVEAL, and that default is deliberate: a card
-   * in the first row of /halls is the page's LCP candidate, and an element at
-   * opacity 0 is excluded from LCP until it paints. Pages opt in per card, so
-   * the row above the fold can stay out of it.
-   *
-   * Also not used inside the horizontal strips on the homepage: those scroll
-   * sideways, so a card parked off to the right never intersects the viewport
-   * and would sit hidden until swiped to.
+   * Position in a grid, which staggers this card's entrance against its
+   * siblings. OMITTED MEANS NO MOTION AT ALL — which is what the homepage's
+   * horizontal strips want, because a card parked off to the right never
+   * intersects the viewport and a scroll reveal would leave it invisible until
+   * the user swiped to it.
    */
   revealIndex?: number;
+  /**
+   * True for cards in the first row, i.e. the ones likely to be above the fold.
+   *
+   * They animate via a CSS KEYFRAME instead of the scroll reveal. The
+   * difference matters for exactly one reason: a keyframe with `both` fill
+   * finishes on its own, so the card's paint is gated on the blocking head
+   * script that is already in the document rather than on React hydrating. A
+   * scroll reveal here would push LCP out to hydration time on the busiest page
+   * on the site — which is why the first row used to be excluded from the
+   * effect altogether. It no longer has to be.
+   */
+  revealNow?: boolean;
 }
 
 // Deterministic gradient fallback when no cover image is available
@@ -50,30 +58,49 @@ function gradientForId(id: string): string {
   return CARD_GRADIENTS[Math.abs(hash) % CARD_GRADIENTS.length];
 }
 
-export function HallCard({ hall, advancePercent, revealIndex }: HallCardProps) {
+export function HallCard({ hall, advancePercent, revealIndex, revealNow }: HallCardProps) {
+  // WRAP, DO NOT DECORATE. The entrance lives on this div and the hover lives
+  // on the Link, so the two never share an element — the reveal's transition
+  // cannot stretch the 300ms hover, and the keyframe's final `transform: none`
+  // cannot cancel the lift.
+  const entrance =
+    revealIndex === undefined
+      ? {}
+      : revealNow
+        ? { "data-reveal-now": "", style: revealDelay(revealIndex) }
+        : { "data-reveal": "card", style: revealDelay(revealIndex) };
+
   return (
+    <div className="h-full" {...entrance}>
     <Link
       href={`/halls/${hall.slug}`}
-      {...(revealIndex === undefined
-        ? {}
-        : { "data-reveal": "", style: revealDelay(revealIndex) })}
-      className="group block overflow-hidden rounded-2xl bg-white shadow-card transition-all active:scale-[0.99] hover:shadow-card-hover"
+      className="group block h-full overflow-hidden rounded-2xl bg-white shadow-card transition-[transform,box-shadow] duration-300 ease-out hover:-translate-y-1.5 hover:shadow-card-hover active:scale-[0.99] motion-reduce:transition-none motion-reduce:hover:translate-y-0"
     >
-      {/* ── Image / Gradient hero ── */}
-      <div className="relative h-44 w-full sm:h-48">
+      {/* ── Image / Gradient hero ──
+          overflow-hidden is what clips the zoom below. The Link's own
+          overflow-hidden only stops the photo escaping the card's rounded
+          corner; it does NOT stop a scaled image overflowing this fixed-height
+          box and painting over the venue name and price underneath it. */}
+      <div className="relative h-44 w-full overflow-hidden sm:h-48">
         {hall.cover_url ? (
           <Image
             src={hall.cover_url}
             alt={`${hall.name}, a wedding hall in ${hall.city}`}
             fill
             sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
-            className="object-cover"
+            // Slower than the 300ms card lift on purpose: the photo settles
+            // while the card snaps up, which is what separates a considered
+            // hover from a twitch.
+            className="object-cover transition-transform duration-500 ease-out group-hover:scale-[1.06] motion-reduce:transform-none motion-reduce:transition-none"
             // See ImageGallery: the card thumbnail was pulling the full-size
             // cover photo on /halls and on every city landing page.
           />
         ) : (
           <div
-            className="absolute inset-0"
+            // The no-photo fallback zooms identically. At launch a real share
+            // of listings have no cover, and a grid where half the cards are
+            // inert on hover reads as broken rather than as restrained.
+            className="absolute inset-0 transition-transform duration-500 ease-out group-hover:scale-[1.06] motion-reduce:transform-none motion-reduce:transition-none"
             style={{ background: gradientForId(hall.id) }}
             aria-label={`${hall.name} venue`}
           />
@@ -183,5 +210,6 @@ export function HallCard({ hall, advancePercent, revealIndex }: HallCardProps) {
         </div>
       </div>
     </Link>
+    </div>
   );
 }

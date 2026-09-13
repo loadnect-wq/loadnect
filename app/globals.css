@@ -188,118 +188,301 @@
   }
 }
 
-/* ─── Scroll reveal ──────────────────────────────────────────────────────────
-   A UI-only motion layer. Deliberately NOT a React wrapper per element: a page
-   adds `data-reveal` to an ordinary element, so server components stay server
-   components and there is no per-use JavaScript. lib/motion.ts holds the boot
-   script and the stagger helper; components/motion/RevealObserver.tsx holds the
-   single IntersectionObserver.
+/* ─── Scroll motion system ───────────────────────────────────────────────────
+   A UI-only layer: an attribute on an ordinary element, so server components
+   stay server components and no page pays a per-element JavaScript cost.
+   lib/motion.ts holds the boot script and the stagger helper;
+   components/motion/RevealObserver.tsx holds the single observer plus the one
+   shared scroll listener that drives parallax and the header state.
 
-   THE SAFETY ARGUMENT IS THE RULE ORDER, and it matters more than the effect:
+   ── THE SAFETY CONTRACT, which the boldness below does not get to weaken ──
 
    1. NOTHING HERE HIDES ANYTHING until `.reveal-js` is on <html>. That class is
-      added by a small blocking script in the document head, and only after it
-      has checked that IntersectionObserver exists. No JS, an old browser, a
-      bundle that fails to load — the page is simply the page, fully visible.
-      The same script removes the class again if the observer has not announced
-      itself within 2s, so a hydration failure self-heals instead of leaving a
-      marketplace's listings permanently invisible.
-   2. prefers-reduced-motion wins over all of it, with no transform and no
-      transition at all, so a reduced-motion user never depends on the observer
-      having run.
-   3. Only `opacity` and `transform` are animated. Both are compositor
-      properties: no layout, no reflow, so a reveal cannot cause layout shift.
+      added by a blocking script in the head, only after it has checked that
+      IntersectionObserver exists, and it comes back off if the observer has not
+      announced itself within 2s. No JS, an old browser, a bundle that never
+      arrives — the page is simply the page. That is the progressive enhancement
+      requirement, and it is why none of this can leave a listing invisible.
+   2. prefers-reduced-motion wins over all of it: no transform, no transition,
+      no parallax, so a reduced-motion user never waits on an observer.
+   3. Only `opacity` and `transform` animate. Both are compositor properties, so
+      nothing here reflows the page or shifts layout.
 
-   These rules sit OUTSIDE @layer on purpose. Tailwind's utilities live in
-   @layer utilities, and an unlayered rule is evaluated after every layer — so a
-   stray `opacity-*` utility on the same element cannot strand it invisible.
+   These rules sit OUTSIDE @layer deliberately: Tailwind's utilities live in
+   @layer utilities and an unlayered rule beats every layer, so a stray
+   `opacity-*` cannot strand an element invisible.
 
-   WHICH IS ALSO THE FOOTGUN, so note how it is defused: if the revealed state
-   asserted `transform: none` it would outrank the layered `hover:-translate-y-1`
-   and `active:scale-95` utilities this codebase already uses on cards and tiles,
-   silently killing a hover effect that still looks present in the markup. So the
-   `transform` is declared ONLY while hidden. After the reveal this stylesheet
-   asserts no transform at all.
-
-   THE HOUSE RULE THAT FOLLOWS: WRAP, DO NOT DECORATE. Put `data-reveal` on a
-   wrapper and leave the hover/active transform on the child that already has
-   it. They then never share an element, so the leftover `transition` cannot
-   slow a hover down either.
+   WHICH IS ALSO THE FOOTGUN, and here is how it is defused: the `transform` is
+   declared ONLY while hidden. After the reveal this stylesheet asserts no
+   transform at all, so `hover:-translate-y-1` and `group-hover:scale-105` keep
+   working — and the observer strips both attributes once the animation is done,
+   so a revealed element ends up byte-for-byte what it was.
    ------------------------------------------------------------------------- */
 
-/* Every tunable lives on the base selector, NOT on the hidden state. A custom
-   property does nothing on its own, and `--reveal-duration` has to still be in
-   scope at the moment `data-revealed` lands — otherwise the transition it is
-   about to drive would fall back to the desktop default and the mobile tuning
-   below would never once apply. */
 .reveal-js [data-reveal] {
-  --reveal-y: 18px;
+  /* Distance is the point of this revision. The previous pass moved things 18px
+     and scaled 0.97 — a change most people genuinely cannot see. */
+  --reveal-y: 60px;
+  --reveal-x: 0px;
   --reveal-scale: 1;
-  --reveal-duration: 560ms;
+  --reveal-duration: 780ms;
   /* THE INDIRECTION IS DELIBERATE. A call site staggering a grid sets
      `--reveal-delay-base` as an INLINE style, and an inline style beats any
      stylesheet rule — so if the transition read that property directly, the
-     mobile media query could never halve it. The stylesheet owns
+     mobile media query could never shorten it. The stylesheet owns
      `--reveal-delay` and derives it from the call site's base value. */
   --reveal-delay: var(--reveal-delay-base, 0ms);
+  /* A long, soft decelerate: most of the travel happens early, then it settles.
+     That is what reads as premium rather than as "slid in". */
   transition:
-    opacity   var(--reveal-duration) cubic-bezier(0.22, 0.61, 0.36, 1) var(--reveal-delay),
-    transform var(--reveal-duration) cubic-bezier(0.22, 0.61, 0.36, 1) var(--reveal-delay);
+    opacity   var(--reveal-duration) cubic-bezier(0.16, 0.84, 0.34, 1) var(--reveal-delay),
+    transform var(--reveal-duration) cubic-bezier(0.16, 0.84, 0.34, 1) var(--reveal-delay);
 }
 
-/* Variants only set properties; one transform rule below reads them. */
-.reveal-js [data-reveal="fade"]  { --reveal-y: 0px; }
-.reveal-js [data-reveal="scale"] { --reveal-y: 8px; --reveal-scale: 0.97; }
-/* For photography: settles out of a slight over-scale, which reads as the image
-   arriving rather than sliding. No translate, so it cannot nudge a layout. */
-.reveal-js [data-reveal="image"] { --reveal-y: 0px; --reveal-scale: 1.03; }
+/* Variants set properties only; one transform rule below reads them. */
+.reveal-js [data-reveal="fade"]  { --reveal-y: 0px; --reveal-duration: 900ms; }
+.reveal-js [data-reveal="up"]    { --reveal-y: 60px; }
+.reveal-js [data-reveal="scale"] { --reveal-y: 24px; --reveal-scale: 0.88; }
+/* Horizontal reveals. ONLY on elements that sit inside something which clips,
+   or well inside the page gutter — an 80px offset on a full-bleed element is
+   80px of horizontal scrollbar. */
+.reveal-js [data-reveal="left"]  { --reveal-y: 0px; --reveal-x: -80px; }
+.reveal-js [data-reveal="right"] { --reveal-y: 0px; --reveal-x: 80px; }
+/* Cards: rise and grow together. */
+.reveal-js [data-reveal="card"]  { --reveal-y: 70px; --reveal-scale: 0.94; }
 
-/* The hidden state, and the ONLY place opacity/transform are asserted. */
+/* A "right" reveal WIDENS THE DOCUMENT unless something clips it, and that is a
+   horizontal scrollbar on a page that had none. Measured on /contact at 1024px
+   before this rule existed: the form column sat 42px past the viewport while
+   hidden and the page scrolled sideways. (A "left" reveal is safe on its own —
+   overflow to the left of the origin is not scrollable in LTR — but it is
+   clipped here too so the pair behaves the same.)
+
+   Put `data-reveal-clip` on the element that CONTAINS horizontal reveals.
+
+   `clip`, not `hidden`, for two reasons: `overflow: hidden` creates a scroll
+   container, which would break any `position: sticky` descendant and let a
+   focused-but-hidden child scroll the box sideways; and `clip` is the only
+   value that allows the other axis to stay `visible`. */
+.reveal-js [data-reveal-clip] { overflow-x: clip; }
+
+/* Safari shipped `overflow: clip` in 16. Older browsers would fall back to
+   `visible` — i.e. straight back to the scrollbar this rule exists to prevent —
+   so take the horizontal travel away from them instead and let the elements
+   rise like everything else. */
+@supports not (overflow-x: clip) {
+  .reveal-js [data-reveal="left"],
+  .reveal-js [data-reveal="right"] { --reveal-x: 0px; --reveal-y: 60px; }
+}
+
 .reveal-js [data-reveal]:not([data-revealed]) {
   opacity: 0;
-  /* translate3d rather than translateY to keep it on the compositor. */
-  transform: translate3d(0, var(--reveal-y), 0) scale(var(--reveal-scale));
+  transform: translate3d(var(--reveal-x), var(--reveal-y), 0) scale(var(--reveal-scale));
 }
 
-/* An element at opacity 0 is still focusable, so a keyboard user can tab into a
-   region the observer has not reached yet. Show it instantly when that happens
-   rather than leaving them on something they cannot see. `transform: none` is
-   safe here precisely because :focus-within is not a state a hover transform is
-   competing for. */
+.reveal-js [data-reveal][data-revealed] {
+  opacity: 1;
+  /* No `transform` here on purpose — see the footgun note above. */
+}
+
+/* An element at opacity 0 is still focusable. Show it instantly if a keyboard
+   user tabs into a region the observer has not reached yet, rather than leaving
+   them on something they cannot see. `transform: none` is safe here because
+   :focus-within is not a state a hover transform competes for. */
 .reveal-js [data-reveal]:focus-within {
   opacity: 1;
   transform: none;
   transition: none;
 }
 
-/* Mobile gets a shorter throw and a shorter duration — the same motion at phone
-   size reads as sluggish, and the viewport is short enough that a long travel
-   distance looks like a jump rather than a reveal. */
-@media (max-width: 767px) {
-  .reveal-js [data-reveal] {
-    --reveal-y: 12px;
-    --reveal-duration: 440ms;
-    /* Stagger halved. A grid that is four columns on desktop is one column on a
-       phone, so the same per-item step stops reading as a row arriving together
-       and starts reading as a queue the user has to wait through. */
-    --reveal-delay: calc(var(--reveal-delay-base, 0ms) / 2);
-  }
-  .reveal-js [data-reveal="scale"] { --reveal-y: 6px; }
+/* ── Image reveal ──────────────────────────────────────────────────────────
+   A magazine-style crop reveal: the FRAME stays exactly where it is and the
+   picture inside settles out of an over-scale. Put `data-reveal="image"` on a
+   container that already clips, and the media inside is what moves — so the
+   layout box never changes and this cannot shift anything.
+   The `> span > img` selector is for next/image with `fill`, which wraps its
+   <img> in a span. */
+.reveal-js [data-reveal="image"]:not([data-revealed]) {
+  opacity: 1;                 /* the frame itself never disappears */
+  transform: none;
+}
+.reveal-js [data-reveal="image"] img {
+  transition:
+    opacity   700ms cubic-bezier(0.16, 0.84, 0.34, 1) var(--reveal-delay),
+    transform 1200ms cubic-bezier(0.16, 0.84, 0.34, 1) var(--reveal-delay);
+}
+.reveal-js [data-reveal="image"]:not([data-revealed]) img {
+  opacity: 0;
+  transform: scale(1.12) translate3d(0, 20px, 0);
+}
+
+/* ── Parallax ──────────────────────────────────────────────────────────────
+   The shared scroll listener writes `--parallax-y` in pixels; the element only
+   consumes it. Decorative layers ONLY — never an ancestor of anything fixed or
+   sticky, because a transform re-parents those. */
+[data-parallax] {
+  transform: translate3d(0, var(--parallax-y, 0px), 0);
+}
+
+/* ── Header scroll state ───────────────────────────────────────────────────
+   A CLASS TOGGLE, never a reveal or a parallax. The headers are sticky and use
+   backdrop-blur: a transform or an opacity below 1 on them — or on any ancestor
+   — would re-parent their fixed children and flatten the frosted backdrop.
+   Toggling one class on <html> does neither, and it is driven from the single
+   shared scroll tick in RevealObserver rather than a listener of its own.
+
+   At the top the bar reads as part of the ivory page; once scrolled it becomes
+   a floating white surface with a gold hairline. */
+.hallnect-header {
+  background-color: hsl(38 55% 96% / 0.8);
+  border-bottom-color: transparent;
+  backdrop-filter: blur(6px);
+  transition:
+    background-color 320ms ease,
+    border-bottom-color 320ms ease,
+    box-shadow 320ms ease,
+    backdrop-filter 320ms ease;
+}
+.is-scrolled .hallnect-header {
+  background-color: hsl(0 0% 100% / 0.96);
+  border-bottom-color: hsl(38 20% 87%);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 1px 2px rgba(26, 22, 20, 0.04), 0 8px 24px rgba(26, 22, 20, 0.08);
+}
+/* A brand-gold hairline that fades in under the bar once it is floating. */
+.hallnect-header::after {
+  content: "";
+  position: absolute;
+  inset-inline: 0;
+  bottom: -1px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, #E0A820, transparent);
+  opacity: 0;
+  transition: opacity 320ms ease;
+  pointer-events: none;
+}
+.is-scrolled .hallnect-header::after { opacity: 0.55; }
+
+/* The mobile app bar. Flat while the page is at the top — it reads as part of
+   the screen — and it lifts onto its own surface the moment you scroll, so the
+   logo and title never sit directly on top of the content sliding under them.
+   `border-b` stays in the markup so the box model does not change when the
+   colour arrives; only the colour animates. */
+.hallnect-appbar {
+  background-color: hsl(0 0% 100% / 0.94);
+  border-bottom-color: transparent;
+  backdrop-filter: blur(8px);
+  transition:
+    background-color 300ms ease,
+    border-bottom-color 300ms ease,
+    box-shadow 300ms ease;
+}
+.is-scrolled .hallnect-appbar {
+  border-bottom-color: hsl(38 20% 87%);
+  box-shadow: 0 1px 2px rgba(26, 22, 20, 0.05), 0 6px 18px rgba(26, 22, 20, 0.07);
+}
+/* The `transparent` variant sits over a photo or a coloured hero, so it starts
+   with no surface at all and materialises one on scroll. Declared AFTER the
+   base rule, and its scrolled form is two classes deep like the base's, so the
+   cascade resolves the way it reads. */
+.hallnect-appbar-float {
+  background-color: transparent;
+  backdrop-filter: none;
+}
+.is-scrolled .hallnect-appbar-float {
+  background-color: hsl(0 0% 100% / 0.94);
+  backdrop-filter: blur(8px);
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .hallnect-header,
+  .hallnect-appbar,
+  .hallnect-header::after { transition: none; }
+}
+
+/* ── Hero load sequence ────────────────────────────────────────────────────
+   A CSS ANIMATION, NOT A REVEAL, and that distinction is what makes it safe
+   above the fold: a keyframe animation needs no JavaScript to finish. With
+   `both` fill it ends visible even if the bundle never loads, so the hero can
+   animate on first paint without the observer being involved at all.
+   `.reveal-js` still gates it, so a no-JS render skips to the final state and
+   the headline paints immediately. */
+@keyframes hallnect-rise {
+  from { opacity: 0; transform: translate3d(0, 34px, 0); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes hallnect-card-in {
+  from { opacity: 0; transform: translate3d(0, 70px, 0) scale(0.94); }
+  to   { opacity: 1; transform: none; }
+}
+.reveal-js [data-reveal-now] {
+  animation: hallnect-card-in 780ms cubic-bezier(0.16, 0.84, 0.34, 1) both;
+  animation-delay: var(--reveal-delay-base, 0ms);
+}
+@media (max-width: 767px) {
+  @keyframes hallnect-card-in {
+    from { opacity: 0; transform: translate3d(0, 44px, 0) scale(0.95); }
+    to   { opacity: 1; transform: none; }
+  }
+}
+
+@keyframes hallnect-hero-zoom {
+  from { transform: scale(1.08); }
+  to   { transform: scale(1); }
+}
+.reveal-js [data-hero] {
+  animation: hallnect-rise 820ms cubic-bezier(0.16, 0.84, 0.34, 1) both;
+  animation-delay: var(--hero-delay, 0ms);
+}
+.reveal-js [data-hero-zoom] {
+  animation: hallnect-hero-zoom 1600ms cubic-bezier(0.16, 0.84, 0.34, 1) both;
+}
+
+/* ── Mobile ────────────────────────────────────────────────────────────────
+   Clearly animated too — just shorter travel, because the same distance on a
+   375px-wide screen reads as a jump rather than a reveal. */
+@media (max-width: 767px) {
+  .reveal-js [data-reveal] {
+    --reveal-y: 38px;
+    --reveal-x: 0px;          /* no horizontal travel: that is where overflow comes from */
+    --reveal-duration: 620ms;
+    --reveal-delay: calc(var(--reveal-delay-base, 0ms) * 0.6);
+  }
+  .reveal-js [data-reveal="scale"] { --reveal-y: 20px; --reveal-scale: 0.92; }
+  .reveal-js [data-reveal="card"]  { --reveal-y: 44px; --reveal-scale: 0.95; }
+  .reveal-js [data-reveal="left"],
+  .reveal-js [data-reveal="right"] { --reveal-y: 38px; }
+}
+
+/* ── Reduced motion ────────────────────────────────────────────────────────
+   Everything off, and not conditional on any JavaScript having run. */
+@media (prefers-reduced-motion: reduce) {
   .reveal-js [data-reveal],
-  .reveal-js [data-reveal]:not([data-revealed]) {
+  .reveal-js [data-reveal]:not([data-revealed]),
+  .reveal-js [data-reveal="image"]:not([data-revealed]) img {
     opacity: 1 !important;
     transform: none !important;
     transition: none !important;
+  }
+  .reveal-js [data-hero],
+  .reveal-js [data-reveal-now],
+  .reveal-js [data-hero-zoom] {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
+  [data-parallax] {
+    transform: none !important;
   }
 }
 
 /* Printing a page mid-scroll must not print blank sections. */
 @media print {
-  .reveal-js [data-reveal]:not([data-revealed]) {
+  .reveal-js [data-reveal]:not([data-revealed]),
+  .reveal-js [data-reveal="image"]:not([data-revealed]) img,
+  .reveal-js [data-hero] {
     opacity: 1 !important;
     transform: none !important;
+    animation: none !important;
   }
 }

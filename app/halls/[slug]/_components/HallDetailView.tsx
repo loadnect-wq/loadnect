@@ -389,7 +389,7 @@ export function HallDetailView({ hall, similar, isPreview, sidebarAd, advancePer
                 (it is the parent of the fixed lightbox), the sticky desktop
                 booking aside, and the fixed mobile Book Now / Send Enquiry bar.
                 See the note at the bottom of app/globals.css. */}
-            <section data-reveal className="mt-6">
+            <section data-reveal="up" className="mt-6">
               <h2 className="font-serif text-base font-semibold text-charcoal-900">About</h2>
               <p className="mt-2 text-sm leading-relaxed text-charcoal-600">
                 {hall.description ??
@@ -399,7 +399,7 @@ export function HallDetailView({ hall, similar, isPreview, sidebarAd, advancePer
 
             {/* Amenities */}
             {hall.amenities.length > 0 && (
-              <section data-reveal className="mt-6">
+              <section data-reveal="scale" className="mt-6">
                 <h2 className="font-serif text-base font-semibold text-charcoal-900">Amenities</h2>
                 <div className="mt-3 grid grid-cols-4 gap-2 sm:grid-cols-6">
                   {hall.amenities.map((a) => (
@@ -440,7 +440,7 @@ export function HallDetailView({ hall, similar, isPreview, sidebarAd, advancePer
             )}
 
             {/* Location */}
-            <section data-reveal className="mt-6">
+            <section data-reveal="up" className="mt-6">
               <h2 className="font-serif text-base font-semibold text-charcoal-900">Location</h2>
               <div className="mt-3 rounded-2xl bg-white p-4 shadow-card">
                 <div className="flex items-start gap-3">
@@ -494,7 +494,7 @@ export function HallDetailView({ hall, similar, isPreview, sidebarAd, advancePer
                 rather than dropping a statutory disclosure off a page that
                 otherwise looks complete. */}
             {hall.sellerUnavailable && (
-              <section data-reveal className="mt-6">
+              <section data-reveal="up" className="mt-6">
                 <h2 className="font-serif text-base font-semibold text-charcoal-900">Listed by</h2>
                 <div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 p-4">
                   <p className="text-sm text-amber-900">
@@ -505,7 +505,7 @@ export function HallDetailView({ hall, similar, isPreview, sidebarAd, advancePer
               </section>
             )}
             {hall.seller && (
-              <section data-reveal className="mt-6">
+              <section data-reveal="up" className="mt-6">
                 <h2 className="font-serif text-base font-semibold text-charcoal-900">Listed by</h2>
                 <div className="mt-3 rounded-2xl bg-white p-4 shadow-card">
                   <p className="text-sm font-semibold text-charcoal-900">
@@ -527,7 +527,7 @@ export function HallDetailView({ hall, similar, isPreview, sidebarAd, advancePer
             )}
 
             {/* Pricing breakdown */}
-            <section data-reveal className="mt-6">
+            <section data-reveal="up" className="mt-6">
               <h2 className="font-serif text-base font-semibold text-charcoal-900">Pricing</h2>
               <div className="mt-3 overflow-hidden rounded-2xl bg-white shadow-card">
                 {priced ? (
@@ -595,7 +595,7 @@ export function HallDetailView({ hall, similar, isPreview, sidebarAd, advancePer
                 status, no legend and no colour — a date window, not a promise.
                 The honest sentence at the bottom of the card was already there;
                 it is now the whole of what this section says. */}
-            <section data-reveal className="mt-6">
+            <section data-reveal="scale" className="mt-6">
               <h2 className="font-serif text-base font-semibold text-charcoal-900">
                 {isLead ? "Next 30 days" : "Availability"}
               </h2>
@@ -673,7 +673,7 @@ export function HallDetailView({ hall, similar, isPreview, sidebarAd, advancePer
             </section>
 
             {/* Reviews */}
-            <section data-reveal className="mt-6">
+            <section data-reveal="up" className="mt-6">
               <div className="flex items-center justify-between">
                 <h2 className="font-serif text-base font-semibold text-charcoal-900">Reviews</h2>
                 {hall.rating_count > 0 && (
@@ -780,7 +780,7 @@ export function HallDetailView({ hall, similar, isPreview, sidebarAd, advancePer
             </section>
 
             {/* Venue rules */}
-            <section data-reveal className="mt-6">
+            <section data-reveal="up" className="mt-6">
               <h2 className="font-serif text-base font-semibold text-charcoal-900">Hallnect Standard Venue Rules</h2>
               <ul className="mt-3 space-y-2 rounded-2xl bg-white p-4 shadow-card">
                 {VENUE_RULES.map((rule) => (
@@ -794,7 +794,7 @@ export function HallDetailView({ hall, similar, isPreview, sidebarAd, advancePer
 
             {/* Similar venues */}
             {similar.length > 0 && (
-              <section data-reveal className="mt-6">
+              <section data-reveal="up" className="mt-6">
                 <h2 className="font-serif text-base font-semibold text-charcoal-900">Similar Venues</h2>
                 <div className="no-scrollbar mt-3 -mx-4 overflow-x-auto">
                   <ul className="flex w-max gap-2.5 px-4">

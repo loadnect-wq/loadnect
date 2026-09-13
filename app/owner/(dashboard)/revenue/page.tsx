@@ -11,6 +11,8 @@ import { Badge } from "@/components/ui/Badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { buttonVariants } from "@/components/ui/Button";
 import { AppHeader } from "@/components/app/AppHeader";
+import { CountUp } from "@/components/motion/CountUp";
+import { revealDelay } from "@/lib/motion";
 
 export const metadata: Metadata = { title: "Revenue" };
 
@@ -133,10 +135,15 @@ export default async function OwnerRevenuePage() {
 
         {/* Summary cards */}
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <SummaryCard label="Total Bookings"  value={bookings.length.toString()} />
-          <SummaryCard label="Completed"       value={completedCount.toString()} />
-          <SummaryCard label="Booking Value"   value={formatPrice(totalBookingAmount)} wide />
-          <SummaryCard label="Your share"      value={totalPayout > 0 ? formatPrice(totalPayout) : "—"} wide highlight />
+          <SummaryCard revealIndex={0} label="Total Bookings"  count={bookings.length} />
+          <SummaryCard revealIndex={1} label="Completed"       count={completedCount} />
+          <SummaryCard revealIndex={2} label="Booking Value"   count={totalBookingAmount} money wide />
+          {/* The em dash stays a string and is never counted to: at zero there
+              is nothing to animate, and a 0 that arrived from a failed read
+              must not be dressed up as a figure. */}
+          <SummaryCard revealIndex={3} label="Your share"
+            {...(totalPayout > 0 ? { count: totalPayout, money: true } : { value: "—" })}
+            wide highlight />
         </div>
 
         {/* "Your share" is the hall price MINUS commission — most of it is
@@ -415,18 +422,33 @@ function PayoutLine({ payout }: { payout: AdvancePayout | null }) {
 }
 
 function SummaryCard({
-  label, value, highlight = false, wide = false,
+  label, value, count, money = false, highlight = false, wide = false, revealIndex,
 }: {
-  label: string; value: string; highlight?: boolean; wide?: boolean;
+  label: string;
+  /** Pre-formatted text, for anything that is not a number to count to. */
+  value?: string;
+  /** A number to count up to. Takes precedence over `value`. */
+  count?: number;
+  /** Prefixes the rupee sign, matching formatPrice(). */
+  money?: boolean;
+  highlight?: boolean;
+  wide?: boolean;
+  revealIndex?: number;
 }) {
   return (
-    <div className={[
+    <div
+      {...(revealIndex === undefined
+        ? {}
+        : { "data-reveal-now": "", style: revealDelay(revealIndex, 70) })}
+      className={[
       "rounded-2xl bg-white p-4 shadow-card",
       highlight ? "ring-2 ring-emerald-300" : "",
       wide ? "col-span-2 sm:col-span-1" : "",
     ].join(" ")}>
       <p className="text-[11px] font-semibold uppercase tracking-wide text-charcoal-500">{label}</p>
-      <p className="mt-1 text-xl font-bold text-charcoal-900">{value}</p>
+      <p className="mt-1 text-xl font-bold text-charcoal-900">
+        {count === undefined ? value : <CountUp value={count} prefix={money ? "\u20b9" : ""} />}
+      </p>
     </div>
   );
 }
