@@ -8,8 +8,29 @@
 //     a non-http(s) scheme, the link is dropped and we render a plain image.
 //   • rel="noopener noreferrer nofollow" on every outbound link.
 
+import Image from "next/image";
 import { fetchActiveAds } from "@/lib/ads-server";
-import { validateTargetUrl, type AdPlacement } from "@/lib/ads";
+import { validateTargetUrl, isDisplayableAdImageHost, type AdPlacement } from "@/lib/ads";
+
+/**
+ * A creative is rendered ONLY from a host the CSP permits and next.config's
+ * remotePatterns allows — which are the same host, Supabase Storage.
+ *
+ * Two failures this closes, in order of nastiness:
+ *   1. next/image THROWS at render (E231) for a src outside remotePatterns.
+ *      AdSlot is a Server Component on four public pages, so one legacy row
+ *      with an off-host URL would 500 the homepage. The guard is what makes
+ *      next/image safe to use here at all.
+ *   2. The browser blocks an off-host image via img-src, so the ad renders as
+ *      an empty box with no error anywhere. Dropping the image entirely at
+ *      least leaves a readable, labelled card.
+ *
+ * validateImageUrl now refuses these at save time, so this is the backstop for
+ * rows written before that existed.
+ */
+function displayableImage(url: string | null): string | null {
+  return url && isDisplayableAdImageHost(url) ? url : null;
+}
 
 type Props = {
   placement: AdPlacement;
@@ -33,12 +54,18 @@ export async function AdSlot({ placement, limit = 1, variant = "banner", classNa
       <aside className={["space-y-3", className].filter(Boolean).join(" ")} aria-label="Sponsored">
         {ads.map((ad) => {
           const href = safeHref(ad.target_url);
-          const img  = safeHref(ad.image_url);
+          const img  = displayableImage(safeHref(ad.image_url));
           const inner = (
             <div className="overflow-hidden rounded-xl border border-border bg-white shadow-card">
               {img && (
-                /* eslint-disable-next-line @next/next/no-img-element */
-                <img src={img} alt="" className="h-32 w-full object-cover" />
+                <Image
+                  src={img}
+                  alt=""
+                  width={400}
+                  height={128}
+                  sizes="(min-width: 1024px) 320px, 100vw"
+                  className="h-32 w-full object-cover"
+                />
               )}
               <div className="p-3">
                 <p className="text-[10px] font-semibold uppercase tracking-wider text-charcoal-400">Sponsored</p>
@@ -66,12 +93,18 @@ export async function AdSlot({ placement, limit = 1, variant = "banner", classNa
     <aside className={["space-y-2", className].filter(Boolean).join(" ")} aria-label="Sponsored">
       {ads.map((ad) => {
         const href = safeHref(ad.target_url);
-        const img  = safeHref(ad.image_url);
+        const img  = displayableImage(safeHref(ad.image_url));
         const inner = (
           <div className="relative overflow-hidden rounded-xl border border-border bg-white shadow-card">
             {img && (
-              /* eslint-disable-next-line @next/next/no-img-element */
-              <img src={img} alt={ad.title} className="h-32 w-full object-cover sm:h-40" />
+              <Image
+                src={img}
+                alt={ad.title}
+                width={1200}
+                height={160}
+                sizes="(min-width: 1280px) 1200px, 100vw"
+                className="h-32 w-full object-cover sm:h-40"
+              />
             )}
             <div className="absolute inset-x-0 bottom-0 flex items-end justify-between gap-3 bg-gradient-to-t from-black/70 via-black/30 to-transparent p-3 text-white">
               <div className="min-w-0">

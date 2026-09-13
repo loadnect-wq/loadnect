@@ -72,11 +72,47 @@ export function validateTargetUrl(raw: unknown): UrlValidationResult {
   return { ok: true, url: parsed.toString() };
 }
 
+/**
+ * The hosts a creative may be served from.
+ *
+ * THE CSP DECIDES THIS, NOT TASTE. next.config.ts sets
+ * `img-src 'self' data: blob: <supabase origin> https://*.supabase.co <ga>`,
+ * so a creative on any other host is BLOCKED BY THE BROWSER — the ad renders as
+ * a blank box and nothing anywhere reports it. The admin field is free text, so
+ * until now an admin could paste an imgur link, see it save cleanly, and never
+ * learn that the ad they sold was invisible.
+ *
+ * Checked at save time so the failure is an error message, not a silent no-op.
+ * `img-src` also permits `self`, which is why a same-origin path is allowed.
+ */
+export function isDisplayableAdImageHost(url: string): boolean {
+  try {
+    const { protocol, hostname } = new URL(url);
+    if (protocol !== "https:") return false;
+    // Any Supabase project host — matching the CSP's own https://*.supabase.co.
+    return hostname === "supabase.co" || hostname.endsWith(".supabase.co");
+  } catch {
+    return false;
+  }
+}
+
 export function validateImageUrl(raw: unknown): UrlValidationResult {
   if (typeof raw !== "string" || !raw.trim()) {
     return { ok: false, error: "Image URL is required." };
   }
-  return validateTargetUrl(raw);
+  const base = validateTargetUrl(raw);
+  if (!base.ok) return base;
+
+  if (!isDisplayableAdImageHost(base.url)) {
+    return {
+      ok: false,
+      error:
+        "Creative images must be uploaded to Hallnect's own storage. " +
+        "An image hosted anywhere else is blocked by the site's content security " +
+        "policy and the ad would show an empty box.",
+    };
+  }
+  return base;
 }
 
 export function isValidPlacement(p: unknown): p is AdPlacement {
