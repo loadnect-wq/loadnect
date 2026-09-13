@@ -295,25 +295,32 @@
   transition: none;
 }
 
-/* ── Image reveal ──────────────────────────────────────────────────────────
-   A magazine-style crop reveal: the FRAME stays exactly where it is and the
-   picture inside settles out of an over-scale. Put `data-reveal="image"` on a
-   container that already clips, and the media inside is what moves — so the
-   layout box never changes and this cannot shift anything.
-   The `> span > img` selector is for next/image with `fill`, which wraps its
-   <img> in a span. */
-.reveal-js [data-reveal="image"]:not([data-revealed]) {
-  opacity: 1;                 /* the frame itself never disappears */
-  transform: none;
+/* ── A PHOTO ENTRANCE THAT NEVER HIDES THE PHOTO ───────────────────────────
+   This replaces a `data-reveal="image"` variant that faded the <img> in from
+   opacity 0. That variant was wrong for photographs and it shipped on the
+   venue gallery, where cell 0 is the page's LCP element: the cover photo
+   downloaded with fetchpriority=high, decoded, painted invisible, and waited
+   for React to hydrate before anyone could see it. Chrome does not treat a
+   zero-opacity element as an LCP candidate, so the largest paint on the most
+   important page on the site was pushed back to hydration time.
+
+   THERE IS NO OPACITY HERE, DELIBERATELY, AND THERE MUST NOT BE. The photo is
+   fully painted from the first frame; only its scale animates. That makes the
+   entrance free in every sense that matters — no LCP penalty, nothing gated on
+   the bundle arriving, and no way for a failed script to leave a venue's
+   photograph blank.
+
+   A CSS keyframe rather than a scroll reveal for the same reason: it finishes
+   on its own. `backwards` fill holds the `from` state through the stagger
+   delay and then gets out of the way entirely, leaving no animation-origin
+   transform behind to outrank a hover or :active transform later. */
+@keyframes hallnect-photo-in {
+  from { transform: scale(1.08); }
+  to   { transform: scale(1); }
 }
-.reveal-js [data-reveal="image"] img {
-  transition:
-    opacity   700ms cubic-bezier(0.16, 0.84, 0.34, 1) var(--reveal-delay),
-    transform 1200ms cubic-bezier(0.16, 0.84, 0.34, 1) var(--reveal-delay);
-}
-.reveal-js [data-reveal="image"]:not([data-revealed]) img {
-  opacity: 0;
-  transform: scale(1.12) translate3d(0, 20px, 0);
+.reveal-js [data-photo-in] img {
+  animation: hallnect-photo-in 900ms cubic-bezier(0.16, 0.84, 0.34, 1) backwards;
+  animation-delay: var(--reveal-delay-base, 0ms);
 }
 
 /* ── Parallax ──────────────────────────────────────────────────────────────
@@ -402,9 +409,10 @@
 
 /* ── Hero load sequence ────────────────────────────────────────────────────
    A CSS ANIMATION, NOT A REVEAL, and that distinction is what makes it safe
-   above the fold: a keyframe animation needs no JavaScript to finish. With
-   `both` fill it ends visible even if the bundle never loads, so the hero can
-   animate on first paint without the observer being involved at all.
+   above the fold: a keyframe animation needs no JavaScript to finish, so the
+   hero can animate on first paint without the observer being involved at all.
+   Every keyframe below ends at the element's natural style, which is why the
+   fill is `backwards` and not `both` — see the note on [data-reveal-now].
    `.reveal-js` still gates it, so a no-JS render skips to the final state and
    the headline paints immediately. */
 @keyframes hallnect-rise {
@@ -416,7 +424,14 @@
   to   { opacity: 1; transform: none; }
 }
 .reveal-js [data-reveal-now] {
-  animation: hallnect-card-in 780ms cubic-bezier(0.16, 0.84, 0.34, 1) both;
+  /* `backwards`, NOT `both`. A filling animation outranks normal author
+     declarations, and this keyframe ends at `transform: none` — so `both`
+     kept asserting that forever and silently killed `active:scale-[0.99]` on
+     any element carrying both. Nothing removes [data-reveal-now] the way the
+     observer removes [data-reveal], so it never wore off. Every `to` here
+     equals the element's natural style, so dropping the forwards half costs
+     nothing and `backwards` still covers the stagger delay. */
+  animation: hallnect-card-in 780ms cubic-bezier(0.16, 0.84, 0.34, 1) backwards;
   animation-delay: var(--reveal-delay-base, 0ms);
 }
 @media (max-width: 767px) {
@@ -431,11 +446,11 @@
   to   { transform: scale(1); }
 }
 .reveal-js [data-hero] {
-  animation: hallnect-rise 820ms cubic-bezier(0.16, 0.84, 0.34, 1) both;
+  animation: hallnect-rise 820ms cubic-bezier(0.16, 0.84, 0.34, 1) backwards;
   animation-delay: var(--hero-delay, 0ms);
 }
 .reveal-js [data-hero-zoom] {
-  animation: hallnect-hero-zoom 1600ms cubic-bezier(0.16, 0.84, 0.34, 1) both;
+  animation: hallnect-hero-zoom 1600ms cubic-bezier(0.16, 0.84, 0.34, 1) backwards;
 }
 
 /* ── Mobile ────────────────────────────────────────────────────────────────
@@ -458,15 +473,15 @@
    Everything off, and not conditional on any JavaScript having run. */
 @media (prefers-reduced-motion: reduce) {
   .reveal-js [data-reveal],
-  .reveal-js [data-reveal]:not([data-revealed]),
-  .reveal-js [data-reveal="image"]:not([data-revealed]) img {
+  .reveal-js [data-reveal]:not([data-revealed]) {
     opacity: 1 !important;
     transform: none !important;
     transition: none !important;
   }
   .reveal-js [data-hero],
   .reveal-js [data-reveal-now],
-  .reveal-js [data-hero-zoom] {
+  .reveal-js [data-hero-zoom],
+  .reveal-js [data-photo-in] img {
     animation: none !important;
     opacity: 1 !important;
     transform: none !important;
@@ -479,7 +494,9 @@
 /* Printing a page mid-scroll must not print blank sections. */
 @media print {
   .reveal-js [data-reveal]:not([data-revealed]),
-  .reveal-js [data-reveal="image"]:not([data-revealed]) img,
+  .reveal-js [data-photo-in] img,
+  .reveal-js [data-reveal-now],
+  .reveal-js [data-hero-zoom],
   .reveal-js [data-hero] {
     opacity: 1 !important;
     transform: none !important;

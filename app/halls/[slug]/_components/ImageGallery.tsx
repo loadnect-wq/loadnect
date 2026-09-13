@@ -310,13 +310,22 @@ export function ImageGallery({ images, hallName, hallCity, hallId }: Props) {
             return (
               <div
                 key={`${img.url}-${i}`}
-                // `image` reveal: the CELL stays exactly where it is and the
-                // photo inside settles out of a 1.12 over-scale. The cell
-                // already clips (rounded/overflow on the block and on each
-                // thumb), so the zoom cannot paint outside its frame and the
-                // layout box never changes — no shift, and the mosaic geometry
-                // measured earlier is untouched.
-                data-reveal="image"
+                // The photo settles out of a 1.08 over-scale. The CELL stays
+                // exactly where it is and the photo is NEVER transparent —
+                // both of those are load-bearing.
+                //
+                // Not a scroll reveal, for two reasons this file learned the
+                // hard way. Cell 0 carries `priority` and is the LCP element
+                // of every venue page: anything that starts it at opacity 0
+                // both delays the photo until hydration and disqualifies it as
+                // an LCP candidate. And these cells are slides of a horizontal
+                // snap track — a slide parked off to the right never
+                // intersects the viewport, so a reveal would leave photos
+                // 2..n hidden until swiped and then fade them in late.
+                //
+                // A keyframe has neither problem: it finishes without
+                // JavaScript and it does not care where the slide is.
+                data-photo-in=""
                 style={revealDelay(i, 90)}
                 className={[
                   "relative h-full w-full shrink-0 snap-center lg:h-auto lg:w-auto overflow-hidden",

@@ -54,11 +54,21 @@ export function CountUp({ value, prefix = "", suffix = "", duration = 1400, clas
 
   useEffect(() => {
     const el = ref.current;
-    if (!el || spent.current) return;
+    if (!el) return;
 
     const render = (n: number) => {
       el.textContent = format(n, prefix, suffix);
     };
+
+    // ALREADY COUNTED. Write the value we were just given and stop: this
+    // effect re-runs when `value` changes, and on that path React has already
+    // put the new figure in the text node. Returning without rendering was a
+    // bug — paired with the cleanup below it left the OLD number on screen
+    // permanently, so a dashboard figure could go stale and look confident.
+    if (spent.current) {
+      render(value);
+      return;
+    }
 
     // Four reasons to leave the real figure exactly where it is: a
     // reduced-motion reader, a browser with no observer, a value that isn't a
@@ -105,7 +115,11 @@ export function CountUp({ value, prefix = "", suffix = "", duration = 1400, clas
     return () => {
       io.disconnect();
       if (raf) cancelAnimationFrame(raf);
-      render(value); // never leave a partial number on screen
+      // NOTHING IS RENDERED HERE ON PURPOSE. This closure's `value` is the
+      // value at the time this effect ran, which on a value change is the old
+      // one — writing it back is how the figure used to freeze. React has
+      // already committed the new text by the time a cleanup runs, and on
+      // unmount there is no node left to correct.
     };
   }, [value, duration, prefix, suffix]);
 
