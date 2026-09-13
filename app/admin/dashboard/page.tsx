@@ -123,7 +123,13 @@ export default async function AdminDashboardPage() {
         )}
 
         {/* Action queue */}
-        <section data-reveal>
+        {/* A keyframe, NOT a scroll reveal. This is the first block on the page
+            and it holds the counts an operator came here to read — halls
+            awaiting approval, open tickets, ads to review. A scroll reveal
+            would hold them at opacity 0 until React hydrated, which is the
+            same mistake the venue photo made: the thing you opened the screen
+            for is the thing that is missing. */}
+        <section data-reveal-now="">
           <h2 className="mb-3 font-serif text-sm font-semibold text-charcoal-900">Needs attention</h2>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             {queue.map((q) => (
@@ -178,7 +184,7 @@ export default async function AdminDashboardPage() {
         </section>
 
         {/* Revenue */}
-        <section data-reveal>
+        <section data-reveal="up">
           <h2 className="mb-3 font-serif text-sm font-semibold text-charcoal-900">Revenue</h2>
           <div className="grid gap-3 sm:grid-cols-3">
             <RevenueCard
@@ -248,7 +254,7 @@ export default async function AdminDashboardPage() {
 
         {/* Recent admin activity — real entries from the append-only audit log.
             Nothing here is synthesised; an empty log renders an empty state. */}
-        <section data-reveal>
+        <section data-reveal="up">
           <div className="mb-3 flex items-center justify-between">
             <h2 className="font-serif text-sm font-semibold text-charcoal-900">Recent admin activity</h2>
             <Link href="/admin/audit-logs" className="text-xs font-semibold text-maroon-600 hover:underline">
@@ -285,7 +291,7 @@ export default async function AdminDashboardPage() {
         </section>
 
         {/* Quick links */}
-        <section data-reveal>
+        <section data-reveal="scale">
           <h2 className="mb-3 font-serif text-sm font-semibold text-charcoal-900">Manage</h2>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
             <QuickLink href="/admin/hall-approvals" icon={<ClipboardCheck className="h-4 w-4" />} label="Hall Approvals" />

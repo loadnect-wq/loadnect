@@ -463,6 +463,11 @@
     --reveal-duration: 620ms;
     --reveal-delay: calc(var(--reveal-delay-base, 0ms) * 0.6);
   }
+  /* fade MUST be re-declared here. This block and the variant rules above
+     have the same specificity and this one comes later, so anything it does
+     not restate is overwritten — which is how `fade` ended up with 38px of
+     travel on mobile and became a second `up`. */
+  .reveal-js [data-reveal="fade"]  { --reveal-y: 0px; --reveal-duration: 720ms; }
   .reveal-js [data-reveal="scale"] { --reveal-y: 20px; --reveal-scale: 0.92; }
   .reveal-js [data-reveal="card"]  { --reveal-y: 44px; --reveal-scale: 0.95; }
   .reveal-js [data-reveal="left"],

@@ -59,11 +59,27 @@ export function RevealObserver() {
      * duration + 280ms stagger).
      */
     function scheduleCleanup(el: Element) {
+      // ASK THE ELEMENT HOW LONG IT NEEDS. This used to be a flat 1000ms,
+      // which was shorter than the thing it was waiting for: the stagger
+      // reaches 600ms and the `fade` variant runs 900ms, so a delayed element
+      // was still easing when its attributes were pulled. Removing
+      // `data-reveal` removes the transition declaration, which cancels the
+      // running transition and snaps the element to its end state — the long
+      // cascades this system exists for were exactly the ones that jumped.
+      //
+      // transitionDuration/Delay list one entry per transitioned property;
+      // both are identical here, so the first is the one to read.
+      const cs = getComputedStyle(el);
+      const secs = parseFloat(cs.transitionDuration) + parseFloat(cs.transitionDelay);
+      // The +120ms is slack for the frame the transition ends on. The clamp
+      // keeps a nonsense computed value (or a very long custom duration) from
+      // leaving the attributes on the element indefinitely.
+      const ms = Number.isFinite(secs) ? Math.min(secs * 1000 + 120, 4000) : 1000;
       const id = window.setTimeout(() => {
         pending.delete(id);
         el.removeAttribute("data-reveal");
         el.removeAttribute("data-revealed");
-      }, 1000);
+      }, ms);
       pending.add(id);
     }
 

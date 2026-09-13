@@ -205,9 +205,15 @@ export default async function HomePage() {
           </div>
           {/* Real service areas that actually have venues, and the picker now
               navigates. See app/_components/HomeLocation.tsx. */}
-          <div data-reveal="up" style={revealDelay(1, 80)}>
-            <HomeLocation cities={citiesWithVenues} />
-          </div>
+          {/* NO `data-reveal` HERE, AND DO NOT ADD ONE. HomeLocation renders a
+              BottomSheet whose backdrop and panel are `position: fixed` and
+              rendered inline rather than portalled (components/app/BottomSheet.tsx
+              :84,:97). Any transform on this wrapper — including the identity
+              transform the `fade` variant still sets — makes it the containing
+              block for those, so the city picker would open inside this strip
+              instead of over the screen. One beat is not worth breaking the
+              primary navigation control on the mobile homepage. */}
+          <HomeLocation cities={citiesWithVenues} />
         </section>
 
         <section data-reveal="up" style={revealDelay(2, 80)} className="container-app mt-4">

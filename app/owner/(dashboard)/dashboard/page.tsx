@@ -205,6 +205,7 @@ export default async function OwnerDashboardPage() {
             highlight={pendingLeads > 0}
           />
           <StatCard
+            revealIndex={4}
             icon={<IndianRupee className="h-5 w-5 text-emerald-600" />}
             label="Total Revenue"
             value={formatPrice(stats.totalRevenue)}
