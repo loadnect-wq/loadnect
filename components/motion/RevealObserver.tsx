@@ -88,8 +88,10 @@ export function RevealObserver() {
         // element goes straight from "below the viewport" to "above the
         // viewport" without ever being reported as intersecting: false to
         // false, no callback, and it stays at opacity 0 for the life of the
-        // page. Measured: five elements stranded invisible after one
-        // instant jump down a page.
+        // page. This is a structural property of the API, not something
+        // observed here — the browser pane available during this work painted
+        // too intermittently to demonstrate it either way, and the scroll sweep
+        // below covers the same case belt-and-braces.
         //
         // Extending the root 99999px upward means anything at or above the
         // viewport is permanently inside it, so a passed-over element is
@@ -127,9 +129,11 @@ export function RevealObserver() {
     //   attribute off when the animation finishes, but React still believes it
     //   rendered one; the moment that element re-renders, React writes the
     //   attribute back onto a node this observer has already finished with and
-    //   stopped watching. Caught in the browser: the footer grid sat at
-    //   opacity 0 in the middle of the viewport after a re-render, with nothing
-    //   left to reveal it. Watching the attribute closes that loop.
+    //   stopped watching — which would leave it hidden with nothing left to
+    //   reveal it. Reasoned rather than reproduced: React does not rewrite an
+    //   unchanged attribute, so it needs the element to remount, and the
+    //   childList branch already catches most of that. Cheap insurance on the
+    //   one path where a cleaned-up node could come back untracked.
     //   No feedback loop: cleanup REMOVES the attribute, so the re-scan it
     //   triggers matches nothing, and `data-revealed` is not in the filter.
     const mutations = new MutationObserver((records) => {
