@@ -173,7 +173,7 @@ export default async function OwnerDashboardPage() {
         )}
 
         {/* Stats grid */}
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+        <div data-reveal className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
           <StatCard
             icon={<Building2 className="h-5 w-5 text-maroon-600" />}
             label="Total Halls"
@@ -225,7 +225,7 @@ export default async function OwnerDashboardPage() {
 
         {/* ── Settlement & commission snapshot ──────────────────────────────
             Mobile-first: single column, stacks cleanly; side-by-side from sm.  */}
-        <section className="rounded-2xl border border-border bg-white p-4 shadow-card">
+        <section data-reveal className="rounded-2xl border border-border bg-white p-4 shadow-card">
           <div className="flex items-center justify-between gap-3">
             <h2 className="font-serif text-base font-semibold text-charcoal-900">
               Settlement &amp; commission
@@ -291,7 +291,7 @@ export default async function OwnerDashboardPage() {
         </section>
 
         {/* ── Subscription upgrade ──────────────────────────────────────── */}
-        <section className="overflow-hidden rounded-2xl bg-gradient-to-br from-maroon-900 to-maroon-950 p-4 text-ivory-100 shadow-elevated">
+        <section data-reveal className="overflow-hidden rounded-2xl bg-gradient-to-br from-maroon-900 to-maroon-950 p-4 text-ivory-100 shadow-elevated">
           <p className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-gold-300">
             <Sparkles className="h-3.5 w-3.5" /> Grow your bookings
           </p>
@@ -320,7 +320,7 @@ export default async function OwnerDashboardPage() {
         </section>
 
         {/* Halls summary */}
-        <section>
+        <section data-reveal>
           <div className="flex items-center justify-between mb-3">
             <h2 className="font-serif text-base font-semibold text-charcoal-900">My Halls</h2>
             <Link href="/owner/halls" className="text-xs font-semibold text-maroon-600 hover:underline">

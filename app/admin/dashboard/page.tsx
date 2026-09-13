@@ -120,7 +120,7 @@ export default async function AdminDashboardPage() {
         )}
 
         {/* Action queue */}
-        <section>
+        <section data-reveal>
           <h2 className="mb-3 font-serif text-sm font-semibold text-charcoal-900">Needs attention</h2>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             {queue.map((q) => (
@@ -144,7 +144,7 @@ export default async function AdminDashboardPage() {
         </section>
 
         {/* Stats grid */}
-        <section className="grid gap-4 lg:grid-cols-3">
+        <section data-reveal className="grid gap-4 lg:grid-cols-3">
           {/* Users */}
           <StatGroup title="Users" icon={<Users className="h-4 w-4 text-maroon-600" />} href="/admin/users">
             <StatRow label="Customers"      value={stats.users.customers} />
@@ -173,7 +173,7 @@ export default async function AdminDashboardPage() {
         </section>
 
         {/* Revenue */}
-        <section>
+        <section data-reveal>
           <h2 className="mb-3 font-serif text-sm font-semibold text-charcoal-900">Revenue</h2>
           <div className="grid gap-3 sm:grid-cols-3">
             <RevenueCard
@@ -243,7 +243,7 @@ export default async function AdminDashboardPage() {
 
         {/* Recent admin activity — real entries from the append-only audit log.
             Nothing here is synthesised; an empty log renders an empty state. */}
-        <section>
+        <section data-reveal>
           <div className="mb-3 flex items-center justify-between">
             <h2 className="font-serif text-sm font-semibold text-charcoal-900">Recent admin activity</h2>
             <Link href="/admin/audit-logs" className="text-xs font-semibold text-maroon-600 hover:underline">
@@ -280,7 +280,7 @@ export default async function AdminDashboardPage() {
         </section>
 
         {/* Quick links */}
-        <section>
+        <section data-reveal>
           <h2 className="mb-3 font-serif text-sm font-semibold text-charcoal-900">Manage</h2>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
             <QuickLink href="/admin/hall-approvals" icon={<ClipboardCheck className="h-4 w-4" />} label="Hall Approvals" />

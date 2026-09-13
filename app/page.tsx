@@ -12,6 +12,7 @@ import { POPULAR_CITIES } from "@/lib/content";
 import { getAdvancePercent } from "@/lib/platform-settings";
 import { platformFeeDisclosure } from "@/lib/booking-payment";
 import { AdSlot } from "@/components/ads/AdSlot";
+import { revealDelay } from "@/lib/motion";
 import { HeroSearch } from "@/components/sections/HeroSearch";
 import { HallCard } from "@/app/halls/_components/HallCard";
 import { countActivePremiumHalls, fetchHalls, type HallListing } from "@/lib/halls";
@@ -325,10 +326,12 @@ export default async function HomePage() {
         {/* ── Categories strip ─────────────────────────────────── */}
         <section className="container-page py-12">
           <div className="grid grid-cols-4 gap-4 xl:grid-cols-8">
-            {visibleCategories.map((c) => (
+            {visibleCategories.map((c, i) => (
               <Link
                 key={c.key}
                 href={c.href}
+                data-reveal
+                style={revealDelay(i, 45)}
                 className="group flex flex-col items-center gap-2 rounded-2xl border border-border bg-white p-4 transition-all hover:-translate-y-0.5 hover:border-maroon-300 hover:shadow-card"
               >
                 <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-maroon-50 text-maroon-600 transition-colors group-hover:bg-maroon-100">
@@ -366,8 +369,8 @@ export default async function HomePage() {
             <div className="mt-8"><EmptyVenues /></div>
           ) : (
             <div className="mt-8 grid grid-cols-2 gap-6 xl:grid-cols-3">
-              {featured.map((h) => (
-                <HallCard key={h.id} hall={h} advancePercent={advancePercent} />
+              {featured.map((h, i) => (
+                <HallCard key={h.id} hall={h} advancePercent={advancePercent} revealIndex={i} />
               ))}
             </div>
           )}
@@ -387,12 +390,13 @@ export default async function HomePage() {
             blurb="Tamil Nadu cities where halls are listed and taking bookings today."
           />
           <div className="mt-8 grid grid-cols-4 gap-4">
-            {cities.map((c) => (
+            {cities.map((c, i) => (
               <Link
                 key={c.name}
                 href={`/wedding-halls/${c.slug}`}
+                data-reveal="scale"
                 className="group relative h-44 overflow-hidden rounded-2xl shadow-card transition-transform hover:-translate-y-1 hover:shadow-card-hover"
-                style={{ background: c.gradient }}
+                style={{ background: c.gradient, ...revealDelay(i) }}
               >
                 <div className="absolute inset-0 bg-gradient-to-t from-black/55 via-black/20 to-transparent" />
                 <div className="absolute inset-x-4 bottom-4 text-white">
@@ -418,8 +422,13 @@ export default async function HomePage() {
               centered
             />
             <div className="mt-12 grid grid-cols-3 gap-8">
-              {HOW_IT_WORKS.map((s) => (
-                <div key={s.step} className="relative rounded-2xl border border-border bg-ivory-50 p-7 transition-shadow hover:shadow-card">
+              {HOW_IT_WORKS.map((s, i) => (
+                <div
+                  key={s.step}
+                  data-reveal
+                  style={revealDelay(i, 90)}
+                  className="relative rounded-2xl border border-border bg-ivory-50 p-7 transition-shadow hover:shadow-card"
+                >
                   <span className="absolute -top-4 left-7 rounded-full bg-maroon-gradient px-3 py-1 text-xs font-bold text-white shadow-maroon">
                     {s.step}
                   </span>
