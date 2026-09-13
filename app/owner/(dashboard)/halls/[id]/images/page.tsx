@@ -74,7 +74,9 @@ export default async function HallImagesPage({ params, searchParams }: Props) {
           <Info className="h-4 w-4 shrink-0 mt-0.5 text-blue-600" />
           <p className="text-xs text-blue-800">
             Upload up to 10 images. The <strong>cover image</strong> is shown on search cards.
-            Click ⭐ on any image to make it the cover.
+            Click ⭐ on any image to make it the cover. A short description under each
+            photo helps screen readers and image search — leave it blank and we&apos;ll
+            describe the photo automatically.
           </p>
         </div>
 

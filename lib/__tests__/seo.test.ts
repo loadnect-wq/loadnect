@@ -183,6 +183,7 @@ describe("venue structured data", () => {
     pricePerDay: 40000,
     images: [{ url: "https://example.supabase.co/a.jpg", alt: null }],
     amenities: ["Air conditioning", "Parking"],
+    venueTypes: ["wedding", "reception"],
   };
 
   it("NEVER invents a rating for a venue with no reviews", () => {

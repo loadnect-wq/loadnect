@@ -5,13 +5,14 @@ import { useRouter } from "next/navigation";
 import { AlertCircle, CheckCircle2, ImagePlus, Loader2, Star, Trash2 } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { type HallImage } from "@/lib/owner";
-import { validateImageFile, IMAGE_LIMITS } from "@/lib/validation/schemas";
+import { validateImageFile, IMAGE_LIMITS, ALT_TEXT_MAX } from "@/lib/validation/schemas";
 import { ConfirmationDialog } from "@/components/ui/ConfirmationDialog";
 import { IMAGE_CACHE_CONTROL, sniffImageType } from "@/lib/supabase/storage";
 import {
   addHallImage,
   setCoverImage,
   deleteHallImage,
+  updateHallImageAlt,
 } from "@/app/owner/(dashboard)/actions";
 
 interface Props {
@@ -84,6 +85,11 @@ export function ImagesManager({ hallId, initial }: Props) {
   const [queue, setQueue]     = useState<QueueItem[]>([]);
   const [error, setError]     = useState<string | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  // Per-image draft descriptions, keyed by image id and DELETED on a successful
+  // save so the field goes back to reading server truth rather than shadowing
+  // it with stale local state.
+  const [drafts,  setDrafts]  = useState<Record<string, string>>({});
+  const [savedId, setSavedId] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -203,6 +209,19 @@ export function ImagesManager({ hallId, initial }: Props) {
     });
   }
 
+  function handleSaveAlt(imageId: string) {
+    const draft = drafts[imageId] ?? "";
+    setError(null);
+    startTransition(async () => {
+      const result = await updateHallImageAlt({ hallId, imageId, altText: draft });
+      if ("error" in result) { setError(result.error); return; }
+      // Drop the draft so the input re-reads the persisted value after refresh.
+      setDrafts((d) => { const next = { ...d }; delete next[imageId]; return next; });
+      setSavedId(imageId);
+      router.refresh();
+    });
+  }
+
   async function confirmDelete(): Promise<void | string> {
     if (!deleteId) return;
     const result = await deleteHallImage(hallId, deleteId);
@@ -282,10 +301,14 @@ export function ImagesManager({ hallId, initial }: Props) {
 
       {/* Saved images (server truth) */}
       {images.length > 0 && (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {images.map((img) => (
+            <div key={img.id} className="space-y-1.5">
+            {/* The photo keeps its own card. The description field is a
+                SIBLING, not a child: the card is `relative overflow-hidden`
+                with an action bar absolutely pinned across its bottom, so an
+                input inside it would be overlapped and clipped. */}
             <div
-              key={img.id}
               className={[
                 "relative overflow-hidden rounded-2xl bg-charcoal-100",
                 img.is_cover ? "ring-2 ring-gold-500" : "",
@@ -331,6 +354,34 @@ export function ImagesManager({ hallId, initial }: Props) {
                   <Trash2 className="h-4 w-4" />
                 </button>
               </div>
+            </div>
+
+            {/* NOT prefilled with the generated fallback. Seeding this with the
+                auto-description would mean one Save per photo silently writes a
+                derived sentence into the database as though the owner had
+                described the photo themselves. Blank means blank. */}
+            <div className="flex items-center gap-1.5">
+              <input
+                type="text"
+                value={drafts[img.id] ?? img.alt_text ?? ""}
+                onChange={(e) => {
+                  setSavedId(null);
+                  setDrafts((d) => ({ ...d, [img.id]: e.target.value }));
+                }}
+                maxLength={ALT_TEXT_MAX}
+                placeholder="Describe this photo"
+                aria-label="Photo description for screen readers and image search"
+                className="min-w-0 flex-1 rounded-lg border border-input bg-white px-2.5 py-1.5 text-xs text-charcoal-900 placeholder:text-charcoal-400 focus:outline-none focus:ring-2 focus:ring-ring"
+              />
+              <button
+                type="button"
+                onClick={() => handleSaveAlt(img.id)}
+                disabled={pending || drafts[img.id] === undefined}
+                className="shrink-0 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-maroon-600 transition-colors hover:bg-maroon-50 disabled:opacity-40 disabled:hover:bg-transparent"
+              >
+                {savedId === img.id && drafts[img.id] === undefined ? "Saved" : "Save"}
+              </button>
+            </div>
             </div>
           ))}
         </div>

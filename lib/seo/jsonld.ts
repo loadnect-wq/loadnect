@@ -54,6 +54,12 @@ export function canonicalState(state: string | null | undefined): string {
   return KNOWN[key] ?? raw;
 }
 
+/**
+ * Minimum reviews before an AggregateRating is published as structured data.
+ * See the note in venueJsonLd — the reviews themselves are always rendered.
+ */
+export const MIN_RATINGS_FOR_AGGREGATE = 3;
+
 export const ORGANIZATION_ID = `${SITE_URL}/#organization`;
 export const WEBSITE_ID = `${SITE_URL}/#website`;
 
@@ -168,6 +174,12 @@ export type VenueJsonLdInput = {
   ratingCount: number;
   images: { url: string; alt: string | null }[];
   amenities: string[];
+  /**
+   * Declared event types from halls.venue_types — already the 0037 vocabulary.
+   * An empty array means the owner declared none, and compact() then drops the
+   * key entirely, so an undeclared venue publishes no claim.
+   */
+  venueTypes: string[];
   // NOTE: no `reviews` input. fetchHallBySlug deliberately does not join
   // profiles (RLS blocks anonymous reads of other users' rows), so review
   // AUTHORS are unavailable — and Google requires an author on every Review
@@ -181,7 +193,20 @@ export type VenueJsonLdInput = {
  * listed by a third party on a marketplace is not.
  */
 export function venueJsonLd(v: VenueJsonLdInput) {
-  const hasRatings = v.ratingCount > 0 && v.ratingAverage > 0;
+  // A STAR RATING NEEDS MORE THAN ONE VOTE TO BE A RATING.
+  //
+  // The old gate was `ratingCount > 0`, so the first review a venue ever
+  // received would publish an AggregateRating of 5.0 — technically true, and
+  // read by a searcher as "everyone who has stayed here rates it perfect". A
+  // rich result showing five gold stars off a single vote is the kind of claim
+  // that is accurate in the data and misleading on the page, which is the
+  // definition Google uses when it takes a structured-data manual action.
+  //
+  // Three is the smallest number at which an average is an average rather than
+  // an opinion. Below it the reviews are still rendered on the page — readers
+  // get every one of them — they are simply not asserted as a machine-readable
+  // aggregate.
+  const hasRatings = v.ratingCount >= MIN_RATINGS_FOR_AGGREGATE && v.ratingAverage > 0;
 
   return compact({
     "@type": "EventVenue",
@@ -217,6 +242,14 @@ export function venueJsonLd(v: VenueJsonLdInput) {
       name: a,
       value: true,
     })),
+    // `keywords` is inherited from Thing and its range is Text, so it is valid
+    // on EventVenue. NOT `event`/`events`: those are valid on Place but their
+    // range is Event, which would mean minting four dateless Event nodes per
+    // venue — inventing entities, which is exactly what this file refuses to
+    // do. NOT amenityFeature either: an event type is not a facility.
+    // compact() drops the key when the join is empty.
+    keywords: v.venueTypes.join(", "),
+
     // NO priceRange HERE. Schema.org defines priceRange on LocalBusiness, not
     // on EventVenue (which descends from Place), so it was an invalid property
     // on this node. The day rate is not lost — it reaches search through the

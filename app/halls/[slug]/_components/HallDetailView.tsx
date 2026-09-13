@@ -13,6 +13,9 @@ import {
   Waves, Zap, Info,
 } from "lucide-react";
 import { type HallDetail, type HallListing, type AvailabilityRow } from "@/lib/halls";
+// From lib/venue-types, NOT lib/halls: this is a Client Component, and
+// lib/halls opens a database client.
+import { venueTypesSentence } from "@/lib/venue-types";
 import { CARD_GRADIENTS, formatPrice } from "@/lib/mock-data";
 import {
   formatHallPrice, hasPrice, isLeadGeneration,
@@ -182,6 +185,8 @@ export function HallDetailView({ hall, similar, isPreview, sidebarAd, advancePer
   // booleans instead of re-deriving the condition six ways.
   const isLead        = isLeadGeneration(hall.booking_mode);
   const priced        = hasPrice(hall.price_per_day);
+  // null when the owner declared no event types, in which case nothing renders.
+  const typesSentence = venueTypesSentence(hall.venue_types, hall);
   const ctaHref       = primaryCtaHref(hall.booking_mode, hall.slug);
   const ctaLabel      = primaryCtaLabel(hall.booking_mode);
   const showAdvance   = priced && !isLead;
@@ -433,6 +438,14 @@ export function HallDetailView({ hall, similar, isPreview, sidebarAd, advancePer
                 {hall.description ??
                   `${hall.name} is a premier event venue in ${hall.city}${hall.state ? `, ${hall.state}` : ""} with world-class amenities for every celebration.`}
               </p>
+              {/* venue_types is required of every owner, stored, indexed and
+                  used as a search filter — and until now it was rendered on no
+                  page a crawler could read. One sentence, in the owner's own
+                  declared terms, inside the existing About section rather than
+                  a new one. Absent entirely when nothing was declared. */}
+              {typesSentence && (
+                <p className="mt-2 text-sm leading-relaxed text-charcoal-600">{typesSentence}</p>
+              )}
             </section>
 
             {/* Amenities */}

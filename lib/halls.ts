@@ -7,6 +7,7 @@ import { todayInBusinessTz, addDaysToIsoDate } from "@/lib/dates";
 import { FULL_BLOCK_STATUSES } from "@/lib/availability-status";
 import type { PremiumTier } from "@/lib/premium-plans";
 import { toBookingMode, type BookingMode } from "@/lib/booking-mode";
+import { VENUE_TYPE_CATEGORIES, type VenueType } from "@/lib/venue-types";
 
 /**
  * A hall's price as a number, or null.
@@ -44,9 +45,11 @@ export type HallListing = {
   amenities:      string[];
 };
 
-/** Event types a venue can serve — pinned by a CHECK constraint in 0037. */
-export const VENUE_TYPE_CATEGORIES = ["wedding", "reception", "party", "banquet"] as const;
-export type VenueType = (typeof VENUE_TYPE_CATEGORIES)[number];
+// The vocabulary moved to lib/venue-types.ts so a Client Component can read it
+// without pulling this module (and the database client) into the browser
+// bundle. Re-exported here because the search filter below uses the name
+// locally and because lib/__tests__/security.test.ts imports it from this path.
+export { VENUE_TYPE_CATEGORIES, type VenueType };
 
 export type HallsFilters = {
   q?:         string; // free-text: name, city, address
@@ -167,6 +170,14 @@ export type HallDetail = {
   price_evening:  number | null;
   booking_mode:   BookingMode;
   description:    string | null;
+  /**
+   * Event types the owner declared: 'wedding' | 'reception' | 'party' |
+   * 'banquet'. `not null default '{}'` in migration 0037, whose own column
+   * comment says EMPTY MEANS UNDECLARED — not "all of them". Render it through
+   * venueTypesSentence, which returns null for an empty array so the page says
+   * nothing rather than inventing a claim about a real venue.
+   */
+  venue_types:    string[];
   status:         string; // hall_status enum value
   is_premium:     boolean;
   premium_tier:   PremiumTier | null;
@@ -573,7 +584,7 @@ export async function fetchHallBySlug(slug: string): Promise<HallDetail | null> 
       id, slug, name, city, state, address, pincode,
       latitude, longitude, capacity_min, capacity_max,
       price_per_day, price_morning, price_evening, booking_mode,
-      description, status, is_premium, premium_tier, owner_id,
+      description, status, is_premium, premium_tier, owner_id, venue_types,
       rating_average, rating_count,
       hall_images(url, is_cover, alt_text, sort_order),
       hall_amenities(amenities(name, slug, icon)),
@@ -720,6 +731,10 @@ export async function fetchHallBySlug(slug: string): Promise<HallDetail | null> 
     price_morning:  hall.price_morning  != null ? Number(hall.price_morning)  : null,
     price_evening:  hall.price_evening  != null ? Number(hall.price_evening)  : null,
     description:    hall.description    ?? null,
+    // Array.isArray, not `?? []`: PostgREST returns null for this column on a
+    // row written before 0037, and .filter on null throws inside the render.
+    // Same defensive shape already used at lib/owner.ts:443.
+    venue_types:    Array.isArray(hall.venue_types) ? hall.venue_types : [],
     status:         hall.status,
     is_premium:     hall.is_premium,
     premium_tier:   (hall.premium_tier ?? null) as PremiumTier | null,

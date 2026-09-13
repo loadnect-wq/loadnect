@@ -519,6 +519,9 @@ export function validateImageFile(file: File): { ok: true } | { ok: false; error
   return { ok: true };
 }
 
+/** Longest alt text we store. 200 is what addHallImageSchema has always used. */
+export const ALT_TEXT_MAX = 200;
+
 // Server-side input check: the URL must be on https and not contain javascript:.
 // The storage_path must look like {uuid}/{filename} so a malicious client
 // can't write to an arbitrary path.
@@ -530,7 +533,21 @@ export const addHallImageSchema = z.object({
     .refine((v) => !v.includes(".."), "Invalid storage path.")
     .refine((v) => /^[a-zA-Z0-9_\-\/.]+$/.test(v), "Storage path has invalid characters."),
   isCover:     z.boolean(),
-  altText:     optionalTrimmed(200),
+  altText:     optionalTrimmed(ALT_TEXT_MAX),
+});
+
+// REQUIRED, NOT optionalTrimmed — and that is the whole point of a separate
+// schema. A server action DROPS undefined keys in transit, and optionalTrimmed
+// turns a missing key into "", which THIS action would read as "clear the
+// description the owner wrote". A required string makes a malformed call fail
+// validation instead of silently wiping a value.
+export const updateHallImageAltSchema = z.object({
+  hallId:  uuidSchema,
+  imageId: uuidSchema,
+  altText: z
+    .string()
+    .max(ALT_TEXT_MAX, `Description must be ${ALT_TEXT_MAX} characters or fewer.`)
+    .transform((s) => sanitizeText(s, ALT_TEXT_MAX)),
 });
 
 // ── Availability ─────────────────────────────────────────────────────────────

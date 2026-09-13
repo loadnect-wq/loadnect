@@ -11,6 +11,7 @@ import {
   hallCreateSchema,
   hallSchema,
   addHallImageSchema,
+  updateHallImageAltSchema,
   uuidSchema,
   offlineBookingSchema,
   parseSafe,
@@ -792,6 +793,59 @@ export async function setCoverImage(hallId: string, imageId: string): Promise<Ac
 
   revalidatePath(`/owner/halls/${hallId}/images`);
   revalidatePath(`/owner/halls/${hallId}/edit`);
+  return { success: true };
+}
+
+/**
+ * Sets the description an owner writes for one photo.
+ *
+ * There was no UPDATE path for alt_text at all: addHallImage accepts it on
+ * insert and both callers hardcode "", so every hall_images row in production
+ * had alt_text null and every alt string on a venue page was generated. A
+ * generated description is honest and distinct, but it cannot say what is
+ * actually in the photo.
+ */
+export async function updateHallImageAlt(data: {
+  hallId:  string;
+  imageId: string;
+  altText: string;
+}): Promise<ActionResult> {
+  const { supabase, user } = await getAuthUser();
+  if (!user) return { error: "Not authenticated" };
+
+  const parsed = parseSafe(updateHallImageAltSchema, data);
+  if (!parsed.ok) return { error: parsed.error };
+  const v = parsed.data;
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const db = supabase as any;
+
+  // CONFIRM THE PAIR FIRST, the way setCoverImage and deleteHallImage do. RLS
+  // already restricts this to halls the caller owns; this pins the image to the
+  // hall named in the request.
+  const { data: image, error: readErr } = await db
+    .from("hall_images")
+    .select("id")
+    .eq("id", v.imageId)
+    .eq("hall_id", v.hallId)
+    .maybeSingle();
+  if (readErr) return { error: sanitizeError(readErr, "owner") };
+  if (!image) return { error: "Image not found." };
+
+  // EMPTY MEANS ABSENT, so store null. Writing "" would record a description
+  // the owner never wrote, and "" in an HTML alt attribute means "decorative" —
+  // the opposite of what a venue photo is. null lets venueImageAlt generate one.
+  const { error, count } = await db
+    .from("hall_images")
+    .update({ alt_text: v.altText || null }, { count: "exact" })
+    .eq("id", v.imageId)
+    .eq("hall_id", v.hallId);
+  if (error) return { error: sanitizeError(error, "owner") };
+  // An RLS-filtered UPDATE affects zero rows WITHOUT raising. Reporting success
+  // there would tell the owner their description saved when nothing did.
+  if ((count ?? 0) === 0) return { error: "Could not save that description." };
+
+  revalidatePath(`/owner/halls/${v.hallId}/images`);
   return { success: true };
 }
 

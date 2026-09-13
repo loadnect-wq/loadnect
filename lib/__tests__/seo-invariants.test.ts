@@ -257,6 +257,14 @@ describe("structured data claims nothing the page cannot show", () => {
     expect(src).toMatch(/aggregateRating:\s*hasRatings\s*\?/);
   });
 
+  it("requires more than one review before publishing an aggregate", () => {
+    // One five-star review rendering as a perfect AggregateRating is true in
+    // the data and misleading on the page. The reviews are still shown; only
+    // the machine-readable average waits for a real sample.
+    expect(src).toMatch(/MIN_RATINGS_FOR_AGGREGATE\s*=\s*([3-9]|[1-9]\d)/);
+    expect(src).toContain("v.ratingCount >= MIN_RATINGS_FOR_AGGREGATE");
+  });
+
   it("declares no social profiles", () => {
     // sameAs must stay absent until a verified profile actually exists —
     // inventing one is fabricating business information.
@@ -295,5 +303,18 @@ describe("public images carry real alt text", () => {
     // Every image on a venue page once rendered the same string, which is
     // useless to a screen reader and to image search alike.
     expect(read("lib/seo/venue.ts")).toContain("export function venueImageAlt");
+  });
+
+  it("an owner can actually write the alt text", () => {
+    // The column was persisted on insert and settable by nothing, so every row
+    // in production had alt_text null and every alt string was generated.
+    const actions = read("app/owner/(dashboard)/actions.ts");
+    expect(actions).toContain("export async function updateHallImageAlt");
+    // EMPTY MEANS ABSENT: "" in an HTML alt attribute means "decorative",
+    // which a venue photo is not. Storing null lets the generator run.
+    expect(actions).toContain("alt_text: v.altText || null");
+    expect(
+      read("app/owner/(dashboard)/halls/[id]/images/_components/ImagesManager.tsx"),
+    ).toContain("updateHallImageAlt");
   });
 });

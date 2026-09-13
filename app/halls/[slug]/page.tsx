@@ -98,6 +98,7 @@ export default async function HallDetailPage({ params }: Props) {
                 ...hall.amenities.map((a) => a.name),
                 ...hall.custom_amenities,
               ],
+              venueTypes: hall.venue_types,
             }),
             breadcrumbJsonLd([
               { name: "Home", path: "/" },
