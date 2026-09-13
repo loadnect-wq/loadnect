@@ -12,7 +12,6 @@ import {
   Share2, Snowflake, Sparkles, Star, TreePine, Users,
   Waves, Zap, Info,
 } from "lucide-react";
-import { motion } from "framer-motion";
 import { type HallDetail, type HallListing, type AvailabilityRow } from "@/lib/halls";
 import { CARD_GRADIENTS, formatPrice } from "@/lib/mock-data";
 import {
@@ -275,13 +274,39 @@ export function HallDetailView({ hall, similar, isPreview, sidebarAd, advancePer
       <div className="lg:mx-auto lg:max-w-6xl lg:px-6">
         <div className="lg:grid lg:grid-cols-[1fr_340px] lg:gap-8 lg:items-start">
 
-          {/* ── Main content (left column) ── */}
-          <motion.div
-            initial={{ y: 12, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            transition={{ duration: 0.25 }}
-            className="relative -mt-4 rounded-t-3xl bg-ivory-100 px-4 pb-36 pt-5 lg:mt-6 lg:rounded-none lg:bg-transparent lg:px-0 lg:pb-16"
-          >
+          {/* ── Main content (left column) ──
+              A PLAIN DIV, NOT AN ANIMATED WRAPPER, AND THAT IS THE FIX.
+
+              This used to be a framer-motion element with an initial state of
+              zero opacity and a 12px offset. That library server-renders its
+              initial state, so the HTML for this page went out carrying
+              `style="opacity:0;transform:translateY(12px)"` on the element that
+              wraps EVERYTHING in the left column: the venue name, the price,
+              the description, amenities, availability, reviews, rules, similar
+              venues. If the bundle failed to load or hydration threw, all of it
+              stayed invisible with nothing left to undo it — on the page this
+              marketplace exists to show. Measured in the live HTML before this
+              change; it was the one page in the app still shipping any hidden
+              content.
+
+              Three things improve by DELETING the animation rather than
+              replacing it with the scroll-reveal layer:
+
+              1. The column paints immediately, which is better for LCP than any
+                 entrance animation on the largest text block above the fold.
+              2. The motion is not lost. The ten `data-reveal` sections INSIDE
+                 this wrapper already animate as the reader scrolls, which is
+                 the effect that 0.25s fade was approximating — and those
+                 degrade safely, because their hidden state exists only while
+                 JavaScript says it may (see the contract at the bottom of
+                 app/globals.css).
+              3. The animation put a transform on an ancestor of the whole
+                 column for its duration, and a transform is a containing block
+                 for any fixed descendant. Transient, but pointless.
+
+              This was the file's only animation-library usage, so the import
+              goes with it. */}
+          <div className="relative -mt-4 rounded-t-3xl bg-ivory-100 px-4 pb-36 pt-5 lg:mt-6 lg:rounded-none lg:bg-transparent lg:px-0 lg:pb-16">
             {/* Title block */}
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
@@ -817,7 +842,7 @@ export function HallDetailView({ hall, similar, isPreview, sidebarAd, advancePer
                 </div>
               </section>
             )}
-          </motion.div>
+          </div>
 
           {/* ── Desktop sticky booking card (right column) ── */}
           <aside className="hidden lg:block">
