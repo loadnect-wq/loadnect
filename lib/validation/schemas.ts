@@ -23,6 +23,10 @@ import { z } from "zod";
  * React escapes at render; this guards DB rows, logs, and downstream consumers
  * (email templates, exports) where escaping isn't automatic.
  */
+// phone.ts is deliberately pure — no "server-only", no env — so importing it
+// here keeps this module client-safe.
+import { normalizePhoneE164 } from "@/lib/notifications/phone";
+
 export function sanitizeText(input: unknown, maxLen = 4000): string {
   if (typeof input !== "string") return "";
   return input.replace(/[<>\u0000-\u001f\u007f]/g, "").trim().slice(0, maxLen);
@@ -548,6 +552,73 @@ export const updateHallImageAltSchema = z.object({
     .string()
     .max(ALT_TEXT_MAX, `Description must be ${ALT_TEXT_MAX} characters or fewer.`)
     .transform((s) => sanitizeText(s, ALT_TEXT_MAX)),
+});
+
+// ── Admin hall drafts (the admin-onboarding pathway, migration 0090) ────────
+//
+// MIRRORS THE DATABASE CHECKS DELIBERATELY. Every constraint on
+// admin_hall_drafts is restated here so an admin gets a sentence instead of a
+// Postgres error string — and every constraint on `halls` that the claim will
+// eventually hit is among them, because the alternative is the OWNER
+// discovering the admin's mistake weeks later when they press Claim.
+
+export const VENUE_TYPE_VALUES = ["wedding", "reception", "party", "banquet"] as const;
+
+export const adminHallDraftSchema = z
+  .object({
+    name:        trimmed(120),
+    description: optionalTrimmed(4000),
+    city:        trimmed(80),
+    state:       optionalTrimmed(80),
+    // `area` and `district` live here: halls has no column for either, and a
+    // field with nowhere to land on claim would lose what the admin typed.
+    address:     optionalTrimmed(500),
+    pincode:     optionalTrimmed(10),
+
+    capacityMin: optionalCapacitySchema,
+    capacityMax: capacitySchema,
+
+    pricePerDay:  optionalMoneySchema,
+    priceMorning: optionalMoneySchema,
+    priceEvening: optionalMoneySchema,
+
+    bookingMode: z.enum(["DIRECT_BOOKING", "LEAD_GENERATION"]),
+    venueTypes:  z.array(z.enum(VENUE_TYPE_VALUES)).default([]),
+
+    amenitySlugs:    z.array(z.string().trim().max(80)).max(50).default([]),
+    customAmenities: z.array(z.string().trim().max(80)).max(20).default([]),
+    photoUrls:       z.array(z.string().trim().url().max(2000)).max(10).default([]),
+
+    ownerName:  trimmed(120),
+    // Normalised to E.164 before it reaches the database, because the claim
+    // matches it against profiles.phone with plain equality. A draft stored as
+    // "93440 40013" would never match and the owner would never see their hall.
+    ownerPhone: z
+      .string()
+      .transform((v) => normalizePhoneE164(v) ?? "")
+      .refine((v) => /^\+[1-9][0-9]{7,14}$/.test(v), "Enter a valid mobile number."),
+    ownerEmail: z
+      .union([z.string().trim().email("Enter a valid email address."), z.literal("")])
+      .optional()
+      .transform((v) => (v ? v.toLowerCase() : "")),
+
+    adminNotes: optionalTrimmed(2000),
+  })
+  .refine((d) => d.capacityMin == null || d.capacityMin <= d.capacityMax, {
+    message: "Minimum capacity cannot exceed the maximum.",
+    path: ["capacityMin"],
+  })
+  // halls_direct_booking_needs_price. Enforced here so the admin is told now.
+  .refine((d) => d.bookingMode !== "DIRECT_BOOKING" || d.pricePerDay != null, {
+    message: "A direct-booking venue needs a day rate. Use Lead generation if the price is not known yet.",
+    path: ["pricePerDay"],
+  });
+
+export const claimHallDraftSchema = z.object({ draftId: uuidSchema });
+
+export const cancelHallDraftSchema = z.object({
+  draftId: uuidSchema,
+  reason:  trimmed(500),
 });
 
 // ── Availability ─────────────────────────────────────────────────────────────

@@ -83,6 +83,21 @@ export default async function AdminDashboardPage() {
       href:  "/admin/notifications?filter=failed",
       color: "border-orange-200 bg-orange-50 text-orange-900",
     },
+    {
+      count: stats.open.deadLetterNotifications,
+      // DELIBERATELY NOT "failed" AND NOT "to retry". These were refused
+      // outright — no retry exists — and they almost always mean a TEMPLATE the
+      // operator rejects, so every future message of that kind fails the same
+      // way. One of these is not one lost message, it is a dead channel.
+      //
+      // It was excluded from "Messages to retry" (correct — it is not
+      // retryable) and shown nowhere else, so a permanently-broken alert route
+      // rendered as a clean dashboard. Right now ADMIN_ALERT on hall.submitted
+      // is in exactly that state: nobody is told when an owner submits a hall.
+      label: "Alerts the operator refused",
+      href:  "/admin/notifications?filter=failed",
+      color: "border-red-200 bg-red-50 text-red-900",
+    },
   ];
 
   return (

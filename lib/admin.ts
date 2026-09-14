@@ -271,6 +271,22 @@ export type AdminStats = {
     stuckPayouts:        number;
     /** Messages that failed and are still retryable. */
     failedNotifications: number;
+    /**
+     * Messages the provider refused OUTRIGHT — permanent_failure, no retry.
+     *
+     * Counted separately rather than folded into failedNotifications, because
+     * they mean something different and worse. A retryable failure is one
+     * message needing a nudge. A permanent one is usually a TEMPLATE the
+     * operator rejects, which means every future message of that kind will
+     * fail the same way: the channel is dead, not the message.
+     *
+     * It was previously excluded from the retry count (correctly) and surfaced
+     * nowhere else (not correctly), so a dead alert channel read as a clean
+     * dashboard. Live example: ADMIN_ALERT on hall.submitted is permanently
+     * rejected, so nobody is told when an owner submits a hall for approval —
+     * and nothing on this screen said so.
+     */
+    deadLetterNotifications: number;
   };
   /**
    * Sections whose query did not run.
@@ -309,7 +325,8 @@ export async function fetchAdminStats(): Promise<AdminStats> {
     bookings: { total: 0, requested: 0, confirmed: 0, completed: 0, cancelled: 0 },
     revenue:  { grossBookings: 0, grossAdvances: 0, commission: 0, platformFees: 0, netRevenue: 0, ownerPayouts: 0, refunds: 0, commissionBilledPaid: 0, commissionBilledOutstanding: 0 },
     open:     { pendingHalls: 0, pendingOwners: 0, openTickets: 0, pendingAds: 0,
-                refundsOwed: 0, stuckPayouts: 0, failedNotifications: 0 },
+                refundsOwed: 0, stuckPayouts: 0, failedNotifications: 0,
+                deadLetterNotifications: 0 },
     failed:   [],
   };
 
@@ -493,6 +510,16 @@ export async function fetchAdminStats(): Promise<AdminStats> {
       .or("permanent_failure.is.null,permanent_failure.eq.false");
     empty.open.failedNotifications = Number(count ?? 0);
     noteFailure("notifications", error);
+
+    // The permanently-refused ones, counted on their own. Same table, opposite
+    // predicate — anything this misses would otherwise be invisible entirely.
+    const { count: dead, error: deadErr } = await db
+      .from("notifications")
+      .select("id", { count: "exact", head: true })
+      .eq("status", "failed")
+      .eq("permanent_failure", true);
+    empty.open.deadLetterNotifications = Number(dead ?? 0);
+    noteFailure("notifications", deadErr);
   } catch (e) {
     // A missing table must not break the dashboard, but it must not read as
     // "no messages failed" either.
