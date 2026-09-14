@@ -1,7 +1,6 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { generateSlug } from "@/lib/owner";
 import {
@@ -23,7 +22,7 @@ import {
   leadConfirmSchema,
 } from "@/lib/validation/schemas";
 import { sanitizeError } from "@/lib/errors";
-import { setHallCommissionRate, readHallCommissionRate } from "@/lib/hall-commission";
+import { setHallCommissionRate } from "@/lib/hall-commission";
 import { recordOwnerAction } from "@/lib/audit";
 import { notifyBookingEvent, notifyHallSubmitted, notifyHallEdited } from "@/lib/notifications/events";
 import { normalizePhoneE164 } from "@/lib/notifications/phone";
@@ -431,11 +430,14 @@ export async function updateHall(hallId: string, data: {
     .eq("id", hallId)
     .maybeSingle();
 
-  // commission_rate is read SEPARATELY, through the service role, and is
-  // deliberately absent from the select above. Migration 0072 hides the column
-  // from anon and authenticated, so asking for it on the session client would
-  // fail the whole read and take the rest of the edit down with it.
-  const priorRate = await readHallCommissionRate(hallId);
+  // NOTE ON commission_rate: it is deliberately absent from the select above.
+  // Migration 0072 hides the column from anon and authenticated, so asking for
+  // it on the session client would fail the whole read and take the rest of the
+  // edit down with it. The prior value is not needed here either — the write
+  // below goes through setHallCommissionRate, which returns `previous` and
+  // `changed` from inside the service-role transaction. Reading it separately
+  // up front was a second round-trip whose answer was then thrown away, and
+  // could disagree with the value the write actually replaced.
 
   const { error, count } = await db
     .from("halls")

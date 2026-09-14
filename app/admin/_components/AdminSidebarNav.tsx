@@ -6,7 +6,7 @@ import {
   Inbox,
   BadgeCheck, BellRing, Building2, CalendarDays, ClipboardCheck,
   CreditCard, LayoutDashboard, Megaphone, MessageSquare,
-  Receipt, ScrollText, Settings, Sparkles, Star, TicketPercent, Users, Wallet, PlusCircle,} from "lucide-react";
+  ScrollText, Settings, Sparkles, Star, TicketPercent, Users, Wallet, PlusCircle,} from "lucide-react";
 import { cn } from "@/lib/utils";
 
 type NavItem = {

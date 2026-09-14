@@ -14,18 +14,23 @@
 // affect anyone else, and it is visible and reversible from here.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState, useSyncExternalStore } from "react";
 import { EyeOff, Eye, Copy, Check } from "lucide-react";
 import { useInternalTraffic } from "@/components/analytics/AnalyticsConsent";
+
+/** The document origin is fixed for the lifetime of this page. */
+const subscribeToNothing = () => () => {};
 
 export function InternalTrafficToggle() {
   const [internal, setInternal] = useInternalTraffic();
   const [copied, setCopied] = useState(false);
-  const [link, setLink] = useState("");
 
   // window is not available during the prerender, and this card is inside a
-  // statically-rendered page.
-  useEffect(() => { setLink(`${window.location.origin}/?exclude-me`); }, []);
+  // statically-rendered page — so the origin is read as an external store
+  // rather than written into state from an effect. The origin cannot change
+  // without a navigation that remounts this, hence the no-op subscribe.
+  const origin = useSyncExternalStore(subscribeToNothing, () => window.location.origin, () => "");
+  const link = origin ? `${origin}/?exclude-me` : "";
 
   const copy = useCallback(async () => {
     try {

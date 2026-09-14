@@ -4,7 +4,6 @@ import Image from "next/image";
 import Link from "next/link";
 import { Building2, ClipboardCheck, ExternalLink, Sparkles } from "lucide-react";
 import { fetchAllHalls } from "@/lib/admin";
-import { formatPrice } from "@/lib/mock-data";
 import { formatHallPrice } from "@/lib/booking-mode";
 import { EmptyState } from "@/components/ui/empty-state";
 import { AdminPageHeader } from "../_components/AdminPageHeader";

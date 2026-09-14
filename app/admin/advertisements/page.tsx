@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
-import { requireRole } from "@/lib/auth";
+import Image from "next/image";
 import Link from "next/link";
 import { Megaphone } from "lucide-react";
+import { requireRole } from "@/lib/auth";
+import { isDisplayableAdImageHost } from "@/lib/ads";
 import { fetchAllAds } from "@/lib/admin";
 import { formatPrice } from "@/lib/mock-data";
 import { Badge } from "@/components/ui/Badge";
@@ -88,9 +90,25 @@ export default async function AdminAdsPage({ searchParams }: Props) {
               return (
                 <div key={ad.id} className="rounded-2xl bg-white shadow-card overflow-hidden">
                   {/* Image */}
-                  <div className="aspect-video w-full overflow-hidden bg-charcoal-100">
-                    {ad.image_url ? (
-                      <img src={ad.image_url} alt="" className="h-full w-full object-cover" />
+                  <div className="relative aspect-video w-full overflow-hidden bg-charcoal-100">
+                    {/* Guarded exactly as AdSlot guards it, and for the same two
+                        reasons: next/image THROWS (E231) on a src outside
+                        remotePatterns, which would take this whole page down for
+                        one legacy row; and the browser's img-src blocks an
+                        off-host creative anyway, so a raw <img> rendered a blank
+                        box that looked like a broken upload. Saying which it is
+                        beats showing nothing — validateImageUrl refuses these at
+                        save time now, so any row reaching this branch predates
+                        that check and needs re-uploading. */}
+                    {ad.image_url && isDisplayableAdImageHost(ad.image_url) ? (
+                      <Image src={ad.image_url} alt="" fill sizes="(min-width: 768px) 33vw, 100vw" className="object-cover" />
+                    ) : ad.image_url ? (
+                      <div className="flex h-full w-full flex-col items-center justify-center gap-1 px-3 text-center text-charcoal-400">
+                        <Megaphone className="h-6 w-6" />
+                        <span className="text-[11px] leading-tight">
+                          Creative is hosted off-site and cannot be shown — re-upload it to Hallnect storage.
+                        </span>
+                      </div>
                     ) : (
                       <div className="flex h-full w-full items-center justify-center text-charcoal-300">
                         <Megaphone className="h-8 w-8" />

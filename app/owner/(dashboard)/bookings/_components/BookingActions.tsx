@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { useNow } from "@/lib/hooks/useNow";
 import { CheckCircle2, XCircle, AlertTriangle, Clock } from "lucide-react";
 import { acceptBooking, rejectBooking, markBookingCompleted } from "@/app/owner/(dashboard)/actions";
 
@@ -149,10 +150,18 @@ export function BookingActions({ bookingId, status, customerLabel, hasConflict }
   );
 }
 
-/** Countdown to the auto-expiry of an unanswered request. */
+/**
+ * Countdown to the auto-expiry of an unanswered request.
+ *
+ * The clock comes from useNow() rather than Date.now() during render, so this
+ * chip ticks on a dashboard left open, and the server — which has no clock
+ * worth quoting to the reader — renders nothing instead of a value that would
+ * have to be corrected on hydration.
+ */
 export function ResponseDeadline({ dueAt }: { dueAt: string | null }) {
-  if (!dueAt) return null;
-  const ms = new Date(dueAt).getTime() - Date.now();
+  const now = useNow();
+  if (!dueAt || now === 0) return null;
+  const ms = new Date(dueAt).getTime() - now;
   if (Number.isNaN(ms)) return null;
 
   const hours = Math.floor(ms / 3_600_000);

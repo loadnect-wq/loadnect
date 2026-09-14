@@ -206,7 +206,6 @@ export async function verifyPhoneOtp(
   // same single row the session client was writing, with the authority moved to
   // the side that actually verified something. 42703 = columns pre-0023; retry
   // without them so the flow degrades instead of crashing.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let { error: upErr } = await anyDb
     .from("profiles")
     .update({ phone, phone_verified: true, phone_verified_at: new Date().toISOString() })

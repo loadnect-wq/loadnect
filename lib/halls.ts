@@ -415,8 +415,8 @@ export async function fetchHalls(filters: HallsFilters, failure?: FailureFlag): 
     const imgs: { url: string; is_cover: boolean }[] = row.hall_images ?? [];
     const coverUrl = imgs.find((i) => i.is_cover)?.url ?? imgs[0]?.url ?? null;
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const amenityNames: string[] = (row.hall_amenities ?? [])
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped Supabase client: this project has no generated Database types, so table names and embedded row shapes are `any` by construction
       .map((ha: any) => ha.amenities?.name as string | undefined)
       .filter((n: string | undefined): n is string => Boolean(n));
 

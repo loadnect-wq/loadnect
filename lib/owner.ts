@@ -600,6 +600,7 @@ export async function fetchOwnerBookings(
     // WAS the advance, so the fallback keeps them correct.
 
     amount_paid: (row.payments ?? [])
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped Supabase client: this project has no generated Database types, so table names and embedded row shapes are `any` by construction
       .filter((p: any) => p?.status === "payment_success")
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       .reduce((sum: number, p: any) => sum + Number(p.advance_amount ?? p.amount ?? 0), 0),

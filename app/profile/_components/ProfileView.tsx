@@ -4,9 +4,8 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
-  Bell, ChevronRight, CreditCard, FileText, HelpCircle,
-  LayoutDashboard, LogIn, LogOut, Mail, MapPin, Phone, Settings, ShieldCheck, User,
-} from "lucide-react";
+  Bell, ChevronRight, FileText, HelpCircle,
+  LayoutDashboard, LogIn, LogOut, Mail, Phone, Settings, ShieldCheck, } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { getDashboardPath } from "@/lib/constants";
@@ -36,8 +35,8 @@ export function ProfileView({
     async function load() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { setProfile(null); setLoading(false); return; }
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { data } = await supabase
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped Supabase client: this project has no generated Database types, so table names and embedded row shapes are `any` by construction
         .from("profiles" as any)
         .select("full_name, email, role, phone, phone_verified")
         .eq("id", user.id)

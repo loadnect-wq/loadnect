@@ -35,9 +35,11 @@ export function OwnerProfileForm({ ownerRow, fullName, email, phone, initialNoti
   // Business fields
   const [bizName,  setBizName]  = useState(ownerRow?.business_name  ?? "");
   const [bizEmail, setBizEmail] = useState(ownerRow?.business_email ?? "");
-  const [bizPhone, setBizPhone] = useState(ownerRow?.business_phone ?? "");
   const [gst,      setGst]      = useState(ownerRow?.gst_number     ?? "");
-  const [pan,      setPan]      = useState(ownerRow?.pan_number      ?? "");
+  // business_phone and pan_number are NOT edited here: they are collected by
+  // the payout setup form, which validates them against what Cashfree will
+  // accept for beneficiary registration. Mirroring them into this form gave
+  // two places to change one value, and this one never saved it.
   const [address,  setAddress]  = useState(ownerRow?.address         ?? "");
   const [city,     setCity]     = useState(ownerRow?.city            ?? "");
   const [state,    setState]    = useState(ownerRow?.state           ?? "");
@@ -47,7 +49,7 @@ export function OwnerProfileForm({ ownerRow, fullName, email, phone, initialNoti
     setErr1(null); setOk1(false);
     start1(async () => {
       const r = await updateOwnerProfileName({ fullName: name, phone: phoneV, notificationsEnabled: notifyEnabled });
-      "error" in r ? setErr1(r.error) : setOk1(true);
+      if ("error" in r) setErr1(r.error); else setOk1(true);
     });
   }
 
@@ -64,7 +66,7 @@ export function OwnerProfileForm({ ownerRow, fullName, email, phone, initialNoti
         city,
         state,
       });
-      "error" in r ? setErr2(r.error) : setOk2(true);
+      if ("error" in r) setErr2(r.error); else setOk2(true);
     });
   }
 

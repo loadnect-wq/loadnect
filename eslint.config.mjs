@@ -33,23 +33,34 @@ const eslintConfig = [
   ...nextTypescript,
   {
     rules: {
-      "@typescript-eslint/no-unused-vars": ["warn", { argsIgnorePattern: "^_" }],
+      // Leading underscore is the project's "deliberately unused" marker —
+      // used for destructuring-to-omit (`const { secret: _omitted, ...rest }`)
+      // as well as for arguments.
+      "@typescript-eslint/no-unused-vars": ["warn", {
+        argsIgnorePattern: "^_",
+        varsIgnorePattern: "^_",
+        destructuredArrayIgnorePattern: "^_",
+      }],
       "@typescript-eslint/no-explicit-any": "warn",
       "react/display-name": "off",
       // The 42703 fallback pattern destructures { data, error } with let and
       // reassigns `data` in the fallback branch. Only flag prefer-const when
       // ALL destructured members are const-able (standard, sensible setting).
       "prefer-const": ["error", { destructuring: "all" }],
-      // These two rules ship newly-strict in Next 16's bundled react-hooks
-      // plugin. They fire on INTENTIONAL, working patterns:
-      //   • set-state-in-effect — reading localStorage / matchMedia in an
-      //     effect after mount (the SSR-safe way; can't read them during render
-      //     without a hydration mismatch).
-      //   • purity — computing a date range with new Date() during render,
-      //     including inside async Server Components where it's perfectly fine.
-      // Refactoring working code to satisfy them (e.g. useSyncExternalStore)
-      // risks SSR/hydration regressions, so we surface them as warnings to
-      // review later rather than block on them. NOT security-related.
+      // These two ship newly-strict in Next 16's bundled react-hooks plugin.
+      //
+      // An earlier version of this comment said satisfying them "risks
+      // SSR/hydration regressions" and deferred the work. That turned out to be
+      // backwards: every site they flagged HAS now been converted, and the
+      // conversions removed hydration hazards rather than creating them —
+      // localStorage and matchMedia are external stores, so useSyncExternalStore
+      // reads them with an explicit server snapshot instead of painting a wrong
+      // value and correcting it after mount; clock reads moved out of render to
+      // one instant per page, which is also what stops two rows of the same
+      // table disagreeing about "now".
+      //
+      // Kept at "warn" rather than "error" only because a future flagged site
+      // should be a prompt to think, not a blocked build. NOT security-related.
       "react-hooks/set-state-in-effect": "warn",
       "react-hooks/purity": "warn",
     },

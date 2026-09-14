@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Camera, Globe, MessageCircle, PlayCircle, Mail, Phone, MapPin } from "lucide-react";
+import { Camera, Mail, Phone, MapPin } from "lucide-react";
 import { APP_NAME, APP_DESCRIPTION, FOOTER_LINKS, CONTACT } from "@/lib/constants";
 
 // Hallnect has no social accounts yet. These were four icons all pointing at

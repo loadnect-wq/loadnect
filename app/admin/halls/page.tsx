@@ -1,3 +1,4 @@
+import Image from "next/image";
 import type { Metadata } from "next";
 import { requireRole } from "@/lib/auth";
 import Link from "next/link";
@@ -299,9 +300,9 @@ export default async function AdminHallsPage({ searchParams }: Props) {
                 <div key={h.id} className="rounded-2xl bg-white p-3 shadow-card">
                   <div className="flex items-start gap-3">
                     {/* Thumb */}
-                    <div className="h-16 w-16 shrink-0 overflow-hidden rounded-xl bg-maroon-50">
+                    <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-xl bg-maroon-50">
                       {h.cover_url ? (
-                        <img src={h.cover_url} alt="" className="h-full w-full object-cover" />
+                        <Image src={h.cover_url} alt="" fill sizes="64px" className="object-cover" />
                       ) : (
                         <div className="flex h-full w-full items-center justify-center">
                           <Building2 className="h-6 w-6 text-maroon-300" />

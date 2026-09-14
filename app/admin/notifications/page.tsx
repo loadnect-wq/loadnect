@@ -93,9 +93,9 @@ function Chip({ text, tone }: { text: string; tone: string }) {
 }
 
 function NotificationCard({ row }: { row: AdminNotificationRow }) {
-  const isStale =
-    (row.status === "pending" || row.status === "processing") &&
-    Date.now() - new Date(row.created_at).getTime() > 15 * 60 * 1000;
+  // Staleness is decided in fetchAdminNotifications against one instant for
+  // the whole page, so the clock is never read during a render.
+  const isStale = row.isStale === true;
   const canRetry =
     (row.status === "failed" || row.status === "skipped" || isStale) &&
     // A row with NO recipient phone is still retryable when it is linked to a
@@ -329,6 +329,20 @@ export default async function AdminNotificationsPage({ searchParams }: Props) {
                 : `${templates.length - templatesReady} still to register on DLT`}
             </p>
           </div>
+        </div>
+
+        {/* WHO RECEIVES PLATFORM ALERTS.
+            The page already resolved this number and already imported the
+            form to change it — and then rendered neither, so the one control
+            an operator has over where alerts land was unreachable while the
+            admin channel was the one known to be failing. The number is passed
+            in masked: an admin can replace it without it appearing in the
+            page source. */}
+        <div className="mb-4 rounded-xl border border-border bg-white p-4">
+          <AdminAlertNumberForm
+            currentMasked={adminPhone.phone ? maskPhone(adminPhone.phone) : "—"}
+            source={adminPhone.source}
+          />
         </div>
 
         {/* Per-template state. Two DIFFERENT things have to be true before a

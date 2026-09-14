@@ -1,49 +1,102 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useSyncExternalStore } from "react";
 
 const KEY = "hallnect:saved";
+const EVENT = "hallnect:saved:change";
 
-function read(): string[] {
-  if (typeof window === "undefined") return [];
+/** Shared by every server render and by the hydration pass, so the identity is
+ *  stable and useSyncExternalStore cannot loop on it. */
+const EMPTY: string[] = [];
+
+function readRaw(): string | null {
   try {
-    const raw = localStorage.getItem(KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed.filter((v) => typeof v === "string") : [];
+    return localStorage.getItem(KEY);
   } catch {
-    return [];
+    // Private mode, or site data blocked. Saving is a convenience, not a
+    // feature anything else depends on — behave as "nothing saved".
+    return null;
   }
 }
 
-function write(ids: string[]) {
+function parse(raw: string | null): string[] {
+  if (!raw) return EMPTY;
   try {
-    localStorage.setItem(KEY, JSON.stringify(ids));
-    window.dispatchEvent(new CustomEvent("hallnect:saved:change"));
-  } catch { /* ignore */ }
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return EMPTY;
+    const ids = parsed.filter((v): v is string => typeof v === "string");
+    return ids.length > 0 ? ids : EMPTY;
+  } catch {
+    return EMPTY;
+  }
 }
 
-export function useSavedHalls() {
-  const [ids, setIds] = useState<string[]>([]);
+// getSnapshot MUST return the same reference when nothing changed. Returning a
+// freshly parsed array every call would re-render forever, because React
+// compares snapshots by identity. So the parsed value is memoised against the
+// raw string it came from.
+let cachedRaw: string | null = null;
+let cachedIds: string[] = EMPTY;
 
-  useEffect(() => {
-    setIds(read());
-    function sync() { setIds(read()); }
-    window.addEventListener("hallnect:saved:change", sync);
-    window.addEventListener("storage", sync);
-    return () => {
-      window.removeEventListener("hallnect:saved:change", sync);
-      window.removeEventListener("storage", sync);
-    };
-  }, []);
+function getSnapshot(): string[] {
+  const raw = readRaw();
+  if (raw !== cachedRaw) {
+    cachedRaw = raw;
+    cachedIds = parse(raw);
+  }
+  return cachedIds;
+}
+
+function getServerSnapshot(): string[] {
+  return EMPTY;
+}
+
+function subscribe(onStoreChange: () => void): () => void {
+  // `storage` covers another tab; the custom event covers this one, because
+  // localStorage does not notify the window that wrote to it.
+  window.addEventListener(EVENT, onStoreChange);
+  window.addEventListener("storage", onStoreChange);
+  return () => {
+    window.removeEventListener(EVENT, onStoreChange);
+    window.removeEventListener("storage", onStoreChange);
+  };
+}
+
+function write(ids: string[]): boolean {
+  try {
+    localStorage.setItem(KEY, JSON.stringify(ids));
+  } catch {
+    // Nothing was persisted, so do NOT announce a change — every subscriber
+    // would re-read storage and get the old list back.
+    return false;
+  }
+  window.dispatchEvent(new CustomEvent(EVENT));
+  return true;
+}
+
+/**
+ * Saved hall ids, kept in localStorage so saving needs no account.
+ *
+ * This is an external store shared by every mounted heart icon, the header
+ * count and the saved page, so it is read through useSyncExternalStore rather
+ * than mirrored into component state. The practical difference: toggling a
+ * heart updates every other instance in the same commit instead of leaving the
+ * header count one render behind.
+ */
+export function useSavedHalls() {
+  const ids = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
 
   const isSaved = useCallback((id: string) => ids.includes(id), [ids]);
 
   const toggle = useCallback((id: string) => {
-    const current = read();
+    // Re-read rather than closing over `ids`: another tab may have changed the
+    // list since this render, and the last writer should not silently discard
+    // the other's save.
+    const current = getSnapshot();
     const next = current.includes(id) ? current.filter((v) => v !== id) : [...current, id];
-    write(next);
-    setIds(next);
+    // Report what actually happened, not what was attempted. When storage is
+    // blocked nothing was saved, and the caller's toast must not say it was.
+    if (!write(next)) return current.includes(id);
     return next.includes(id);
   }, []);
 

@@ -10,7 +10,7 @@
 // message with the right words in the wrong slots.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, afterEach } from "vitest";
 import {
   SMS_TEMPLATES,
   ALL_SMS_TEMPLATE_KEYS,

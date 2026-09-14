@@ -1,3 +1,4 @@
+import Image from "next/image";
 import type { Metadata } from "next";
 import Link from "next/link";
 import {
@@ -377,9 +378,9 @@ export default async function OwnerDashboardPage() {
                 const cfg = HALL_STATUS_CFG[hall.status] ?? { label: hall.status, variant: "secondary" as const };
                 return (
                   <div key={hall.id} className="flex items-center gap-3 rounded-2xl bg-white p-3 shadow-card">
-                    <div className="h-12 w-12 shrink-0 overflow-hidden rounded-xl bg-maroon-50">
+                    <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-xl bg-maroon-50">
                       {hall.cover_url && (
-                        <img src={hall.cover_url} alt="" className="h-full w-full object-cover" />
+                        <Image src={hall.cover_url} alt="" fill sizes="48px" className="object-cover" />
                       )}
                     </div>
                     <div className="min-w-0 flex-1">

@@ -108,9 +108,19 @@ export function ConfirmationDialog(props: Props) {
   // closes. Without that second half a keyboard user who cancels is dropped at
   // the top of the document and has to tab all the way back to the row they
   // were working on.
+  // Clearing a stale error belongs to the OPEN TRANSITION, not to an effect.
+  // Adjusting state during render is the pattern React documents for exactly
+  // this (https://react.dev/reference/react/useState#storing-information-from-
+  // previous-renders): it re-renders before anything is committed, so the
+  // dialog never paints once carrying the previous attempt's message.
+  const [wasOpen, setWasOpen] = useState(open);
+  if (open !== wasOpen) {
+    setWasOpen(open);
+    if (open) setError(null);
+  }
+
   useEffect(() => {
     if (!open) return;
-    setError(null);
     restoreRef.current = document.activeElement as HTMLElement | null;
     // Delay one frame so the dialog is in the DOM before focusing.
     const frame = requestAnimationFrame(() => cancelBtnRef.current?.focus());

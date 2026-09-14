@@ -29,8 +29,8 @@ export async function GET(request: Request) {
     return NextResponse.redirect(`${origin}/login`);
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data: profile } = await supabase
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped Supabase client: this project has no generated Database types, so table names and embedded row shapes are `any` by construction
     .from("profiles" as any)
     .select("role, phone_verified")
     .eq("id", user.id)

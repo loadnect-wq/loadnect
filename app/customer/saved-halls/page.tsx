@@ -1,3 +1,4 @@
+import Image from "next/image";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Heart } from "lucide-react";
@@ -53,10 +54,12 @@ export default async function SavedHallsPage() {
                     {/* Thumbnail */}
                     <div className="relative h-24 w-24 shrink-0">
                       {hall.cover_url ? (
-                        <img
+                        <Image
                           src={hall.cover_url}
                           alt={hall.name}
-                          className="h-full w-full object-cover"
+                          fill
+                          sizes="96px"
+                          className="object-cover"
                         />
                       ) : (
                         <div

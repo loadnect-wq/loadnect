@@ -40,8 +40,8 @@ export const getProfile = cache(async function getProfile(): Promise<Profile | n
   } = await supabase.auth.getUser();
   if (!user) return null;
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data } = await supabase
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped Supabase client: this project has no generated Database types, so table names and embedded row shapes are `any` by construction
     .from("profiles" as any)
     .select("id, full_name, email, role, avatar_url, is_active")
     .eq("id", user.id)

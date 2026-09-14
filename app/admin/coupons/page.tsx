@@ -97,12 +97,13 @@ export default async function AdminCouponsPage() {
             ) : (
               <div className="space-y-3">
                 {rows.map((c) => {
-                  const expired = !!c.expires_at && new Date(c.expires_at).getTime() <= Date.now();
+                  // `expired` is decided in fetchCoupons, against a single
+                  // instant, rather than re-read from the clock per row here.
                   const capped  = c.max_redemptions != null && c.paid >= c.max_redemptions;
                   // "Live" has to mean genuinely usable, not just is_active —
                   // an expired or exhausted coupon is refused at checkout, and
                   // showing it as active would send the admin hunting for a bug.
-                  const usable  = c.is_active && !expired && !capped;
+                  const usable  = c.is_active && !c.expired && !capped;
 
                   return (
                     <div key={c.id} className="rounded-2xl bg-white p-4 shadow-card">
@@ -113,7 +114,7 @@ export default async function AdminCouponsPage() {
                               {c.code}
                             </span>
                             <Badge size="sm" variant={usable ? "success" : "secondary"}>
-                              {usable ? "Live" : expired ? "Expired" : capped ? "Limit reached" : "Stopped"}
+                              {usable ? "Live" : c.expired ? "Expired" : capped ? "Limit reached" : "Stopped"}
                             </Badge>
                             <Badge size="sm" variant="secondary">₹0 platform fee</Badge>
                           </div>

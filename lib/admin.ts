@@ -1060,7 +1060,6 @@ export async function fetchContactMessages(limit = 100): Promise<ContactMessageR
     .order("created_at", { ascending: false })
     .limit(limit);
   if (error) { handleError("fetchContactMessages", error); return []; }
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return (data ?? []) as ContactMessageRow[];
 }
 
@@ -1173,7 +1172,6 @@ export async function fetchOwnerOptions(): Promise<{ id: string; business_name: 
     .select("id, business_name")
     .order("business_name", { ascending: true });
   if (error) { handleError("fetchOwnerOptions", error); return []; }
-   
   return (data ?? []) as { id: string; business_name: string }[];
 }
 
@@ -1496,6 +1494,11 @@ export type AdminNotificationRow = {
   template_key:        string | null;
   provider_template_id: string | null;
   delivery_status:     string | null;
+  /** Derived at fetch time, not during render: a queued row that has sat
+   *  unsent for 15 minutes is almost certainly wedged rather than in flight.
+   *  Computing it here means every row on a page agrees on what "now" was, and
+   *  keeps the clock out of a component body. */
+  isStale?:            boolean;
   delivery_updated_at: string | null;
   error_code:          string | null;
   permanent_failure:   boolean | null;
@@ -1599,8 +1602,15 @@ export async function fetchNotifications(opts: {
   }
 
   const total = count ?? 0;
+  const now = Date.now();
+  const STALE_AFTER_MS = 15 * 60 * 1000;
   return {
-    rows:  (data ?? []) as AdminNotificationRow[],
+    rows:  ((data ?? []) as AdminNotificationRow[]).map((r) => ({
+      ...r,
+      isStale:
+        (r.status === "pending" || r.status === "processing") &&
+        now - new Date(r.created_at).getTime() > STALE_AFTER_MS,
+    })),
     total,
     page,
     pages: Math.max(1, Math.ceil(total / NOTIF_PAGE_SIZE)),
@@ -1717,8 +1727,8 @@ export async function fetchStuckPlanPurchases(): Promise<{
   // change or 0065-style grant narrowing re-throws here.
   if (error) { handleError("fetchStuckPlanPurchases", error); return { rows: [], unavailable: true }; }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const rows = (data ?? [])
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped Supabase client: this project has no generated Database types, so table names and embedded row shapes are `any` by construction
     .filter((row: any) => !row.premium_listings || row.premium_listings.length === 0)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     .map((row: any): StuckPlanPurchaseRow => ({
@@ -1755,6 +1765,9 @@ export type AdminCouponRow = {
   /** The usage query did not run, so held/paid/feesForgone are NOT zero —
    *  they are unknown, and the table must print that rather than a 0. */
   usageUnavailable?: boolean;
+  /** Past its expiry, decided once at fetch time so every row on the page is
+   *  judged against the same instant. */
+  expired:         boolean;
 };
 
 /**
@@ -1780,6 +1793,10 @@ export async function fetchCoupons(): Promise<
     return { unavailable: false, rows: [] };
   }
 
+  // One instant for the whole page, read outside any component body.
+  const now = Date.now();
+  const isExpired = (at: string | null) => !!at && new Date(at).getTime() <= now;
+
   const rows: AdminCouponRow[] = await Promise.all(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (data ?? []).map(async (c: any) => {
@@ -1798,7 +1815,7 @@ export async function fetchCoupons(): Promise<
       const { data: u, error: usageError } = await db.rpc("coupon_usage", { _coupon_id: c.id });
       if (usageError) {
         handleError(`fetchCoupons(usage:${c.code})`, usageError);
-        return { ...c, held: 0, paid: 0, feesForgone: 0, usageUnavailable: true };
+        return { ...c, held: 0, paid: 0, feesForgone: 0, usageUnavailable: true, expired: isExpired(c.expires_at) };
       }
       const usage = Array.isArray(u) ? u[0] : u;
       const paid = Number(usage?.paid ?? 0);
@@ -1808,6 +1825,7 @@ export async function fetchCoupons(): Promise<
         paid,
         feesForgone: paid * PLATFORM_FEE_RUPEES,
         usageUnavailable: false,
+        expired:     isExpired(c.expires_at),
       };
     }),
   );

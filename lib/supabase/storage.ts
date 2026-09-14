@@ -192,6 +192,7 @@ export async function uploadHallImage(
     alt_text: options?.altText ?? null,
     is_cover: options?.isCover ?? false,
     sort_order: options?.sortOrder ?? 0,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped Supabase client: this project has no generated Database types, so table names and embedded row shapes are `any` by construction
   } as any);
 
   if (dbError) {
@@ -205,8 +206,8 @@ export async function uploadHallImage(
 export async function deleteHallImage(imageId: string, storagePath: string) {
   const supabase = getSupabaseClient();
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { error: dbError } = await supabase
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped Supabase client: this project has no generated Database types, so table names and embedded row shapes are `any` by construction
     .from("hall_images" as any)
     .delete()
     .eq("id", imageId);

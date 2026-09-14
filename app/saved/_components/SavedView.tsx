@@ -10,6 +10,11 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { buttonVariants } from "@/components/ui/Button";
 import { fetchSavedHalls } from "../actions";
 
+type Fetched = { halls: HallListing[]; advancePercent: number | undefined };
+
+/** Stable identity, so the empty branch never looks like a new array. */
+const EMPTY_HALLS: HallListing[] = [];
+
 // Saved hall ids live in localStorage (saving needs no account); the listings
 // themselves are fetched fresh from the server, so a saved hall that was since
 // suspended or delisted simply drops out instead of rendering stale data.
@@ -17,21 +22,29 @@ import { fetchSavedHalls } from "../actions";
 // array — so nothing a visitor saved could ever appear here.)
 export function SavedView() {
   const { ids } = useSavedHalls();
-  const [halls, setHalls] = useState<HallListing[] | null>(null); // null = loading
-  const [advancePercent, setAdvancePercent] = useState<number | undefined>(undefined);
+  const [fetched, setFetched] = useState<Fetched | null>(null); // null = not loaded yet
 
   useEffect(() => {
+    // The empty case is DERIVED below rather than written into state here. An
+    // effect that immediately calls setState is a second render for a value
+    // that was already knowable during the first one.
+    if (ids.length === 0) return;
     let cancelled = false;
-    if (ids.length === 0) { setHalls([]); return; }
     fetchSavedHalls(ids)
-      .then((r) => {
-        if (cancelled) return;
-        setHalls(r.halls);
-        setAdvancePercent(r.advancePercent);
-      })
-      .catch(() => { if (!cancelled) setHalls([]); });
+      .then((r) => { if (!cancelled) setFetched({ halls: r.halls, advancePercent: r.advancePercent }); })
+      .catch(() => { if (!cancelled) setFetched({ halls: [], advancePercent: undefined }); });
     return () => { cancelled = true; };
   }, [ids]);
+
+  // Nothing saved is not a loading state — render the empty view immediately.
+  // Otherwise show what was fetched, INTERSECTED with what is still saved, so
+  // un-hearting a card here removes it in the same commit instead of leaving it
+  // on screen until the refetch lands.
+  const halls: HallListing[] | null =
+    ids.length === 0 ? EMPTY_HALLS
+    : fetched === null ? null
+    : fetched.halls.filter((h) => ids.includes(h.id));
+  const advancePercent = fetched?.advancePercent;
 
   return (
     <section className="container-app py-5 lg:max-w-7xl">

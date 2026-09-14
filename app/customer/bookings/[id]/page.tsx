@@ -11,8 +11,7 @@ import { AppHeader } from "@/components/app/AppHeader";
 import { Badge } from "@/components/ui/Badge";
 import {
   fetchBookingById, fetchMyReviewForHall, fetchInvoiceForBooking,
-  CANCELLABLE_STATUSES, type CustomerBooking,
-} from "@/lib/customer";
+  CANCELLABLE_STATUSES } from "@/lib/customer";
 import { formatPrice } from "@/lib/mock-data";
 import { CancelButton } from "./_components/CancelButton";
 import { ReviewForm } from "./_components/ReviewForm";
@@ -49,11 +48,6 @@ const STATUS_STEPS: { key: string; label: string }[] = [
   { key: "completed",         label: "Done" },
 ];
 
-function fmtDate(iso: string) {
-  return new Date(iso).toLocaleDateString("en-IN", {
-    weekday: "long", day: "numeric", month: "long", year: "numeric",
-  });
-}
 function fmtSlot(slot: string) {
   return slot === "full_day" ? "Full Day" : slot === "morning" ? "Morning Slot" : "Evening Slot";
 }

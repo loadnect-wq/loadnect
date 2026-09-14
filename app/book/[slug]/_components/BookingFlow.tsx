@@ -214,16 +214,29 @@ export function BookingFlow({ hall, availability, windowDays, onlinePaymentEnabl
   // screen showed ₹0. The orphaned hold is harmless: pending_payment is excluded
   // from uq_booking_active_slot, so it blocks nothing and lapses on its own.
   const currentBookingKey = [date, rangeEnd, effSlot, guests, appliedCoupon?.code ?? ""].join("|");
-  useEffect(() => {
-    if (bookingId && bookingKey && bookingKey !== currentBookingKey) {
-      // The old pending booking simply lapses (it auto-cancels after its
-      // payment window); we just stop pointing at it.
-      setBookingId(null);
-      setBookingKey(null);
-      setExpiresAt(null);
-      setCharged(null);
-    }
-  }, [currentBookingKey, bookingId, bookingKey]);
+
+  // DROPPED DURING RENDER, NOT IN AN EFFECT, and the difference is not stylistic.
+  // An effect runs AFTER the browser has painted, so the invalidating edit
+  // produced one committed frame in which the Pay button was on screen with the
+  // stale bookingId still in scope — and handlePayNow reads that id out of its
+  // own closure (`let id = bookingId`). A click landing in that frame would have
+  // paid against the booking the customer had just edited away from.
+  //
+  // Adjusting state during render is what React documents for exactly this
+  // (https://react.dev/reference/react/useState#storing-information-from-
+  // previous-renders): it re-renders immediately, before anything is committed,
+  // so no frame and no closure ever carries the stale id.
+  //
+  // It terminates: clearing bookingKey makes the guard false on the next pass.
+  //
+  // The old pending booking simply lapses (it auto-cancels at the end of its
+  // payment window); we just stop pointing at it.
+  if (bookingId && bookingKey && bookingKey !== currentBookingKey) {
+    setBookingId(null);
+    setBookingKey(null);
+    setExpiresAt(null);
+    setCharged(null);
+  }
 
   function applyCoupon() {
     const code = couponInput.trim();

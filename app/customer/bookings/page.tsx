@@ -1,5 +1,6 @@
 import { formatBookingDates } from "@/lib/dates";
 import type { Metadata } from "next";
+import Image from "next/image";
 import Link from "next/link";
 import { CalendarCheck, ChevronRight, Clock, Inbox, MapPin } from "lucide-react";
 import { AppHeader } from "@/components/app/AppHeader";
@@ -24,11 +25,6 @@ const STATUS_CONFIG: Record<string, { label: string; variant: BadgeVariant }> = 
   refunded:          { label: "Refunded",        variant: "secondary"   },
 };
 
-function fmtDate(iso: string) {
-  return new Date(iso).toLocaleDateString("en-IN", {
-    day: "numeric", month: "short", year: "numeric",
-  });
-}
 function fmtSlot(slot: string) {
   return slot === "full_day" ? "Full Day" : slot === "morning" ? "Morning" : "Evening";
 }
@@ -112,12 +108,17 @@ export default async function CustomerBookingsPage({ searchParams }: Props) {
                     className="flex items-center gap-3 rounded-2xl bg-white p-3 shadow-card active:scale-[0.99] transition-transform"
                   >
                     {/* Hall thumbnail */}
-                    <div className="h-14 w-14 shrink-0 overflow-hidden rounded-xl bg-maroon-50">
+                    <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-xl bg-maroon-50">
                       {b.hall_cover_url && (
-                        <img
+                        // next/image, not <img>: these covers are full-size venue photos
+                        // in Supabase storage, and a raw <img> downloaded every megabyte
+                        // of one to paint it 56px wide.
+                        <Image
                           src={b.hall_cover_url}
                           alt=""
-                          className="h-full w-full object-cover"
+                          fill
+                          sizes="56px"
+                          className="object-cover"
                         />
                       )}
                     </div>

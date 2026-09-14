@@ -1,3 +1,4 @@
+import Image from "next/image";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Building2, ChevronRight, Plus, Sparkles } from "lucide-react";
@@ -59,7 +60,7 @@ export default async function OwnerHallsPage() {
                     {/* Thumbnail */}
                     <div className="h-16 w-16 shrink-0 overflow-hidden rounded-xl bg-maroon-50 relative">
                       {hall.cover_url && (
-                        <img src={hall.cover_url} alt="" className="h-full w-full object-cover" />
+                        <Image src={hall.cover_url} alt="" fill sizes="64px" className="object-cover" />
                       )}
                       {!hall.cover_url && (
                         <div className="flex h-full w-full items-center justify-center">

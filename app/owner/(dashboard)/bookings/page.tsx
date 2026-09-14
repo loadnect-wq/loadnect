@@ -32,10 +32,6 @@ const SLOT_LABELS: Record<string, string> = {
   evening:  "Evening",
 };
 
-function fmtDate(iso: string) {
-  return new Date(iso).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
-}
-
 type Props = { searchParams: Promise<{ tab?: string }> };
 
 const TABS = [

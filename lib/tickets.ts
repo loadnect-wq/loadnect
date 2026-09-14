@@ -57,7 +57,6 @@ export function isValidPriority(v: unknown): v is TicketPriority {
 // → "can'tlogin"). The corrected class removes only angle brackets and the
 // ASCII control range. (Ticket creation now validates via ticketSchema in
 // lib/validation/schemas.ts, but this exported helper is fixed for any caller.)
-// eslint-disable-next-line no-control-regex
 const STRIP = /[<>\x00-\x1F\x7F]/g;
 export function sanitizeTicketText(input: unknown, maxLen: number): string {
   if (typeof input !== "string") return "";
