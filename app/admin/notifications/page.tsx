@@ -11,6 +11,7 @@ import { getMsg91Status } from "@/lib/msg91";
 import { smsTemplateConfigStatus, dltBody, templateIdFor } from "@/lib/notifications/sms-templates";
 import { maskPhone } from "@/lib/notifications/phone";
 import { resolveAdminNotificationPhone } from "@/lib/notifications/service";
+import { isAdminWebhookConfigured } from "@/lib/notifications/admin-webhook";
 import { AdminAlertNumberForm } from "./_components/AdminAlertNumberForm";
 import { AdminPageHeader } from "../_components/AdminPageHeader";
 import { ConfirmButton } from "../_components/ConfirmButton";
@@ -342,6 +343,10 @@ export default async function AdminNotificationsPage({ searchParams }: Props) {
           <AdminAlertNumberForm
             currentMasked={adminPhone.phone ? maskPhone(adminPhone.phone) : "—"}
             source={adminPhone.source}
+            // Server-side check. Only the BOOLEAN crosses to the client: the
+            // webhook URL is a bearer credential and has no business in a
+            // rendered page.
+            webhookConfigured={isAdminWebhookConfigured()}
           />
         </div>
 

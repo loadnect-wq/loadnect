@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { CheckCircle2, Loader2, Phone } from "lucide-react";
+import { BellOff, BellRing, CheckCircle2, Loader2, Phone } from "lucide-react";
 import { updateAdminAlertPhone } from "@/app/admin/actions";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -19,10 +19,14 @@ import { updateAdminAlertPhone } from "@/app/admin/actions";
 export function AdminAlertNumberForm({
   currentMasked,
   source,
+  webhookConfigured,
 }: {
   currentMasked: string;
   /** Where the number in effect actually comes from right now. */
   source: "settings" | "env" | "constant" | "none";
+  /** Whether ADMIN_ALERT_WEBHOOK_URL is set. Resolved on the server — the URL
+   *  itself is a bearer credential and never crosses to the client. */
+  webhookConfigured: boolean;
 }) {
   const [value, setValue] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -78,10 +82,39 @@ export function AdminAlertNumberForm({
           <CheckCircle2 className="h-3.5 w-3.5" /> Saved — reload to see the number in effect.
         </p>
       )}
+      {/* THE SECOND CHANNEL, SAID OUT LOUD.
+          This card used to state that alerts "are texted to this number" and
+          stop there — while every ADMIN_ALERT text was refused at the DLT gate
+          and the push channel was doing the actual delivering. An operator
+          reading it had no way to learn either fact. isAdminWebhookConfigured()
+          existed the whole time and nothing called it.
+
+          The URL is NOT shown: it is a bearer credential, and whether it is set
+          is the only part an operator needs from this page. */}
+      <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 border-t border-border pt-2">
+        {webhookConfigured ? (
+          <BellRing className="h-3.5 w-3.5 shrink-0 text-green-600" aria-hidden />
+        ) : (
+          <BellOff className="h-3.5 w-3.5 shrink-0 text-amber-600" aria-hidden />
+        )}
+        <p className="text-xs font-semibold text-charcoal-800">Push channel</p>
+        <span
+          className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+            webhookConfigured ? "bg-green-100 text-green-800" : "bg-amber-100 text-amber-800"
+          }`}
+        >
+          {webhookConfigured ? "Configured" : "Not configured"}
+        </span>
+      </div>
+
       <p className="mt-1.5 text-[10px] leading-relaxed text-charcoal-400">
-        Operational alerts (new bookings, payments, hall submissions, failures) are
-        texted to this number. A number on the DND registry is fine — the templates
-        are registered as Service Implicit, which reaches DND numbers 24x7.
+        Operational alerts (new bookings, payments, hall submissions, failures) go out
+        over <strong>both</strong> channels, independently.
+        {webhookConfigured
+          ? " The push channel sends first and does not depend on DLT, so it keeps working while an SMS template is still awaiting approval."
+          : " Only SMS is configured — so while the ADMIN_ALERT template is unapproved on DLT, these alerts reach nobody. Set ADMIN_ALERT_WEBHOOK_URL to a Slack, Discord or ntfy URL to add a channel that is not DLT-gated."}{" "}
+        For the SMS half, a number on the DND registry is fine — the templates are
+        registered as Service Implicit, which reaches DND numbers 24x7.
       </p>
     </div>
   );
