@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useTransition } from "react";
+import { useMemo, useRef, useState, useTransition } from "react";
 import { SERVICE_AREA_CITIES } from "@/lib/seo/service-areas";
 import { HALL_COMMISSION_RATES, BOOKING_MODES } from "@/lib/validation/schemas";
 import { toBookingMode, type BookingMode } from "@/lib/booking-mode";
@@ -14,6 +14,7 @@ import { normalizeAmenityName, CUSTOM_AMENITY_LIMITS, validateImageFile } from "
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { addHallImage } from "@/app/owner/(dashboard)/actions";
 import { IMAGE_CACHE_CONTROL, sniffImageType } from "@/lib/supabase/storage";
+import { parseMapInput, mapsLinkFor } from "@/lib/geo";
 
 // Extension comes from the validated MIME type, never the untrusted filename.
 const EXT_BY_MIME: Record<string, string> = {
@@ -63,6 +64,14 @@ export function HallForm({ ownerId, amenities, hall }: Props) {
   const [state,        setState]        = useState(hall?.state         ?? "");
   const [address,      setAddress]      = useState(hall?.address       ?? "");
   const [pincode,      setPincode]      = useState(hall?.pincode       ?? "");
+  // Shown back as a real Google Maps link rather than raw numbers, because a
+  // pair of decimals tells an owner nothing about whether the pin is right.
+  // Opening it is how they check.
+  const [mapLink,      setMapLink]      = useState(
+    hall?.latitude != null && hall?.longitude != null
+      ? mapsLinkFor(hall.latitude, hall.longitude)
+      : "",
+  );
   const [capMin,       setCapMin]       = useState(String(hall?.capacity_min  ?? ""));
   const [capMax,       setCapMax]       = useState(String(hall?.capacity_max  ?? ""));
   const [priceDay,     setPriceDay]     = useState(String(hall?.price_per_day ?? ""));
@@ -213,6 +222,11 @@ export function HallForm({ ownerId, amenities, hall }: Props) {
     return { uploaded, failed };
   }
 
+  // The SAME parser the server runs, so the verdict shown while typing is the
+  // verdict on save — with one exception it states plainly: a share link needs
+  // a redirect resolved, which only the server can do.
+  const pinParse = useMemo(() => parseMapInput(mapLink), [mapLink]);
+
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
@@ -233,6 +247,9 @@ export function HallForm({ ownerId, amenities, hall }: Props) {
       // no-op rather than an audit-worthy change.
       commissionRate: commissionRate ?? "",
       bookingMode,
+      // Always sent, so clearing the box clears the pin. The server re-parses
+      // and bounds-checks it — nothing here is trusted.
+      mapLink,
     };
     startTransition(async () => {
       const result = hall
@@ -316,6 +333,48 @@ export function HallForm({ ownerId, amenities, hall }: Props) {
         <Field label="Pincode">
           <Input value={pincode} onChange={(e) => setPincode(e.target.value)} placeholder="600001" maxLength={6} />
         </Field>
+
+        {/* THE MAP PIN. Optional, and deliberately framed as "paste the link"
+            rather than "enter coordinates" — no venue owner knows their
+            latitude, and every one of them can press Share in Google Maps.
+            What it buys them is a GeoCoordinates node on their venue page,
+            which is what lets Google place the venue on a map result. */}
+        <Field label="Google Maps location (optional)">
+          <Input
+            value={mapLink}
+            onChange={(e) => setMapLink(e.target.value)}
+            placeholder="Paste your Google Maps link"
+            inputMode="url"
+          />
+        </Field>
+        {pinParse.kind === "coords" ? (
+          <p className="-mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-green-800">
+            <span className="font-semibold">Pin set</span>
+            <span className="font-mono text-charcoal-600">
+              {pinParse.value.latitude}, {pinParse.value.longitude}
+            </span>
+            <a
+              href={mapsLinkFor(pinParse.value.latitude, pinParse.value.longitude)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline underline-offset-2 hover:text-green-900"
+            >
+              Check it on Google Maps
+            </a>
+          </p>
+        ) : pinParse.kind === "short-link" ? (
+          <p className="-mt-2 text-[11px] text-charcoal-500">
+            That is a share link — the exact location is read when you save.
+          </p>
+        ) : pinParse.kind === "error" ? (
+          <p className="-mt-2 text-[11px] text-maroon-700">{pinParse.message}</p>
+        ) : (
+          <p className="-mt-2 text-[11px] text-charcoal-500">
+            Open your venue in Google Maps, press Share, then paste the link here. It puts your venue
+            on the map for couples searching nearby. Leave it blank to skip.
+          </p>
+        )}
+
         <Field label="Description">
           <textarea
             value={description}

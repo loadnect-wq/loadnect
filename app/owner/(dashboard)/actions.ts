@@ -23,6 +23,7 @@ import {
 } from "@/lib/validation/schemas";
 import { sanitizeError } from "@/lib/errors";
 import { setHallCommissionRate } from "@/lib/hall-commission";
+import { resolveMapInput } from "@/lib/geo";
 import { recordOwnerAction } from "@/lib/audit";
 import { notifyBookingEvent, notifyHallSubmitted, notifyHallEdited } from "@/lib/notifications/events";
 import { normalizePhoneE164 } from "@/lib/notifications/phone";
@@ -250,6 +251,11 @@ export async function createHall(data: {
   commissionRate: number | string;
   /** DIRECT_BOOKING (the default when absent) or LEAD_GENERATION. */
   bookingMode?: string;
+  /** A Google Maps link (or plain "lat, lng") for the venue's pin.
+   *  Omit the key entirely to leave the saved pin alone; pass "" to clear it.
+   *  Resolved and bounds-checked SERVER-SIDE — the client sends a string, never
+   *  a coordinate. */
+  mapLink?: string;
 }): Promise<ActionResult> {
   const { supabase, user } = await getAuthUser();
   if (!user) return { error: "Not authenticated" };
@@ -305,6 +311,27 @@ export async function createHall(data: {
     .from("halls").select("id").eq("slug", baseSlug).maybeSingle();
   let slug = existing ? `${baseSlug}-${randomSuffix()}` : baseSlug;
 
+  // ── Map pin ─────────────────────────────────────────────────────────────────
+  // Resolved BEFORE anything is written, so a link that cannot be read fails
+  // the save with a sentence the owner can act on rather than quietly storing
+  // no pin. A short share link costs one outbound HEAD whose redirect is READ,
+  // never followed — see lib/geo.ts.
+  //
+  // undefined means "this form did not carry the field" and must not touch the
+  // columns; "" means the owner deliberately cleared the pin.
+  let pin: { latitude: number; longitude: number } | null = null;
+  if (data.mapLink !== undefined) {
+    const located = await resolveMapInput(data.mapLink);
+    if (located.kind === "error") return { error: located.message };
+    pin = located.kind === "coords" ? located.value : null;
+  }
+  // Both columns or neither, always — they are derived from ONE input, so a
+  // half-set pair is not reachable. venueJsonLd requires both before it emits a
+  // GeoCoordinates node.
+  const pinColumns = data.mapLink === undefined
+    ? {}
+    : { latitude: pin?.latitude ?? null, longitude: pin?.longitude ?? null };
+
   const buildPayload = (useSlug: string) => ({
     owner_id:     ownerId, // server-derived, not v.ownerId
     name:         v.name,
@@ -330,6 +357,7 @@ export async function createHall(data: {
     // reaches the database. The halls_commission_rate_allowed CHECK is the
     // second line of defence for a request that never touched this action.
     commission_rate: v.commissionRate,
+    ...pinColumns,
     status: "pending_approval",
   });
 
@@ -407,6 +435,11 @@ export async function updateHall(hallId: string, data: {
   /** DIRECT_BOOKING or LEAD_GENERATION. Absent means DIRECT_BOOKING, which is
    *  what every caller written before lead generation meant. */
   bookingMode?: string;
+  /** A Google Maps link (or plain "lat, lng") for the venue's pin.
+   *  Omit the key entirely to leave the saved pin alone; pass "" to clear it.
+   *  Resolved and bounds-checked SERVER-SIDE — the client sends a string, never
+   *  a coordinate. */
+  mapLink?: string;
 }): Promise<ActionResult> {
   const { supabase, user } = await getAuthUser();
   if (!user) return { error: "Not authenticated" };
@@ -439,6 +472,27 @@ export async function updateHall(hallId: string, data: {
   // up front was a second round-trip whose answer was then thrown away, and
   // could disagree with the value the write actually replaced.
 
+  // ── Map pin ─────────────────────────────────────────────────────────────────
+  // Resolved BEFORE anything is written, so a link that cannot be read fails
+  // the save with a sentence the owner can act on rather than quietly storing
+  // no pin. A short share link costs one outbound HEAD whose redirect is READ,
+  // never followed — see lib/geo.ts.
+  //
+  // undefined means "this form did not carry the field" and must not touch the
+  // columns; "" means the owner deliberately cleared the pin.
+  let pin: { latitude: number; longitude: number } | null = null;
+  if (data.mapLink !== undefined) {
+    const located = await resolveMapInput(data.mapLink);
+    if (located.kind === "error") return { error: located.message };
+    pin = located.kind === "coords" ? located.value : null;
+  }
+  // Both columns or neither, always — they come from ONE input, so a half-set
+  // pair is not reachable. venueJsonLd requires both before it emits a
+  // GeoCoordinates node, and a lone latitude would be silently ignored forever.
+  const pinColumns = data.mapLink === undefined
+    ? {}
+    : { latitude: pin?.latitude ?? null, longitude: pin?.longitude ?? null };
+
   const { error, count } = await db
     .from("halls")
     .update({
@@ -459,6 +513,10 @@ export async function updateHall(hallId: string, data: {
       // and which flow a customer enters, so 0073 adds it to 0046's named
       // UPDATE grant rather than routing it through the service role.
       booking_mode:   v.bookingMode,
+      // 0089 added latitude and longitude to that same named grant, for the
+      // same reason: a map pin says WHERE the venue is, alongside address,
+      // city, state and pincode — it is not money, placement or moderation.
+      ...pinColumns,
     }, { count: "exact" })
     .eq("id", hallId);
 
