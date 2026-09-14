@@ -12,6 +12,7 @@ import {
   hallSchema,
   addHallImageSchema,
   updateHallImageAltSchema,
+  claimHallDraftSchema,
   uuidSchema,
   offlineBookingSchema,
   parseSafe,
@@ -1821,4 +1822,60 @@ export async function checkCommissionPaymentStatus(
     revalidatePath("/admin/commissions");
   }
   return { state: res.state };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Claiming a hall an admin recorded before the owner had an account.
+// See migration 0090 for the data model and the four security layers.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Turns an admin-recorded draft into a real hall owned by the caller.
+ *
+ * EVERYTHING THAT MATTERS HAPPENS IN THE DATABASE. This function is a thin
+ * wrapper over claim_admin_hall_draft(), which re-derives the caller from
+ * auth.uid(), demands a VERIFIED phone matching the number the admin recorded,
+ * requires an existing hall_owners row, and flips the claim inside the same
+ * transaction that inserts the hall while holding the draft row locked.
+ *
+ * Deliberately NOT implemented here in TypeScript. Doing the checks in the
+ * action and the write through the client would leave a window between them,
+ * and "two owners claimed the same venue" is the exact failure the brief calls
+ * out. A single SQL function is the only way to make it atomic.
+ *
+ * The only thing taken from the caller is WHICH draft — and RLS already limits
+ * a non-admin to seeing the one matching their own verified phone, so there is
+ * no id worth guessing.
+ */
+export async function claimHallDraft(
+  input: unknown,
+): Promise<{ success: true; hallId: string } | { error: string }> {
+  const { supabase, user } = await getAuthUser();
+  if (!user) return { error: "Not authenticated" };
+
+  const parsed = parseSafe(claimHallDraftSchema, input);
+  if (!parsed.ok) return { error: parsed.error };
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const db = supabase as any;
+  const { data, error } = await db.rpc("claim_admin_hall_draft", {
+    _draft_id: parsed.data.draftId,
+  });
+
+  if (error) {
+    // The function raises with sentences written FOR the owner — "This listing
+    // is registered to a different mobile number", "Complete your owner
+    // registration before claiming a listing" — because the reason they cannot
+    // claim is the one thing they need to know to fix it. sanitizeError would
+    // replace those with a generic string and strand them.
+    const message = typeof error.message === "string" ? error.message : "";
+    const friendly = message.replace(/^.*?:\s*/, "").trim();
+    return { error: friendly || sanitizeError(error, "owner") };
+  }
+  if (!data) return { error: "That listing could not be claimed. Reload and try again." };
+
+  revalidatePath("/owner/dashboard");
+  revalidatePath("/owner/halls");
+  revalidatePath(`/owner/halls/${data}/edit`);
+  return { success: true, hallId: String(data) };
 }

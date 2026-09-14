@@ -6,8 +6,7 @@ import {
   Inbox,
   BadgeCheck, BellRing, Building2, CalendarDays, ClipboardCheck,
   CreditCard, LayoutDashboard, Megaphone, MessageSquare,
-  Receipt, ScrollText, Settings, Sparkles, Star, TicketPercent, Users, Wallet,
-} from "lucide-react";
+  Receipt, ScrollText, Settings, Sparkles, Star, TicketPercent, Users, Wallet, PlusCircle,} from "lucide-react";
 import { cn } from "@/lib/utils";
 
 type NavItem = {
@@ -44,6 +43,7 @@ const SECTIONS: { title: string; items: NavItem[] }[] = [
     items: [
       { label: "Halls",          href: "/admin/halls",          icon: Building2 },
       { label: "Hall Approvals", href: "/admin/hall-approvals", icon: ClipboardCheck, badgeKey: "pendingHalls" },
+      { label: "Add a Hall",     href: "/admin/hall-drafts",    icon: PlusCircle },
     ],
   },
   {

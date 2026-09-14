@@ -17,8 +17,11 @@ import {
   ticketResponseSchema,
   couponCreateSchema,
   couponLimitsSchema,
+  adminHallDraftSchema,
+  cancelHallDraftSchema,
   parseSafe,
 } from "@/lib/validation/schemas";
+import { findPossibleDuplicates, type DuplicateMatch } from "@/lib/admin-hall-drafts";
 import { sanitizeError } from "@/lib/errors";
 import { maxConfiguredCommissionRate } from "@/lib/hall-commission";
 import { SUSPENSION_BAN_DURATION } from "@/lib/constants";
@@ -2432,5 +2435,157 @@ async function setCouponActive(couponId: string, active: boolean): Promise<Actio
 
   revalidatePath("/admin/coupons");
   revalidatePath("/admin/audit-logs");
+  return { success: true };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Admin hall onboarding — the second intake pathway (migration 0090).
+//
+// An admin records a venue whose owner has no Hallnect account yet. Nothing
+// here touches `halls`: an unclaimed listing lives in admin_hall_drafts until
+// the owner claims it, because halls.owner_id is NOT NULL and resolves through
+// hall_owners. See the migration header for the full reasoning.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Possible existing listings for a venue about to be added.
+ *
+ * A SEPARATE, READ-ONLY CALL so the admin sees the warning BEFORE committing,
+ * and so the create path never silently decides on their behalf. Two venues can
+ * legitimately share a name in different cities and an owner may legitimately
+ * list a second hall, so this never blocks — brief section 11 asks for a
+ * warning, and a blocker would make the honest case impossible to record.
+ */
+export async function checkHallDraftDuplicates(input: {
+  name:   string;
+  city?:  string;
+  phone?: string;
+  email?: string;
+}): Promise<{ matches: DuplicateMatch[] } | { error: string }> {
+  const actor = await requireAdminActor();
+  if (!actor.ok) return { error: actor.error };
+
+  const name = (input.name ?? "").trim();
+  if (name.length < 3) return { matches: [] };
+
+  const matches = await findPossibleDuplicates({
+    name,
+    city:  input.city ?? null,
+    phone: input.phone ?? null,
+    email: input.email ?? null,
+  });
+  return { matches };
+}
+
+export async function createAdminHallDraft(
+  input: unknown,
+): Promise<{ success: true; draftId: string } | { error: string }> {
+  const actor = await requireAdminActor();
+  if (!actor.ok) return { error: actor.error };
+
+  const parsed = parseSafe(adminHallDraftSchema, input);
+  if (!parsed.ok) return { error: parsed.error };
+  const v = parsed.data;
+
+  // SESSION CLIENT, not the service role. admin_hall_drafts is a NEW table with
+  // no column-grant surgery on it (0046 locked `halls`, not this), so an admin's
+  // ordinary session can write it and RLS admin_hall_drafts_admin_all is the
+  // gate. Keeping auth.uid() live is what makes created_by trustworthy.
+  const supabase = await getSupabaseServerClient();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const db = supabase as any;
+
+  const { data, error } = await db
+    .from("admin_hall_drafts")
+    .insert({
+      created_by:       actor.user.id,
+      name:             v.name,
+      description:      v.description || null,
+      city:             v.city,
+      state:            v.state || null,
+      address:          v.address || null,
+      pincode:          v.pincode || null,
+      capacity_min:     v.capacityMin ?? null,
+      capacity_max:     v.capacityMax,
+      price_per_day:    v.pricePerDay ?? null,
+      price_morning:    v.priceMorning ?? null,
+      price_evening:    v.priceEvening ?? null,
+      booking_mode:     v.bookingMode,
+      venue_types:      v.venueTypes,
+      amenity_slugs:    v.amenitySlugs,
+      custom_amenities: v.customAmenities,
+      photo_urls:       v.photoUrls,
+      owner_name:       v.ownerName,
+      owner_phone:      v.ownerPhone,
+      owner_email:      v.ownerEmail || null,
+      admin_notes:      v.adminNotes || null,
+    })
+    .select("id")
+    .maybeSingle();
+
+  if (error) return { error: sanitizeError(error, "admin") };
+  // RLS filters a forbidden INSERT to zero rows WITHOUT raising, so a null row
+  // here is "not permitted", not "nothing to do".
+  if (!data?.id) return { error: "The listing could not be saved. Reload and try again." };
+
+  await recordAdminAction({
+    action:     "hall_draft.create",
+    entityType: "admin_hall_draft",
+    entityId:   data.id,
+    newStatus:  "unclaimed",
+    // The owner's phone is the matching key for the claim, so it belongs in the
+    // trail: without it there is no way to explain later why a given person
+    // could or could not claim a given venue.
+    metadata:   { name: v.name, city: v.city, ownerPhone: v.ownerPhone, bookingMode: v.bookingMode },
+  });
+
+  revalidatePath("/admin/hall-drafts");
+  return { success: true, draftId: data.id };
+}
+
+/**
+ * Withdraw a draft nobody should claim — a duplicate, or a venue that declined.
+ *
+ * Cancel rather than delete: the audit trail should still explain why a venue
+ * an admin recorded never appeared, and a deleted row explains nothing. The
+ * CHECK constraint keeps a cancelled row's claim columns null, so it can never
+ * be mistaken for a claimed one.
+ */
+export async function cancelAdminHallDraft(input: unknown): Promise<ActionResult> {
+  const actor = await requireAdminActor();
+  if (!actor.ok) return { error: actor.error };
+
+  const parsed = parseSafe(cancelHallDraftSchema, input);
+  if (!parsed.ok) return { error: parsed.error };
+  const v = parsed.data;
+
+  const supabase = await getSupabaseServerClient();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const db = supabase as any;
+
+  // Only an UNCLAIMED draft may be withdrawn. Once claimed it has produced a
+  // real hall, and cancelling the draft would say the listing was withdrawn
+  // while the hall carries on existing.
+  const { error, count } = await db
+    .from("admin_hall_drafts")
+    .update({ claim_status: "cancelled", admin_notes: v.reason }, { count: "exact" })
+    .eq("id", v.draftId)
+    .eq("claim_status", "unclaimed");
+
+  if (error) return { error: sanitizeError(error, "admin") };
+  if ((count ?? 0) === 0) {
+    return { error: "That listing has already been claimed or withdrawn." };
+  }
+
+  await recordAdminAction({
+    action:         "hall_draft.cancel",
+    entityType:     "admin_hall_draft",
+    entityId:       v.draftId,
+    previousStatus: "unclaimed",
+    newStatus:      "cancelled",
+    reason:         v.reason,
+  });
+
+  revalidatePath("/admin/hall-drafts");
   return { success: true };
 }

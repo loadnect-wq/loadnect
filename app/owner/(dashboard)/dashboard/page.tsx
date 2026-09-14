@@ -14,6 +14,8 @@ import { SETTLED_COMMISSION_STATUSES } from "@/lib/commission-payments";
 import { Badge } from "@/components/ui/Badge";
 import { buttonVariants } from "@/components/ui/Button";
 import { AppHeader } from "@/components/app/AppHeader";
+import { fetchClaimableDraft } from "@/lib/admin-hall-drafts";
+import { ClaimHallCard } from "../_components/ClaimHallCard";
 import { CountUp } from "@/components/motion/CountUp";
 import { revealDelay } from "@/lib/motion";
 
@@ -62,7 +64,7 @@ export default async function OwnerDashboardPage() {
 
   const halls   = await fetchOwnerHalls(ownerRow.id);
   const hallIds = halls.map((h) => h.id);
-  const [stats, commissions, plans, pendingLeads] = await Promise.all([
+  const [stats, commissions, plans, pendingLeads, claimable] = await Promise.all([
     fetchOwnerStats(ownerRow.id, hallIds),
     fetchOwnerCommissions(hallIds),
     fetchPremiumPlans(),
@@ -73,6 +75,11 @@ export default async function OwnerDashboardPage() {
     // through a channel a third party can silently drop, so the dashboard says
     // it too, and the dashboard cannot be refused.
     countPendingLeads(hallIds),
+    // Returns null on ANY failure, including a read error. That is the safe
+    // direction here: the cost of missing the card is that the owner does not
+    // see their venue today, and the cost of getting it wrong is offering a
+    // claim we could not verify.
+    fetchClaimableDraft(),
   ]);
   const paidPlans = plans.filter((p) => p.monthly_price > 0 && p.is_purchasable);
 
@@ -141,6 +148,22 @@ export default async function OwnerDashboardPage() {
             </div>
           )}
         </div>
+
+        {/* ── A HALL WAITING TO BE CLAIMED ────────────────────────────────
+            Rendered only when an admin recorded this venue against the mobile
+            number this owner has VERIFIED — RLS restricts the read to that
+            match, so the card appearing IS the match. Placed first because an
+            owner who has not claimed their venue has nothing else here worth
+            reading: their stats are all zero and the reason is this card. */}
+        {claimable && (
+          <ClaimHallCard
+            draftId={claimable.id}
+            name={claimable.name}
+            city={claimable.city}
+            address={claimable.address}
+            capacityMax={claimable.capacityMax}
+          />
+        )}
 
         {/* ── ENQUIRIES WAITING ON YOU ────────────────────────────────────
             Placed ABOVE the stats grid, not inside it. A number in a tile is

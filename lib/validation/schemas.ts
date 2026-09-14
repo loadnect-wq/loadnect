@@ -575,12 +575,18 @@ export const adminHallDraftSchema = z
     address:     optionalTrimmed(500),
     pincode:     optionalTrimmed(10),
 
-    capacityMin: optionalCapacitySchema,
+    // The trailing .optional() on each of these is LOAD-BEARING, not tidiness.
+    // optionalMoneySchema and optionalCapacitySchema are unions that already
+    // include z.undefined() — but in zod 4 a MISSING KEY is not an undefined
+    // value: it fails with "expected nonoptional". Server actions drop
+    // undefined keys in transit, so without this every draft with a blank
+    // price is rejected. Caught by lib/__tests__/admin-hall-drafts.test.ts.
+    capacityMin: optionalCapacitySchema.optional(),
     capacityMax: capacitySchema,
 
-    pricePerDay:  optionalMoneySchema,
-    priceMorning: optionalMoneySchema,
-    priceEvening: optionalMoneySchema,
+    pricePerDay:  optionalMoneySchema.optional(),
+    priceMorning: optionalMoneySchema.optional(),
+    priceEvening: optionalMoneySchema.optional(),
 
     bookingMode: z.enum(["DIRECT_BOOKING", "LEAD_GENERATION"]),
     venueTypes:  z.array(z.enum(VENUE_TYPE_VALUES)).default([]),
@@ -618,7 +624,10 @@ export const claimHallDraftSchema = z.object({ draftId: uuidSchema });
 
 export const cancelHallDraftSchema = z.object({
   draftId: uuidSchema,
-  reason:  trimmed(500),
+  // .min(1) AFTER the trim: trimmed() happily returns "", and a withdrawal
+  // with no reason leaves no way to answer "why did the venue we recorded
+  // never go live?".
+  reason:  trimmed(500).refine((v) => v.length > 0, "Please say why this listing is being withdrawn."),
 });
 
 // ── Availability ─────────────────────────────────────────────────────────────
