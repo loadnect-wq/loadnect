@@ -187,6 +187,10 @@ export type AdminPremiumRow = {
   end_date:   string;
   amount:     number;
   is_active:  boolean;
+  /** 'paid' bought through Cashfree; 'complimentary' granted by an admin. */
+  grant_type:   "paid" | "complimentary";
+  grant_reason: string | null;
+  revoked_at:   string | null;
 };
 
 export type AdminAdRow = {
@@ -1227,7 +1231,11 @@ export async function fetchAllPremium(): Promise<{
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = supabase as any;
 
-  const SELECT_WITH_PLAN = "id, hall_id, plan_slug, start_date, end_date, amount, is_active, halls(name, slug)";
+  const SELECT_WITH_PLAN =
+    "id, hall_id, plan_slug, start_date, end_date, amount, is_active, grant_type, grant_reason, revoked_at, halls(name, slug)";
+  // The legacy fallback strips plan_slug ONLY. grant_type is appended after it
+  // so this replace() still matches the exact ", plan_slug" substring — the
+  // same trap SELECT_LEGACY in lib/halls.ts documents.
   const SELECT_LEGACY    = SELECT_WITH_PLAN.replace(", plan_slug", "");
 
   let { data, error } = await db
@@ -1263,6 +1271,11 @@ export async function fetchAllPremium(): Promise<{
     end_date:   row.end_date,
     amount:     Number(row.amount),
     is_active:  row.is_active,
+    // Defaults to 'paid' for a row written before migration 0091 and for the
+    // legacy-select path, which is what those rows are.
+    grant_type:   (row.grant_type ?? "paid") as AdminPremiumRow["grant_type"],
+    grant_reason: row.grant_reason ?? null,
+    revoked_at:   row.revoked_at ?? null,
   }));
 
   return { rows, unavailable: false };

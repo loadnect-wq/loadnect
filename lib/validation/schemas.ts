@@ -901,9 +901,29 @@ export const premiumListingSchema = z.object({
   startDate: dateStringSchema,
   endDate:   dateStringSchema,
   amount:    moneySchema,
+  /**
+   * 'paid' is a listing bought through Cashfree; 'complimentary' is one an
+   * admin granted at no charge. Defaulted, so every existing caller — the
+   * webhook included — keeps writing 'paid' without being touched.
+   */
+  grantType: z.enum(["paid", "complimentary"]).optional().default("paid"),
+  /** Internal note. Admin-facing only; never shown to the owner. */
+  grantReason: optionalTrimmed(500).optional(),
 }).refine((d) => d.endDate >= d.startDate, {
   message: "End date must be after start date.",
   path:    ["endDate"],
+}).refine((d) => d.grantType !== "complimentary" || d.amount === 0, {
+  // Mirrors premium_listings_complimentary_is_free. A free grant with a price
+  // on it is a fake transaction, which is the one thing the brief rules out
+  // twice — so it is refused here AND by the database.
+  message: "A complimentary offer cannot carry an amount.",
+  path:    ["amount"],
+});
+
+/** Withdrawing a complimentary offer early. */
+export const revokePremiumOfferSchema = z.object({
+  listingId: uuidSchema,
+  reason:    trimmed(500).refine((v) => v.length > 0, "Please say why the offer is being withdrawn."),
 });
 
 export const premiumPlanUpdateSchema = z.object({

@@ -183,6 +183,14 @@ export type PremiumListing = {
   end_date:   string;
   amount:     number;
   is_active:  boolean;
+  /**
+   * 'complimentary' when Hallnect granted this at no charge.
+   *
+   * The owner's screen must not print a price they never paid — and must not
+   * offer to cancel a subscription that does not exist. Defaults to 'paid' for
+   * rows written before migration 0091 and on the legacy-select path.
+   */
+  grant_type: "paid" | "complimentary";
 };
 
 export type OwnerStats = {
@@ -831,8 +839,10 @@ export async function fetchOwnerPremiumListings(hallIds: string[]): Promise<Prem
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = supabase as any;
 
-  const SELECT_WITH_PLAN = "id, hall_id, plan_slug, start_date, end_date, amount, is_active, halls(name, slug)";
-  const SELECT_LEGACY    = SELECT_WITH_PLAN.replace(", plan_slug", "");
+  // grant_type is appended AFTER plan_slug so SELECT_LEGACY's replace() still
+  // matches the exact ", plan_slug" substring it was written against.
+  const SELECT_WITH_PLAN = "id, hall_id, plan_slug, start_date, end_date, amount, is_active, grant_type, halls(name, slug)";
+  const SELECT_LEGACY    = SELECT_WITH_PLAN.replace(", plan_slug", "").replace(", grant_type", "");
 
   let { data, error } = await db
     .from("premium_listings")
@@ -857,6 +867,7 @@ export async function fetchOwnerPremiumListings(hallIds: string[]): Promise<Prem
     hall_name:  row.halls?.name ?? "Hall",
     hall_slug:  row.halls?.slug ?? "",
     plan_slug:  (row.plan_slug ?? "premium") as PremiumListing["plan_slug"],
+    grant_type: (row.grant_type ?? "paid") as PremiumListing["grant_type"],
     start_date: row.start_date,
     end_date:   row.end_date,
     amount:     Number(row.amount),

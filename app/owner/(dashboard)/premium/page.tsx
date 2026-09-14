@@ -96,6 +96,15 @@ export default async function OwnerPremiumPage() {
                 <span className="rounded-full bg-white/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
                   {activeListing.plan_slug === "pro" ? "★ Pro" : "✦ Premium"}
                 </span>
+                {/* The same plan, said honestly. This owner is getting the full
+                    Pro or Premium entitlement — the badge above is correct —
+                    but they did not buy it, so nothing here may imply a price
+                    or a renewal. */}
+                {activeListing.grant_type === "complimentary" && (
+                  <span className="rounded-full bg-white px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-gold-700">
+                    🎁 Complimentary
+                  </span>
+                )}
               </div>
               <p className="mt-1 text-xs text-gold-100">
                 Active {fmtDate(activeListing.start_date)} – {fmtDate(activeListing.end_date)}
@@ -116,7 +125,23 @@ export default async function OwnerPremiumPage() {
                   A recurring charge with no visible way to cancel is the single
                   most common complaint about subscriptions — and, for UPI
                   AutoPay, a compliance expectation. */}
-              {subscription ? (
+              {/* A COMPLIMENTARY GRANT HAS NO SUBSCRIPTION, so the renewal and
+                  cancel controls below must not render for it. Showing "Renews
+                  automatically — ₹9,999/month" to someone who was given the
+                  plan would be a false charge notice, and offering to cancel
+                  something that does not exist is worse than useless. */}
+              {activeListing.grant_type === "complimentary" ? (
+                <div className="mt-3 rounded-xl bg-white/15 px-3 py-2">
+                  <p className="text-[11px] leading-relaxed text-white">
+                    Premium access provided by Hallnect as a special offer — there is
+                    nothing to pay and nothing to cancel.
+                  </p>
+                  <p className="mt-1 text-[11px] text-gold-100">
+                    Your access ends on {fmtDate(activeListing.end_date)}. After that your
+                    listing returns to its normal plan.
+                  </p>
+                </div>
+              ) : subscription ? (
                 <div className="mt-3 space-y-2">
                   <p className="text-[11px] text-gold-100">
                     {subscription.status === "active"

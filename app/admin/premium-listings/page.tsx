@@ -8,6 +8,7 @@ import { AdminPageHeader } from "../_components/AdminPageHeader";
 import { ConfirmButton } from "../_components/ConfirmButton";
 import { togglePremiumActive } from "../actions";
 import { CreateListingForm } from "./_components/CreateListingForm";
+import { GrantComplimentaryForm } from "./_components/GrantComplimentaryForm";
 import { RunPremiumExpiry } from "./_components/RunPremiumExpiry";
 
 export const metadata: Metadata = { title: "Premium Listings — Admin" };
@@ -39,9 +40,20 @@ export default async function AdminPremiumPage() {
   // nothing. They now report whether they executed.
   const listings = premium.rows;
   const stuck = stuckResult.rows;
-  const totalRevenue = listings.reduce((s, l) => s + l.amount, 0);
+  // PAID ONLY. A complimentary listing is stored with amount 0, so it could not
+  // inflate this even by accident — but the filter states the intent, so a
+  // future change to how complimentary rows are priced cannot quietly turn a
+  // giveaway into reported revenue.
+  const paidListings = listings.filter((l) => l.grant_type !== "complimentary");
+  const totalRevenue = paidListings.reduce((s, l) => s + l.amount, 0);
   const activeCount  = listings.filter((l) => l.is_active && isInWindow(l.start_date, l.end_date)).length;
   const proCount     = listings.filter((l) => l.plan_slug === "pro" && l.is_active && isInWindow(l.start_date, l.end_date)).length;
+  // Complimentary offers, counted separately — they are a marketing cost, not
+  // income, and conflating the two is how a launch promotion reads as growth.
+  const compActive   = listings.filter(
+    (l) => l.grant_type === "complimentary" && l.is_active && isInWindow(l.start_date, l.end_date),
+  ).length;
+  const compTotal    = listings.filter((l) => l.grant_type === "complimentary").length;
 
   return (
     <div>
@@ -50,11 +62,18 @@ export default async function AdminPremiumPage() {
       <div className="px-4 py-4 sm:px-6 lg:px-8 space-y-4">
 
         {/* Summary */}
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
           <SummaryCard label="Active now"    value={premium.unavailable ? "—" : activeCount.toString()} highlight />
           <SummaryCard label="Pro active"    value={premium.unavailable ? "—" : proCount.toString()} />
           <SummaryCard label="Total listings" value={premium.unavailable ? "—" : listings.length.toString()} />
-          <SummaryCard label="Premium revenue" value={premium.unavailable ? "—" : formatPrice(totalRevenue)} wide />
+          {/* "Paid revenue", not "Premium revenue": the number now excludes
+              complimentary grants explicitly, and the label should say so
+              rather than leave a reader to assume it. */}
+          <SummaryCard label="Paid revenue" value={premium.unavailable ? "—" : formatPrice(totalRevenue)} />
+          <SummaryCard
+            label="Complimentary"
+            value={premium.unavailable ? "—" : `${compActive} live / ${compTotal} all`}
+          />
         </div>
 
         {/* An empty screen here is only good news if the queries actually ran. */}
@@ -105,8 +124,13 @@ export default async function AdminPremiumPage() {
 
         <RunPremiumExpiry />
 
-        {/* Manual activation form */}
+        {/* Manual activation form — the PAID path, unchanged. */}
         <CreateListingForm halls={halls} />
+
+        {/* The complimentary path, deliberately beside it rather than folded
+            into it: one form that sometimes charges and sometimes does not is
+            how a free grant becomes a ₹9,999 invoice by mistake. */}
+        <GrantComplimentaryForm halls={halls} />
 
         {listings.length === 0 ? (
           <div className="rounded-2xl bg-white p-8 text-center shadow-card">
@@ -138,12 +162,26 @@ export default async function AdminPremiumPage() {
                     <tr key={l.id} className="border-b border-border last:border-b-0 hover:bg-ivory-50/50">
                       <Td className="font-medium">{l.hall_name}</Td>
                       <Td>
-                        <Badge size="sm" variant={l.plan_slug === "pro" ? "default" : "gold"}>
-                          {l.plan_slug === "pro" ? "★ Pro" : "✦ Premium"}
-                        </Badge>
+                        <span className="inline-flex flex-wrap items-center gap-1">
+                          <Badge size="sm" variant={l.plan_slug === "pro" ? "default" : "gold"}>
+                            {l.plan_slug === "pro" ? "★ Pro" : "✦ Premium"}
+                          </Badge>
+                          {l.grant_type === "complimentary" && (
+                            <Badge size="sm" variant="secondary" title={l.grant_reason ?? undefined}>
+                              🎁 Complimentary
+                            </Badge>
+                          )}
+                        </span>
                       </Td>
                       <Td className="text-xs text-charcoal-500">{fmtDate(l.start_date)} → {fmtDate(l.end_date)}</Td>
-                      <Td className="font-semibold">{formatPrice(l.amount)}</Td>
+                      {/* Never a price for a complimentary grant: printing
+                          "₹0" invites the reading that someone paid nothing for
+                          something, rather than that nothing was charged. */}
+                      <Td className="font-semibold">
+                        {l.grant_type === "complimentary"
+                          ? <span className="text-xs font-medium text-charcoal-500">No charge</span>
+                          : formatPrice(l.amount)}
+                      </Td>
                       <Td>
                         {expired
                           ? <Badge variant="secondary" size="sm">Expired</Badge>

@@ -862,12 +862,18 @@ export async function togglePremiumActive(listingId: string, isActive: boolean):
   const db = actor.supabase as any;
 
   const { data: before } = await db
-    .from("premium_listings").select("hall_id, is_active, plan_slug").eq("id", listingId).maybeSingle();
+    .from("premium_listings").select("hall_id, is_active, plan_slug, grant_type").eq("id", listingId).maybeSingle();
   if (!before) return { error: "Premium listing not found." };
 
   const { error, count } = await db
     .from("premium_listings")
-    .update({ is_active: isActive }, { count: "exact" })
+    .update({
+      is_active: isActive,
+      // Withdrawing a listing records who did it and when. Re-activating clears
+      // the marks, so a row never claims to be both live and revoked.
+      revoked_at: isActive ? null : new Date().toISOString(),
+      revoked_by: isActive ? null : actor.user.id,
+    }, { count: "exact" })
     .eq("id", listingId);
 
   if (error) return { error: sanitizeError(error, "admin") };
@@ -876,7 +882,9 @@ export async function togglePremiumActive(listingId: string, isActive: boolean):
   if (count === 0) return { error: "You do not have permission to change this listing." };
 
   await recordAdminAction({
-    action:         isActive ? "premium.activate" : "premium.cancel",
+    action: isActive
+      ? "premium.activate"
+      : before.grant_type === "complimentary" ? "premium.revoke_complimentary" : "premium.cancel",
     entityType:     "premium_listing",
     entityId:       listingId,
     previousStatus: before.is_active ? "active" : "inactive",
@@ -951,6 +959,9 @@ export async function createPremiumListing(input: {
   startDate: string; // YYYY-MM-DD
   endDate:   string; // YYYY-MM-DD
   amount:    number;
+  /** Omitted means "paid" — every existing caller keeps its behaviour. */
+  grantType?:   "paid" | "complimentary";
+  grantReason?: string;
 }): Promise<ActionResult> {
   // The block above says owners cannot call this — that was a statement about
   // the DATABASE, not about this function. getAuthUser() let any signed-in
@@ -971,13 +982,25 @@ export async function createPremiumListing(input: {
   // wrote nothing comes back as PGRST116 and lands in the `if (error)` below,
   // so there is no count:"exact" variant to add here. Reading the id back is
   // also what notifyPremiumChanged needs, so it cannot be dropped.
+  const complimentary = v.grantType === "complimentary";
+
   const { data: listing, error } = await db.from("premium_listings").insert({
     hall_id:    v.hallId,
     plan_slug:  v.planSlug,
     start_date: v.startDate,
     end_date:   v.endDate,
-    amount:     Math.round(v.amount * 100) / 100,
+    // Forced to exactly 0 for a complimentary grant rather than trusting the
+    // caller's number. The database CHECK would refuse anything else anyway;
+    // this makes the intent unmissable at the call site.
+    amount:     complimentary ? 0 : Math.round(v.amount * 100) / 100,
     is_active:  true,
+    grant_type: complimentary ? "complimentary" : "paid",
+    // NO payment_id and NO plan_purchase_id, deliberately. A complimentary
+    // offer is an entitlement, not a transaction: nothing here may resemble a
+    // Cashfree record, and revenue reads plan_purchases, so this can never
+    // appear as income.
+    granted_by:   complimentary ? actor.user.id : null,
+    grant_reason: complimentary ? (v.grantReason || null) : null,
   }).select("id").single();
 
   if (error) return { error: sanitizeError(error, "admin") };
@@ -986,10 +1009,14 @@ export async function createPremiumListing(input: {
   // hand, so "who granted this venue prominence, when, and for how much" is
   // exactly the question an audit trail exists to answer. It was unlogged.
   await recordAdminAction({
-    action:     "premium.grant",
+    action:     complimentary ? "premium.grant_complimentary" : "premium.grant",
     entityType: "premium_listing",
     entityId:   listing.id,
-    newStatus:  `${v.planSlug} ${v.startDate} to ${v.endDate}, Rs.${Math.round(v.amount * 100) / 100}`,
+    newStatus:  complimentary
+      ? `${v.planSlug} COMPLIMENTARY ${v.startDate} to ${v.endDate}`
+      : `${v.planSlug} ${v.startDate} to ${v.endDate}, Rs.${Math.round(v.amount * 100) / 100}`,
+    reason:     complimentary ? (v.grantReason || null) : null,
+    metadata:   { hallId: v.hallId, planSlug: v.planSlug, grantType: complimentary ? "complimentary" : "paid" },
   });
 
   // Non-critical owner message — respects the owner's notification preference.
@@ -999,6 +1026,55 @@ export async function createPremiumListing(input: {
   revalidatePath("/admin/dashboard");
   revalidatePath("/admin/audit-logs");
   return { success: true };
+}
+
+/**
+ * Live premium windows for a hall that would overlap a proposed one.
+ *
+ * A WARNING, NOT A BLOCK — brief section 16 asks that an admin not SILENTLY
+ * overwrite an existing offer, and extending or stacking is legitimate: a paid
+ * Premium owner given a complimentary Pro is Scenario C, and it is supposed to
+ * work. recompute_hall_premium picks the better tier while both are live and
+ * falls back on its own when the complimentary one ends, so overlap is safe —
+ * it just must not be accidental.
+ */
+export async function checkPremiumOverlap(input: {
+  hallId:    string;
+  startDate: string;
+  endDate:   string;
+}): Promise<
+  | { overlaps: { id: string; planSlug: string; startDate: string; endDate: string; grantType: string }[] }
+  | { error: string }
+> {
+  const actor = await requireAdminActor();
+  if (!actor.ok) return { error: actor.error };
+
+  const idErr = requireUuid(input.hallId, "hall id");
+  if (idErr) return { error: idErr };
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const db = actor.supabase as any;
+
+  // Two ranges overlap when each starts before the other ends.
+  const { data, error } = await db
+    .from("premium_listings")
+    .select("id, plan_slug, start_date, end_date, grant_type")
+    .eq("hall_id", input.hallId)
+    .eq("is_active", true)
+    .lte("start_date", input.endDate)
+    .gte("end_date", input.startDate);
+
+  // A failed check must not read as "no conflicts" — that is precisely the
+  // silent overwrite this exists to prevent. Surface it and let the admin decide.
+  if (error) return { error: sanitizeError(error, "admin") };
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const overlaps = (data ?? []).map((r: any) => ({
+    id: r.id, planSlug: r.plan_slug ?? "premium",
+    startDate: r.start_date, endDate: r.end_date,
+    grantType: r.grant_type ?? "paid",
+  }));
+  return { overlaps };
 }
 
 export async function updatePremiumPlan(input: {
