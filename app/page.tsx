@@ -17,6 +17,7 @@ import { AdSlot } from "@/components/ads/AdSlot";
 import { heroDelay, revealDelay } from "@/lib/motion";
 import { HeroSearch } from "@/components/sections/HeroSearch";
 import { HeroVideo } from "@/components/sections/HeroVideo";
+import { ScrollScrubVideo } from "@/components/sections/ScrollScrubVideo";
 import { HERO_VIDEO } from "@/lib/hero-video";
 
 /** The mobile title block sits on the video, so its text has to invert with it. */
@@ -445,6 +446,23 @@ export default async function HomePage() {
         <section data-reveal="fade" className="container-page pb-4">
           <AdSlot placement="homepage_banner" limit={1} />
         </section>
+
+        {/* ── Step inside: scroll-scrubbed walk-through ───────── */}
+        {/* A drop-in block: pins for two screens while scrolling moves the clip
+            from the entrance into the hall, then releases. It sits HERE rather
+            than in the hero on purpose — the hero is a static block with the
+            search pill straddling its bottom edge, and pinning it would bury
+            the search behind two screens of scroll. Ending the walk-through
+            inside a hall, directly above the real halls, is also the better
+            story.
+
+            No caption and no venue name. The footage is a generated hall, not
+            a listed venue, so nothing here may suggest it is one. Desktop tree
+            only: see the notes in ScrollScrubVideo.tsx. */}
+        <ScrollScrubVideo
+          src="/scrub/hall-walkthrough.mp4"
+          poster="/scrub/hall-walkthrough-poster.jpg"
+        />
 
         {/* ── Featured venues grid ─────────────────────────────── */}
         <section className="container-page py-12">
