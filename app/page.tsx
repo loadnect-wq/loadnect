@@ -1,6 +1,6 @@
 import Link from "next/link";
 import {
-  ArrowRight, Building2, CheckCircle2, ChevronRight, Crown, Heart, LayoutGrid, MapPin,
+  ArrowRight, Building2, Check, CheckCircle2, ChevronRight, Crown, Heart, LayoutGrid, MapPin,
   PartyPopper, Shield, Sparkles, Star, Wallet, Zap,
 } from "lucide-react";
 import { AppHeader } from "@/components/app/AppHeader";
@@ -505,8 +505,13 @@ export default async function HomePage() {
                 </p>
               </div>
 
-              {/* Trust strip — honest launch-stage messaging (no fabricated numbers) */}
-              <div className="mx-auto mt-12 grid max-w-4xl grid-cols-2 gap-4 border-t border-white/15 pt-8 sm:grid-cols-4">
+              {/* Trust strip — honest launch-stage messaging (no fabricated numbers).
+                  On a frosted bar of its own: without one the four lines sat
+                  loose on the footage and faded into its darker lower edge.
+                  The bar's 45% charcoal is ON TOP of the intro shade, so the
+                  white text here is on a darker ground than the subhead above,
+                  which already passes at 4.5:1 with white/90. */}
+              <div className="mx-auto mt-10 grid max-w-5xl grid-cols-4 divide-x divide-white/20 rounded-full border border-white/25 bg-charcoal-950/45 px-3 py-3 shadow-[0_12px_40px_-12px_rgba(0,0,0,0.5)] backdrop-blur-md">
                 <TrustItem text="Launching in Tamil Nadu" />
                 <TrustItem text="Owner-submitted listings" />
                 <TrustItem text="Secure booking flow" />
@@ -894,9 +899,14 @@ function TrustItem({ text, heroIndex }: { text: string; heroIndex?: number }) {
   return (
     <div
       {...(heroIndex === undefined ? {} : { "data-hero": "", style: heroDelay(heroIndex) })}
-      className="flex items-center justify-center gap-2 text-center text-sm font-medium text-ivory-200"
+      className="flex items-center justify-center gap-2 whitespace-nowrap px-2 text-[13px] font-semibold text-white xl:text-sm"
     >
-      <CheckCircle2 className="h-4 w-4 shrink-0 text-gold-300" aria-hidden />
+      {/* Solid, not outlined: a gold disc with a heavy check reads at a
+          glance where the thin outline icon looked delicate on video.
+          charcoal-950 on gold-300 is about 11:1. */}
+      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-gold-300 text-charcoal-950">
+        <Check className="h-3 w-3" strokeWidth={3.5} aria-hidden />
+      </span>
       {text}
     </div>
   );
