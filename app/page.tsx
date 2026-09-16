@@ -403,10 +403,18 @@ export default async function HomePage() {
                 {/* The event word rotates. White semibold, NOT gold: this is
                     normal-size text needing 4.5:1, and gold-200 here works out
                     to ~4.1:1 against the 5.39:1 white measured for this band. */}
-                <p className="hero-ink mx-auto mt-6 max-w-2xl text-base text-white/90 xl:text-lg">
+                {/* TWO FIXED LINES, broken by hand. The rotating word changes the
+                    first line's width, and with free wrapping that moved where the
+                    line broke: "Owner-submitted" split at its hyphen when the word
+                    was wide and stayed whole when it was "party", so half a word
+                    jumped between lines on every swap. With the break forced here
+                    the word only re-centres line 1, and line 2 never changes.
+                    max-w-3xl so the second sentence fits on one line. */}
+                <p className="hero-ink mx-auto mt-6 max-w-3xl text-base text-white/90 xl:text-lg">
                   Discover, compare, and book{" "}
                   <RotatingWord words={HERO_EVENT_WORDS} className="font-semibold text-white" />{" "}
                   halls across Tamil Nadu.
+                  <br />
                   Owner-submitted listings, transparent pricing, and a clear answer from the venue.
                 </p>
               </div>

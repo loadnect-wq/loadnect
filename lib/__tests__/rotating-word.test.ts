@@ -6,10 +6,18 @@ import path from "node:path";
 // The rotating event word in the hero subhead:
 //   "Discover, compare, and book [wedding|party|reception|banquet] halls…"
 //
-// Verified in a browser at 1440x900 over 11s and four swaps: the text after the
-// word stayed at exactly the same pixel (x=750.31, y=431.42), the reserved box
-// never changed width (82.8px — "reception" as rendered at 600 18px), the
-// paragraph height never changed, and opacity was caught mid-transition.
+// First version: the box was always the widest word, so nothing around it ever
+// moved — but "party" (47px) sat in an 83px box sized for "reception", leaving
+// 18px of empty space on each side: "book    party    halls".
+//
+// Now the box glides to each word's rendered width. Verified in a browser:
+//   at rest, every word fills its box exactly (0px hole, centred to 0px), with
+//   one normal 5.1px space before and after;
+//   line breaks are identical for all four words at 1440, 1100 and 1024px, and
+//   "book" moves exactly half the width change (18.1px at 1440) — a pure
+//   re-centre of line 1, nothing reflowing;
+//   layout shift over 11s and four swaps: 0.0016 (Google's "good" is < 0.1);
+//   copying the sentence gives "book wedding halls", not all four words.
 // ─────────────────────────────────────────────────────────────────────────────
 
 const ROOT = path.resolve(__dirname, "../..");
@@ -21,17 +29,42 @@ const code = (s: string) =>
   s.replace(/\{\/\*[\s\S]*?\*\/\}/g, "").replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
 const srcCode = code(src);
 
-describe("no layout shift", () => {
-  it("stacks every word in ONE grid cell, so the box is the widest word", () => {
+describe("the box fits the word", () => {
+  it("stacks every word in ONE grid cell, so first paint is the widest word", () => {
+    // No inline width on the server render: nothing jumps before hydration.
     expect(srcCode).toContain("inline-grid");
     expect(srcCode).toContain("col-start-1 row-start-1");
   });
 
-  it("measures nothing — no width that can go stale with the font or the list", () => {
-    for (const api of ["getBoundingClientRect", "offsetWidth", "scrollWidth", "ResizeObserver"]) {
-      expect(srcCode, `${api} — the grid already sizes the box`).not.toContain(api);
-    }
-    expect(srcCode).not.toMatch(/width:\s*["'`]?\d/);
+  it("reads widths from what rendered, never hard-coded", () => {
+    expect(srcCode).toContain("el.getBoundingClientRect().width");
+    expect(srcCode, "a hard-coded pixel width goes stale with the font or the list").not.toMatch(/width:\s*["'`]?\d/);
+  });
+
+  it("re-reads them when fonts load and on resize", () => {
+    expect(srcCode).toContain("document.fonts?.ready.then(schedule)");
+    expect(srcCode).toContain('window.addEventListener("resize", schedule');
+  });
+
+  it("does not animate a measurement, only a swap", () => {
+    // Easing from the widest word to the first one right after load would
+    // read as a twitch.
+    expect(srcCode).toContain('box.style.transition = "none"');
+  });
+
+  it("glides the width with the fade", () => {
+    expect(srcCode).toContain("transition-[width] duration-500");
+  });
+
+  it("centres words in the visible box, not in a wider auto track", () => {
+    // An auto track stays as wide as the widest word; "party" would be pushed
+    // right and clipped inside a narrowed box.
+    expect(srcCode).toContain("grid-cols-[minmax(0,1fr)]");
+    expect(srcCode).toContain("justify-items-center");
+  });
+
+  it("clips sideways only, so a widening word never spills over its neighbours", () => {
+    expect(srcCode).toContain("overflow-x-clip");
   });
 
   it("never lets a word wrap onto two lines", () => {
@@ -59,11 +92,17 @@ describe("the animation", () => {
   });
 });
 
-describe("screen readers", () => {
+describe("screen readers and copy-paste", () => {
   it("hear one word, not all four, and no announcement every few seconds", () => {
     expect(srcCode).toContain('<span className="sr-only">{words[0]}</span>');
-    expect(srcCode).toMatch(/<span\s+aria-hidden/);
+    expect(srcCode).toMatch(/ref=\{boxRef\}\s+aria-hidden/);
     expect(srcCode).not.toContain("aria-live");
+  });
+
+  it("copy the sentence, not the stack", () => {
+    // Selecting the subhead used to copy "book wedding wedding party reception
+    // banquet halls".
+    expect(srcCode).toContain("select-none");
   });
 });
 
@@ -82,6 +121,16 @@ describe("on the page", () => {
       const label = `${w[0].toUpperCase()}${w.slice(1)} Halls`;
       expect(page, `no "${label}" category behind the word "${w}"`).toContain(`label: "${label}"`);
     }
+  });
+
+  it("breaks the subhead by hand, so the word cannot move a line break", () => {
+    // With free wrapping, "Owner-submitted" split at its hyphen when the word
+    // was wide and stayed whole for "party" — half a word jumped lines.
+    const pageCode = code(page);
+    const sub = pageCode.slice(pageCode.indexOf("Discover, compare, and book"), pageCode.indexOf("from the venue."));
+    expect(sub).toContain("halls across Tamil Nadu.");
+    expect(sub).toMatch(/Tamil Nadu\.\s*<br \/>\s*Owner-submitted/);
+    expect(pageCode).toContain("mx-auto mt-6 max-w-3xl");
   });
 
   it("stays white, not gold — normal-size text needs 4.5:1", () => {
