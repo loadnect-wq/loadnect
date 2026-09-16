@@ -3,10 +3,24 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
+  BadgeCheck,
+  BellRing,
+  Building2,
+  CalendarDays,
+  ClipboardCheck,
+  CreditCard,
   Inbox,
-  LayoutDashboard, Users, BadgeCheck, BellRing, Building2, ClipboardCheck,
-  CalendarDays, CreditCard, Wallet, Star, Sparkles, Megaphone,
-  MessageSquare, ScrollText, Settings,
+  LayoutDashboard,
+  Megaphone,
+  MessageSquare,
+  PlusCircle,
+  ScrollText,
+  Settings,
+  Sparkles,
+  Star,
+  TicketPercent,
+  Users,
+  Wallet,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -40,6 +54,12 @@ const ITEMS: {
   { label: "Dashboard",  href: "/admin/dashboard",       icon: LayoutDashboard, exact: true },
   { label: "Approvals",  href: "/admin/hall-approvals",  icon: ClipboardCheck, badgeKey: "pendingHalls" },
   { label: "Halls",      href: "/admin/halls",           icon: Building2 },
+  // ADDED BACK. This nav listed 16 of the 18 admin screens; /admin/hall-drafts
+  // and /admin/coupons were in the desktop sidebar only. The sidebar is
+  // `hidden lg:flex` and the customer BottomNav excludes /admin entirely, so
+  // both screens were unreachable by navigation on a phone — including the one
+  // an admin uses to record a venue while standing in it.
+  { label: "Add a Hall", href: "/admin/hall-drafts",     icon: PlusCircle },
   { label: "Bookings",   href: "/admin/bookings",        icon: CalendarDays },
   { label: "Enquiries",  href: "/admin/leads",           icon: Inbox },
   { label: "Payments",   href: "/admin/payments",        icon: CreditCard },
@@ -48,6 +68,7 @@ const ITEMS: {
   { label: "Users",      href: "/admin/users",           icon: Users },
   { label: "Reviews",    href: "/admin/reviews",         icon: Star },
   { label: "Premium",    href: "/admin/premium-listings",icon: Sparkles },
+  { label: "Coupons",    href: "/admin/coupons",         icon: TicketPercent },
   { label: "Ads",        href: "/admin/advertisements",  icon: Megaphone, badgeKey: "pendingAds" },
   { label: "Support",    href: "/admin/support-tickets", icon: MessageSquare, badgeKey: "openTickets" },
   { label: "Notifications", href: "/admin/notifications", icon: BellRing },

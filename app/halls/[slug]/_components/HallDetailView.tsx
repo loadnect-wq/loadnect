@@ -511,10 +511,16 @@ export function HallDetailView({ hall, similar, isPreview, sidebarAd, advancePer
                   </div>
                 </div>
 
-                {/* Map placeholder tile */}
-                <div className="mt-3 flex h-32 items-center justify-center rounded-xl bg-ivory-200 text-charcoal-400">
-                  <MapPin className="h-6 w-6 opacity-40" />
-                </div>
+                {/* NO MAP TILE. An unconditional 128px grey box with a faded
+                    pin used to sit here, shown whether or not the venue had
+                    coordinates, and it read as a map that had failed to load.
+                    A real map cannot be drawn either way today: the CSP is
+                    `frame-src 'self' <cashfree>` with an img-src that does not
+                    include Google, so both an embedded map and a static-map
+                    image are blocked. Adding either is a deliberate CSP change
+                    AND a Privacy section 5 amendment in the same commit — see
+                    docs/update-plan.md section 3.3. Until that is decided, the
+                    address plus the link below is the whole honest offering. */}
 
                 <a
                   href={mapsHref}
@@ -648,7 +654,7 @@ export function HallDetailView({ hall, similar, isPreview, sidebarAd, advancePer
                 it is now the whole of what this section says. */}
             <section data-reveal="scale" className="mt-6">
               <h2 className="font-serif text-base font-semibold text-charcoal-900">
-                {isLead ? "Next 30 days" : "Availability"}
+                {isLead ? "Your date" : "Availability"}
               </h2>
               <div className="mt-3 rounded-2xl bg-white p-3 shadow-card">
                 {/* A list, so each day is an element that can carry a name of
@@ -657,6 +663,15 @@ export function HallDetailView({ hall, similar, isPreview, sidebarAd, advancePer
                     the list semantics, and with them the cells' names. The two
                     visible spans are hidden from assistive tech: the label below
                     already says the date, and better. */}
+                {/* THIRTY IDENTICAL GREY CELLS ANSWER NOTHING. The grid was
+                    already stripped of its status colours and its legend under
+                    lead mode, because getDayStatus calls an unmatched date
+                    "available" — right for direct booking, wrong for a venue
+                    whose availability table nobody maintains. What was left was
+                    honest but uninformative, so a lead venue now gets the
+                    sentence and the action instead. fetchHallBySlug no longer
+                    reads `availability` for one at all. */}
+                {!isLead && (
                 <ul role="list" className="grid grid-cols-7 gap-1 sm:gap-1.5">
                   {calDays.map(({ iso, day, wkd, status, label, dateLabel }) => (
                     <li
@@ -690,6 +705,7 @@ export function HallDetailView({ hall, similar, isPreview, sidebarAd, advancePer
                     </li>
                   ))}
                 </ul>
+                )}
 
                 {/* Legend — only where the colours mean something. */}
                 {!isLead && (
@@ -709,17 +725,25 @@ export function HallDetailView({ hall, similar, isPreview, sidebarAd, advancePer
                   </div>
                 )}
 
-                <p className="mt-3 text-[11px] text-charcoal-500">
-                  {isLead ? (
-                    <>
-                      Hallnect does not hold this venue&apos;s calendar, so no date here is shown as
-                      free or booked. Tap <strong>Send Enquiry</strong> and the venue will confirm
-                      your date with you.
-                    </>
-                  ) : (
-                    <>Tap <strong>Book Now</strong> to choose your exact date and slot.</>
-                  )}
-                </p>
+                {isLead ? (
+                  <>
+                    <p className="text-sm leading-relaxed text-charcoal-700">
+                      Ask the venue about your date. Hallnect does not hold this venue&apos;s
+                      calendar, so we cannot show which days are free — the venue confirms your
+                      date with you directly.
+                    </p>
+                    <Link
+                      href={ctaHref}
+                      className="mt-3 inline-flex min-h-[44px] items-center justify-center rounded-xl bg-maroon-700 px-5 text-sm font-semibold text-white transition-colors hover:bg-maroon-800"
+                    >
+                      {ctaLabel}
+                    </Link>
+                  </>
+                ) : (
+                  <p className="mt-3 text-[11px] text-charcoal-500">
+                    Tap <strong>Book Now</strong> to choose your exact date and slot.
+                  </p>
+                )}
               </div>
             </section>
 

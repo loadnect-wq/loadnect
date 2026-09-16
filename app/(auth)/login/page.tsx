@@ -217,8 +217,30 @@ export default function LoginPage() {
                 Continue with mobile
               </button>
 
+              {/* PRESENTMENT, NOT A CHECKBOX.
+                  /login is the real sign-up for BOTH doors — /signup is only a
+                  redirect here — and it carried no Terms or Privacy reference
+                  at all, while /owner/register carried browsewrap text on its
+                  Google path only. An account was being created with the
+                  governing documents named nowhere.
+
+                  Links, not a tick box: adding a consent checkbox here would
+                  create a consent artifact with nothing to store it in
+                  (profiles has no consent column and its UPDATE grants are
+                  column-pinned by 0084), and a recorded consent nobody can
+                  produce later is worse than an honest browsewrap. The stored,
+                  versioned artifact already exists where money changes hands —
+                  bookings.terms_accepted / terms_version. */}
               <p className="pt-1 text-center text-xs text-charcoal-500">
-                New here? Either option creates your account.
+                New here? Either option creates your account. By continuing you agree to our{" "}
+                <Link href="/terms" className="font-semibold text-maroon-700 underline underline-offset-2">
+                  Terms of Service
+                </Link>{" "}
+                and{" "}
+                <Link href="/privacy" className="font-semibold text-maroon-700 underline underline-offset-2">
+                  Privacy Policy
+                </Link>
+                .
               </p>
             </div>
           )}

@@ -36,7 +36,7 @@ function fmtDate(iso: string) {
   return new Date(iso).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
 }
 
-type Props = { searchParams: Promise<{ status?: string; commission?: string; sort?: string; mode?: string }> };
+type Props = { searchParams: Promise<{ status?: string; commission?: string; sort?: string; mode?: string; q?: string }> };
 
 /**
  * Booking-mode filter. Deliberately its own row rather than another value in
@@ -98,7 +98,7 @@ export default async function AdminHallsPage({ searchParams }: Props) {
   // denial now logs at error level, which would bury real failures. Guarding
   // here also means this page is not relying on a file it does not control.
   await requireRole(["admin"]);
-  const { status, commission, sort, mode } = await searchParams;
+  const { status, commission, sort, mode, q } = await searchParams;
   const activeFilter = FILTERS.find((f) => f.key === status) ?? FILTERS[0];
   const activeCommission =
     COMMISSION_FILTERS.find((f) => f.key === commission) ?? COMMISSION_FILTERS[0];
@@ -124,10 +124,25 @@ export default async function AdminHallsPage({ searchParams }: Props) {
   // counts on every chip are computed against the same materialised set —
   // a mode filter in SQL and a commission filter in memory would make the
   // commission chips count rows the mode filter had already removed.
-  const filtered =
+  const byMode =
     activeMode.key === "all"
       ? byCommission
       : byCommission.filter((h) => h.booking_mode === activeMode.key);
+
+  // ?q= WAS A DEAD PARAMETER. Two places already build this link — the
+  // duplicate warning in lib/admin-hall-drafts.ts:206 and the "View listing"
+  // link on a claimed draft — and the page destructured only four keys, so both
+  // silently dropped the admin on the unfiltered list of every hall. Matching
+  // on name and city rather than name alone, because the draft duplicate check
+  // that generates the link matches on both.
+  const search = (q ?? "").trim().toLowerCase().slice(0, 80);
+  const filtered = search
+    ? byMode.filter(
+        (h) =>
+          h.name.toLowerCase().includes(search) ||
+          (h.city ?? "").toLowerCase().includes(search),
+      )
+    : byMode;
 
   // SORTED IN MEMORY, for the same reason it is filtered in memory: the query
   // above runs on the session client, which migration 0072 forbids from reading
@@ -161,6 +176,28 @@ export default async function AdminHallsPage({ searchParams }: Props) {
       />
 
       <div className="px-4 py-4 sm:px-6 lg:px-8 space-y-4">
+
+        {/* An active ?q= has to be visible, or an admin who followed a duplicate
+            warning sees a short list with no idea why. */}
+        {search && (
+          <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-white px-3 py-2 text-sm">
+            <span className="text-charcoal-600">
+              Showing halls matching{" "}
+              <strong className="text-charcoal-900">&ldquo;{search}&rdquo;</strong>
+            </span>
+            <Link
+              href={hrefFor({
+                status:     activeFilter.key,
+                commission: activeCommission.key,
+                sort:       activeSort.key,
+                mode:       activeMode.key,
+              })}
+              className="font-semibold text-maroon-700 underline underline-offset-2"
+            >
+              Clear
+            </Link>
+          </div>
+        )}
 
         {/* Filter chips */}
         <div className="flex flex-wrap gap-2">

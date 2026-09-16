@@ -227,6 +227,10 @@ export default async function HallsPage({
                 revealIndex={i}
                 revealNow={i < 3}
                 eager={i === 0}
+                // effectiveDate, not date — the homepage's "Available Today"
+                // tile arrives as ?available=today and is mapped onto the same
+                // filter, so it must mark lead venues too.
+                dateFiltered={!!effectiveDate}
               />
             ))}
           </div>

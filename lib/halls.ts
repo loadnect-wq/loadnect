@@ -330,6 +330,12 @@ export async function fetchHalls(filters: HallsFilters, failure?: FailureFlag): 
       const cap = parseInt(filters.capacity, 10);
       if (!isNaN(cap)) q = q.gte("capacity_max", cap);
     }
+    // A BUDGET FILTER DROPS AN UNPRICED VENUE, deliberately. .gte/.lte are both
+    // false against NULL, so a lead venue publishing "Price on request"
+    // disappears from any budget-filtered search. That is the intended answer —
+    // the customer asked which venues fall in a range, and this one cannot be
+    // said to — but it is silent, so it is written down here rather than
+    // rediscovered as a bug. Changing it is a product decision, not a fix.
     if (filters.priceMin) {
       const min = parseFloat(filters.priceMin);
       if (!isNaN(min)) q = q.gte("price_per_day", min);
@@ -367,9 +373,16 @@ export async function fetchHalls(filters: HallsFilters, failure?: FailureFlag): 
       q = q.in("id", amenityFilterIds);
     }
 
+    // nullsFirst IS SPELLED OUT ON BOTH PRICE SORTS, and it is not decoration.
+    // Postgres puts NULLs LAST on ASC and FIRST on DESC, so "price: high to low"
+    // led with every venue that publishes no price at all — a lead venue is
+    // allowed a null price_per_day (halls_direct_booking_needs_price binds only
+    // DIRECT_BOOKING), so the most expensive-looking results were the ones with
+    // no price. The default sort below already passes nullsFirst for
+    // premium_tier, so the option was known; these two just never got it.
     switch (filters.sort) {
-      case "price-asc":  q = q.order("price_per_day",  { ascending: true  }); break;
-      case "price-desc": q = q.order("price_per_day",  { ascending: false }); break;
+      case "price-asc":  q = q.order("price_per_day",  { ascending: true,  nullsFirst: false }); break;
+      case "price-desc": q = q.order("price_per_day",  { ascending: false, nullsFirst: false }); break;
       case "rating":     q = q.order("rating_average", { ascending: false }); break;
       case "capacity":   q = q.order("capacity_max",   { ascending: false }); break;
       default:
@@ -630,15 +643,23 @@ export async function fetchHallBySlug(slug: string): Promise<HallDetail | null> 
   // got a window starting on a day that had already passed and ending one short
   // — the same drift lib/dates.ts exists to eliminate, and the same one already
   // fixed in the owner calendar.
+  // NOT FETCHED FOR A LEAD VENUE. Nobody maintains availability for one — the
+  // table holds zero rows for it by construction — and the venue page no longer
+  // renders a grid from it, so this was a per-request round trip whose result
+  // was thrown away. The read stays for direct booking, where it is the
+  // calendar.
   const today = todayInBusinessTz();
   const in30  = addDaysToIsoDate(today, 30);
-  const { data: availRows } = await db
-    .from("availability")
-    .select("date, slot, status")
-    .eq("hall_id", hall.id)
-    .gte("date", today)
-    .lte("date", in30)
-    .order("date");
+  const publishesCalendar = toBookingMode(hall.booking_mode) === "DIRECT_BOOKING";
+  const { data: availRows } = publishesCalendar
+    ? await db
+        .from("availability")
+        .select("date, slot, status")
+        .eq("hall_id", hall.id)
+        .gte("date", today)
+        .lte("date", in30)
+        .order("date")
+    : { data: null as { date: string; slot: string; status: string }[] | null };
 
   // Visible reviews — profiles NOT joined (RLS blocks anon reads of other profiles)
   const REVIEW_SELECT_FULL = "rating, title, comment, cleanliness_rating, value_rating, location_rating, service_rating, created_at";

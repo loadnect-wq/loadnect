@@ -50,6 +50,14 @@ interface HallCardProps {
    */
   revealNow?: boolean;
   /**
+   * True when the visitor filtered by a date. A LEAD VENUE CANNOT ANSWER THAT
+   * QUESTION — it publishes no calendar, so it is never in the blocked-id set
+   * and survives every date filter by default. Without this the homepage's
+   * "Available Today" tile returned a venue as free today while its own venue
+   * page deliberately refuses to make that claim.
+   */
+  dateFiltered?: boolean;
+  /**
    * True for the first card in a grid — the LCP element on both listing pages.
    *
    * next/image lazy-loads by default, which for the largest above-the-fold
@@ -68,7 +76,10 @@ function gradientForId(id: string): string {
   return CARD_GRADIENTS[Math.abs(hash) % CARD_GRADIENTS.length];
 }
 
-export function HallCard({ hall, advancePercent, revealIndex, revealNow, eager }: HallCardProps) {
+export function HallCard({ hall, advancePercent, revealIndex, revealNow, eager, dateFiltered }: HallCardProps) {
+  // Say what this listing cannot tell you, rather than letting the filter imply
+  // an answer it never had.
+  const availabilityUnknown = dateFiltered === true && isLeadGeneration(hall.booking_mode);
   // WRAP, DO NOT DECORATE. The entrance lives on this div and the hover lives
   // on the Link, so the two never share an element — the reveal's transition
   // cannot stretch the 300ms hover, and the keyframe's final `transform: none`
@@ -218,6 +229,11 @@ export function HallCard({ hall, advancePercent, revealIndex, revealNow, eager }
                 <span className="mt-0.5 block text-[10px] font-semibold text-gold-600">
                   Send an enquiry
                 </span>
+              </span>
+            )}
+            {availabilityUnknown && (
+              <span className="mt-1 block text-[10px] font-medium text-charcoal-500">
+                Availability on request
               </span>
             )}
           </span>
