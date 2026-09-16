@@ -66,6 +66,33 @@ export function legalLastModified(path: LegalPath): Date {
   return new Date(`${LEGAL_LAST_UPDATED[path]}T00:00:00Z`);
 }
 
+/**
+ * The cities Hallnect is launching in, in the order their tiles appear.
+ *
+ * THIS IS NOT A CLAIM OF INVENTORY. The homepage strip was once a static list
+ * of eight cities, seven with no venues, and every tile promised halls and
+ * delivered an empty search. So each of these is rendered from the live count:
+ * a city with approved venues gets a normal "Explore" tile, and a city with
+ * none gets a "Coming soon" tile linking to its landing page — which is
+ * noindex and says "No venues listed yet", so the tile and the page agree.
+ * A city flips to live on its own the moment a venue there is approved.
+ *
+ * Search controls (the hero pill, the city picker) deliberately do NOT use
+ * this list. Offering Chennai in a search box would still lead to nothing.
+ */
+export const LAUNCH_CITIES = ["Madurai", "Chennai", "Coimbatore", "Tiruchirappalli"] as const;
+
+/**
+ * Cover photos for city tiles, keyed by canonical city name. A city without one
+ * falls back to its gradient from POPULAR_CITIES.
+ *
+ * SAME ORIGIN ONLY. The CSP's img-src is 'self' plus Supabase, so a hotlinked
+ * photo would render as an empty box. Put the file in /public/cities/.
+ */
+export const CITY_COVERS: Partial<Record<string, string>> = {
+  Madurai: "/cities/madurai.jpg",
+};
+
 // Tamil Nadu only. No fabricated venue counts — tiles link to the real search.
 export const POPULAR_CITIES = [
   { name: "Madurai",          state: "Tamil Nadu", gradient: "linear-gradient(135deg,#6B1525 0%,#9B2038 100%)" },

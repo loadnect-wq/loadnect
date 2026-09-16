@@ -8,7 +8,8 @@ import { HomeLocation } from "./_components/HomeLocation";
 import { HomeSearchEntry } from "./_components/HomeSearchEntry";
 import { CategoryRow } from "./_components/CategoryRow";
 import { CitiesRow } from "./_components/CitiesRow";
-import { POPULAR_CITIES } from "@/lib/content";
+import Image from "next/image";
+import { CITY_COVERS, LAUNCH_CITIES, POPULAR_CITIES } from "@/lib/content";
 import { getAdvancePercent } from "@/lib/platform-settings";
 import { todayInBusinessTz } from "@/lib/dates";
 import { platformFeeDisclosure } from "@/lib/booking-payment";
@@ -28,7 +29,7 @@ import { JsonLd } from "@/components/seo/JsonLd";
 import {
   jsonLdGraph, organizationJsonLd, websiteJsonLd, faqJsonLd,
 } from "@/lib/seo/jsonld";
-import { fetchCityInventory } from "@/lib/seo/cities";
+import { fetchCityInventory, type CityInventory } from "@/lib/seo/cities";
 
 const CATEGORIES = [
   { key: "wedding",   label: "Wedding Halls",   icon: "heart",      href: "/halls?category=wedding"   },
@@ -173,17 +174,32 @@ export default async function HomePage() {
     : CATEGORIES.filter((c) => c.key !== "premium");
   const popularSearches = visibleCategories.filter((c) => c.key !== "today").slice(0, 6);
 
-  // 3. POPULAR CITIES. This strip rendered POPULAR_CITIES — a static list of
-  //    eight ambitions — so seven of the eight tiles led to an empty search.
-  //    It is now driven by the same live inventory as the "Browse by city"
-  //    links, and the whole section disappears when nothing is listed
-  //    anywhere. POPULAR_CITIES survives only as the gradient palette.
-  const cities = citiesWithVenues.slice(0, 8).map((c) => ({
-    name:     c.city,
-    state:    "Tamil Nadu",
-    gradient: POPULAR_CITIES.find((p) => p.name === c.city)?.gradient ?? CITY_GRADIENT_FALLBACK,
-    slug:     c.slug,
-  }));
+  // 3. CITY TILES. This strip once rendered a static list of eight cities, so
+  //    seven of the eight tiles led to an empty search. Every tile is now
+  //    decided by the live count: every city with venues is a normal tile, and
+  //    the LAUNCH_CITIES that have none follow as "Coming soon" tiles pointing
+  //    at their landing page, which says the same thing.
+  //
+  //    A FAILED READ HIDES THE STRIP, it does not relabel it. On success the
+  //    inventory always contains every declared service-area city (with zero
+  //    counts where empty), so an empty array can only mean the query failed.
+  //    Rendering coming-soon states from that would tell visitors Madurai has
+  //    no venues — the swallowed-error-shown-as-fact defect this repo keeps
+  //    documenting.
+  const inventoryRead = cityInventory.length > 0;
+  const comingSoon = LAUNCH_CITIES
+    .map((name) => cityInventory.find((c) => c.city === name))
+    .filter((c): c is CityInventory => c !== undefined && c.venueCount === 0);
+  const cities = (inventoryRead ? [...citiesWithVenues, ...comingSoon] : [])
+    .slice(0, 8)
+    .map((c) => ({
+      name:     c.city,
+      state:    "Tamil Nadu",
+      gradient: POPULAR_CITIES.find((p) => p.name === c.city)?.gradient ?? CITY_GRADIENT_FALLBACK,
+      slug:     c.slug,
+      live:     c.venueCount > 0,
+      image:    CITY_COVERS[c.city],
+    }));
 
   return (
     <div className="bg-ivory-100">
@@ -317,7 +333,7 @@ export default async function HomePage() {
 
         {cities.length > 0 && (
           <section className="mt-7 pb-6">
-            <MobileSectionTitle title="Cities with venues" linkLabel="See all" linkHref="/halls" />
+            <MobileSectionTitle title="Cities" linkLabel="See all" linkHref="/halls" />
             <CitiesRow cities={cities} />
           </section>
         )}
@@ -458,18 +474,19 @@ export default async function HomePage() {
           )}
         </section>
 
-        {/* ── Cities with venues ───────────────────────────────── */}
+        {/* ── Cities ───────────────────────────────────────────── */}
         {/* Was "Popular Cities" over a static list of eight Tamil Nadu cities,
             seven of which had no inventory — every tile promised venues and
-            delivered an empty search. Driven by the live count now, and gone
-            entirely when nothing is listed. The blurb also claimed "India's
-            most-loved wedding destinations" while Hallnect serves one state. */}
+            delivered an empty search. Each tile is decided by the live count
+            now: "Explore" where venues exist, "Coming soon" where they do not.
+            The title and blurb changed with it — "Cities with venues… taking
+            bookings today" would be false above a Chennai tile with none. */}
         {cities.length > 0 && (
         <section className="container-page py-12">
           <DesktopSectionHeader
             eyebrow="By location"
-            title="Cities with venues"
-            blurb="Tamil Nadu cities where halls are listed and taking bookings today."
+            title="Wedding halls by city"
+            blurb="Browse the cities where halls are listed today, and see where Hallnect is launching next."
           />
           <div className="mt-8 grid grid-cols-4 gap-4">
             {cities.map((c, i) => (
@@ -480,13 +497,39 @@ export default async function HomePage() {
                 className="group relative h-44 overflow-hidden rounded-2xl shadow-card transition-transform hover:-translate-y-1.5 hover:shadow-card-hover"
                 style={{ background: c.gradient, ...revealDelay(i, 70) }}
               >
-                <div className="absolute inset-0 bg-gradient-to-t from-black/55 via-black/20 to-transparent" />
+                {c.image && (
+                  <Image
+                    src={c.image}
+                    alt=""
+                    fill
+                    // The desktop tree only renders from lg up, where a tile is
+                    // 228-292px wide.
+                    sizes="292px"
+                    // 35% down rather than centred: the frame is nearly square
+                    // and the tile is wide, so a centred crop cut the gopuram
+                    // tops off.
+                    className="object-cover object-[50%_35%] transition-transform duration-500 group-hover:scale-105 motion-reduce:transition-none motion-reduce:group-hover:scale-100"
+                  />
+                )}
+                {/* HEAVIER OVER A PHOTO, MEASURED. The gradient tiles are flat
+                    colour and read fine at /55, but the Madurai photo has lit
+                    streets exactly where the name sits: white text scored
+                    4.13:1 against a 4.5 bar. /80 takes it to 6.46:1. */}
+                <div
+                  className={`absolute inset-0 bg-gradient-to-t to-transparent ${
+                    c.image ? "from-black/80 via-black/30" : "from-black/55 via-black/20"
+                  }`}
+                />
                 <div className="absolute inset-x-4 bottom-4 text-white">
                   <p className="font-serif text-lg font-bold">{c.name}</p>
-                  <p className="text-xs text-white/80">{c.state}</p>
+                  <p className="text-xs text-white/90">{c.state}</p>
                 </div>
-                <div className="absolute right-3 top-3 rounded-full bg-white/15 px-2 py-0.5 text-[10px] font-semibold text-white backdrop-blur">
-                  Explore →
+                <div
+                  className={`absolute right-3 top-3 rounded-full px-2 py-0.5 text-[10px] font-semibold text-white backdrop-blur ${
+                    c.image ? "bg-black/40" : "bg-white/15"
+                  }`}
+                >
+                  {c.live ? "Explore →" : "Coming soon"}
                 </div>
               </Link>
             ))}
