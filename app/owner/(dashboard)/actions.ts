@@ -23,6 +23,7 @@ import {
 } from "@/lib/validation/schemas";
 import { sanitizeError } from "@/lib/errors";
 import { setHallCommissionRate } from "@/lib/hall-commission";
+import { canonicalStateForStorage } from "@/lib/seo/state";
 import { resolveMapInput } from "@/lib/geo";
 import { recordOwnerAction } from "@/lib/audit";
 import { notifyBookingEvent, notifyHallSubmitted, notifyHallEdited } from "@/lib/notifications/events";
@@ -127,7 +128,9 @@ export async function upsertOwnerRow(data: {
     gst_number:     v.gstNumber     || null,
     address:        v.address       || null,
     city:           v.city          || null,
-    state:          v.state         || null,
+    // The seller's business address is published under Rule 5(3)(a), so it gets
+    // the same one-spelling treatment as the venue's.
+    state:          canonicalStateForStorage(v.state),
     // business_phone, pan_number, payout_account_number, payout_ifsc and
     // payout_upi are DELIBERATELY ABSENT. They belong to savePayoutDetails
     // now. They were written here as "value || null", so once the Business
@@ -338,7 +341,7 @@ export async function createHall(data: {
     slug:         useSlug,
     description:  v.description || null,
     city:         v.city,
-    state:        v.state   || null,
+    state:        canonicalStateForStorage(v.state),
     address:      v.address || null,
     pincode:      v.pincode || null,
     capacity_min: v.capacityMin ?? null,
@@ -499,7 +502,11 @@ export async function updateHall(hallId: string, data: {
       name:         v.name,
       description:  v.description || null,
       city:         v.city,
-      state:        v.state   || null,
+      // ONE SPELLING AT REST. The live catalogue held "Tamilnadu"; the
+      // JSON-LD normalised it on the way out while the column kept the
+      // variant, so the page, the structured data and the database
+      // disagreed. Normalised here, where it is written.
+      state:        canonicalStateForStorage(v.state),
       address:      v.address || null,
       pincode:      v.pincode || null,
       capacity_min: v.capacityMin ?? null,

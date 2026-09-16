@@ -23,6 +23,7 @@ import {
 } from "@/lib/validation/schemas";
 import { findPossibleDuplicates, type DuplicateMatch } from "@/lib/admin-hall-drafts";
 import { sanitizeError } from "@/lib/errors";
+import { canonicalStateForStorage } from "@/lib/seo/state";
 import { maxConfiguredCommissionRate } from "@/lib/hall-commission";
 import { SUSPENSION_BAN_DURATION } from "@/lib/constants";
 import { recordAdminAction } from "@/lib/audit";
@@ -2574,7 +2575,10 @@ export async function createAdminHallDraft(
       name:             v.name,
       description:      v.description || null,
       city:             v.city,
-      state:            v.state || null,
+      // admin_hall_drafts is a SECOND write path into halls —
+      // claim_admin_hall_draft() copies this row across — so it needs the
+      // same one-spelling rule, or a claimed venue reintroduces the variant.
+      state:            canonicalStateForStorage(v.state),
       address:          v.address || null,
       pincode:          v.pincode || null,
       capacity_min:     v.capacityMin ?? null,

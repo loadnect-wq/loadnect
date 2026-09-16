@@ -37,22 +37,11 @@ function compact<T extends Record<string, unknown>>(obj: T): Record<string, unkn
  * place. Unrecognised values pass through untouched: normalising is for
  * spellings we know, not for guessing at ones we do not.
  */
-export function canonicalState(state: string | null | undefined): string {
-  const raw = (state ?? "").replace(/\s+/g, " ").trim();
-  if (!raw) return "Tamil Nadu";
-  const key = raw.toLowerCase().replace(/[^a-z]/g, "");
-  const KNOWN: Record<string, string> = {
-    tamilnadu: "Tamil Nadu",
-    tn: "Tamil Nadu",
-    tamilnad: "Tamil Nadu",
-    puducherry: "Puducherry",
-    pondicherry: "Puducherry",
-    kerala: "Kerala",
-    karnataka: "Karnataka",
-    andhrapradesh: "Andhra Pradesh",
-  };
-  return KNOWN[key] ?? raw;
-}
+// canonicalState now lives in ./state so a server action and a Client
+// Component can reach it without importing ./config. Re-exported here
+// because every existing caller imports it from this module.
+import { canonicalState } from "./state";
+export { canonicalState };
 
 /**
  * Minimum reviews before an AggregateRating is published as structured data.

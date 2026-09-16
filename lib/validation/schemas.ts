@@ -35,8 +35,36 @@ export function sanitizeText(input: unknown, maxLen = 4000): string {
 const trimmed = (max: number) =>
   z.string().transform((s) => sanitizeText(s, max));
 
+/**
+ * Same guarantees as sanitizeText, except that PARAGRAPHS SURVIVE.
+ *
+ * sanitizeText strips \u0000-\u001f, and that range contains \n (0x0A) and
+ * \r (0x0D) — so an owner who wrote a description in paragraphs had it silently
+ * flattened into a single block at save time, before it ever reached the
+ * database. This is used only for the long free-text fields: a name or a city
+ * has no business carrying a line break, and the single-line inputs that
+ * collect them cannot produce one anyway.
+ *
+ * Everything else in the control range still goes, \r\n is normalised to \n,
+ * and three or more consecutive newlines collapse to one blank line so a
+ * description cannot be padded into pushing the rest of the page off screen.
+ */
+export function sanitizeMultiline(input: unknown, maxLen = 4000): string {
+  if (typeof input !== "string") return "";
+  return input
+    .replace(/\r\n?/g, "\n")
+    .replace(/[<>\u0000-\u0009\u000b\u000c\u000e-\u001f\u007f]/g, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim()
+    .slice(0, maxLen);
+}
+
 const optionalTrimmed = (max: number) =>
   z.string().optional().transform((s) => (s ? sanitizeText(s, max) : ""));
+
+/** For long free text where the writer's own line breaks are part of the content. */
+const optionalMultiline = (max: number) =>
+  z.string().optional().transform((s) => (s ? sanitizeMultiline(s, max) : ""));
 
 // Phone numbers: accept Indian (10-digit) and international (E.164-ish) formats.
 // We require 7–15 digits after stripping non-digits. Optional leading +.
@@ -312,7 +340,7 @@ export const hallSchema = z
     pricePerDay:  optionalMoneySchema,
     priceMorning: optionalMoneySchema,
     priceEvening: optionalMoneySchema,
-    description:  optionalTrimmed(4000),
+    description:  optionalMultiline(4000),
     amenityIds:   z.array(uuidSchema).max(50, "Too many amenities."),
     // At least one is REQUIRED. The homepage and search offer these as
     // filters, so a hall with none declared is invisible in every typed view —
@@ -567,7 +595,7 @@ export const VENUE_TYPE_VALUES = ["wedding", "reception", "party", "banquet"] as
 export const adminHallDraftSchema = z
   .object({
     name:        trimmed(120),
-    description: optionalTrimmed(4000),
+    description: optionalMultiline(4000),
     city:        trimmed(80),
     state:       optionalTrimmed(80),
     // `area` and `district` live here: halls has no column for either, and a

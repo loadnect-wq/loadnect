@@ -434,9 +434,23 @@ export function HallDetailView({ hall, similar, isPreview, sidebarAd, advancePer
                 See the note at the bottom of app/globals.css. */}
             <section data-reveal="up" className="mt-6">
               <h2 className="font-serif text-base font-semibold text-charcoal-900">About</h2>
-              <p className="mt-2 text-sm leading-relaxed text-charcoal-600">
+              {/* whitespace-pre-line, because the owner's paragraphs are now
+                  kept at save time (sanitizeMultiline) and HTML would otherwise
+                  collapse every line break they typed.
+
+                  NO INVENTED FALLBACK. This previously read "<name> is a premier
+                  event venue in <city> with world-class amenities for every
+                  celebration" for any venue with no description — an unsourced
+                  claim about a real third-party business, published under their
+                  name, and exactly the "templated description contradicting the
+                  structured fields" the brief rules out. What replaces it is
+                  built only from stored facts: the event types the owner
+                  declared and the capacity they entered. */}
+              <p className="mt-2 whitespace-pre-line text-sm leading-relaxed text-charcoal-600">
                 {hall.description ??
-                  `${hall.name} is a premier event venue in ${hall.city}${hall.state ? `, ${hall.state}` : ""} with world-class amenities for every celebration.`}
+                  [typesSentence, `It seats up to ${hall.capacity_max.toLocaleString("en-IN")} guests.`]
+                    .filter(Boolean)
+                    .join(" ")}
               </p>
               {/* venue_types is required of every owner, stored, indexed and
                   used as a search filter — and until now it was rendered on no
