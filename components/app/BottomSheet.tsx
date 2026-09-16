@@ -2,7 +2,8 @@
 
 import { AnimatePresence, motion } from "framer-motion";
 import { X } from "lucide-react";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useSyncExternalStore } from "react";
+import { createPortal } from "react-dom";
 
 interface BottomSheetProps {
   open: boolean;
@@ -17,9 +18,33 @@ const FOCUSABLE =
   'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), ' +
   'textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
+/** The document never changes under us; this only answers "are we on the client". */
+const subscribeToNothing = () => () => {};
+
 export function BottomSheet({ open, onClose, title, children, footer }: BottomSheetProps) {
   const panelRef   = useRef<HTMLDivElement>(null);
   const restoreRef = useRef<HTMLElement | null>(null);
+
+  // THE SHEET IS PORTALLED TO <body>, AND THAT IS THE WHOLE FIX.
+  //
+  // `position: fixed` is only relative to the viewport while no ancestor
+  // establishes a containing block — and transform, filter, perspective,
+  // contain and BACKDROP-FILTER all do. /halls renders this sheet inside
+  // `<div class="sticky top-14 ... backdrop-blur">`, so `bottom: 0` resolved to
+  // the bottom edge of that sticky search bar rather than the bottom of the
+  // window. Measured at 1025x768: the panel's bottom landed at y=217 — the
+  // exact bottom of the bar — leaving most of the filters scrolled off the top
+  // of the screen with the buttons stranded under the header.
+  //
+  // It is not a one-off: the same class of bug already cost this codebase a
+  // fix when a `data-reveal` transform on HomeLocation's wrapper broke this
+  // very component. An ancestor three levels up should not be able to decide
+  // where a modal lands, so the sheet now leaves the tree entirely.
+  //
+  // useSyncExternalStore rather than a mounted flag in an effect: it takes an
+  // explicit server snapshot, so there is no hydration mismatch and no
+  // setState inside an effect (which this repo's lint forbids).
+  const onClient = useSyncExternalStore(subscribeToNothing, () => true, () => false);
 
   useEffect(() => {
     if (!open) return;
@@ -76,7 +101,10 @@ export function BottomSheet({ open, onClose, title, children, footer }: BottomSh
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose]);
 
-  return (
+  // Nothing is rendered on the server: the sheet only ever opens from a click.
+  if (!onClient) return null;
+
+  return createPortal(
     <AnimatePresence>
       {open && (
         <>
@@ -88,13 +116,33 @@ export function BottomSheet({ open, onClose, title, children, footer }: BottomSh
             onClick={onClose}
             aria-hidden
           />
+          {/* POSITIONING LIVES ON THIS WRAPPER, NOT ON THE ANIMATED PANEL.
+              The panel used to carry `sm:left-1/2 sm:-translate-x-1/2` itself.
+              Tailwind implements -translate-x-1/2 by writing a `transform`
+              declaration — and framer-motion animates `y` by setting an INLINE
+              `transform` on the same element, which beats a class every time.
+              So on any viewport ≥640px the -50% X shift was silently discarded
+              while `left: 50%` survived, and the sheet opened with its LEFT EDGE
+              at the middle of the screen instead of straddling it. Measured at
+              1025px wide: x=512 where centred would be x=257, with the panel's
+              own bottom 141px below the fold and its buttons unreachable.
+
+              It never showed up on a phone because the `sm:` classes do not
+              apply there — below 640px `inset-x-0` makes the sheet full-bleed
+              and nothing needs a transform.
+
+              Centring with flexbox instead means the wrapper owns position and
+              the panel owns motion, so the two can no longer collide however the
+              animation changes. pointer-events are handed back on the panel so
+              the full-width strip cannot swallow clicks meant for the backdrop. */}
+          <div className="pointer-events-none fixed inset-x-0 bottom-0 z-50 flex justify-center">
           <motion.div
             ref={panelRef}
             tabIndex={-1}
             role="dialog"
             aria-modal
             aria-label={title}
-            className="fixed inset-x-0 bottom-0 z-50 flex max-h-[90vh] flex-col rounded-t-3xl bg-white shadow-elevated outline-none sm:left-1/2 sm:max-w-lg sm:-translate-x-1/2"
+            className="pointer-events-auto flex max-h-[90vh] w-full flex-col rounded-t-3xl bg-white shadow-elevated outline-none sm:max-w-lg"
             initial={{ y: "100%" }}
             animate={{ y: 0 }}
             exit={{ y: "100%" }}
@@ -121,8 +169,10 @@ export function BottomSheet({ open, onClose, title, children, footer }: BottomSh
               </div>
             )}
           </motion.div>
+          </div>
         </>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body,
   );
 }
