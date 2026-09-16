@@ -357,10 +357,24 @@ export default async function HomePage() {
               {/* Visually the desktop headline, but NOT an <h1>: the homepage
                   emits its H1 in the mobile tree above, and both trees ship in
                   the same HTML, so a second one is what a crawler receives. */}
+              {/* Hallnect's own line, and written to do a job: it names the
+                  promise the search pill directly below it delivers — a hall
+                  that is actually free when you need it — rather than restating
+                  "wedding venues in Tamil Nadu", which the badge above and the
+                  subhead below already say twice between them.
+
+                  gold-200 rather than the usual gold-300 accent. Measured
+                  against the 95th-percentile brightest pixel of this band under
+                  the 29% scrim: gold-300 gives 3.54:1 and gold-200 gives
+                  4.26:1, against a 3.0 bar for 56px bold. 3.54 is only 18%
+                  above the floor, and the poster is a single frame — brighter
+                  frames in the clip would eat that margin. The highlight now
+                  carries a whole clause rather than one word, so it earns the
+                  safer tone. */}
               <p className="hero-ink mt-6 font-sans text-5xl font-bold leading-[1.1] tracking-tight text-white xl:text-6xl">
-                Your Perfect{" "}
-                <span className="text-gold-300">Wedding</span> Venue,
-                <br className="hidden sm:block" /> Curated for Every Custom
+                The hall you want,
+                <br className="hidden sm:block" />{" "}
+                on <span className="text-gold-200">the date you need</span>
               </p>
 
               <p className="hero-ink mx-auto mt-6 max-w-2xl text-base text-white/90 xl:text-lg">
