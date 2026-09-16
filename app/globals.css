@@ -577,3 +577,30 @@ html:not(.is-scrolled) .hallnect-header--over-hero .hallnect-nav-outline:hover {
     0 1px 2px rgba(0, 0, 0, 0.45),
     0 2px 14px rgba(0, 0, 0, 0.30);
 }
+
+/* ── .hit-44: a 44px TAP AREA without a 44px LOOK ─────────────────────────────
+   Measured on a 375px phone viewport, six controls on the homepage were under
+   this project's own 44px touch-target rule — "Browse by city" was 20px tall
+   and both "See all" links 16px, which is a thumb-width of misses on the most
+   used controls on the phone homepage.
+
+   Resizing them would change the design. This grows only the hit area: an
+   invisible ::after, centred on the element, at least 44px each way. It paints
+   nothing and takes no layout space, so the control looks and sits exactly
+   where it did. Taps inside the halo land on the element because the pseudo-
+   element belongs to it.
+
+   Only for controls with room around them — the halo is centred, so two of
+   these closer than 44px centre-to-centre would overlap.                    */
+.hit-44 {
+  position: relative;
+}
+.hit-44::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: max(100%, 44px);
+  height: max(100%, 44px);
+  transform: translate(-50%, -50%);
+}

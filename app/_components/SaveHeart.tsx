@@ -19,7 +19,7 @@ export function SaveHeart({ hallId, large }: { hallId: string; large?: boolean }
       aria-pressed={saved}
       aria-label={saved ? "Unsave hall" : "Save hall"}
       className={cn(
-        "flex items-center justify-center rounded-full bg-white/95 shadow-card transition-transform active:scale-90",
+        "hit-44 flex items-center justify-center rounded-full bg-white/95 shadow-card transition-transform active:scale-90",
         large ? "h-10 w-10" : "h-8 w-8",
       )}
     >

@@ -44,12 +44,12 @@ export function AppHeader({
               type="button"
               onClick={() => router.back()}
               aria-label="Back"
-              className="flex h-9 w-9 items-center justify-center rounded-full bg-white shadow-card"
+              className="hit-44 flex h-9 w-9 items-center justify-center rounded-full bg-white shadow-card"
             >
               <ArrowLeft className="h-4 w-4 text-charcoal-800" />
             </button>
           ) : (
-            <Link href="/" className="flex items-center gap-1.5" aria-label={`${APP_NAME} home`}>
+            <Link href="/" className="hit-44 flex items-center gap-1.5" aria-label={`${APP_NAME} home`}>
               <span className="relative block h-7 w-7 shrink-0">
                 {/* No `priority` — see the note in Navbar.tsx. */}
                 <Image src="/logo.png" alt="" fill sizes="28px" className="object-contain" />
@@ -74,7 +74,7 @@ export function AppHeader({
             <Link
               href={notificationsHref ?? "/customer/notifications"}
               aria-label="Notifications"
-              className="flex h-9 w-9 items-center justify-center rounded-full bg-ivory-200 text-charcoal-700 transition-colors hover:bg-ivory-300"
+              className="hit-44 flex h-9 w-9 items-center justify-center rounded-full bg-ivory-200 text-charcoal-700 transition-colors hover:bg-ivory-300"
             >
               <Bell className="h-4 w-4" />
             </Link>

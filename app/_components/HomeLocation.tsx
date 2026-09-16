@@ -61,7 +61,7 @@ export function HomeLocation({
         type="button"
         onClick={() => setOpen(true)}
         className={cn(
-          "mt-2 inline-flex items-center gap-1.5 text-sm font-medium",
+          "hit-44 mt-2 inline-flex items-center gap-1.5 text-sm font-medium",
           // White, not ivory-200. Over the mobile hero video this label
           // measured 4.69:1 against a 4.5 bar — a 4% margin, on a number
           // derived from a single poster frame. White takes it to 5.49:1

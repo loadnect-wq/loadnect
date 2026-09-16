@@ -741,7 +741,7 @@ function MobileSectionTitle({ title, linkLabel, linkHref }: {
     <div data-reveal="up" className="container-app mb-3 flex items-center justify-between">
       <h2 className="font-serif text-lg font-semibold text-charcoal-900">{title}</h2>
       {linkLabel && linkHref && (
-        <Link href={linkHref} className="text-xs font-semibold text-maroon-600 hover:underline">
+        <Link href={linkHref} className="hit-44 text-xs font-semibold text-maroon-600 hover:underline">
           {linkLabel} →
         </Link>
       )}
