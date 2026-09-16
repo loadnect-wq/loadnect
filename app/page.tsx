@@ -231,10 +231,11 @@ export default async function HomePage() {
             the phone homepage — and cost ~5 MB of mobile data for an effect.
 
             THE SHADE IS HEAVIER THAN THE DESKTOP ONE, MEASURED. The top of this
-            frame is bright dusk sky, exactly where "Welcome" sits: at 55% it
-            scored 4.33:1 against a 4.5 bar. 65% at the top easing to 50% at the
-            bottom gives the eyebrow ~5.8:1, the H1 ~5:1 and the city picker
-            ~6:1 (95th-percentile brightest pixel, cropped as a 390px band). */}
+            frame is bright dusk sky, exactly where "Welcome" sits. On the
+            current (processed, brighter) clip, 65% left the eyebrow only 16%
+            above its 4.5 bar; 70% at the top easing to 50% at the bottom gives
+            the eyebrow 6.06:1 (+35%), the H1 5.59:1 and the city picker 7.10:1
+            (95th-percentile brightest pixel, cropped as a 390px band). */}
         <section className="relative overflow-hidden bg-charcoal-950 pb-5">
           <Image
             src="/scrub/hall-walkthrough-poster.jpg"
@@ -246,7 +247,7 @@ export default async function HomePage() {
           />
           <div
             aria-hidden
-            className="absolute inset-0 bg-gradient-to-b from-charcoal-950/65 to-charcoal-950/50"
+            className="absolute inset-0 bg-gradient-to-b from-charcoal-950/70 to-charcoal-950/50"
           />
 
         <div className="container-app relative pt-3">
@@ -391,8 +392,8 @@ export default async function HomePage() {
                     the same HTML, so a second one is what a crawler receives.
 
                     gold-200, re-measured over the walk-through's opening frames
-                    under both shades: 3.95:1 against a 3.0 bar for 56px bold.
-                    gold-300 would scrape through at 3.28:1. */}
+                    under both shades: 4.15:1 against a 3.0 bar for 56px bold
+                    (+38%). gold-300 is noticeably weaker on this footage. */}
                 <p className="hero-ink mt-6 font-sans text-5xl font-bold leading-[1.1] tracking-tight text-white xl:text-6xl">
                   The hall you want,
                   <br className="hidden sm:block" />{" "}

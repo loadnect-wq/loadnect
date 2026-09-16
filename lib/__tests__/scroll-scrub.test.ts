@@ -13,14 +13,16 @@ import path from "node:path";
 //
 // To replace the clip, re-encode with (1280x720 shown; keep your source size):
 //
-//   ffmpeg -i SOURCE.mp4 -an -c:v libx264 -preset slow -crf 26 \
+//   ffmpeg -i SOURCE.mp4 -an -c:v libx264 -preset slow -crf 27 \
 //     -g 6 -keyint_min 6 -bf 0 -tune fastdecode \
 //     -x264-params scenecut=0 -pix_fmt yuv420p -movflags +faststart \
 //     public/scrub/hall-walkthrough.mp4
 //
-// Measured alternatives, same clip, Chrome: keyframe every 24 frames seeked in
-// 7ms median but 119ms worst; every frame (crf 28) seeked in a flat 6ms but
-// visibly smeared detail (SSIM 0.943 vs 0.974 for the command above).
+// Measured alternatives on the first clip, Chrome: keyframe every 24 frames
+// seeked in 7ms median but 119ms worst; every frame (crf 28) seeked in a flat
+// 6ms but visibly smeared detail (SSIM 0.943 vs 0.974 at a keyframe every 6).
+// The current, processed clip carries more fine detail: crf 26 came out at
+// 5.8 MB, crf 27 at 5.3 MB with SSIM 0.973 and no visible difference.
 // ─────────────────────────────────────────────────────────────────────────────
 
 const ROOT = path.resolve(__dirname, "../..");
@@ -165,9 +167,11 @@ describe("the scrubbing logic", () => {
   });
 
   it("uses the measured shades", () => {
-    // Nav over every frame: 5.45:1. Headline over the opening frames: 3.86:1.
-    expect(src).toContain("rgba(26,22,20,0.64) 0%, rgba(26,22,20,0.60) 8%");
-    expect(src).toContain("rgba(26,22,20,0.45) 28%, rgba(26,22,20,0.45) 62%");
+    // On the current clip: nav over every frame 5.67:1 (+26%), headline over
+    // the opening frames 3.87:1 (+29%), subhead 5.44:1 (+21%). Lighten either
+    // and re-measure — the subhead is the first to lose its margin.
+    expect(src).toContain("rgba(26,22,20,0.68) 0%, rgba(26,22,20,0.64) 8%");
+    expect(src).toContain("rgba(26,22,20,0.50) 28%, rgba(26,22,20,0.50) 62%");
   });
 
   it("gives reduced-motion and Data Saver visitors the poster, not two screens of scroll", () => {

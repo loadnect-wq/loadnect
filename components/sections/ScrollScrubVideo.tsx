@@ -33,7 +33,8 @@
 // A seek decodes forward from the nearest keyframe. The supplied clip had ONE
 // keyframe in 240 frames plus 179 B-frames: measured in Chrome, 279ms median
 // per seek, 982ms worst — the "freeze on scroll". Re-encoded with a keyframe
-// every 6 frames and no B-frames: 6ms median, 25ms p95, 30ms worst, 4.9 MB.
+// every 6 frames and no B-frames: 6ms median, 25ms p95, 30ms worst. The
+// current, processed clip uses the same structure at crf 27: 5.3 MB.
 // lib/__tests__/scroll-scrub.test.ts has the command and fails the build if a
 // replacement file would freeze again.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -53,17 +54,24 @@ const INTRO_FADE = 0.12;
 // Measured against the 95th-percentile brightest pixel of each text band,
 // sampled at 4 frames per second across the whole clip, cropped the way a
 // 1440x900 screen crops it. This footage is BRIGHT — the lit facade and the
-// chandeliers — so unshaded, the headline scored 1.42:1 and the nav 1.14:1.
+// chandeliers. Every number below keeps at least a 20% margin over its bar,
+// so a slightly brighter frame cannot tip text into unreadable.
+//
+// RE-MEASURE WHEN THE CLIP CHANGES. The current file is a processed version
+// of the first walk-through and runs brighter: on it, the shades tuned for the
+// original left the subhead 7% and the nav links 10% above their bars. They
+// were raised just enough to restore the margin.
 //
 // TOP: the transparent header sits over EVERY frame for the whole pin, so this
-// one stays. 5.45:1 for the nav links at the worst frame (needs 4.5).
+// one stays. Nav links at the worst of 40 frames: 5.67:1 (needs 4.5, +26%).
 const TOP_SHADE =
-  "linear-gradient(to bottom, rgba(26,22,20,0.64) 0%, rgba(26,22,20,0.60) 8%, rgba(26,22,20,0) 24%)";
+  "linear-gradient(to bottom, rgba(26,22,20,0.68) 0%, rgba(26,22,20,0.64) 8%, rgba(26,22,20,0) 24%)";
 // INTRO: behind the headline, and it fades out WITH the headline, so once you
-// are stepping inside, the picture is unshaded. Over the opening frames, with
-// the top shade: headline 3.86:1 (needs 3.0), subhead 5.39:1, trust strip 6.41:1.
+// are stepping inside, the picture is unshaded. Over the opening frames:
+// headline 3.87:1 (needs 3.0, +29%), gold clause 4.15:1 (+38%), subhead 5.44:1
+// (needs 4.5, +21%), trust strip 6.45:1 (+43%).
 const INTRO_SHADE =
-  "linear-gradient(to bottom, rgba(26,22,20,0) 16%, rgba(26,22,20,0.45) 28%, rgba(26,22,20,0.45) 62%, rgba(26,22,20,0.30) 74%, rgba(26,22,20,0) 88%)";
+  "linear-gradient(to bottom, rgba(26,22,20,0) 16%, rgba(26,22,20,0.50) 28%, rgba(26,22,20,0.50) 62%, rgba(26,22,20,0.33) 74%, rgba(26,22,20,0) 88%)";
 
 type Props = {
   src: string;

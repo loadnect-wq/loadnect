@@ -113,8 +113,9 @@ describe("the mobile header band", () => {
   });
 
   it("uses the heavier, measured shade for this brighter frame", () => {
-    // At 55% the eyebrow scored 4.33:1 over the dusk sky, against 4.5.
-    expect(mobile).toContain("from-charcoal-950/65 to-charcoal-950/50");
+    // On the current clip, 65% left the eyebrow only 16% above 4.5 over the
+    // dusk sky; 70% gives 6.06:1.
+    expect(mobile).toContain("from-charcoal-950/70 to-charcoal-950/50");
   });
 
   it("keeps white ink on the band", () => {
