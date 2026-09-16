@@ -19,6 +19,32 @@
 // that has not arrived. Without it this section is a black rectangle for the
 // first second or two of every visit.
 //
+// ════════════════════════════════════════════════════════════════════════════
+// HOW THE CURRENT FILES WERE MADE
+// ════════════════════════════════════════════════════════════════════════════
+// The source was 4.87 MB, 1920x1080, 6.27s, with `moov` AFTER `mdat` and a
+// stereo audio track on a permanently muted loop. Not faststart means the
+// browser must fetch almost the whole file before the first frame, which is
+// the single worst thing a hero video can do. These three commands produced
+// what ships (1.82 MB / 441 KB / 86 KB), and re-running them is how you swap
+// the clip. ffmpeg is NOT a project dependency — install it, or fetch it once
+// with `npx --yes ffmpeg-static-cli`, then delete it again.
+//
+//   ffmpeg -i SRC -an -vf "scale=1920:-2" -c:v libx264 -profile:v high //     -crf 30 -preset slow -pix_fmt yuv420p -g 60 -movflags +faststart //     public/hero/hero-1920.mp4
+//
+//   ffmpeg -i SRC -an -vf "scale=720:-2" -c:v libx264 -profile:v main //     -crf 30 -preset slow -pix_fmt yuv420p -g 60 -movflags +faststart //     public/hero/hero-720.mp4
+//
+//   ffmpeg -i SRC -frames:v 1 -vf "scale=1280:-2" -q:v 4 //     public/hero/hero-poster.jpg
+//
+// `-an` drops the dead audio. `-movflags +faststart` is the one that must not
+// be forgotten. CRF 30 rather than a sharper 26 because two scrims sit on top
+// of this footage and 26 cost 1 MB for detail nobody can see — but check for
+// banding in dark gradients if you swap the clip, since the scrims make dark
+// areas darker and that is exactly where H.264 banding shows.
+//
+// AFTER SWAPPING, RE-MEASURE CONTRAST. See the scrim note further down: the
+// numbers there are specific to this clip's brightest frame.
+//
 // SAME ORIGIN ONLY. The site's CSP is `default-src 'self'` with NO media-src
 // (next.config.ts), so media falls back to 'self'. A video served from Supabase
 // Storage — or any CDN — is BLOCKED, silently, with nothing in the server logs.
@@ -89,11 +115,19 @@ export function HeroVideo({ sources, scale = 1.1, driftPx = 60, className }: Pro
     const el = videoRef.current;
     if (!el) return;
 
-    // Respect the OS setting. Under reduced motion the element never plays and
-    // the poster is the hero — matching how globals.css disables every other
-    // animation on the site.
+    // Two ways a visitor can decline this video, and both are honoured.
+    //
+    // REDUCED MOTION — the OS setting. The element never plays and the poster
+    // is the hero, matching how globals.css disables every other animation.
+    //
+    // DATA SAVER — this site's traffic is overwhelmingly phones on metered
+    // mobile data in Tamil Nadu, and a decorative loop is precisely what "save
+    // data" is asking us not to fetch. Because the files are faststart, a
+    // declined video costs the few KB of `moov` that preload="metadata" reads
+    // and never the ~440 KB body.
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)");
-    if (reduced.matches) {
+    const conn = (navigator as Navigator & { connection?: { saveData?: boolean } }).connection;
+    if (reduced.matches || conn?.saveData === true) {
       el.pause();
       return;
     }
@@ -179,12 +213,22 @@ export function HeroVideo({ sources, scale = 1.1, driftPx = 60, className }: Pro
         </video>
       </div>
 
-      {/* Contrast scrim. Two stops rather than a flat wash: the text sits in the
-          upper half, so that half is darkened hardest while the lower half stays
-          readable enough to show the footage. Tuned to keep white body text at
-          or above 4.5:1 over the brightest frame of the reference clip — if you
-          swap in a brighter video, re-check it rather than assuming. */}
-      <div className="absolute inset-0 bg-gradient-to-b from-charcoal-950/80 via-charcoal-950/65 to-charcoal-950/80" />
+      {/* Contrast scrim, and the numbers here are MEASURED, not eyeballed.
+          Sampling every 10th frame of the reference clip, the brightest pixel
+          is (255,252,228) — a blown-out highlight. Composited against the
+          gradient's weakest stop that leaves the worst-case background, and at
+          the original 65% midpoint it gave:
+
+            ivory-100 H1          5.28:1  pass
+            ivory-200 city picker 4.85:1  pass
+            gold-300 eyebrow      3.63:1  FAIL (12px semibold needs 4.5)
+
+          So the midpoint moved to 75%, which is what the numbers required
+          rather than what looked fine. RE-MEASURE IF YOU SWAP THE VIDEO — a
+          brighter clip fails this silently and nothing in the build will tell
+          you. The second scrim below only multiplies, so it can only darken;
+          ignoring it keeps the calculation conservative. */}
+      <div className="absolute inset-0 bg-gradient-to-b from-charcoal-950/85 via-charcoal-950/75 to-charcoal-950/85" />
       {/* A second, hero-tinted pass so the footage reads as Hallnect's rather
           than as stock video behind a grey sheet. */}
       <div className="absolute inset-0 bg-hero-gradient opacity-60 mix-blend-multiply" />

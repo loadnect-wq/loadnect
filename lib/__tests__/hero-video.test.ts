@@ -18,6 +18,25 @@ const smooth      = read("components/motion/SmoothScroll.tsx");
 const page        = read("app/page.tsx");
 const css         = read("app/globals.css");
 const observer    = read("components/motion/RevealObserver.tsx");
+const location    = read("app/_components/HomeLocation.tsx");
+
+/**
+ * Source with its comments removed.
+ *
+ * Ordering assertions below use indexOf, and the comments in page.tsx discuss
+ * the very attributes being searched for — the note explaining why the mobile
+ * hero has no [data-hero-lift] made the lift look like it appeared before the
+ * section that carries it, failing a test about code that was correct. Strip
+ * the prose, assert on the JSX.
+ */
+function code(src: string): string {
+  return src
+    .replace(/\{\/\*[\s\S]*?\*\/\}/g, "")  // {/* JSX comments */}
+    .replace(/\/\*[\s\S]*?\*\//g, "")        // /* block comments */
+    .replace(/^\s*\/\/.*$/gm, "");             // // line comments
+}
+
+const pageCode = code(page);
 
 describe("--hero-progress reaches everything that reads it", () => {
   // Custom properties INHERIT. The video layer and the content that lifts are
@@ -30,10 +49,18 @@ describe("--hero-progress reaches everything that reads it", () => {
   });
 
   it("the lifting content is a descendant of the element that carries it", () => {
-    const section = page.indexOf("data-hero-scroll");
-    const lift = page.indexOf("data-hero-lift");
+    const section = pageCode.indexOf("data-hero-scroll");
+    const lift = pageCode.indexOf("data-hero-lift=");
     expect(section).toBeGreaterThan(-1);
     expect(lift).toBeGreaterThan(section);
+  });
+
+  it("is written on both heroes, since the page ships two of them", () => {
+    // The desktop tree is `hidden lg:block` and the mobile tree is `lg:hidden`,
+    // so BOTH are in the HTML and only one has a box. The tick reads
+    // getBoundingClientRect on a display:none element as all zeros, which the
+    // `rect.height || limit` fallback already handles — progress just stays 0.
+    expect(pageCode.match(/data-hero-scroll/g)?.length).toBe(2);
   });
 
   it("the shared tick writes it, and no second rAF loop exists", () => {
@@ -137,5 +164,61 @@ describe("smoothing the wheel does not break the page", () => {
   it("stops its own loop and destroys the instance on unmount", () => {
     expect(smooth).toContain("cancelAnimationFrame");
     expect(smooth).toContain("lenis?.destroy()");
+  });
+});
+
+describe("the mobile hero is a band, not a takeover", () => {
+  // The mobile tree is an app shell — AppHeader, then a card stack over a
+  // bottom tab bar. A 100dvh video hero there would push the search entry,
+  // the most used control on the phone homepage, below the fold. Measured at
+  // 375x812 with the band in place: search card bottom at 262px against an
+  // 813px viewport, hero band 225px tall.
+  it("does not claim the viewport the way the desktop hero does", () => {
+    const mobile = pageCode.slice(
+      pageCode.indexOf("lg:hidden"),
+      pageCode.indexOf("hidden lg:block"),
+    );
+    expect(mobile).toContain("data-hero-scroll");
+    expect(mobile, "a 100dvh mobile hero buries the search entry").not.toContain("100dvh");
+  });
+
+  it("does not fade its own content away", () => {
+    // Over a ~225px band, a lift keyed to progress would start dissolving the
+    // search entry within a few pixels of scroll.
+    const mobile = pageCode.slice(
+      pageCode.indexOf("lg:hidden"),
+      pageCode.indexOf("hidden lg:block"),
+    );
+    expect(mobile).not.toContain("data-hero-lift");
+  });
+
+  it("inverts its text rather than leaving charcoal on video", () => {
+    expect(pageCode).toContain("HERO_ON_DARK");
+    expect(pageCode).toContain("text-ivory-100");
+    expect(location).toContain("onDark");
+    expect(location).toContain("text-ivory-200");
+  });
+});
+
+describe("contrast over the video was measured, not guessed", () => {
+  // Sampling every 10th frame of the reference clip, the brightest pixel is
+  // (255,252,228). Against the scrim's weakest stop that is the worst-case
+  // background a caption can land on. At the original 65% midpoint the gold
+  // eyebrow scored 3.63:1 — below AA for 12px semibold. At 75% it scores 5.16.
+  it("keeps the scrim at the opacity the measurement required", () => {
+    expect(
+      heroVideo,
+      "scrim lightened — re-measure, the gold eyebrow fails AA below ~75%",
+    ).toContain("via-charcoal-950/75");
+  });
+
+  it("records the numbers next to the value they justify", () => {
+    expect(heroVideo).toContain("3.63:1");
+  });
+});
+
+describe("a visitor can decline the video", () => {
+  it("honours Data Saver, which matters on metered mobile data", () => {
+    expect(heroVideo).toContain("saveData");
   });
 });

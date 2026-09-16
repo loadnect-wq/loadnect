@@ -33,7 +33,18 @@ type CityOption = {
   venueCount: number;
 };
 
-export function HomeLocation({ cities }: { cities: readonly CityOption[] }) {
+export function HomeLocation({
+  cities,
+  /**
+   * Render for a dark background. The mobile homepage now sits this control
+   * over the hero video, where charcoal-on-video fails contrast badly; the
+   * light tokens are the same ones the desktop hero already uses.
+   */
+  onDark = false,
+}: {
+  cities: readonly CityOption[];
+  onDark?: boolean;
+}) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
 
@@ -49,11 +60,16 @@ export function HomeLocation({ cities }: { cities: readonly CityOption[] }) {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="mt-2 inline-flex items-center gap-1.5 text-sm font-medium text-charcoal-700"
+        className={cn(
+          "mt-2 inline-flex items-center gap-1.5 text-sm font-medium",
+          onDark ? "text-ivory-200" : "text-charcoal-700",
+        )}
       >
-        <MapPin className="h-4 w-4 text-maroon-500" />
+        <MapPin className={cn("h-4 w-4", onDark ? "text-gold-300" : "text-maroon-500")} />
         <span>Browse by city</span>
-        <ChevronDown className="h-3.5 w-3.5 text-charcoal-500" />
+        <ChevronDown
+          className={cn("h-3.5 w-3.5", onDark ? "text-ivory-400" : "text-charcoal-500")}
+        />
       </button>
 
       <BottomSheet open={open} onClose={() => setOpen(false)} title="Cities with venues">

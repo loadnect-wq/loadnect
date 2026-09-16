@@ -16,6 +16,9 @@ import { heroDelay, revealDelay } from "@/lib/motion";
 import { HeroSearch } from "@/components/sections/HeroSearch";
 import { HeroVideo } from "@/components/sections/HeroVideo";
 import { HERO_VIDEO } from "@/lib/hero-video";
+
+/** The mobile title block sits on the video, so its text has to invert with it. */
+const HERO_ON_DARK = HERO_VIDEO.ENABLED;
 import { HallCard } from "@/app/halls/_components/HallCard";
 import { countActivePremiumHalls, fetchHalls, type HallListing } from "@/lib/halls";
 import type { Metadata } from "next";
@@ -196,35 +199,76 @@ export default async function HomePage() {
       <div className="lg:hidden">
         <AppHeader />
 
-        <section className="container-app pt-3">
+        {/* ── Mobile hero ───────────────────────────────────────────────
+            The video sits behind the H1, the city picker and the search entry,
+            and stops there. Deliberately NOT the 100dvh treatment the desktop
+            hero gets: this tree is an app shell, and a full-screen hero would
+            push the search entry — the most used control on the phone
+            homepage — below the fold on every device.
+
+            There is also no [data-hero-lift] here. Fading and lifting content
+            away works over a tall desktop hero; over a ~260px band it would
+            start dissolving the search entry within a few pixels of scroll.
+            The video parallaxes, the content stays put. */}
+        <section
+          data-hero-scroll
+          className={
+            HERO_VIDEO.ENABLED ? "relative overflow-hidden bg-charcoal-950 pb-5" : "relative"
+          }
+        >
+          {HERO_VIDEO.ENABLED && (
+            <HeroVideo
+              sources={HERO_VIDEO.sources}
+              // Gentler than the desktop values: over a short band, 1.1 and
+              // 60px read as a lurch rather than a drift.
+              scale={1.06}
+              driftPx={24}
+            />
+          )}
+
+        <div className="container-app relative pt-3">
           <div data-hero style={heroDelay(0)} className="flex items-end justify-between gap-3">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-widest text-maroon-500">Welcome</p>
+              <p
+                className={`text-xs font-semibold uppercase tracking-widest ${
+                  HERO_ON_DARK ? "text-gold-300" : "text-maroon-500"
+                }`}
+              >
+                Welcome
+              </p>
               {/* THE page H1. Google indexes mobile-first, so the keyword- and
                   location-bearing heading must live in the MOBILE tree — the
                   desktop hero below is display:none to Googlebot. */}
-              <h1 className="mt-1 font-serif text-2xl font-bold text-charcoal-900">
+              <h1
+                className={`mt-1 font-serif text-2xl font-bold ${
+                  HERO_ON_DARK ? "text-ivory-100" : "text-charcoal-900"
+                }`}
+              >
                 Wedding Halls &amp; Marriage Halls in Tamil Nadu
               </h1>
             </div>
           </div>
           {/* Real service areas that actually have venues, and the picker now
               navigates. See app/_components/HomeLocation.tsx. */}
-          {/* NO `data-reveal` HERE, AND DO NOT ADD ONE. HomeLocation renders a
-              BottomSheet whose backdrop and panel are `position: fixed` and
-              rendered inline rather than portalled (components/app/BottomSheet.tsx
-              :84,:97). Any transform on this wrapper — including the identity
-              transform the `fade` variant still sets — makes it the containing
-              block for those, so the city picker would open inside this strip
-              instead of over the screen. One beat is not worth breaking the
-              primary navigation control on the mobile homepage. */}
-          <HomeLocation cities={citiesWithVenues} />
-        </section>
+          {/* Still no `data-reveal` here, but the reason has changed and the
+              old note was misleading enough to be worth correcting. It used to
+              be load-bearing: BottomSheet rendered its fixed backdrop and panel
+              INLINE, so any transform on this wrapper became their containing
+              block and the city picker opened inside this strip instead of over
+              the screen. The sheet now portals to <body> (commit 84f0e69), so a
+              transform here can no longer reach it.
+
+              It stays off because this block is above the fold on every phone
+              and a scroll reveal is the wrong tool for that — the `data-hero`
+              keyframe above is the right one. Not because it would break. */}
+          <HomeLocation cities={citiesWithVenues} onDark={HERO_ON_DARK} />
+        </div>
 
         {/* Above the fold on every phone: a CSS keyframe, never a scroll
             reveal. See the note on the title block above. */}
-        <section data-hero style={heroDelay(1)} className="container-app mt-4">
+        <div data-hero style={heroDelay(1)} className="container-app relative mt-4">
           <HomeSearchEntry />
+        </div>
         </section>
 
         <section data-reveal="fade" className="container-app mt-4">

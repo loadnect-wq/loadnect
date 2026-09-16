@@ -20,7 +20,7 @@
 
 export const HERO_VIDEO = {
   /** ← FLIP THIS once /public/hero/ has all three files. */
-  ENABLED: false,
+  ENABLED: true,
 
   sources: {
     desktop: "/hero/hero-1920.mp4",
