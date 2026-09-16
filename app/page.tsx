@@ -16,12 +16,8 @@ import { platformFeeDisclosure } from "@/lib/booking-payment";
 import { AdSlot } from "@/components/ads/AdSlot";
 import { heroDelay, revealDelay } from "@/lib/motion";
 import { HeroSearch } from "@/components/sections/HeroSearch";
-import { HeroVideo } from "@/components/sections/HeroVideo";
 import { ScrollScrubVideo } from "@/components/sections/ScrollScrubVideo";
-import { HERO_VIDEO } from "@/lib/hero-video";
 
-/** The mobile title block sits on the video, so its text has to invert with it. */
-const HERO_ON_DARK = HERO_VIDEO.ENABLED;
 import { HallCard } from "@/app/halls/_components/HallCard";
 import { countActivePremiumHalls, fetchHalls, type HallListing } from "@/lib/halls";
 import type { Metadata } from "next";
@@ -222,22 +218,30 @@ export default async function HomePage() {
         <AppHeader />
 
         {/* ── Mobile hero ───────────────────────────────────────────────
-            The video sits behind the H1, the city picker and the search entry,
-            and stops there. Deliberately NOT the 100dvh treatment the desktop
-            hero gets: this tree is an app shell, and a full-screen hero would
-            push the search entry — the most used control on the phone
-            homepage — below the fold on every device.
+            The walk-through's opening frame, as a still, behind the H1, the
+            city picker and the search entry. Not the scrub itself: this tree is
+            an app shell with a ~225px band, and pinning two screens of scroll
+            on a phone would bury the search entry — the most used control on
+            the phone homepage — and cost ~5 MB of mobile data for an effect.
 
-            Nothing here is scroll-linked — the video simply sits
-            behind the copy and stays put. */}
-        <section
-          className={
-            HERO_VIDEO.ENABLED ? "relative overflow-hidden bg-charcoal-950 pb-5" : "relative"
-          }
-        >
-          {HERO_VIDEO.ENABLED && (
-            <HeroVideo sources={HERO_VIDEO.sources} />
-          )}
+            THE SHADE IS HEAVIER THAN THE DESKTOP ONE, MEASURED. The top of this
+            frame is bright dusk sky, exactly where "Welcome" sits: at 55% it
+            scored 4.33:1 against a 4.5 bar. 65% at the top easing to 50% at the
+            bottom gives the eyebrow ~5.8:1, the H1 ~5:1 and the city picker
+            ~6:1 (95th-percentile brightest pixel, cropped as a 390px band). */}
+        <section className="relative overflow-hidden bg-charcoal-950 pb-5">
+          <Image
+            src="/scrub/hall-walkthrough-poster.jpg"
+            alt=""
+            fill
+            priority
+            sizes="100vw"
+            className="object-cover object-center"
+          />
+          <div
+            aria-hidden
+            className="absolute inset-0 bg-gradient-to-b from-charcoal-950/65 to-charcoal-950/50"
+          />
 
         <div className="container-app relative pt-3">
           <div data-hero style={heroDelay(0)} className="flex items-end justify-between gap-3">
@@ -250,7 +254,7 @@ export default async function HomePage() {
                   headline, where the type is large enough to carry it. */}
               <p
                 className={`text-xs font-semibold uppercase tracking-widest ${
-                  HERO_ON_DARK ? "hero-ink text-white" : "text-maroon-500"
+                  "hero-ink text-white"
                 }`}
               >
                 Welcome
@@ -260,7 +264,7 @@ export default async function HomePage() {
                   desktop hero below is display:none to Googlebot. */}
               <h1
                 className={`mt-1 font-serif text-2xl font-bold ${
-                  HERO_ON_DARK ? "hero-ink text-white" : "text-charcoal-900"
+                  "hero-ink text-white"
                 }`}
               >
                 Wedding Halls &amp; Marriage Halls in Tamil Nadu
@@ -280,7 +284,7 @@ export default async function HomePage() {
               It stays off because this block is above the fold on every phone
               and a scroll reveal is the wrong tool for that — the `data-hero`
               keyframe above is the right one. Not because it would break. */}
-          <HomeLocation cities={citiesWithVenues} onDark={HERO_ON_DARK} />
+          <HomeLocation cities={citiesWithVenues} onDark />
         </div>
 
         {/* Above the fold on every phone: a CSS keyframe, never a scroll
@@ -344,87 +348,78 @@ export default async function HomePage() {
           DESKTOP — premium adaptive layout (hidden lg:block)
           ════════════════════════════════════════════════════════ */}
       <div className="hidden lg:block">
-        {/* ── Hero ─────────────────────────────────────────────────────────
-            STATIC. No parallax, no scroll-linked transforms, no entrance
-            stagger — a plain full-screen block with a video behind it.
+        {/* ── Hero: the scroll walk-through ──────────────────────────────
+            The hero IS the walk-through now: it pins for two screens while
+            scrolling moves the clip from the entrance into the hall, forward on
+            the way down and backward on the way up, then releases.
 
-            `-mt-16 pt-16` pulls the section up under the (sticky, transparent)
-            64px header so the video runs behind it, then puts the space back
-            as padding so the copy is not underneath the nav links.
+            The headline fades out over the first 12% of the scroll so the
+            walk-through can be seen; the search pill does NOT — it stays pinned
+            at the bottom of the frame for the whole walk-through, because it is
+            the primary action on the page. It sits inside the frame rather than
+            straddling its edge: while pinned, the frame's bottom edge IS the
+            fold, so an overhang would put half the pill off-screen.
 
-            NO `overflow-hidden` ON THIS SECTION. The search pill deliberately
-            hangs half-way out of the bottom edge; clipping here would cut it in
-            half. HeroVideo clips itself instead.                            */}
-        {/* HEIGHT IS 100dvh MINUS 3rem, AND THAT IS NOT A ROUNDING ERROR.
-            At exactly 100dvh the hero's bottom edge IS the fold, so a pill
-            straddling that edge puts half the search bar — the primary action
-            on the page — below the screen. Measured at 1746x894: pill top 858,
-            bottom 931, i.e. 36px of 72px visible. Pulling the section up by
-            3rem lands the whole pill on screen while it still overhangs into
-            the section below by half its height, which is the look asked for.  */}
-        <section className="relative -mt-16 flex min-h-[calc(100dvh-3rem)] flex-col justify-center bg-charcoal-950 pt-16">
-          <HeroVideo sources={HERO_VIDEO.sources} />
+            The negative margin pulls the hero up under the transparent header,
+            which stays transparent for as long as the hero is pinned (see
+            data-header-clear in RevealObserver). It is 4rem + 1px, not -mt-16:
+            the header is 64px PLUS a 1px bottom border, and pulling up only 64px
+            left a hairline of page background across the top of the video —
+            measured, the hero started at y=0.91 with the border 0.91px wide.
 
-          <div className="container-page relative w-full pb-32 pt-8">
-            <div className="mx-auto max-w-4xl text-center">
-              <span className="hero-ink inline-flex items-center gap-1.5 rounded-full border border-white/25 bg-white/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-widest text-white backdrop-blur">
-                <Sparkles className="h-3 w-3" /> Wedding Venues across Tamil Nadu
-              </span>
+            No venue name anywhere on it. The footage is a generated hall, not a
+            listed venue, and nothing here may suggest otherwise. */}
+        <ScrollScrubVideo
+          className="-mt-[calc(4rem+1px)]"
+          src="/scrub/hall-walkthrough.mp4"
+          poster="/scrub/hall-walkthrough-poster.jpg"
+          intro={
+            <div className="container-page w-full">
+              <div className="mx-auto max-w-4xl text-center">
+                <span className="hero-ink inline-flex items-center gap-1.5 rounded-full border border-white/25 bg-white/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-widest text-white backdrop-blur">
+                  <Sparkles className="h-3 w-3" /> Wedding Venues across Tamil Nadu
+                </span>
 
-              {/* Visually the desktop headline, but NOT an <h1>: the homepage
-                  emits its H1 in the mobile tree above, and both trees ship in
-                  the same HTML, so a second one is what a crawler receives. */}
-              {/* Hallnect's own line, and written to do a job: it names the
-                  promise the search pill directly below it delivers — a hall
-                  that is actually free when you need it — rather than restating
-                  "wedding venues in Tamil Nadu", which the badge above and the
-                  subhead below already say twice between them.
+                {/* Visually the desktop headline, but NOT an <h1>: the homepage
+                    emits its H1 in the mobile tree above, and both trees ship in
+                    the same HTML, so a second one is what a crawler receives.
 
-                  gold-200 rather than the usual gold-300 accent. Measured
-                  against the 95th-percentile brightest pixel of this band under
-                  the 29% scrim: gold-300 gives 3.54:1 and gold-200 gives
-                  4.26:1, against a 3.0 bar for 56px bold. 3.54 is only 18%
-                  above the floor, and the poster is a single frame — brighter
-                  frames in the clip would eat that margin. The highlight now
-                  carries a whole clause rather than one word, so it earns the
-                  safer tone. */}
-              <p className="hero-ink mt-6 font-sans text-5xl font-bold leading-[1.1] tracking-tight text-white xl:text-6xl">
-                The hall you want,
-                <br className="hidden sm:block" />{" "}
-                on <span className="text-gold-200">the date you need</span>
-              </p>
+                    gold-200, re-measured over the walk-through's opening frames
+                    under both shades: 3.95:1 against a 3.0 bar for 56px bold.
+                    gold-300 would scrape through at 3.28:1. */}
+                <p className="hero-ink mt-6 font-sans text-5xl font-bold leading-[1.1] tracking-tight text-white xl:text-6xl">
+                  The hall you want,
+                  <br className="hidden sm:block" />{" "}
+                  on <span className="text-gold-200">the date you need</span>
+                </p>
 
-              <p className="hero-ink mx-auto mt-6 max-w-2xl text-base text-white/90 xl:text-lg">
-                Discover, compare, and book wedding halls across Tamil Nadu.
-                Owner-submitted listings, transparent pricing, and a clear answer from the venue.
-              </p>
+                <p className="hero-ink mx-auto mt-6 max-w-2xl text-base text-white/90 xl:text-lg">
+                  Discover, compare, and book wedding halls across Tamil Nadu.
+                  Owner-submitted listings, transparent pricing, and a clear answer from the venue.
+                </p>
+              </div>
+
+              {/* Trust strip — honest launch-stage messaging (no fabricated numbers) */}
+              <div className="mx-auto mt-12 grid max-w-4xl grid-cols-2 gap-4 border-t border-white/15 pt-8 sm:grid-cols-4">
+                <TrustItem text="Launching in Tamil Nadu" />
+                <TrustItem text="Owner-submitted listings" />
+                <TrustItem text="Secure booking flow" />
+                <TrustItem text="Owner-approved venues" />
+              </div>
             </div>
-
-            {/* Trust strip — honest launch-stage messaging (no fabricated numbers) */}
-            <div className="mx-auto mt-12 grid max-w-4xl grid-cols-2 gap-4 border-t border-white/15 pt-8 sm:grid-cols-4">
-              <TrustItem text="Launching in Tamil Nadu" />
-              <TrustItem text="Owner-submitted listings" />
-              <TrustItem text="Secure booking flow" />
-              <TrustItem text="Owner-approved venues" />
-            </div>
-          </div>
-
-          {/* The pill straddles the bottom edge: half on the video, half on the
-              section below. `translate-y-1/2` rather than a negative margin so
-              it takes no layout space here — the section beneath owns the
-              clearance (see its pt-*). */}
-          <div className="absolute inset-x-0 bottom-0 z-20 translate-y-1/2 px-6">
-            <div className="flex justify-center">
-              <HeroSearch cities={citiesWithVenues.map((c) => c.city)} today={today} />
-            </div>
-          </div>
-        </section>
+          }
+          footer={<HeroSearch cities={citiesWithVenues.map((c) => c.city)} today={today} />}
+        />
 
         {/* ── Categories strip ─────────────────────────────────── */}
-        {/* pt-28, not py-12: the hero's search pill overhangs into this section
-            and would otherwise sit on top of the first row of category tiles. */}
-        <section className="container-page pb-12 pt-28">
-          <div className="grid grid-cols-4 gap-4 xl:grid-cols-8">
+        <section className="container-page py-12">
+          {/* COLUMNS FOLLOW THE TILE COUNT. This was grid-cols-8 from when the
+              list was longer; with six or seven categories it left a 308px
+              empty gap at the right of the row, measured at 1440px. */}
+          <div
+            className="grid grid-cols-[repeat(var(--cat-cols),minmax(0,1fr))] gap-4"
+            style={{ "--cat-cols": visibleCategories.length } as React.CSSProperties}
+          >
             {visibleCategories.map((c, i) => (
               <Link
                 key={c.key}
@@ -446,23 +441,6 @@ export default async function HomePage() {
         <section data-reveal="fade" className="container-page pb-4">
           <AdSlot placement="homepage_banner" limit={1} />
         </section>
-
-        {/* ── Step inside: scroll-scrubbed walk-through ───────── */}
-        {/* A drop-in block: pins for two screens while scrolling moves the clip
-            from the entrance into the hall, then releases. It sits HERE rather
-            than in the hero on purpose — the hero is a static block with the
-            search pill straddling its bottom edge, and pinning it would bury
-            the search behind two screens of scroll. Ending the walk-through
-            inside a hall, directly above the real halls, is also the better
-            story.
-
-            No caption and no venue name. The footage is a generated hall, not
-            a listed venue, so nothing here may suggest it is one. Desktop tree
-            only: see the notes in ScrollScrubVideo.tsx. */}
-        <ScrollScrubVideo
-          src="/scrub/hall-walkthrough.mp4"
-          poster="/scrub/hall-walkthrough-poster.jpg"
-        />
 
         {/* ── Featured venues grid ─────────────────────────────── */}
         <section className="container-page py-12">

@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 // ─────────────────────────────────────────────────────────────────────────────
-// The scroll-scrubbed walk-through on the homepage.
+// The scroll-scrubbed walk-through that is the homepage hero.
 //
 // Half of this feature is the video FILE, and a replacement file is the most
 // likely way to break it — silently. The source clip had ONE keyframe in 240
@@ -116,6 +116,15 @@ describe("the scrubbing logic", () => {
     expect(src).toMatch(/\.play\(\)\s*\.then\(\(\) => video\.pause\(\)\)/);
   });
 
+  it("stops any playback the instant it starts, and re-syncs on pause", () => {
+    // In a background tab the unlock's play() is held until the tab is shown,
+    // then runs the clip for a moment before pause() lands. Measured: 7.18s on
+    // screen where the scroll asked for 6.97s.
+    expect(src).toContain('video.addEventListener("play", onPlay)');
+    expect(src).toContain('video.addEventListener("pause", onPause)');
+    expect(src).toMatch(/const onPlay = \(\) => \{\s*video\.pause\(\);/);
+  });
+
   it("issues one seek at a time", () => {
     // Setting currentTime while a seek is still decoding makes Chrome abandon
     // and restart the work — the main cause of scrub stutter.
@@ -127,10 +136,38 @@ describe("the scrubbing logic", () => {
     expect(src).toContain("if (shown !== target || seeking)");
   });
 
-  it("does not download until the visitor has actually scrolled", () => {
-    // A distance margin alone fired on page load for most desktop heights.
-    expect(src).toContain("if (loaded || !userScrolled) return;");
+  it("loads after the page, not with it", () => {
+    // As the hero it cannot wait for a scroll — the first scrolls would move
+    // nothing — but it must not compete with the poster, which is the LCP.
     expect(src).toContain('preload="none"');
+    expect(src).toContain('window.addEventListener("load", whenIdle, { once: true })');
+    expect(src).toContain("requestIdleCallback");
+  });
+
+  it("never downloads the video while it is not on screen", () => {
+    // display:none does not stop JavaScript. Measured on a 375px phone before
+    // this guard: all 4,897 KB of video, for a hero the phone never shows.
+    expect(src).toContain("if (loaded || !rendered) return;");
+    expect(src).toContain("rendered = root.getClientRects().length > 0");
+    // Re-checked on resize, so a window widened into the desktop layout loads it.
+    expect(src).toMatch(/const onResize = \(\) => \{\s*rendered = root\.getClientRects\(\)\.length > 0;/);
+  });
+
+  it("keeps the header transparent while pinned", () => {
+    expect(src).toContain('data-header-clear=""');
+  });
+
+  it("fades the intro and its shade together, and never the footer", () => {
+    expect(src).toContain('root.style.setProperty("--scrub-intro"');
+    expect(src.match(/opacity: "var\(--scrub-intro, 1\)"/g)?.length).toBe(2);
+    const footer = src.slice(src.indexOf("{footer && ("), src.indexOf("{footer && (") + 200);
+    expect(footer).not.toContain("--scrub-intro");
+  });
+
+  it("uses the measured shades", () => {
+    // Nav over every frame: 5.45:1. Headline over the opening frames: 3.86:1.
+    expect(src).toContain("rgba(26,22,20,0.64) 0%, rgba(26,22,20,0.60) 8%");
+    expect(src).toContain("rgba(26,22,20,0.45) 28%, rgba(26,22,20,0.45) 62%");
   });
 
   it("gives reduced-motion and Data Saver visitors the poster, not two screens of scroll", () => {
@@ -157,8 +194,7 @@ describe("where it sits", () => {
     expect(code.slice(0, desktopStart)).not.toContain("<ScrollScrubVideo");
   });
 
-  it("is not in the hero, which stays static with the search pill on its edge", () => {
-    const heroEnd = code.indexOf("</section>", desktopStart);
-    expect(use).toBeGreaterThan(heroEnd);
+  it("is the hero: the first thing in the desktop tree", () => {
+    expect(use).toBeLessThan(code.indexOf("<section", desktopStart));
   });
 });

@@ -232,7 +232,18 @@ export function RevealObserver() {
       // Hysteresis, not a single threshold: 12px sits inside trackpad
       // rubber-band noise, so a page at rest could strobe between states.
       // Enter at 24, leave at 8.
-      const scrolled = headerScrolled ? window.scrollY > 8 : window.scrollY > 24;
+      //
+      // HELD CLEAR WHILE A PINNED HERO IS UNDERNEATH. The homepage hero is a
+      // scroll-scrubbed walk-through that stays pinned for two screens; going
+      // solid after 24px would lay an opaque white bar over it for the whole
+      // walk-through. So an element marked [data-header-clear] keeps the bar
+      // transparent while it is still pinned (its bottom below the viewport's),
+      // and the normal behaviour resumes the moment it starts to release —
+      // not when it is fully gone, which would leave white nav text over the
+      // bright bottom of the last frame for a whole screen of scrolling.
+      const hold = document.querySelector("[data-header-clear]");
+      const held = hold !== null && hold.getBoundingClientRect().bottom > window.innerHeight + 1;
+      const scrolled = !held && (headerScrolled ? window.scrollY > 8 : window.scrollY > 24);
       if (scrolled !== headerScrolled) {
         headerScrolled = scrolled;
         root.classList.toggle("is-scrolled", scrolled);
