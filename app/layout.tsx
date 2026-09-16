@@ -11,6 +11,7 @@ import { getAppUrl } from "@/lib/env";
 import { REVEAL_BOOT_SCRIPT } from "@/lib/motion";
 import { SITE_LANG } from "@/lib/seo/config";
 import { RevealObserver } from "@/components/motion/RevealObserver";
+import { SmoothScroll } from "@/components/motion/SmoothScroll";
 
 const inter = Inter({
   subsets:  ["latin"],
@@ -132,6 +133,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             app. Renders nothing; mounted here so one instance covers every
             route, including content added after the first paint. */}
         <RevealObserver />
+        <SmoothScroll />
 
         <Toaster />
       </body>

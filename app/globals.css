@@ -331,6 +331,45 @@
   transform: translate3d(0, var(--parallax-y, 0px), 0);
 }
 
+/* ── Hero video scroll ─────────────────────────────────────────────────────
+   Driven by --hero-progress (0 -> 1), written once per frame by the SAME tick
+   in RevealObserver that owns [data-parallax] and the header state. Everything
+   below is transform and opacity only: no layout, no paint, compositor only.
+
+   TO TUNE THE EFFECT, change the two custom properties set on the element in
+   components/sections/HeroVideo.tsx:
+     --hero-scale-to  end scale at the bottom of the hero (1.1 = grows 10%)
+     --hero-drift     how far the video travels down, in px
+
+   Keep --hero-drift comfortably under the 10% overscan on [data-hero-video] or
+   the top edge of the video slides into view.                                */
+
+[data-hero-video] {
+  /* translate3d, not translateY: the 3d form is what reliably promotes this to
+     its own compositor layer, which is the difference between a smooth scale
+     and one that repaints the video frame every tick. */
+  transform: translate3d(
+      0,
+      calc(var(--hero-progress, 0) * var(--hero-drift, 60px)),
+      0
+    )
+    scale(calc(1 + (var(--hero-scale-to, 1.1) - 1) * var(--hero-progress, 0)));
+  will-change: transform;
+}
+
+/* The title, subtitle and search bar lift and fade as the hero leaves.
+   Applied to a WRAPPER, never to an ancestor of anything fixed or sticky — a
+   transform re-parents those, which is the same trap documented on
+   [data-parallax] above and the one that put the filter sheet in the wrong
+   place on /halls. */
+[data-hero-lift] {
+  /* Fades out over the first 70% of the travel, so it is gone before the
+     section edge rather than still visible as it clips. */
+  opacity: calc(1 - var(--hero-progress, 0) / 0.7);
+  transform: translate3d(0, calc(var(--hero-progress, 0) * -80px), 0);
+  will-change: transform, opacity;
+}
+
 /* ── Header scroll state ───────────────────────────────────────────────────
    A CLASS TOGGLE, never a reveal or a parallax. The headers are sticky and use
    backdrop-blur: a transform or an opacity below 1 on them — or on any ancestor
@@ -493,6 +532,14 @@
   }
   [data-parallax] {
     transform: none !important;
+  }
+  /* The hero holds still too. The video element itself is never played under
+     reduced motion (HeroVideo.tsx checks the same query), so what remains is
+     the poster, unmoved. */
+  [data-hero-video],
+  [data-hero-lift] {
+    transform: none !important;
+    opacity: 1 !important;
   }
 }
 

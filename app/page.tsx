@@ -14,6 +14,8 @@ import { platformFeeDisclosure } from "@/lib/booking-payment";
 import { AdSlot } from "@/components/ads/AdSlot";
 import { heroDelay, revealDelay } from "@/lib/motion";
 import { HeroSearch } from "@/components/sections/HeroSearch";
+import { HeroVideo } from "@/components/sections/HeroVideo";
+import { HERO_VIDEO } from "@/lib/hero-video";
 import { HallCard } from "@/app/halls/_components/HallCard";
 import { countActivePremiumHalls, fetchHalls, type HallListing } from "@/lib/halls";
 import type { Metadata } from "next";
@@ -280,7 +282,36 @@ export default async function HomePage() {
           ════════════════════════════════════════════════════════ */}
       <div className="hidden lg:block">
         {/* ── Hero ─────────────────────────────────────────────── */}
-        <section className="relative overflow-hidden bg-hero-gradient">
+        {/* data-hero-scroll BELONGS HERE, on the section — not inside HeroVideo.
+            --hero-progress is a custom property, so it INHERITS: writing it on
+            the common ancestor is what lets both the video layer below and the
+            [data-hero-lift] content further down read the same value. Written
+            once per frame by the shared tick in RevealObserver.
+
+            min-h-[100dvh] rather than 100vh: on mobile Safari and Chrome, 100vh
+            is the tallest the viewport ever gets, so a 100vh hero is cropped by
+            the address bar until the user scrolls. dvh tracks the real height. */}
+        <section
+          data-hero-scroll
+          className={
+            // The 100dvh hero is part of the video treatment, so it is gated
+            // with it: with the switch off this is the exact class list the
+            // page shipped with, and the diff is visually a no-op.
+            HERO_VIDEO.ENABLED
+              ? "relative flex min-h-[100dvh] items-center overflow-hidden bg-hero-gradient"
+              : "relative overflow-hidden bg-hero-gradient"
+          }
+        >
+          {/* Behind everything. bg-hero-gradient above stays as the paint that
+              covers the first frame, so there is no flash of black. */}
+          {HERO_VIDEO.ENABLED && (
+            <HeroVideo
+              sources={HERO_VIDEO.sources}
+              scale={HERO_VIDEO.scale}
+              driftPx={HERO_VIDEO.driftPx}
+            />
+          )}
+
           <div
             aria-hidden
             data-parallax="0.18"
@@ -292,7 +323,15 @@ export default async function HomePage() {
             }}
           />
 
-          <div className="container-page relative py-20 xl:py-24">
+          {/* Fades and lifts away as the hero scrolls, so the video is briefly
+              alone before the next section covers it. Safe to transform: nothing
+              inside is position:fixed — a transform here would become its
+              containing block, which is the bug that has now cost this repo two
+              fixes (HomeLocation's reveal, and the filter sheet). Checked. */}
+          <div
+            data-hero-lift={HERO_VIDEO.ENABLED ? "" : undefined}
+            className="container-page relative w-full py-20 xl:py-24"
+          >
             <div className="mx-auto max-w-3xl text-center">
               {/* Not "India's Premium Wedding Venue Marketplace". The trust
                   strip 29 lines below says "Launching in Tamil Nadu", and the
