@@ -32,6 +32,10 @@ export type AdminHallDraft = {
   capacityMin:     number | null;
   capacityMax:     number;
   pricePerDay:     number | null;
+  /** Read back so a draft written WITH slot prices is visible in the admin list;
+   *  the SELECT omitted both, so they were invisible even once stored. */
+  priceMorning:    number | null;
+  priceEvening:    number | null;
   bookingMode:     string;
   venueTypes:      string[];
   amenitySlugs:    string[];
@@ -49,7 +53,8 @@ export type AdminHallDraft = {
 
 const SELECT = `
   id, name, description, city, state, address, pincode,
-  capacity_min, capacity_max, price_per_day, booking_mode, venue_types,
+  capacity_min, capacity_max, price_per_day, price_morning, price_evening,
+  booking_mode, venue_types,
   amenity_slugs, custom_amenities, photo_urls,
   owner_name, owner_phone, owner_email,
   claim_status, claimed_hall_id, claimed_at, admin_notes, created_at
@@ -68,6 +73,8 @@ function toDraft(r: any): AdminHallDraft {
     capacityMin:     r.capacity_min != null ? Number(r.capacity_min) : null,
     capacityMax:     Number(r.capacity_max),
     pricePerDay:     r.price_per_day != null ? Number(r.price_per_day) : null,
+    priceMorning:    r.price_morning != null ? Number(r.price_morning) : null,
+    priceEvening:    r.price_evening != null ? Number(r.price_evening) : null,
     bookingMode:     r.booking_mode,
     // Array.isArray, not `?? []`: PostgREST can hand back null for an array
     // column, and .map on null throws inside the render.

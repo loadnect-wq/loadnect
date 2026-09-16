@@ -173,3 +173,42 @@ describe("admin write paths are gated and audited", () => {
     expect(fn).not.toContain("return { error: \"Duplicate");
   });
 });
+
+describe("an admin-recorded venue claims into a usable listing", () => {
+  const form = read("app/admin/hall-drafts/_components/AddHallDraftForm.tsx");
+  const reader = read("lib/admin-hall-drafts.ts");
+
+  it("the form collects amenities instead of hard-coding none", () => {
+    // It sent `amenitySlugs: []` unconditionally, so EVERY venue an admin
+    // recorded claimed into a hall with no amenities — invisible in every
+    // filtered search and publishing no amenityFeature, from the day the owner
+    // claimed it. The schema, the table and claim_admin_hall_draft() had
+    // supported them since 0090.
+    expect(form).not.toContain("amenitySlugs: []");
+    expect(form).toContain("amenitySlugs,");
+    expect(form).toContain("setAmenitySlugs");
+  });
+
+  it("the form collects the slot prices the claim function already copies", () => {
+    expect(form).not.toContain("priceMorning: undefined");
+    expect(form).not.toContain("priceEvening: undefined");
+    expect(form).toContain('set("priceMorning")');
+    expect(form).toContain('set("priceEvening")');
+  });
+
+  it("photos stay empty, and the reason is written down", () => {
+    // photo_urls is an unconstrained text[], but the claim function copies each
+    // entry into hall_images where CHECK hall_images_url_is_our_storage (0083)
+    // demands our own bucket. A pasted URL would save here and fail weeks later
+    // ON THE OWNER. This must stay empty until there is a real uploader.
+    expect(form).toContain("photoUrls: []");
+    expect(form).toContain("hall_images_url_is_our_storage");
+  });
+
+  it("the admin list reads back the slot prices it now stores", () => {
+    // The SELECT omitted both, so a draft written with them was invisible.
+    expect(reader).toContain("price_morning");
+    expect(reader).toContain("price_evening");
+    expect(reader).toContain("priceMorning:");
+  });
+});

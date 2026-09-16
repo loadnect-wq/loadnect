@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Building2, Inbox, Phone, Mail, CheckCircle2, XCircle, Clock } from "lucide-react";
 import { requireRole } from "@/lib/auth";
 import { fetchAdminHallDrafts } from "@/lib/admin-hall-drafts";
+import { fetchAllAmenities } from "@/lib/owner";
 import { formatHallPrice } from "@/lib/booking-mode";
 import { EmptyState } from "@/components/ui/empty-state";
 import { AdminPageHeader } from "../_components/AdminPageHeader";
@@ -27,7 +28,12 @@ export default async function HallDraftsPage() {
   // Same reasoning as app/admin/hall-approvals/page.tsx.
   await requireRole(["admin"]);
 
-  const { drafts, failed } = await fetchAdminHallDrafts();
+  // One round trip each, in parallel — the amenity catalogue is 12 rows and
+  // the form needs it to offer anything at all.
+  const [{ drafts, failed }, amenities] = await Promise.all([
+    fetchAdminHallDrafts(),
+    fetchAllAmenities(),
+  ]);
   const unclaimed = drafts.filter((d) => d.claimStatus === "unclaimed");
   const settled   = drafts.filter((d) => d.claimStatus !== "unclaimed");
 
@@ -39,7 +45,7 @@ export default async function HallDraftsPage() {
       />
 
       <div className="space-y-6 px-4 py-5 sm:px-6 lg:px-8">
-        <AddHallDraftForm />
+        <AddHallDraftForm amenities={amenities} />
 
         {/* A FAILED READ IS NOT AN EMPTY LIST. Telling an admin there are no
             drafts when the query never ran is the defect this project keeps

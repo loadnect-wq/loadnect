@@ -14,16 +14,25 @@ type Match = { kind: "hall" | "draft"; id: string; name: string; city: string; r
 
 const BLANK = {
   name: "", description: "", city: "", state: "Tamil Nadu", address: "", pincode: "",
-  capacityMin: "", capacityMax: "", pricePerDay: "",
+  capacityMin: "", capacityMax: "", pricePerDay: "", priceMorning: "", priceEvening: "",
   bookingMode: "LEAD_GENERATION" as "LEAD_GENERATION" | "DIRECT_BOOKING",
   ownerName: "", ownerPhone: "", ownerEmail: "", adminNotes: "",
 };
 
-export function AddHallDraftForm() {
+type AmenityOption = { id: string; name: string; slug: string };
+
+export function AddHallDraftForm({ amenities = [] }: { amenities?: AmenityOption[] }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [f, setF] = useState({ ...BLANK });
   const [venueTypes, setVenueTypes] = useState<string[]>([]);
+  // AMENITIES AND SLOT PRICES WERE HARD-CODED EMPTY. The schema, the
+  // admin_hall_drafts table and claim_admin_hall_draft() have supported all
+  // three since 0090 — the form simply never collected them, so every venue an
+  // admin recorded claimed into a hall with NO amenities. Amenities are a
+  // search filter and a published amenityFeature, so such a listing was
+  // invisible in every filtered search the day its owner claimed it.
+  const [amenitySlugs, setAmenitySlugs] = useState<string[]>([]);
   const [matches, setMatches] = useState<Match[] | null>(null);
   const [checking, setChecking] = useState(false);
   // Set once the admin has SEEN a duplicate warning and chosen to continue, so
@@ -74,12 +83,20 @@ export function AddHallDraftForm() {
         ...f,
         capacityMin: f.capacityMin === "" ? undefined : f.capacityMin,
         capacityMax: f.capacityMax,
-        pricePerDay: f.pricePerDay === "" ? undefined : f.pricePerDay,
-        priceMorning: undefined,
-        priceEvening: undefined,
+        pricePerDay:  f.pricePerDay  === "" ? undefined : f.pricePerDay,
+        priceMorning: f.priceMorning === "" ? undefined : f.priceMorning,
+        priceEvening: f.priceEvening === "" ? undefined : f.priceEvening,
         venueTypes,
-        amenitySlugs: [],
+        amenitySlugs,
         customAmenities: [],
+        // PHOTOS STAY EMPTY, AND THAT IS DELIBERATE. photo_urls is an
+        // unconstrained text[], but claim_admin_hall_draft() copies each entry
+        // straight into hall_images, where CHECK hall_images_url_is_our_storage
+        // (0083) requires the URL to be on our own Supabase bucket. A pasted
+        // third-party URL would therefore save here without complaint and blow
+        // up weeks later, on the OWNER, at the moment they claim the listing.
+        // Photos need a real uploader writing to our storage first; see
+        // docs/update-plan.md §4.7.
         photoUrls: [],
       });
 
@@ -92,6 +109,7 @@ export function AddHallDraftForm() {
       });
       setF({ ...BLANK });
       setVenueTypes([]);
+      setAmenitySlugs([]);
       setMatches(null);
       setAcknowledged(false);
       setOpen(false);
@@ -179,6 +197,55 @@ export function AddHallDraftForm() {
                 </button>
               );
             })}
+          </div>
+        </div>
+
+        {/* Amenities. A claimed venue with none is invisible in every filtered
+            search and publishes no amenityFeature, so this is the field that
+            most decides whether the listing works the day it goes live. */}
+        {amenities.length > 0 && (
+          <div>
+            <Label>Amenities</Label>
+            <div className="mt-1.5 flex flex-wrap gap-2">
+              {amenities.map((a) => {
+                const on = amenitySlugs.includes(a.slug);
+                return (
+                  <button
+                    key={a.id} type="button"
+                    onClick={() =>
+                      setAmenitySlugs((p) => (on ? p.filter((x) => x !== a.slug) : [...p, a.slug]))
+                    }
+                    aria-pressed={on}
+                    className={[
+                      "min-h-[44px] rounded-full border px-3 text-xs font-medium transition-colors",
+                      on ? "border-maroon-400 bg-maroon-50 text-maroon-800"
+                         : "border-border bg-white text-charcoal-600 hover:border-maroon-200",
+                    ].join(" ")}
+                  >
+                    {a.name}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="mt-1 text-[11px] text-charcoal-500">
+              Tick only what you have confirmed with the venue. The owner can correct these
+              when they claim the listing.
+            </p>
+          </div>
+        )}
+
+        {/* Slot prices. The table and claim_admin_hall_draft() have carried
+            these since 0090; the form just never asked. */}
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <Label htmlFor="priceMorning">Morning rate (optional)</Label>
+            <Input id="priceMorning" inputMode="numeric" value={f.priceMorning}
+                   onChange={set("priceMorning")} placeholder="e.g. 60000" />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="priceEvening">Evening rate (optional)</Label>
+            <Input id="priceEvening" inputMode="numeric" value={f.priceEvening}
+                   onChange={set("priceEvening")} placeholder="e.g. 90000" />
           </div>
         </div>
 
