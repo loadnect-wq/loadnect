@@ -28,13 +28,4 @@ export const HERO_VIDEO = {
     poster: "/hero/hero-poster.jpg",
   },
 
-  /**
-   * Scroll sensitivity. `scale` is how far the video has grown by the time the
-   * hero has fully scrolled past (1.1 = 10%); `drift` is how far it travels
-   * down over the same distance, which is what sells the depth.
-   *
-   * Keep drift under the 10% overscan in HeroVideo or the top edge shows.
-   */
-  scale: 1.1,
-  driftPx: 60,
 } as const;

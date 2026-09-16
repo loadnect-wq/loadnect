@@ -323,53 +323,6 @@
   animation-delay: var(--reveal-delay-base, 0ms);
 }
 
-/* ── Parallax ──────────────────────────────────────────────────────────────
-   The shared scroll listener writes `--parallax-y` in pixels; the element only
-   consumes it. Decorative layers ONLY — never an ancestor of anything fixed or
-   sticky, because a transform re-parents those. */
-[data-parallax] {
-  transform: translate3d(0, var(--parallax-y, 0px), 0);
-}
-
-/* ── Hero video scroll ─────────────────────────────────────────────────────
-   Driven by --hero-progress (0 -> 1), written once per frame by the SAME tick
-   in RevealObserver that owns [data-parallax] and the header state. Everything
-   below is transform and opacity only: no layout, no paint, compositor only.
-
-   TO TUNE THE EFFECT, change the two custom properties set on the element in
-   components/sections/HeroVideo.tsx:
-     --hero-scale-to  end scale at the bottom of the hero (1.1 = grows 10%)
-     --hero-drift     how far the video travels down, in px
-
-   Keep --hero-drift comfortably under the 10% overscan on [data-hero-video] or
-   the top edge of the video slides into view.                                */
-
-[data-hero-video] {
-  /* translate3d, not translateY: the 3d form is what reliably promotes this to
-     its own compositor layer, which is the difference between a smooth scale
-     and one that repaints the video frame every tick. */
-  transform: translate3d(
-      0,
-      calc(var(--hero-progress, 0) * var(--hero-drift, 60px)),
-      0
-    )
-    scale(calc(1 + (var(--hero-scale-to, 1.1) - 1) * var(--hero-progress, 0)));
-  will-change: transform;
-}
-
-/* The title, subtitle and search bar lift and fade as the hero leaves.
-   Applied to a WRAPPER, never to an ancestor of anything fixed or sticky — a
-   transform re-parents those, which is the same trap documented on
-   [data-parallax] above and the one that put the filter sheet in the wrong
-   place on /halls. */
-[data-hero-lift] {
-  /* Fades out over the first 70% of the travel, so it is gone before the
-     section edge rather than still visible as it clips. */
-  opacity: calc(1 - var(--hero-progress, 0) / 0.7);
-  transform: translate3d(0, calc(var(--hero-progress, 0) * -80px), 0);
-  will-change: transform, opacity;
-}
-
 /* ── Header scroll state ───────────────────────────────────────────────────
    A CLASS TOGGLE, never a reveal or a parallax. The headers are sticky and use
    backdrop-blur: a transform or an opacity below 1 on them — or on any ancestor
@@ -395,6 +348,65 @@
   backdrop-filter: blur(12px);
   box-shadow: 0 1px 2px rgba(26, 22, 20, 0.04), 0 8px 24px rgba(26, 22, 20, 0.08);
 }
+/* ── The header over the hero video ────────────────────────────────────────
+   On the homepage the bar sits ON the video, so at rest it has no surface at
+   all and its ink turns white. The moment the page scrolls, `.is-scrolled
+   .hallnect-header` above wins on specificity and the normal solid treatment
+   comes back — which is the whole point: a permanently transparent header
+   becomes invisible the moment white content scrolls under it.
+
+   It stays STICKY rather than absolute. Visually identical while the page is
+   at the top (the video shows straight through), but the nav is still there
+   further down the page instead of having scrolled away. On a booking site,
+   losing the nav after one screen is a real cost for no visual gain. To make
+   it truly absolute instead, swap `sticky` for `absolute` in Navbar.tsx.
+
+   backdrop-filter is switched OFF here, not just made transparent: it is a
+   containing block for fixed descendants, and leaving it on over a video also
+   blurs the video itself.                                                   */
+.hallnect-header--over-hero {
+  background-color: transparent;
+  border-bottom-color: transparent;
+  backdrop-filter: none;
+  box-shadow: none;
+}
+html:not(.is-scrolled) .hallnect-header--over-hero {
+  /* The ink. A small shadow rather than a scrim behind the bar — the video is
+     already darkened at the top edge by the hero vignette, and this covers the
+     handful of frames where a light passes behind the links. */
+  --over-hero-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
+}
+/* `:not(.hallnect-nav-solid)` IS LOAD-BEARING. The Sign In CTA is a FILLED
+   gold button whose ink is maroon-900 on purpose — measured at 7.80/5.97/4.93:1
+   across the gradient's three stops, with a note in Button.tsx that white text
+   drops to 2.14:1 where the label starts. A blanket `a { color: #fff }` here
+   quietly undid that measurement and put white on gold. Anything with its own
+   background opts out of the whitening. */
+html:not(.is-scrolled) .hallnect-header--over-hero a:not(.hallnect-nav-solid),
+html:not(.is-scrolled) .hallnect-header--over-hero .hallnect-nav-ink {
+  color: #fff;
+  text-shadow: var(--over-hero-shadow);
+}
+html:not(.is-scrolled) .hallnect-header--over-hero a:not(.hallnect-nav-solid):hover {
+  color: #FBC751; /* gold-300 */
+}
+/* The underline that marks the current page reads as grey-on-video otherwise. */
+html:not(.is-scrolled) .hallnect-header--over-hero a::after {
+  background-color: #FBC751;
+}
+/* Outlined controls need a visible edge on video; the filled gold CTA already
+   carries its own background and is left alone. */
+html:not(.is-scrolled) .hallnect-header--over-hero .hallnect-nav-outline {
+  background-color: rgba(255, 255, 255, 0.10);
+  border-color: rgba(255, 255, 255, 0.55);
+  color: #fff;
+  backdrop-filter: blur(4px);
+}
+html:not(.is-scrolled) .hallnect-header--over-hero .hallnect-nav-outline:hover {
+  background-color: rgba(255, 255, 255, 0.20);
+  color: #fff;
+}
+
 /* A brand-gold hairline that fades in under the bar once it is floating. */
 .hallnect-header::after {
   content: "";
@@ -530,17 +542,6 @@
     opacity: 1 !important;
     transform: none !important;
   }
-  [data-parallax] {
-    transform: none !important;
-  }
-  /* The hero holds still too. The video element itself is never played under
-     reduced motion (HeroVideo.tsx checks the same query), so what remains is
-     the poster, unmoved. */
-  [data-hero-video],
-  [data-hero-lift] {
-    transform: none !important;
-    opacity: 1 !important;
-  }
 }
 
 /* Printing a page mid-scroll must not print blank sections. */
@@ -554,4 +555,14 @@
     transform: none !important;
     animation: none !important;
   }
+}
+
+/* Hero copy over video. Paired with the light vignette in HeroVideo.tsx: the
+   vignette does the measurable contrast work, this carries the edge cases the
+   95th percentile does not — a lantern passing directly behind a thin stroke.
+   WCAG gives no credit for a shadow, so it is a belt, never the braces.      */
+.hero-ink {
+  text-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.45),
+    0 2px 14px rgba(0, 0, 0, 0.30);
 }

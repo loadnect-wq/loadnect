@@ -1,105 +1,189 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useTransition, useRef } from "react";
-import { MapPin, Search } from "lucide-react";
-import { CITIES } from "@/lib/mock-data";
+import { useState, useTransition } from "react";
+import { Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-export function HeroSearch() {
+// ─────────────────────────────────────────────────────────────────────────────
+// The floating search pill.
+//
+// EVERY FIELD HERE IS REAL. That is not decoration — this codebase has already
+// shipped one prominent dead control (the city picker wrote localStorage that
+// nothing read), so a four-part search bar whose fourth part does nothing would
+// be the same mistake in a nicer shape. The mapping is:
+//
+//   Location        -> ?city      exact match, and the options are the cities
+//                                 that ACTUALLY hold inventory, not a hardcoded
+//                                 list that offers empty searches
+//   Available From  -> ?date      excludes halls fully blocked that day
+//   Available Till  -> ?dateTo    makes it an inclusive RANGE; a hall blocked on
+//                                 any day inside it is excluded
+//   Guests          -> ?capacity  minimum capacity_max
+//
+// `dateTo` was added to lib/halls.ts for this — before it, a second date box
+// would have been a lie.
+// ─────────────────────────────────────────────────────────────────────────────
+
+type Props = {
+  /** Cities with live inventory. Server-supplied so we never offer a dead search. */
+  cities: readonly string[];
+  /** Today in the business timezone, from the server — a browser's own clock
+   *  may be in another zone and would let someone pick "yesterday". */
+  today: string;
+};
+
+/** One labelled cell of the pill. */
+function Field({
+  label,
+  htmlFor,
+  children,
+  className,
+}: {
+  label: string;
+  htmlFor: string;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className={cn("min-w-0 flex-1 px-5 py-2", className)}>
+      <label
+        htmlFor={htmlFor}
+        className="block text-[11px] font-semibold uppercase tracking-wider text-charcoal-500"
+      >
+        {label}
+      </label>
+      {children}
+    </div>
+  );
+}
+
+const CONTROL = cn(
+  "w-full bg-transparent p-0 text-sm text-charcoal-900",
+  "placeholder:text-charcoal-400",
+  // The pill owns the visible focus ring; an inset ring on each cell would
+  // fight the rounded edges. Focus is still obvious because the cell text is
+  // the only thing that moves.
+  "focus:outline-none focus:ring-0",
+  "[color-scheme:light]",
+);
+
+export function HeroSearch({ cities, today }: Props) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
-  const formRef = useRef<HTMLFormElement>(null);
+  // "Available Till" can never precede "Available From", so the second input's
+  // own `min` tracks the first. Controlled for that reason alone.
+  const [from, setFrom] = useState("");
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
     const params = new URLSearchParams();
-    const q    = (fd.get("q")    as string) || "";
-    const city = (fd.get("city") as string) || "";
-    if (q)    params.set("q",    q);
-    if (city) params.set("city", city);
+    const put = (key: string, value: FormDataEntryValue | null) => {
+      const v = typeof value === "string" ? value.trim() : "";
+      if (v) params.set(key, v);
+    };
+    put("city", fd.get("city"));
+    put("date", fd.get("date"));
+    // A range with no start is not a range — the availability query keys off
+    // `date`, so sending dateTo alone would silently do nothing.
+    if (params.has("date")) put("dateTo", fd.get("dateTo"));
+    put("capacity", fd.get("capacity"));
+
     startTransition(() => {
       const qs = params.toString();
       router.push(`/halls${qs ? `?${qs}` : ""}`);
     });
   }
 
-  const inputBase = cn(
-    "h-14 w-full bg-white text-sm text-charcoal-900 placeholder:text-charcoal-400",
-    "focus:outline-none focus:ring-2 focus:ring-maroon-500 focus:ring-inset",
-    "transition-shadow",
-  );
-
   return (
     <form
-      ref={formRef}
       onSubmit={handleSubmit}
-      className="flex w-full max-w-3xl flex-col overflow-hidden rounded-2xl shadow-elevated sm:flex-row"
       role="search"
       aria-label="Search wedding halls"
+      className={cn(
+        "flex w-full max-w-4xl items-center gap-0 rounded-full bg-white",
+        "p-2 pl-1 shadow-[0_18px_50px_-12px_rgba(26,22,20,0.35)]",
+        "ring-1 ring-black/5",
+        // Keyboard focus has to be visible on the pill as a whole, since the
+        // individual cells deliberately have no ring of their own.
+        "focus-within:ring-2 focus-within:ring-maroon-500",
+      )}
     >
-      {/* Keyword */}
-      <div className="relative flex-1 border-b border-border sm:border-b-0 sm:border-r">
-        <Search
-          className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-charcoal-400"
-          aria-hidden
-        />
+      <Field label="Location" htmlFor="hs-city">
+        <select
+          id="hs-city"
+          name="city"
+          defaultValue=""
+          className={cn(CONTROL, "cursor-pointer appearance-none truncate")}
+        >
+          <option value="">Any city</option>
+          {cities.map((c) => (
+            <option key={c} value={c}>
+              {c}
+            </option>
+          ))}
+        </select>
+      </Field>
+
+      <span aria-hidden className="h-8 w-px shrink-0 bg-charcoal-200" />
+
+      <Field label="Available From" htmlFor="hs-from">
         <input
-          type="search"
-          name="q"
-          placeholder="Venue name or keyword…"
-          className={cn(inputBase, "pl-12 pr-4")}
-          autoComplete="off"
+          id="hs-from"
+          name="date"
+          type="date"
+          min={today}
+          value={from}
+          onChange={(e) => setFrom(e.target.value)}
+          className={CONTROL}
         />
-      </div>
+      </Field>
 
-      {/* City */}
-      <div className="relative sm:w-52 border-b border-border sm:border-b-0 sm:border-r">
-        <MapPin
-          className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-charcoal-400"
-          aria-hidden
+      <span aria-hidden className="h-8 w-px shrink-0 bg-charcoal-200" />
+
+      <Field label="Available Till" htmlFor="hs-till">
+        <input
+          id="hs-till"
+          name="dateTo"
+          type="date"
+          min={from || today}
+          className={CONTROL}
         />
-        {/* A select has no placeholder to fall back on — "Any City" is its first
-            OPTION, not a label — so without this wrapper the control reached a
-            screen reader with no accessible name at all. A wrapping label — the
-            shape PayoutSetup already uses — needs no id to invent or keep
-            unique. Hidden visually because the pin icon and the chosen value
-            are what a sighted user reads, and sr-only is out of flow, so the
-            search bar keeps its size. */}
-        <label className="block">
-          <span className="sr-only">City</span>
-          <select
-            name="city"
-            className={cn(inputBase, "cursor-pointer appearance-none pl-12 pr-4")}
-            defaultValue=""
-          >
-            <option value="">Any City</option>
-            {CITIES.map((c) => (
-              <option key={c} value={c}>{c}</option>
-            ))}
-          </select>
-        </label>
-      </div>
+      </Field>
 
-      {/* Submit */}
+      <span aria-hidden className="h-8 w-px shrink-0 bg-charcoal-200" />
+
+      <Field label="Guests" htmlFor="hs-guests" className="max-w-[9rem]">
+        <input
+          id="hs-guests"
+          name="capacity"
+          type="number"
+          inputMode="numeric"
+          min={1}
+          step={10}
+          placeholder="Any"
+          className={CONTROL}
+        />
+      </Field>
+
       <button
         type="submit"
         disabled={isPending}
+        aria-label="Search"
         className={cn(
-          "flex h-14 shrink-0 items-center justify-center gap-2 px-8",
-          "bg-gold-gradient font-semibold text-white text-sm",
-          "transition-opacity hover:opacity-90 disabled:opacity-60",
-          "sm:rounded-none",
+          // 56px — comfortably past the 44px touch-target floor.
+          "ml-1 flex h-14 w-14 shrink-0 items-center justify-center rounded-full",
+          "bg-rose-600 text-white transition",
+          "hover:bg-rose-700 active:scale-95 motion-reduce:active:scale-100",
+          "focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-600 focus-visible:ring-offset-2",
+          "disabled:opacity-60",
         )}
       >
         {isPending ? (
           <span className="h-5 w-5 animate-spin rounded-full border-2 border-white border-t-transparent" />
         ) : (
-          <>
-            <Search className="h-4 w-4" aria-hidden />
-            Search
-          </>
+          <Search className="h-5 w-5" aria-hidden />
         )}
       </button>
     </form>

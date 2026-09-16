@@ -10,6 +10,7 @@ import { CategoryRow } from "./_components/CategoryRow";
 import { CitiesRow } from "./_components/CitiesRow";
 import { POPULAR_CITIES } from "@/lib/content";
 import { getAdvancePercent } from "@/lib/platform-settings";
+import { todayInBusinessTz } from "@/lib/dates";
 import { platformFeeDisclosure } from "@/lib/booking-payment";
 import { AdSlot } from "@/components/ads/AdSlot";
 import { heroDelay, revealDelay } from "@/lib/motion";
@@ -140,6 +141,10 @@ export default async function HomePage() {
   ]);
   const featured: HallListing[] = featuredAll.slice(0, 6);
   const citiesWithVenues = cityInventory.filter((c) => c.venueCount > 0);
+  // Computed on the SERVER and handed to the search pill. A browser in another
+  // timezone would otherwise let someone pick a date that is already yesterday
+  // here — the drift lib/dates.ts exists to eliminate.
+  const today = todayInBusinessTz();
 
   // ── Truth gates ───────────────────────────────────────────────────────────
   // Three things on this page used to assert facts the database did not back.
@@ -206,32 +211,29 @@ export default async function HomePage() {
             push the search entry — the most used control on the phone
             homepage — below the fold on every device.
 
-            There is also no [data-hero-lift] here. Fading and lifting content
-            away works over a tall desktop hero; over a ~260px band it would
-            start dissolving the search entry within a few pixels of scroll.
-            The video parallaxes, the content stays put. */}
+            Nothing here is scroll-linked — the video simply sits
+            behind the copy and stays put. */}
         <section
-          data-hero-scroll
           className={
             HERO_VIDEO.ENABLED ? "relative overflow-hidden bg-charcoal-950 pb-5" : "relative"
           }
         >
           {HERO_VIDEO.ENABLED && (
-            <HeroVideo
-              sources={HERO_VIDEO.sources}
-              // Gentler than the desktop values: over a short band, 1.1 and
-              // 60px read as a lurch rather than a drift.
-              scale={1.06}
-              driftPx={24}
-            />
+            <HeroVideo sources={HERO_VIDEO.sources} />
           )}
 
         <div className="container-app relative pt-3">
           <div data-hero style={heroDelay(0)} className="flex items-end justify-between gap-3">
             <div>
+              {/* WHITE, NOT GOLD, over the video — measured, not taste. At
+                  12px/600 this is normal text and needs 4.5:1; against the
+                  95th-percentile brightest pixel of this band under a 35%
+                  scrim, gold-300 gives 3.13:1 and even gold-100 only 4.41:1.
+                  White gives 4.91:1. The gold accent survives on the desktop
+                  headline, where the type is large enough to carry it. */}
               <p
                 className={`text-xs font-semibold uppercase tracking-widest ${
-                  HERO_ON_DARK ? "text-gold-300" : "text-maroon-500"
+                  HERO_ON_DARK ? "hero-ink text-white" : "text-maroon-500"
                 }`}
               >
                 Welcome
@@ -241,7 +243,7 @@ export default async function HomePage() {
                   desktop hero below is display:none to Googlebot. */}
               <h1
                 className={`mt-1 font-serif text-2xl font-bold ${
-                  HERO_ON_DARK ? "text-ivory-100" : "text-charcoal-900"
+                  HERO_ON_DARK ? "hero-ink text-ivory-100" : "text-charcoal-900"
                 }`}
               >
                 Wedding Halls &amp; Marriage Halls in Tamil Nadu
@@ -325,117 +327,72 @@ export default async function HomePage() {
           DESKTOP — premium adaptive layout (hidden lg:block)
           ════════════════════════════════════════════════════════ */}
       <div className="hidden lg:block">
-        {/* ── Hero ─────────────────────────────────────────────── */}
-        {/* data-hero-scroll BELONGS HERE, on the section — not inside HeroVideo.
-            --hero-progress is a custom property, so it INHERITS: writing it on
-            the common ancestor is what lets both the video layer below and the
-            [data-hero-lift] content further down read the same value. Written
-            once per frame by the shared tick in RevealObserver.
+        {/* ── Hero ─────────────────────────────────────────────────────────
+            STATIC. No parallax, no scroll-linked transforms, no entrance
+            stagger — a plain full-screen block with a video behind it.
 
-            min-h-[100dvh] rather than 100vh: on mobile Safari and Chrome, 100vh
-            is the tallest the viewport ever gets, so a 100vh hero is cropped by
-            the address bar until the user scrolls. dvh tracks the real height. */}
-        <section
-          data-hero-scroll
-          className={
-            // The 100dvh hero is part of the video treatment, so it is gated
-            // with it: with the switch off this is the exact class list the
-            // page shipped with, and the diff is visually a no-op.
-            HERO_VIDEO.ENABLED
-              ? "relative flex min-h-[100dvh] items-center overflow-hidden bg-hero-gradient"
-              : "relative overflow-hidden bg-hero-gradient"
-          }
-        >
-          {/* Behind everything. bg-hero-gradient above stays as the paint that
-              covers the first frame, so there is no flash of black. */}
-          {HERO_VIDEO.ENABLED && (
-            <HeroVideo
-              sources={HERO_VIDEO.sources}
-              scale={HERO_VIDEO.scale}
-              driftPx={HERO_VIDEO.driftPx}
-            />
-          )}
+            `-mt-16 pt-16` pulls the section up under the (sticky, transparent)
+            64px header so the video runs behind it, then puts the space back
+            as padding so the copy is not underneath the nav links.
 
-          <div
-            aria-hidden
-            data-parallax="0.18"
-            className="pointer-events-none absolute -inset-y-32 inset-x-0 opacity-[0.06]"
-            style={{
-              backgroundImage:
-                "radial-gradient(circle at 20% 20%, white 1px, transparent 1px), radial-gradient(circle at 80% 60%, white 1px, transparent 1px)",
-              backgroundSize: "50px 50px",
-            }}
-          />
+            NO `overflow-hidden` ON THIS SECTION. The search pill deliberately
+            hangs half-way out of the bottom edge; clipping here would cut it in
+            half. HeroVideo clips itself instead.                            */}
+        {/* HEIGHT IS 100dvh MINUS 3rem, AND THAT IS NOT A ROUNDING ERROR.
+            At exactly 100dvh the hero's bottom edge IS the fold, so a pill
+            straddling that edge puts half the search bar — the primary action
+            on the page — below the screen. Measured at 1746x894: pill top 858,
+            bottom 931, i.e. 36px of 72px visible. Pulling the section up by
+            3rem lands the whole pill on screen while it still overhangs into
+            the section below by half its height, which is the look asked for.  */}
+        <section className="relative -mt-16 flex min-h-[calc(100dvh-3rem)] flex-col justify-center bg-charcoal-950 pt-16">
+          <HeroVideo sources={HERO_VIDEO.sources} />
 
-          {/* Fades and lifts away as the hero scrolls, so the video is briefly
-              alone before the next section covers it. Safe to transform: nothing
-              inside is position:fixed — a transform here would become its
-              containing block, which is the bug that has now cost this repo two
-              fixes (HomeLocation's reveal, and the filter sheet). Checked. */}
-          <div
-            data-hero-lift={HERO_VIDEO.ENABLED ? "" : undefined}
-            className="container-page relative w-full py-20 xl:py-24"
-          >
-            <div className="mx-auto max-w-3xl text-center">
-              {/* Not "India's Premium Wedding Venue Marketplace". The trust
-                  strip 29 lines below says "Launching in Tamil Nadu", and the
-                  sitemap lists one state's cities — so the badge claimed a
-                  national footprint the same screen contradicts. Say what the
-                  page can actually show. */}
-              <span
-                data-hero
-                style={heroDelay(0)}
-                className="inline-flex items-center gap-1.5 rounded-full border border-gold-400/40 bg-white/5 px-3 py-1 text-[11px] font-semibold uppercase tracking-widest text-gold-300 backdrop-blur"
-              >
+          <div className="container-page relative w-full pb-32 pt-8">
+            <div className="mx-auto max-w-4xl text-center">
+              <span className="hero-ink inline-flex items-center gap-1.5 rounded-full border border-white/25 bg-white/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-widest text-white backdrop-blur">
                 <Sparkles className="h-3 w-3" /> Wedding Venues across Tamil Nadu
               </span>
-              {/* Visually the desktop hero headline, but NOT an <h1>: the
-                  homepage already emits its H1 in the mobile tree above, and
-                  two H1s in one document is what a crawler actually receives
-                  (both trees ship in the same HTML). */}
-              <p
-                data-hero
-                style={heroDelay(1)}
-                className="mt-5 font-serif text-5xl font-bold leading-tight text-ivory-100 xl:text-6xl"
-              >
-                Find the venue that makes your day{" "}
-                <span className="bg-gradient-to-r from-gold-300 to-gold-500 bg-clip-text text-transparent">
-                  unforgettable
-                </span>
+
+              {/* Visually the desktop headline, but NOT an <h1>: the homepage
+                  emits its H1 in the mobile tree above, and both trees ship in
+                  the same HTML, so a second one is what a crawler receives. */}
+              <p className="hero-ink mt-6 font-sans text-5xl font-bold leading-[1.1] tracking-tight text-white xl:text-6xl">
+                Your Perfect{" "}
+                <span className="text-gold-300">Wedding</span> Venue,
+                <br className="hidden sm:block" /> Curated for Every Custom
               </p>
-              {/* Not "verified" — the trust strip six lines below has said
-                  "Owner-submitted listings" all along, and Terms section 5 says
-                  we do not independently verify every listing detail. The hero
-                  and the strip now agree. */}
-              <p
-                data-hero
-                style={heroDelay(2)}
-                className="mx-auto mt-5 max-w-xl text-base text-ivory-300/90"
-              >
+
+              <p className="hero-ink mx-auto mt-6 max-w-2xl text-base text-white/90 xl:text-lg">
                 Discover, compare, and book wedding halls across Tamil Nadu.
                 Owner-submitted listings, transparent pricing, and a clear answer from the venue.
               </p>
             </div>
 
-            {/* Search */}
-            <div data-hero style={heroDelay(3)} className="mt-10 flex justify-center">
-              <HeroSearch />
-            </div>
-
             {/* Trust strip — honest launch-stage messaging (no fabricated numbers) */}
-            <div className="mt-10 grid grid-cols-2 gap-4 border-t border-white/10 pt-8 sm:grid-cols-4">
-              {/* heroIndex continues the sequence rather than restarting at 0,
-                  so the strip follows the search bar instead of racing it. */}
-              <TrustItem heroIndex={4} text="Launching in Tamil Nadu" />
-              <TrustItem heroIndex={5} text="Owner-submitted listings" />
-              <TrustItem heroIndex={6} text="Secure booking flow" />
-              <TrustItem heroIndex={7} text="Owner-approved venues" />
+            <div className="mx-auto mt-12 grid max-w-4xl grid-cols-2 gap-4 border-t border-white/15 pt-8 sm:grid-cols-4">
+              <TrustItem text="Launching in Tamil Nadu" />
+              <TrustItem text="Owner-submitted listings" />
+              <TrustItem text="Secure booking flow" />
+              <TrustItem text="Owner-approved venues" />
+            </div>
+          </div>
+
+          {/* The pill straddles the bottom edge: half on the video, half on the
+              section below. `translate-y-1/2` rather than a negative margin so
+              it takes no layout space here — the section beneath owns the
+              clearance (see its pt-*). */}
+          <div className="absolute inset-x-0 bottom-0 z-20 translate-y-1/2 px-6">
+            <div className="flex justify-center">
+              <HeroSearch cities={citiesWithVenues.map((c) => c.city)} today={today} />
             </div>
           </div>
         </section>
 
         {/* ── Categories strip ─────────────────────────────────── */}
-        <section className="container-page py-12">
+        {/* pt-28, not py-12: the hero's search pill overhangs into this section
+            and would otherwise sit on top of the first row of category tiles. */}
+        <section className="container-page pb-12 pt-28">
           <div className="grid grid-cols-4 gap-4 xl:grid-cols-8">
             {visibleCategories.map((c, i) => (
               <Link

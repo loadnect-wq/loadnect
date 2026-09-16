@@ -61,6 +61,11 @@ export type HallsFilters = {
   amenity?:   string; // single amenity slug
   category?:  string; // premium | budget | wedding | banquet | party
   date?:      string; // YYYY-MM-DD — exclude fully-blocked halls
+  /** YYYY-MM-DD. With `date`, makes the filter an INCLUSIVE RANGE: a
+   *  hall blocked on any single day between the two is excluded, which
+   *  is what someone booking a two-day wedding actually needs. Ignored
+   *  without `date`, or when it is not after it. */
+  dateTo?:    string;
   sort?:      string; // recommended | price-asc | price-desc | rating | capacity
   /** Restrict to these hall ids (validated UUIDs). Used by the saved-halls
    *  view, which stores ids client-side. RLS + the status filter still apply,
@@ -245,11 +250,15 @@ export async function fetchHalls(filters: HallsFilters, failure?: FailureFlag): 
   // free is a wasted trip for the customer and a wasted call for the venue.
   let unavailableIds: string[] = [];
   if (filters.date) {
-    const { data: blocked, error: blockedErr } = await db
-      .from("availability")
-      .select("hall_id")
-      .eq("date", filters.date)
-      .in("status", FULL_BLOCK_STATUSES);
+    // A RANGE EXCLUDES ON ANY DAY, NOT EVERY DAY. If a venue is taken on the
+    // Saturday of a Friday-to-Sunday booking it is no use, so one blocked row
+    // anywhere in the window removes the hall. `gte/lte` because the range is
+    // inclusive of both ends the customer typed.
+    const useRange = Boolean(filters.dateTo && filters.dateTo > filters.date);
+    const base = db.from("availability").select("hall_id").in("status", FULL_BLOCK_STATUSES);
+    const { data: blocked, error: blockedErr } = useRange
+      ? await base.gte("date", filters.date).lte("date", filters.dateTo as string)
+      : await base.eq("date", filters.date);
     if (blockedErr) {
       console.error("[fetchHalls] date-availability lookup failed:", blockedErr.message);
       if (failure) failure.failed = true;

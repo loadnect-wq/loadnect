@@ -37,6 +37,8 @@ type SearchParams = Promise<{
   category?: string;
   amenity?:  string;
   date?:     string;
+  /** Upper bound of an inclusive availability range; only meaningful with `date`. */
+  dateTo?:   string;
   sort?:     string;
   /** "today" from the homepage tile; mapped onto `date`. */
   available?: string;
@@ -49,7 +51,7 @@ type SearchParams = Promise<{
  */
 const FILTER_KEYS = [
   "city", "area", "capacity", "priceMin", "priceMax",
-  "q", "category", "amenity", "date", "available",
+  "q", "category", "amenity", "date", "dateTo", "available",
 ] as const;
 
 export async function generateMetadata({
@@ -100,6 +102,7 @@ export default async function HallsPage({
     category = "",
     amenity  = "",
     date     = "",
+    dateTo   = "",
     sort     = "recommended",
   } = sp;
 
@@ -120,7 +123,7 @@ export default async function HallsPage({
     getAdvancePercent(),
     fetchHallsResult({
       city, area, capacity, priceMin, priceMax, q, category, amenity,
-      date: effectiveDate, sort,
+      date: effectiveDate, dateTo, sort,
     }),
     countActivePremiumHalls(),
     // Lenient by design: if this read fails the "Browse by city" block simply

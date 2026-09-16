@@ -127,12 +127,23 @@ export function Navbar() {
 
   const dashboardPath = authView ? getDashboardPath(authView.role) : "/";
 
+  // Only the homepage has a video behind the header. Everywhere else the bar
+  // keeps its normal surface. Styling lives in globals.css so that crossing the
+  // scroll threshold stays a pure CSS class toggle and never re-renders this
+  // component — the same reason `hallnect-header` works the way it does.
+  const overHero = pathname === "/";
+
   return (
     // `hallnect-header` is styled in app/globals.css against `html.is-scrolled`,
     // which the one shared scroll listener in RevealObserver already maintains.
     // Pure CSS, so crossing the threshold no longer re-renders this component —
     // and `hidden lg:block` moved here off the deleted wrapper (see layout.tsx).
-    <header className="hallnect-header hidden lg:block sticky top-0 z-50 w-full border-b">
+    <header
+      className={cn(
+        "hallnect-header hidden lg:block sticky top-0 z-50 w-full border-b",
+        overHero && "hallnect-header--over-hero",
+      )}
+    >
       <div className="container-page">
         <nav className="flex h-16 items-center justify-between" aria-label="Main navigation">
           {/* Logo */}
@@ -143,7 +154,7 @@ export function Navbar() {
                   that is. */}
               <Image src="/logo.png" alt="" fill sizes="36px" className="object-contain" />
             </span>
-            <span className="font-serif text-xl font-bold tracking-tight text-maroon-800 transition-colors group-hover:text-maroon-600">
+            <span className="hallnect-nav-ink font-serif text-xl font-bold tracking-tight text-maroon-800 transition-colors group-hover:text-maroon-600">
               {APP_NAME}
             </span>
           </Link>
@@ -203,13 +214,13 @@ export function Navbar() {
                   <LayoutDashboard className="mr-1.5 h-4 w-4" />
                   Dashboard
                 </Link>
-                <span className="text-sm font-medium text-charcoal-600">
+                <span className="hallnect-nav-ink text-sm font-medium text-charcoal-600">
                   {authView.fullName ?? "Account"}
                 </span>
                 <button
                   onClick={handleSignOut}
                   disabled={signingOut}
-                  className={buttonVariants({ variant: "outline", size: "sm" })}
+                  className={buttonVariants({ variant: "outline", size: "sm", className: "hallnect-nav-outline" })}
                 >
                   <LogOut className="mr-1.5 h-4 w-4" />
                   {signingOut ? "Signing out…" : "Sign Out"}
@@ -221,10 +232,19 @@ export function Navbar() {
                     action now — both doors on /login create an account on
                     first use — so "Sign In" and "Get Started" pointed at the
                     same screen and made a visitor choose between synonyms. */}
-                <Link href="/owner/register" className={buttonVariants({ variant: "outline", size: "sm" })}>
+                <Link
+                  href="/owner/register"
+                  className={buttonVariants({ variant: "outline", size: "sm", className: "hallnect-nav-outline" })}
+                >
                   List Your Hall
                 </Link>
-                <Link href="/login" className={buttonVariants({ variant: "gold", size: "sm" })}>
+                {/* hallnect-nav-solid: keeps its own maroon-900 ink over the
+                    hero video. See the note in globals.css — whitening this
+                    one takes it from 4.93:1 to 2.14:1. */}
+                <Link
+                  href="/login"
+                  className={buttonVariants({ variant: "gold", size: "sm", className: "hallnect-nav-solid" })}
+                >
                   Sign In
                 </Link>
               </>

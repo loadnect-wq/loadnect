@@ -168,11 +168,6 @@ export function RevealObserver() {
             observer.observe(el);
           }
           observe(el);
-          // A navigation can swap in a whole new tree of parallax layers.
-          if (el.hasAttribute("data-parallax") || el.querySelector?.("[data-parallax]")) {
-            indexParallax();
-            schedule();
-          }
         }
       }
     });
@@ -199,22 +194,18 @@ export function RevealObserver() {
     // NOT the per-element scroll handling the brief rules out: one listener,
     // one rect read per element still waiting, and the whole thing detaches
     // itself the moment nothing is left to reveal.
-    // ONE LISTENER, THREE JOBS. The brief rules out "dozens of independent
+    // ONE LISTENER, TWO JOBS. The brief rules out "dozens of independent
     // scroll listeners", and it is right to: each one costs a main-thread
-    // callback per scroll event. So the reveal sweep, the parallax layers and
-    // the header's scrolled state all ride the same rAF-coalesced tick, which
-    // means at most one layout read per frame no matter how much is animating.
+    // callback per scroll event. So the reveal sweep and the header's scrolled
+    // state ride the same rAF-coalesced tick, which means at most one layout
+    // read per frame no matter how much is animating.
+    //
+    // There used to be a third job here, a parallax pass. Its only consumer was
+    // a decorative dot layer in the homepage hero, and that hero is now static
+    // by request — so the pass went with it rather than idling over an empty
+    // NodeList on every frame.
     let frame = 0;
-    let parallaxNodes: HTMLElement[] = [];
-    let heroScrollNodes: HTMLElement[] = [];
     let headerScrolled = false;
-
-    /** Re-read which elements want parallax. Cheap, and only on real changes. */
-    function indexParallax() {
-      parallaxNodes = [...document.querySelectorAll<HTMLElement>("[data-parallax]")];
-      heroScrollNodes = [...document.querySelectorAll<HTMLElement>("[data-hero-scroll]")];
-    }
-    indexParallax();
 
     function tick() {
       frame = 0;
@@ -233,40 +224,7 @@ export function RevealObserver() {
         }
       }
 
-      // ── 2. Parallax ───────────────────────────────────────────────────────
-      // Offset is measured from the element's own centre against the viewport
-      // centre, so a layer sits at its authored position when centred and
-      // drifts symmetrically either side. Written as a custom property; the
-      // stylesheet owns the actual transform, so nothing here touches layout.
-      for (const node of parallaxNodes) {
-        const rect = node.getBoundingClientRect();
-        // Skip anything nowhere near the screen: no point paying for it.
-        if (rect.bottom < -limit || rect.top > limit * 2) continue;
-        const factor = Number(node.dataset.parallax) || 0.15;
-        const fromCentre = rect.top + rect.height / 2 - limit / 2;
-        node.style.setProperty("--parallax-y", `${(-fromCentre * factor).toFixed(1)}px`);
-      }
-
-      // ── 2b. Hero scroll progress ──────────────────────────────────────────
-      // 0 while the hero fills the screen, 1 once it has scrolled entirely
-      // past. Written as ONE custom property per hero; the stylesheet derives
-      // the video's scale and drift and the content's fade from it, so nothing
-      // here touches layout and the whole effect stays on the compositor.
-      //
-      // Measured against the element's own height rather than the viewport, so
-      // a hero that is not exactly 100dvh (a short landscape phone, a desktop
-      // window dragged small) still reaches 1 exactly as it leaves.
-      for (const node of heroScrollNodes) {
-        const rect = node.getBoundingClientRect();
-        // Nothing to compute once it is gone; leave the last value in place so
-        // it does not snap back if the user scrolls up fast.
-        if (rect.bottom < 0) continue;
-        const travel = rect.height || limit;
-        const progress = Math.min(1, Math.max(0, -rect.top / travel));
-        node.style.setProperty("--hero-progress", progress.toFixed(4));
-      }
-
-      // ── 3. Header state ───────────────────────────────────────────────────
+      // ── 2. Header state ───────────────────────────────────────────────────
       // A class toggle, NOT a reveal. The navbar and app header are sticky and
       // use backdrop-blur: a transform or an opacity below 1 on them (or on any
       // ancestor) would re-parent fixed children and flatten the frosted
@@ -288,7 +246,7 @@ export function RevealObserver() {
     window.addEventListener("scroll", schedule, { passive: true });
     window.addEventListener("resize", schedule, { passive: true });
     // Run once on mount so a restored scroll position gets the right header
-    // state and the right parallax offsets before the user touches anything.
+    // state before the user touches anything.
     schedule();
 
     return () => {
@@ -298,8 +256,6 @@ export function RevealObserver() {
       window.removeEventListener("resize", schedule);
       if (frame) window.cancelAnimationFrame(frame);
       root.classList.remove("is-scrolled");
-      parallaxNodes = [];
-      heroScrollNodes = [];
       for (const id of pending) window.clearTimeout(id);
       pending.clear();
       root.removeAttribute(REVEAL_READY_ATTR);

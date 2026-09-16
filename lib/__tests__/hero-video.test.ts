@@ -4,221 +4,231 @@ import path from "node:path";
 import { HERO_VIDEO } from "../hero-video";
 
 // ─────────────────────────────────────────────────────────────────────────────
-// The hero video is four files cooperating — a component, a shared rAF tick, a
-// stylesheet and a feature gate — so most of what can break here is a broken
-// connection between two of them rather than a bug inside one. These are the
-// connections, each one measured in a real browser at 1440x900 first.
+// The hero is a static video block with a floating search pill. Most of what
+// can break here is a connection between files rather than a bug inside one,
+// so these pin the connections — and the two decisions that were measured
+// rather than eyeballed: the scrim opacity, and every search field being real.
 // ─────────────────────────────────────────────────────────────────────────────
 
 const ROOT = path.resolve(__dirname, "../..");
 const read = (p: string) => fs.readFileSync(path.join(ROOT, p), "utf8");
 
-const heroVideo   = read("components/sections/HeroVideo.tsx");
-const smooth      = read("components/motion/SmoothScroll.tsx");
-const page        = read("app/page.tsx");
-const css         = read("app/globals.css");
-const observer    = read("components/motion/RevealObserver.tsx");
-const location    = read("app/_components/HomeLocation.tsx");
+const heroVideo  = read("components/sections/HeroVideo.tsx");
+const heroSearch = read("components/sections/HeroSearch.tsx");
+const page       = read("app/page.tsx");
+const css        = read("app/globals.css");
+const observer   = read("components/motion/RevealObserver.tsx");
+const navbar     = read("components/layout/Navbar.tsx");
+const halls      = read("lib/halls.ts");
+const hallsPage  = read("app/halls/page.tsx");
+const pkg        = JSON.parse(read("package.json"));
 
 /**
- * Source with its comments removed.
+ * Source with comments stripped.
  *
- * Ordering assertions below use indexOf, and the comments in page.tsx discuss
- * the very attributes being searched for — the note explaining why the mobile
- * hero has no [data-hero-lift] made the lift look like it appeared before the
- * section that carries it, failing a test about code that was correct. Strip
- * the prose, assert on the JSX.
+ * Absence assertions search for the very attributes the comments discuss — a
+ * note explaining why the hero has no parallax would otherwise read as parallax.
  */
 function code(src: string): string {
   return src
-    .replace(/\{\/\*[\s\S]*?\*\/\}/g, "")  // {/* JSX comments */}
-    .replace(/\/\*[\s\S]*?\*\//g, "")        // /* block comments */
-    .replace(/^\s*\/\/.*$/gm, "");             // // line comments
+    .replace(/\{\/\*[\s\S]*?\*\/\}/g, "")
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/^\s*\/\/.*$/gm, "");
 }
 
 const pageCode = code(page);
+const cssCode  = code(css);
 
-describe("--hero-progress reaches everything that reads it", () => {
-  // Custom properties INHERIT. The video layer and the content that lifts are
-  // siblings, so the property has to be written on their common ancestor. It
-  // was briefly on HeroVideo's own root, where the video moved and the text
-  // never faded, because the text is not inside the video.
-  it("is written on the section, not inside the video component", () => {
-    expect(page).toContain("data-hero-scroll");
-    expect(heroVideo).not.toMatch(/^\s*data-hero-scroll/m);
+describe("the hero is static", () => {
+  // The point of the redesign. Scroll-linked motion was removed on request;
+  // these fail the build if any of it creeps back in.
+  it("has no scroll-linked hooks in the markup", () => {
+    for (const hook of ["data-hero-scroll", "data-hero-lift", "data-parallax"]) {
+      expect(pageCode, `${hook} is back in the hero`).not.toContain(hook);
+    }
   });
 
-  it("the lifting content is a descendant of the element that carries it", () => {
-    const section = pageCode.indexOf("data-hero-scroll");
-    const lift = pageCode.indexOf("data-hero-lift=");
-    expect(section).toBeGreaterThan(-1);
-    expect(lift).toBeGreaterThan(section);
+  it("has no scroll-driven transform rules left in the stylesheet", () => {
+    for (const rule of ["[data-hero-video]", "[data-hero-lift]", "--hero-progress", "--parallax-y"]) {
+      expect(cssCode, `${rule} is back in globals.css`).not.toContain(rule);
+    }
   });
 
-  it("is written on both heroes, since the page ships two of them", () => {
-    // The desktop tree is `hidden lg:block` and the mobile tree is `lg:hidden`,
-    // so BOTH are in the HTML and only one has a box. The tick reads
-    // getBoundingClientRect on a display:none element as all zeros, which the
-    // `rect.height || limit` fallback already handles — progress just stays 0.
-    expect(pageCode.match(/data-hero-scroll/g)?.length).toBe(2);
+  it("the shared tick no longer runs a parallax pass", () => {
+    expect(observer).not.toContain("parallaxNodes");
+    expect(observer).not.toContain("hero-progress");
+    // The reveal sweep and the header state are still its job.
+    expect(observer).toContain("is-scrolled");
   });
 
-  it("the shared tick writes it, and no second rAF loop exists", () => {
-    expect(observer).toContain('querySelectorAll<HTMLElement>("[data-hero-scroll]")');
-    expect(observer).toContain('setProperty("--hero-progress"');
-    // The brief's whole point: one tick, one layout read per frame.
+  it("does not ship a smooth-scroll hijacker", () => {
+    // Lenis was added for the old animated hero and broke anchor links while it
+    // was here: /owner/register's CTA scrolled nowhere. It went with the hero.
+    expect(fs.existsSync(path.join(ROOT, "components/motion/SmoothScroll.tsx"))).toBe(false);
+    const deps = { ...pkg.dependencies, ...pkg.devDependencies };
+    expect(Object.keys(deps)).not.toContain("lenis");
+  });
+
+  it("the video component owns no animation of its own", () => {
     expect(heroVideo).not.toContain("requestAnimationFrame");
-  });
-
-  it("the stylesheet derives motion from it rather than JS touching layout", () => {
-    expect(css).toContain("[data-hero-video]");
-    expect(css).toContain("[data-hero-lift]");
-    expect(css).toContain("translate3d");
   });
 });
 
-describe("it plays where browsers allow autoplay, and stops when nobody is looking", () => {
-  it("carries all four attributes iOS and Android require", () => {
+describe("the video still behaves", () => {
+  it("carries the four attributes iOS and Android need to autoplay", () => {
     for (const attr of ["autoPlay", "muted", "loop", "playsInline"]) {
-      expect(heroVideo, `missing ${attr} — autoplay silently refused`).toContain(attr);
+      expect(heroVideo, `missing ${attr}`).toContain(attr);
     }
   });
 
   it("pauses off-screen and on a hidden tab", () => {
     expect(heroVideo).toContain("IntersectionObserver");
     expect(heroVideo).toContain("visibilitychange");
-    expect(heroVideo).toContain("el.pause()");
   });
 
-  it("swallows a refused play() instead of throwing into the console", () => {
+  it("lets a visitor decline it", () => {
+    expect(heroVideo).toContain("prefers-reduced-motion");
+    expect(heroVideo).toContain("saveData");
+  });
+
+  it("swallows a refused play() rather than throwing into the console", () => {
     expect(heroVideo).toMatch(/\.play\(\)\.catch\(/);
   });
 
-  it("never plays under reduced motion", () => {
-    expect(heroVideo).toContain('matchMedia("(prefers-reduced-motion: reduce)")');
-    expect(css).toContain("prefers-reduced-motion");
-  });
-});
-
-describe("the media can actually load", () => {
-  // next.config.ts sets default-src 'self' and declares NO media-src, so media
-  // falls back to 'self'. A CDN or Supabase Storage URL here is blocked with
-  // nothing in the server logs — it just never plays.
-  it("every source is same-origin", () => {
+  it("serves same-origin media, because the CSP has no media-src", () => {
     for (const url of Object.values(HERO_VIDEO.sources)) {
-      expect(url, `${url} is not same-origin — CSP will block it`).toMatch(/^\//);
+      expect(url, `${url} would be blocked by default-src 'self'`).toMatch(/^\//);
     }
   });
 
   it("offers the phone file first, since the browser takes the first match", () => {
-    const mobile = heroVideo.indexOf('media="(max-width: 767px)"');
-    const desktop = heroVideo.indexOf("src={src.desktop}");
-    expect(mobile).toBeGreaterThan(-1);
-    expect(mobile).toBeLessThan(desktop);
+    expect(heroVideo.indexOf('media="(max-width: 767px)"'))
+      .toBeLessThan(heroVideo.indexOf("src={src.desktop}"));
   });
 
-  it("declares a poster, which is the LCP frame and the reduced-motion still", () => {
-    expect(heroVideo).toContain("poster={src.poster}");
-    expect(HERO_VIDEO.sources.poster).toMatch(/\.(jpg|jpeg|webp|avif)$/);
-  });
-
-  it("stays off until the files exist, so a missing video is not a black hero", () => {
-    // Flip HERO_VIDEO.ENABLED in the same commit that adds /public/hero/*.
-    const enabled = HERO_VIDEO.ENABLED as boolean;
-    if (enabled) {
+  it("ships the files it points at", () => {
+    if (HERO_VIDEO.ENABLED) {
       for (const url of Object.values(HERO_VIDEO.sources)) {
-        expect(
-          fs.existsSync(path.join(ROOT, "public", url)),
-          `HERO_VIDEO.ENABLED is true but public${url} is missing`,
-        ).toBe(true);
+        expect(fs.existsSync(path.join(ROOT, "public", url)), `public${url} missing`).toBe(true);
       }
     }
   });
 });
 
-describe("smoothing the wheel does not break the page", () => {
-  // MEASURED: with Lenis owning the scroll position, a native anchor jump is
-  // overwritten by its next eased frame. On /owner/register the "Register" CTA
-  // targets #register at y=2168 and the page stayed at y=0. layout.tsx's skip
-  // link (href="#main") fails identically, which is a keyboard regression.
-  it("hands anchor links to Lenis instead of letting them fight it", () => {
-    expect(smooth, "anchors:true removed — #main and #register stop working").toContain(
-      "anchors: true",
-    );
+describe("the scrim is as light as the measurement allows", () => {
+  // The old scrim was charcoal at 85%/75% plus a multiply pass, which flattened
+  // the footage into a brown rectangle. It did not need to be: measured off the
+  // poster, the clip is already dark — mean luminance 0.118 behind the heading,
+  // i.e. 6.25:1 for white text with NO scrim at all. What needs covering is the
+  // brightest 5% of pixels, where the palace lights blow out and white-on-white
+  // falls to 1.47:1.
+  //
+  // Lightest alpha that clears WCAG AA in every band at the 95th percentile: 26%.
+  it("keeps the middle near the measured floor, not far above it", () => {
+    const mid = heroVideo.match(/rgba\(26,22,20,(0\.\d+)\) 46%/);
+    expect(mid, "the mid-gradient stop moved or was reformatted").not.toBeNull();
+    const alpha = Number(mid ? mid[1] : "0");
+    expect(alpha, "below the measured 26% floor — white text fails AA").toBeGreaterThanOrEqual(0.26);
+    expect(alpha, "drifting back toward a heavy wash").toBeLessThanOrEqual(0.4);
   });
 
-  it("leaves touch scrolling to the OS", () => {
-    expect(smooth).toContain("syncTouch: false");
-    expect(smooth).toContain('matchMedia("(pointer: fine)")');
+  it("is a vignette, so the edges carry the navbar and the pill", () => {
+    expect(heroVideo).toContain("linear-gradient(to bottom,");
+    expect(heroVideo, "the second multiply pass is back").not.toContain("mix-blend-multiply");
   });
 
-  it("does nothing at all under reduced motion", () => {
-    expect(smooth).toContain('matchMedia("(prefers-reduced-motion: reduce)")');
-    expect(smooth).toContain("reduced.matches) return;");
-  });
-
-  it("loads on demand so a phone never downloads the chunk", () => {
-    expect(smooth).toContain('import("lenis")');
-  });
-
-  it("stops its own loop and destroys the instance on unmount", () => {
-    expect(smooth).toContain("cancelAnimationFrame");
-    expect(smooth).toContain("lenis?.destroy()");
-  });
-});
-
-describe("the mobile hero is a band, not a takeover", () => {
-  // The mobile tree is an app shell — AppHeader, then a card stack over a
-  // bottom tab bar. A 100dvh video hero there would push the search entry,
-  // the most used control on the phone homepage, below the fold. Measured at
-  // 375x812 with the band in place: search card bottom at 262px against an
-  // 813px viewport, hero band 225px tall.
-  it("does not claim the viewport the way the desktop hero does", () => {
-    const mobile = pageCode.slice(
-      pageCode.indexOf("lg:hidden"),
-      pageCode.indexOf("hidden lg:block"),
-    );
-    expect(mobile).toContain("data-hero-scroll");
-    expect(mobile, "a 100dvh mobile hero buries the search entry").not.toContain("100dvh");
-  });
-
-  it("does not fade its own content away", () => {
-    // Over a ~225px band, a lift keyed to progress would start dissolving the
-    // search entry within a few pixels of scroll.
-    const mobile = pageCode.slice(
-      pageCode.indexOf("lg:hidden"),
-      pageCode.indexOf("hidden lg:block"),
-    );
-    expect(mobile).not.toContain("data-hero-lift");
-  });
-
-  it("inverts its text rather than leaving charcoal on video", () => {
-    expect(pageCode).toContain("HERO_ON_DARK");
-    expect(pageCode).toContain("text-ivory-100");
-    expect(location).toContain("onDark");
-    expect(location).toContain("text-ivory-200");
+  it("backs the gradient with a text shadow rather than leaning on it", () => {
+    // WCAG gives no credit for a shadow. It covers the frames the 95th
+    // percentile does not, and is never the thing carrying contrast.
+    expect(cssCode).toContain(".hero-ink");
+    expect(pageCode).toContain("hero-ink");
   });
 });
 
-describe("contrast over the video was measured, not guessed", () => {
-  // Sampling every 10th frame of the reference clip, the brightest pixel is
-  // (255,252,228). Against the scrim's weakest stop that is the worst-case
-  // background a caption can land on. At the original 65% midpoint the gold
-  // eyebrow scored 3.63:1 — below AA for 12px semibold. At 75% it scores 5.16.
-  it("keeps the scrim at the opacity the measurement required", () => {
-    expect(
-      heroVideo,
-      "scrim lightened — re-measure, the gold eyebrow fails AA below ~75%",
-    ).toContain("via-charcoal-950/75");
+describe("the navbar is transparent over the hero and solid everywhere else", () => {
+  it("only goes transparent on the homepage", () => {
+    expect(navbar).toContain('pathname === "/"');
+    expect(navbar).toContain("hallnect-header--over-hero");
   });
 
-  it("records the numbers next to the value they justify", () => {
-    expect(heroVideo).toContain("3.63:1");
+  it("comes back on scroll, or it would vanish over white content", () => {
+    // `.is-scrolled .hallnect-header` outranks `.hallnect-header--over-hero`
+    // on specificity, which is what restores the solid bar.
+    expect(cssCode).toContain(".is-scrolled .hallnect-header");
+    expect(cssCode).toContain("html:not(.is-scrolled) .hallnect-header--over-hero");
+  });
+
+  it("drops backdrop-filter while transparent", () => {
+    // It blurs the video behind it, and it is a containing block for fixed
+    // descendants — the trap that has already cost this repo two fixes.
+    expect(cssCode).toMatch(/\.hallnect-header--over-hero\s*\{[^}]*backdrop-filter:\s*none/);
+  });
+
+  it("the hero reaches up behind the bar", () => {
+    expect(pageCode).toContain("-mt-16");
+    expect(pageCode).toContain("pt-16");
   });
 });
 
-describe("a visitor can decline the video", () => {
-  it("honours Data Saver, which matters on metered mobile data", () => {
-    expect(heroVideo).toContain("saveData");
+describe("every field in the search pill is real", () => {
+  // This codebase has already shipped one prominent dead control: the city
+  // picker wrote a localStorage key nothing read. A four-part search bar whose
+  // fourth part does nothing would be the same mistake in a nicer shape.
+  it("maps each control to a parameter /halls actually reads", () => {
+    for (const param of ["city", "date", "dateTo", "capacity"]) {
+      expect(heroSearch, `${param} is not submitted`).toContain(`"${param}"`);
+      expect(hallsPage, `/halls does not read ${param}`).toContain(param);
+    }
+  });
+
+  it("Available Till is backed by a real range query", () => {
+    // Before this, `date` was a single .eq() and a second date box would have
+    // been decoration.
+    expect(halls).toContain("dateTo");
+    expect(halls).toMatch(/\.gte\("date"/);
+    expect(halls).toMatch(/\.lte\("date"/);
+  });
+
+  it("excludes a hall blocked on ANY day of the range, not every day", () => {
+    // A venue taken on the Saturday of a Friday-to-Sunday booking is no use.
+    expect(halls).toContain("FULL_BLOCK_STATUSES");
+    expect(halls).toContain("useRange");
+  });
+
+  it("never sends a range without its start, which would silently do nothing", () => {
+    expect(heroSearch).toContain('params.has("date")');
+  });
+
+  it("offers only cities that hold inventory", () => {
+    // The old control listed seventeen hardcoded names, several of which
+    // Hallnect has never had a venue in — every one an empty search.
+    expect(heroSearch).toContain("cities");
+    expect(heroSearch, "back on the hardcoded mock list").not.toContain("mock-data");
+    expect(pageCode).toContain("citiesWithVenues.map");
+  });
+
+  it("takes today from the server, not the visitor's clock", () => {
+    expect(heroSearch).toContain("today");
+    expect(pageCode).toContain("todayInBusinessTz()");
+  });
+
+  it("is a pill with four cells, three dividers and a round submit", () => {
+    expect(heroSearch).toContain("rounded-full");
+    expect(heroSearch.match(/w-px shrink-0/g)?.length).toBe(3);
+    expect(heroSearch).toContain("h-14 w-14 shrink-0");
+  });
+
+  it("labels every control", () => {
+    // A pill of bare inputs is unusable with a screen reader.
+    expect(heroSearch.match(/htmlFor=/g)?.length).toBeGreaterThanOrEqual(4);
+    expect(heroSearch).toContain('aria-label="Search"');
+  });
+
+  it("cannot be clipped by the section it hangs out of", () => {
+    // It straddles the hero's bottom edge; overflow-hidden there would cut it.
+    const hero = pageCode.slice(pageCode.indexOf("hidden lg:block"));
+    const section = hero.slice(hero.indexOf("<section"), hero.indexOf("</section>"));
+    expect(section, "overflow-hidden would cut the pill in half").not.toContain("overflow-hidden");
+    expect(section).toContain("translate-y-1/2");
   });
 });
