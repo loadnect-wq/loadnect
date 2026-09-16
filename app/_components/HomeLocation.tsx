@@ -62,7 +62,11 @@ export function HomeLocation({
         onClick={() => setOpen(true)}
         className={cn(
           "mt-2 inline-flex items-center gap-1.5 text-sm font-medium",
-          onDark ? "text-ivory-200" : "text-charcoal-700",
+          // White, not ivory-200. Over the mobile hero video this label
+          // measured 4.69:1 against a 4.5 bar — a 4% margin, on a number
+          // derived from a single poster frame. White takes it to 5.49:1
+          // (+22%) and is indistinguishable at 14px on a dark video.
+          onDark ? "text-white" : "text-charcoal-700",
         )}
       >
         <MapPin className={cn("h-4 w-4", onDark ? "text-gold-300" : "text-maroon-500")} />

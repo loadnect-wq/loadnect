@@ -243,7 +243,7 @@ export default async function HomePage() {
                   desktop hero below is display:none to Googlebot. */}
               <h1
                 className={`mt-1 font-serif text-2xl font-bold ${
-                  HERO_ON_DARK ? "hero-ink text-ivory-100" : "text-charcoal-900"
+                  HERO_ON_DARK ? "hero-ink text-white" : "text-charcoal-900"
                 }`}
               >
                 Wedding Halls &amp; Marriage Halls in Tamil Nadu
