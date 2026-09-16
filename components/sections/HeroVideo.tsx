@@ -35,7 +35,9 @@
 // browser downloads nearly the whole file before the first frame.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { useEffect, useRef } from "react";
+import Image from "next/image";
+import { useEffect, useRef, useState } from "react";
+import { cn } from "@/lib/utils";
 
 export type HeroVideoSources = { desktop: string; mobile: string; poster: string };
 
@@ -82,6 +84,12 @@ type Props = {
 export function HeroVideo({ sources, className }: Props) {
   const src = { ...DEFAULT_SOURCES, ...sources };
   const videoRef = useRef<HTMLVideoElement>(null);
+  // The poster is a real element underneath, and the video crossfades onto it
+  // once it is genuinely playing. Before this the first painted frame replaced
+  // the poster in a single tick, which read as a flicker on a slow connection.
+  // It also means a visitor who never gets video — reduced motion, Data Saver,
+  // refused autoplay — simply keeps the poster, with no transparent gap.
+  const [videoShowing, setVideoShowing] = useState(false);
 
   // Play only while on screen. A looping decode costs real CPU, and on a phone
   // that is real battery — once the hero has scrolled away nobody is watching.
@@ -139,8 +147,20 @@ export function HeroVideo({ sources, className }: Props) {
         .filter(Boolean)
         .join(" ")}
     >
+      {/* LCP candidate, so it is `priority`: preloaded, and served as AVIF or
+          WebP rather than the raw 86 KB JPEG. */}
+      <Image
+        src={src.poster}
+        alt=""
+        fill
+        priority
+        sizes="100vw"
+        className="object-cover object-center"
+      />
+
       <video
         ref={videoRef}
+        onPlaying={() => setVideoShowing(true)}
         // The four attributes iOS Safari and Android Chrome require before they
         // will autoplay. `muted` is load-bearing; `playsInline` is what stops
         // iOS taking the video fullscreen.
@@ -149,8 +169,13 @@ export function HeroVideo({ sources, className }: Props) {
         loop
         playsInline
         preload="metadata"
-        poster={src.poster}
-        className="absolute inset-0 h-full w-full object-cover object-center"
+        // No `poster` attribute: the <Image> above already paints it, and the
+        // attribute would fetch the unoptimised original a second time.
+        className={cn(
+          "absolute inset-0 h-full w-full object-cover object-center",
+          "transition-opacity duration-700 motion-reduce:transition-none",
+          videoShowing ? "opacity-100" : "opacity-0",
+        )}
       >
         {/* Narrowest first — the browser takes the FIRST matching source. */}
         <source src={src.mobile} media="(max-width: 767px)" type="video/mp4" />

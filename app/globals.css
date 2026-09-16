@@ -370,6 +370,17 @@
   backdrop-filter: none;
   box-shadow: none;
 }
+/* The bar's own surface animates over 320ms; without this its ink and the
+   shadow that carries it would snap at the threshold while the background was
+   still crossing. */
+.hallnect-header a,
+.hallnect-header .hallnect-nav-ink {
+  transition:
+    color 320ms ease,
+    text-shadow 320ms ease,
+    background-color 320ms ease,
+    border-color 320ms ease;
+}
 html:not(.is-scrolled) .hallnect-header--over-hero {
   /* The ink. A small shadow rather than a scrim behind the bar — the video is
      already darkened at the top edge by the hero vignette, and this covers the

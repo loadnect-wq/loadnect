@@ -46,10 +46,27 @@ function Field({
   className?: string;
 }) {
   return (
-    <div className={cn("min-w-0 flex-1 px-5 py-2", className)}>
+    // FOCUS IS SHOWN PER CELL, NOT PER PILL. The controls themselves carry no
+    // ring (an inset ring fights the rounded edges), so without this a keyboard
+    // user tabbing Location -> From -> Till -> Guests saw the *same* outline on
+    // the whole bar the entire way and could not tell which field they were in.
+    // Measured before the fix: outline `none`, box-shadow `none` on the focused
+    // control.
+    //
+    // The hover tint doubles as a hit-target hint: the cell is ~226px wide but
+    // the input inside it is only ~20px tall, so the tint is what tells you the
+    // whole cell is clickable.
+    <div
+      className={cn(
+        "min-w-0 flex-1 rounded-full px-5 py-2.5 transition-colors duration-200",
+        "hover:bg-charcoal-50",
+        "focus-within:bg-charcoal-50 focus-within:ring-2 focus-within:ring-maroon-500",
+        className,
+      )}
+    >
       <label
         htmlFor={htmlFor}
-        className="block text-[11px] font-semibold uppercase tracking-wider text-charcoal-500"
+        className="block cursor-pointer text-[11px] font-semibold uppercase tracking-wider text-charcoal-500"
       >
         {label}
       </label>
@@ -105,9 +122,8 @@ export function HeroSearch({ cities, today }: Props) {
         "flex w-full max-w-4xl items-center gap-0 rounded-full bg-white",
         "p-2 pl-1 shadow-[0_18px_50px_-12px_rgba(26,22,20,0.35)]",
         "ring-1 ring-black/5",
-        // Keyboard focus has to be visible on the pill as a whole, since the
-        // individual cells deliberately have no ring of their own.
-        "focus-within:ring-2 focus-within:ring-maroon-500",
+        // No focus-within ring HERE — each cell shows its own, which is the
+        // only way to tell the four fields apart with a keyboard.
       )}
     >
       <Field label="Location" htmlFor="hs-city">

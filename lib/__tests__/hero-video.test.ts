@@ -232,3 +232,56 @@ describe("every field in the search pill is real", () => {
     expect(section).toContain("translate-y-1/2");
   });
 });
+
+describe("the polish pass", () => {
+  it("shows focus on the CELL, not just on the whole pill", () => {
+    // Measured before the fix: focusing any of the four controls gave
+    // `outline: none` and `box-shadow: none` on the control, and the only
+    // indicator was one ring around the entire bar — so tabbing Location ->
+    // From -> Till -> Guests looked identical at every step.
+    expect(heroSearch).toContain("focus-within:ring-2");
+    expect(heroSearch).toContain("focus-within:bg-charcoal-50");
+    const form = heroSearch.slice(heroSearch.indexOf("<form"));
+    const formClasses = form.slice(0, form.indexOf(">"));
+    expect(
+      formClasses,
+      "the pill-level ring is back and hides which cell has focus",
+    ).not.toContain("focus-within:ring");
+  });
+
+  it("makes the whole cell a hit target, not just the 20px input", () => {
+    expect(heroSearch).toContain("hover:bg-charcoal-50");
+    expect(heroSearch).toContain("cursor-pointer");
+  });
+
+  it("crossfades the video onto a real poster element", () => {
+    // The poster used to be the video's own `poster` attribute, so the first
+    // painted frame replaced it in a single tick — a flicker on a slow link.
+    expect(heroVideo).toContain("onPlaying");
+    expect(heroVideo).toContain("transition-opacity");
+    expect(heroVideo).toContain("videoShowing");
+  });
+
+  it("does not fetch the poster twice", () => {
+    // <Image> paints it; a `poster` attribute would pull the unoptimised
+    // original down alongside the optimised one.
+    expect(heroVideo).toContain("next/image");
+    expect(heroVideo, "poster attribute is back — duplicate fetch").not.toMatch(/poster=\{/);
+  });
+
+  it("keeps the poster as the LCP candidate", () => {
+    expect(heroVideo).toContain("priority");
+  });
+
+  it("holds still for reduced motion", () => {
+    expect(heroVideo).toContain("motion-reduce:transition-none");
+  });
+
+  it("fades the header ink with its surface rather than snapping", () => {
+    expect(cssCode).toMatch(/\.hallnect-header a,[\s\S]*?text-shadow 320ms/);
+  });
+
+  it("still has native smooth scrolling now that Lenis is gone", () => {
+    expect(cssCode).toContain("scroll-behavior: smooth");
+  });
+});
