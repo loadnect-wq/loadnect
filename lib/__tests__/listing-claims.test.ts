@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import fs from "node:fs";
+import { buildMetadata } from "@/lib/seo/metadata";
 import path from "node:path";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -146,5 +147,35 @@ describe("the budget filter's treatment of an unpriced venue is a decision, not 
     const start = halls.indexOf("A BUDGET FILTER DROPS AN UNPRICED VENUE");
     expect(start, "the explanation was deleted").toBeGreaterThan(-1);
     expect(halls.slice(start, start + 700)).toContain('q.gte("price_per_day"');
+  });
+});
+
+describe("a noindex page nominates nothing", () => {
+  // /halls?city=Madurai shipped `noindex, follow` AND `rel=canonical -> /halls`
+  // together — one tag saying "index that instead", the other "index nothing".
+  // app/halls/page.tsx:71-76 asserts at length that this does not happen; the
+  // comment was right about the intent and wrong about the code, because
+  // buildMetadata set alternates.canonical before the indexable branch.
+  const base = { title: "T", description: "D", path: "/halls" };
+
+  it("omits the canonical when the page is not indexable", () => {
+    const m = buildMetadata({ ...base, indexable: false });
+    expect(m.alternates?.canonical).toBeUndefined();
+    expect(m.robots).toMatchObject({ index: false, follow: true });
+  });
+
+  it("still self-canonicalises when the page IS indexable", () => {
+    const m = buildMetadata({ ...base, indexable: true });
+    expect(String(m.alternates?.canonical)).toContain("/halls");
+  });
+
+  it("defaults to indexable, so no existing page loses its canonical", () => {
+    const m = buildMetadata(base);
+    expect(String(m.alternates?.canonical)).toContain("/halls");
+  });
+
+  it("keeps the Open Graph url either way — that is identity, not indexing", () => {
+    const m = buildMetadata({ ...base, indexable: false });
+    expect(String(m.openGraph?.url)).toContain("/halls");
   });
 });

@@ -66,7 +66,18 @@ export function buildMetadata(input: BuildMetadataInput): Metadata {
   return {
     title,
     description,
-    alternates: { canonical },
+    // A NOINDEX PAGE NOMINATES NOTHING — the same rule noindexMetadata already
+    // states and follows. This was set unconditionally, so /halls?city=Madurai
+    // shipped `noindex, follow` AND `rel=canonical → /halls` together: one tag
+    // says "index that instead", the other "index nothing". app/halls/page.tsx
+    // lines 71-76 explain at length why that pair is not wanted and assert it
+    // does not happen — the comment was right about the intent and wrong about
+    // the code. Google treats the combination as conflicting signals, and the
+    // documented worry is the noindex carrying across to /halls itself.
+    //
+    // The OG url keeps the absolute URL either way: it is how the page
+    // identifies itself when shared, not an indexing instruction.
+    ...(indexable ? { alternates: { canonical } } : {}),
     robots: indexable
       ? { index: true, follow: true,
           googleBot: { index: true, follow: true, "max-image-preview": "large", "max-snippet": -1 } }
