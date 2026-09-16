@@ -23,6 +23,9 @@ const observer   = read("components/motion/RevealObserver.tsx");
 const navbar     = read("components/layout/Navbar.tsx");
 const scrub      = read("components/sections/ScrollScrubVideo.tsx");
 const heroSearch = read("components/sections/HeroSearch.tsx");
+const mobileSearch = read("app/_components/MobileSearch.tsx");
+const calendar   = read("components/sections/DateRangeCalendar.tsx");
+const searchUrl  = read("lib/search-url.ts");
 const halls      = read("lib/halls.ts");
 const hallsPage  = read("app/halls/page.tsx");
 const pkg        = JSON.parse(read("package.json"));
@@ -56,7 +59,7 @@ describe("the hero is the scroll walk-through", () => {
     const hero = desktop.slice(desktop.indexOf("<ScrollScrubVideo"), desktop.indexOf("/>", desktop.indexOf("footer={")) + 2);
     expect(hero).toContain("intro={");
     expect(hero).toContain("The hall you want,");
-    expect(hero).toContain("footer={<HeroSearch");
+    expect(hero).toMatch(/footer=\{\s*<HeroSearch/);
   });
 
   it("keeps the search pill out of the part that fades", () => {
@@ -103,24 +106,69 @@ describe("the old looping hero is removed, not just hidden", () => {
   });
 });
 
-describe("the mobile header band", () => {
+describe("the mobile hero card", () => {
   it("shows the walk-through's opening frame as a still", () => {
-    // Not the scrub: pinning two screens of scroll in a ~225px app-shell band
-    // would bury the search entry and cost ~5 MB of mobile data.
+    // Not the scrub: pinning two screens of scroll on a phone would bury the
+    // search and cost ~5 MB of mobile data.
     expect(mobile).toContain('src="/scrub/hall-walkthrough-poster.jpg"');
     expect(mobile).not.toContain("<video");
     expect(mobile).not.toContain("<ScrollScrubVideo");
   });
 
-  it("uses the heavier, measured shade for this brighter frame", () => {
-    // On the current clip, 65% left the eyebrow only 16% above 4.5 over the
-    // dusk sky; 70% gives 6.06:1.
-    expect(mobile).toContain("from-charcoal-950/70 to-charcoal-950/50");
+  it("uses the measured bottom-heavy shade", () => {
+    // Measured on the poster cropped to the 343x272 card at 375px: H1 7.29:1
+    // (bar 3.0), subline 14.23:1. The top stays light over the sky.
+    expect(pageCode).toContain(
+      '"linear-gradient(to bottom, rgba(26,22,20,0.20) 0%, rgba(26,22,20,0.45) 30%, rgba(26,22,20,0.80) 60%, rgba(26,22,20,0.90) 100%)"',
+    );
+    expect(mobile).toContain("style={{ background: MOBILE_HERO_SHADE }}");
   });
 
-  it("keeps white ink on the band", () => {
-    expect(mobile.match(/"hero-ink text-white"/g)?.length).toBeGreaterThanOrEqual(2);
-    expect(mobile).toContain("<HomeLocation cities={citiesWithVenues} onDark />");
+  it("puts the eyebrow on its own dark pill — the sky under it is that bright", () => {
+    // Without the pill the eyebrow scored 2.05:1 against a 4.5 bar; on a 55%
+    // pill, 7.82:1.
+    const eyebrow = mobile.slice(mobile.lastIndexOf("<p", mobile.indexOf("Plan your celebration")));
+    expect(eyebrow.slice(0, eyebrow.indexOf(">"))).toContain("bg-charcoal-950/55");
+  });
+
+  it("keeps the H1 in the mobile tree, in white", () => {
+    const h1 = mobile.slice(mobile.indexOf("<h1"));
+    expect(h1.slice(0, h1.indexOf(">"))).toContain("text-white");
+    expect(h1).toContain("Wedding Halls &amp; Marriage Halls in Tamil Nadu");
+    expect(desktop).not.toContain("<h1");
+  });
+
+  it("overlaps the search card onto the photo, above the fold", () => {
+    expect(mobile).toMatch(/className="relative z-10 -mt-10 px-2">\s*<MobileSearch/);
+  });
+
+  it("dropped the controls that only looked like search", () => {
+    for (const gone of ["HomeSearchEntry", "HomeLocation", "CategoryRow", "CitiesRow"]) {
+      expect(page, `${gone} is back`).not.toContain(gone);
+      expect(exists(`app/_components/${gone}.tsx`), `${gone}.tsx is back`).toBe(false);
+    }
+  });
+});
+
+describe("the rest of the phone homepage", () => {
+  it("lays hall types out as a grid of whole rows", () => {
+    expect(mobile).toContain('className="container-app grid grid-cols-3 gap-2.5"');
+    expect(pageCode).toContain("typeTiles.length % 3 === 0");
+  });
+
+  it("snaps the venue carousel card by card, with the next one peeking in", () => {
+    expect(mobile).toContain("snap-x snap-mandatory");
+    expect(mobile).toContain("w-[78vw] max-w-[300px] shrink-0 snap-start");
+  });
+
+  it("repeats the owner card's copy word for word, not new claims", () => {
+    for (const line of [
+      "List your wedding hall on Hallnect",
+      "Free to list — pay only on booking",
+    ]) {
+      expect(mobile.match(new RegExp(line))?.length, line).toBe(1);
+      expect(desktop, line).toContain(line);
+    }
   });
 });
 
@@ -152,13 +200,20 @@ describe("the navbar over the hero", () => {
   });
 });
 
-describe("every field in the search pill is real", () => {
+describe("every field in both searches is real", () => {
   // This codebase has already shipped one prominent dead control: the city
   // picker wrote a localStorage key nothing read.
-  it("maps each control to a parameter /halls actually reads", () => {
+  it("maps each answer to a parameter /halls actually reads", () => {
     for (const param of ["city", "date", "dateTo", "capacity"]) {
-      expect(heroSearch, `${param} is not submitted`).toContain(`"${param}"`);
+      expect(searchUrl, `${param} is not submitted`).toContain(`params.set("${param}"`);
       expect(hallsPage, `/halls does not read ${param}`).toContain(param);
+    }
+  });
+
+  it("builds the URL in one place for desktop and phone", () => {
+    for (const src of [heroSearch, mobileSearch]) {
+      expect(src).toContain("buildHallSearchHref({ city, date, dateTo, capacity })");
+      expect(src).not.toContain("new URLSearchParams");
     }
   });
 
@@ -174,33 +229,91 @@ describe("every field in the search pill is real", () => {
   });
 
   it("never sends a range without its start", () => {
-    expect(heroSearch).toContain('params.has("date")');
+    // Behaviour is covered in search-url.test.ts; this pins the nesting.
+    const dateBlock = searchUrl.slice(searchUrl.indexOf('params.set("date"'));
+    expect(dateBlock.indexOf('params.set("dateTo"')).toBeGreaterThan(0);
+    expect(dateBlock.indexOf('params.set("dateTo"')).toBeLessThan(dateBlock.indexOf("}"));
   });
 
-  it("offers only cities that hold inventory", () => {
-    expect(heroSearch, "back on the hardcoded mock list").not.toContain("mock-data");
-    expect(pageCode).toContain("<HeroSearch cities={citiesWithVenues.map((c) => c.city)}");
+  it("offers only cities that hold inventory, with their real counts", () => {
+    for (const src of [heroSearch, mobileSearch]) {
+      expect(src, "back on the hardcoded mock list").not.toContain("mock-data");
+    }
+    expect(
+      pageCode.match(/cities=\{citiesWithVenues\.map\(\(c\) => \(\{ city: c\.city, venueCount: c\.venueCount \}\)\)\}/g)
+        ?.length,
+    ).toBe(2);
+  });
+
+  it("offers the same guest steps as the /halls capacity filter", async () => {
+    const { GUEST_PRESETS } = await import("../search-url");
+    const { CAPACITY_OPTIONS } = await import("../mock-data");
+    expect([...GUEST_PRESETS]).toEqual(CAPACITY_OPTIONS.map((o) => o.value));
   });
 
   it("takes today from the server, not the visitor's clock", () => {
     expect(pageCode).toContain("todayInBusinessTz()");
   });
 
-  it("is a pill with four cells, three dividers and a round submit", () => {
-    expect(heroSearch).toContain("rounded-full");
-    expect(heroSearch.match(/w-px shrink-0/g)?.length).toBe(3);
-    expect(heroSearch).toContain("h-14 w-14 shrink-0");
+  it("asks three questions — Where, When, Guests — and says Search in words", () => {
+    for (const label of ['label="Where"', 'label="When"', 'label="Guests"']) {
+      expect(heroSearch).toContain(label);
+      expect(mobileSearch).toContain(label);
+    }
+    expect(heroSearch.match(/<Segment/g)?.length).toBe(3);
+    const submit = heroSearch.slice(heroSearch.indexOf('type="submit"'));
+    expect(submit.slice(0, submit.indexOf("</button>"))).toMatch(/\n\s*Search\n/);
   });
 
-  it("labels every control", () => {
-    expect(heroSearch.match(/htmlFor=/g)?.length).toBeGreaterThanOrEqual(4);
-    expect(heroSearch).toContain('aria-label="Search"');
+  it("opens its panels upward, because the pill is pinned to the bottom", () => {
+    expect(heroSearch).toContain("absolute bottom-full");
+    expect(heroSearch).not.toContain("top-full");
   });
 
-  it("shows focus per cell, not just around the whole pill", () => {
-    expect(heroSearch).toContain("focus-within:ring-2");
+  it("announces each panel and whether it is open", () => {
+    expect(heroSearch).toContain('role="dialog"');
+    expect(heroSearch).toContain("aria-expanded={active}");
+    expect(heroSearch).toContain('aria-haspopup="dialog"');
+  });
+
+  it("closes on Escape and hands focus back to the segment", () => {
+    expect(heroSearch).toContain('e.key === "Escape"');
+    expect(heroSearch).toContain("triggers.current[current]?.focus()");
+  });
+
+  it("shows focus per segment, not just around the whole pill", () => {
+    expect(heroSearch).toContain("focus-visible:ring-2 focus-visible:ring-maroon-600");
     const form = heroSearch.slice(heroSearch.indexOf("<form"));
     expect(form.slice(0, form.indexOf(">"))).not.toContain("focus-within:ring");
+  });
+
+  it("uses a placeholder colour that passes 4.5:1", () => {
+    // The old "Any" placeholder was charcoal-400 on white, about 3.4:1.
+    expect(heroSearch).toContain('"text-charcoal-600")');
+    expect(mobileSearch).toContain('"text-charcoal-600")');
+  });
+});
+
+describe("the date calendar", () => {
+  it("disables past days and never picks one", () => {
+    expect(calendar).toContain("disabled={past}");
+    expect(calendar).toContain("if (day < today) return;");
+  });
+
+  it("is one tab stop, moved with the arrow keys", () => {
+    expect(calendar).toContain("tabIndex={day === tabDay ? 0 : -1}");
+    for (const key of ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End"]) {
+      expect(calendar).toContain(`${key}:`);
+    }
+  });
+
+  it("names every day in full, with its place in the range", () => {
+    expect(calendar).toContain("aria-label={`${formatFull(day)}${state}");
+  });
+
+  it("gives a phone one month with 44px days", () => {
+    expect(mobileSearch).toContain("months={1}");
+    expect(calendar).toContain('months === 1 ? "h-11 w-11" : "h-10 w-10"');
   });
 });
 

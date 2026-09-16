@@ -1,13 +1,11 @@
 import Link from "next/link";
 import {
-  Building2, CheckCircle2, Crown, Heart, MapPin, PartyPopper,
-  Search, Shield, Sparkles, Star, Wallet, Zap,
+  ArrowRight, Building2, CheckCircle2, ChevronRight, Crown, Heart, LayoutGrid, MapPin,
+  PartyPopper, Shield, Sparkles, Star, Wallet, Zap,
 } from "lucide-react";
 import { AppHeader } from "@/components/app/AppHeader";
-import { HomeLocation } from "./_components/HomeLocation";
-import { HomeSearchEntry } from "./_components/HomeSearchEntry";
-import { CategoryRow } from "./_components/CategoryRow";
-import { CitiesRow } from "./_components/CitiesRow";
+import { MobileSearch } from "./_components/MobileSearch";
+import { CityGrid } from "./_components/CityGrid";
 import Image from "next/image";
 import { CITY_COVERS, LAUNCH_CITIES, POPULAR_CITIES } from "@/lib/content";
 import { getAdvancePercent } from "@/lib/platform-settings";
@@ -53,7 +51,19 @@ const CATEGORY_ICONS: Record<string, React.ReactNode> = {
   crown:    <Crown className="h-5 w-5" />,
   pin:      <MapPin className="h-5 w-5" />,
   zap:      <Zap className="h-5 w-5" />,
+  all:      <LayoutGrid className="h-5 w-5" />,
 };
+
+// The phone hero card's shade: light over the sky at the top, heavy under the
+// copy at the bottom. Measured on the poster cropped to the 343x272 card at
+// 375px, 95th-percentile brightest pixel under each line of white text:
+//   eyebrow (on its own 55% pill)  7.82:1 vs 4.5  (+74%)
+//   H1, 28px bold                  7.29:1 vs 3.0  (+143%)
+//   subline, 14px                 14.23:1 vs 4.5  (+216%)
+// Without the pill the eyebrow scored 2.05:1 — the sky is that bright. Keep the
+// pill, or darken the top, if either changes.
+const MOBILE_HERO_SHADE =
+  "linear-gradient(to bottom, rgba(26,22,20,0.20) 0%, rgba(26,22,20,0.45) 30%, rgba(26,22,20,0.80) 60%, rgba(26,22,20,0.90) 100%)";
 
 // Used when a city has real inventory but no hand-picked gradient in
 // POPULAR_CITIES — a tile still has to look like the others.
@@ -176,6 +186,17 @@ export default async function HomePage() {
     ? [...CATEGORIES]
     : CATEGORIES.filter((c) => c.key !== "premium");
   const popularSearches = visibleCategories.filter((c) => c.key !== "today").slice(0, 6);
+  // The phone's "halls by type" grid, three to a row. Five types without
+  // Premium, so "All halls" fills the row rather than leaving a gap.
+  const typeTiles = popularSearches.map((c) => ({
+    key: c.key as string,
+    icon: c.icon as string,
+    href: c.href as string,
+    short: c.label.replace(/ Halls$/, ""),
+  }));
+  const mobileTypes = typeTiles.length % 3 === 0
+    ? typeTiles
+    : [...typeTiles, { key: "all", icon: "all", href: "/halls", short: "All halls" }];
 
   // 3. CITY TILES. This strip once rendered a static list of eight cities, so
   //    seven of the eight tiles led to an empty search. Every tile is now
@@ -224,105 +245,104 @@ export default async function HomePage() {
         <AppHeader />
 
         {/* ── Mobile hero ───────────────────────────────────────────────
-            The walk-through's opening frame, as a still, behind the H1, the
-            city picker and the search entry. Not the scrub itself: this tree is
-            an app shell with a ~225px band, and pinning two screens of scroll
-            on a phone would bury the search entry — the most used control on
-            the phone homepage — and cost ~5 MB of mobile data for an effect.
+            A photo card, not a full-bleed band: the walk-through's opening
+            frame, rounded like every other card in this app shell, with the
+            search card overlapping its bottom edge so the one control that
+            matters is the first thing a thumb reaches.
 
-            THE SHADE IS HEAVIER THAN THE DESKTOP ONE, MEASURED. The top of this
-            frame is bright dusk sky, exactly where "Welcome" sits. On the
-            current (processed, brighter) clip, 65% left the eyebrow only 16%
-            above its 4.5 bar; 70% at the top easing to 50% at the bottom gives
-            the eyebrow 6.06:1 (+35%), the H1 5.59:1 and the city picker 7.10:1
-            (95th-percentile brightest pixel, cropped as a 390px band). */}
-        <section className="relative overflow-hidden bg-charcoal-950 pb-5">
-          <Image
-            src="/scrub/hall-walkthrough-poster.jpg"
-            alt=""
-            fill
-            priority
-            sizes="100vw"
-            className="object-cover object-center"
-          />
-          <div
-            aria-hidden
-            className="absolute inset-0 bg-gradient-to-b from-charcoal-950/70 to-charcoal-950/50"
-          />
+            Not the scrub itself: pinning two screens of scroll on a phone would
+            bury the search and cost ~5 MB of mobile data for an effect.
 
-        <div className="container-app relative pt-3">
-          <div data-hero style={heroDelay(0)} className="flex items-end justify-between gap-3">
-            <div>
-              {/* WHITE, NOT GOLD, over the video — measured, not taste. At
-                  12px/600 this is normal text and needs 4.5:1; against the
-                  95th-percentile brightest pixel of this band under a 35%
-                  scrim, gold-300 gives 3.13:1 and even gold-100 only 4.41:1.
-                  White gives 4.91:1. The gold accent survives on the desktop
-                  headline, where the type is large enough to carry it. */}
-              <p
-                className={`text-xs font-semibold uppercase tracking-widest ${
-                  "hero-ink text-white"
-                }`}
-              >
-                Welcome
+            THE SHADE IS BOTTOM-HEAVY, BECAUSE THE TEXT IS AT THE BOTTOM. The top
+            of this frame is bright dusk sky; the copy now sits low in the card,
+            over the dark hall floor, so the sky can stay bright. Measured on
+            the poster cropped to the card at 390px (95th-percentile brightest
+            pixel under the composited shade) — see homepage-hero.test.ts. */}
+        <section className="container-app pt-2">
+          <div data-hero style={heroDelay(0)} className="relative overflow-hidden rounded-[28px] bg-charcoal-950">
+            <div data-hero-zoom className="absolute inset-0">
+              <Image
+                src="/scrub/hall-walkthrough-poster.jpg"
+                alt=""
+                fill
+                priority
+                sizes="(max-width: 512px) 100vw, 512px"
+                className="object-cover object-center"
+              />
+            </div>
+            <div aria-hidden className="absolute inset-0" style={{ background: MOBILE_HERO_SHADE }} />
+            <div className="relative flex min-h-[272px] flex-col justify-end px-5 pb-14 pt-10">
+              <p className="inline-flex items-center gap-1.5 self-start rounded-full bg-charcoal-950/55 px-3 py-1 text-[11px] font-semibold uppercase tracking-widest text-white backdrop-blur">
+                <Sparkles className="h-3.5 w-3.5" aria-hidden /> Plan your celebration
               </p>
               {/* THE page H1. Google indexes mobile-first, so the keyword- and
                   location-bearing heading must live in the MOBILE tree — the
                   desktop hero below is display:none to Googlebot. */}
-              <h1
-                className={`mt-1 font-serif text-2xl font-bold ${
-                  "hero-ink text-white"
-                }`}
-              >
+              <h1 className="hero-ink mt-2 text-balance font-serif text-[28px] font-bold leading-[1.15] text-white">
                 Wedding Halls &amp; Marriage Halls in Tamil Nadu
               </h1>
+              <p className="hero-ink mt-2 text-sm text-white">
+                Owner-submitted listings, transparent pricing.
+              </p>
             </div>
           </div>
-          {/* Real service areas that actually have venues, and the picker now
-              navigates. See app/_components/HomeLocation.tsx. */}
-          {/* Still no `data-reveal` here, but the reason has changed and the
-              old note was misleading enough to be worth correcting. It used to
-              be load-bearing: BottomSheet rendered its fixed backdrop and panel
-              INLINE, so any transform on this wrapper became their containing
-              block and the city picker opened inside this strip instead of over
-              the screen. The sheet now portals to <body> (commit 84f0e69), so a
-              transform here can no longer reach it.
 
-              It stays off because this block is above the fold on every phone
-              and a scroll reveal is the wrong tool for that — the `data-hero`
-              keyframe above is the right one. Not because it would break. */}
-          <HomeLocation cities={citiesWithVenues} onDark />
-        </div>
-
-        {/* Above the fold on every phone: a CSS keyframe, never a scroll
-            reveal. See the note on the title block above. */}
-        <div data-hero style={heroDelay(1)} className="container-app relative mt-4">
-          <HomeSearchEntry />
-        </div>
+          {/* Above the fold on every phone: a CSS keyframe, never a scroll
+              reveal. No transform-based reveal can break the search sheet — it
+              portals to <body> (see components/app/BottomSheet.tsx). */}
+          <div data-hero style={heroDelay(1)} className="relative z-10 -mt-10 px-2">
+            <MobileSearch
+              cities={citiesWithVenues.map((c) => ({ city: c.city, venueCount: c.venueCount }))}
+              today={today}
+            />
+          </div>
         </section>
 
-        <section data-reveal="fade" className="container-app mt-4">
+        <section data-reveal="fade" className="container-app mt-5 empty:hidden">
           <AdSlot placement="homepage_banner" limit={1} />
         </section>
 
-        {/* Column count follows the number of tiles: a grid-cols-3 holding one
-            or two tiles left a visible hole once the Premium action was gated. */}
-        <section data-hero style={heroDelay(2)} className="container-app mt-5">
-          <div className={`grid gap-2 ${premiumCount > 0 ? "grid-cols-3" : "grid-cols-2"}`}>
-            <QuickAction href="/halls" label="Browse" Icon={Search} />
-            <QuickAction href="/halls?available=today" label="Free today" Icon={Zap} />
-            {premiumCount > 0 && (
-              <QuickAction href="/halls?category=premium" label="Premium" Icon={Crown} />
-            )}
+        {/* ── Halls by type ─────────────────────────────────────────────
+            A grid, not a sideways strip: all of them are visible at once.
+            Three to a row, so the count is padded to a whole row with "All
+            halls" when Premium is gated off — never a hole. */}
+        <section className="mt-8">
+          <MobileSectionTitle title="Browse halls by type" />
+          <ul className="container-app grid grid-cols-3 gap-2.5">
+            {mobileTypes.map((c, i) => (
+              <li key={c.key} data-reveal="scale" style={revealDelay(i, 50)}>
+                <Link
+                  href={c.href}
+                  className="flex min-h-[88px] flex-col items-center justify-center gap-2 rounded-2xl bg-white px-2 py-3 text-center shadow-card transition-transform active:scale-95 motion-reduce:active:scale-100"
+                >
+                  <span className="flex h-10 w-10 items-center justify-center rounded-full bg-maroon-50 text-maroon-600">
+                    {CATEGORY_ICONS[c.icon]}
+                  </span>
+                  <span className="text-xs font-semibold leading-tight text-charcoal-800">{c.short}</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+
+          <div className="container-app mt-3">
+            <Link
+              href="/halls?available=today"
+              data-reveal="up"
+              className="flex min-h-14 items-center gap-3 rounded-2xl border border-gold-300/60 bg-gold-50 px-4 py-3 transition-transform active:scale-[0.99] motion-reduce:active:scale-100"
+            >
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gold-100 text-gold-700">
+                <Zap className="h-4 w-4" aria-hidden />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-semibold text-charcoal-900">Need a hall today?</span>
+                <span className="block text-xs text-charcoal-700">See halls available today</span>
+              </span>
+              <ChevronRight className="h-5 w-5 shrink-0 text-charcoal-600" aria-hidden />
+            </Link>
           </div>
         </section>
 
-        <section className="mt-7">
-          <MobileSectionTitle title="Categories" />
-          <CategoryRow categories={visibleCategories.map((c) => ({ ...c, iconNode: CATEGORY_ICONS[c.icon] }))} />
-        </section>
-
-        <section className="mt-7">
+        <section className="mt-8">
           <MobileSectionTitle
             title={hasPromoted ? "Featured Venues" : "Venues on Hallnect"}
             linkLabel="See all"
@@ -331,24 +351,90 @@ export default async function HomePage() {
           {featured.length === 0 ? (
             <div data-reveal="up" style={revealDelay(1, 120)} className="container-app"><EmptyVenues /></div>
           ) : (
-            <div data-reveal="up" style={revealDelay(1, 120)} className="no-scrollbar overflow-x-auto">
-              <div className="flex w-max gap-3 px-4 pb-1 sm:px-6">
+            // Snaps card by card, and each card is narrower than the screen so
+            // the next one peeks in — the swipe explains itself.
+            <div
+              data-reveal="up"
+              style={revealDelay(1, 120)}
+              className="no-scrollbar snap-x snap-mandatory overflow-x-auto scroll-px-4 sm:scroll-px-6"
+            >
+              <ul className="flex w-max gap-3 px-4 pb-2 sm:px-6">
                 {featured.map((h) => (
-                  <div key={h.id} className="w-64 shrink-0">
+                  <li key={h.id} className="w-[78vw] max-w-[300px] shrink-0 snap-start">
                     <HallCard hall={h} advancePercent={advancePercent} />
-                  </div>
+                  </li>
                 ))}
-              </div>
+                <li className="w-40 shrink-0 snap-start">
+                  <Link
+                    href="/halls"
+                    className="flex h-full min-h-40 flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-charcoal-300 bg-white p-4 text-center"
+                  >
+                    <span className="flex h-11 w-11 items-center justify-center rounded-full bg-maroon-600 text-white">
+                      <ArrowRight className="h-5 w-5" aria-hidden />
+                    </span>
+                    <span className="text-sm font-semibold text-charcoal-900">Browse all venues</span>
+                  </Link>
+                </li>
+              </ul>
             </div>
           )}
         </section>
 
         {cities.length > 0 && (
-          <section className="mt-7 pb-6">
-            <MobileSectionTitle title="Cities" linkLabel="See all" linkHref="/halls" />
-            <CitiesRow cities={cities} />
+          <section className="mt-8">
+            <MobileSectionTitle title="Halls by city" />
+            <CityGrid cities={cities} />
           </section>
         )}
+
+        {/* ── How it works ─────────────────────────────────────────────
+            The same three steps the desktop page explains, as a timeline. */}
+        <section className="container-app mt-10">
+          <h2 data-reveal="up" className="font-serif text-lg font-semibold text-charcoal-900">How Hallnect works</h2>
+          <ol className="mt-4 space-y-4">
+            {HOW_IT_WORKS.map((s, i) => (
+              <li key={s.step} data-reveal="up" style={revealDelay(i, 90)} className="relative flex gap-4">
+                {i < HOW_IT_WORKS.length - 1 && (
+                  <span aria-hidden className="absolute left-[17px] top-10 h-[calc(100%-1.5rem)] w-px bg-maroon-100" />
+                )}
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-maroon-600 text-xs font-bold text-white">
+                  {s.step}
+                </span>
+                <div className="min-w-0 pb-1">
+                  <h3 className="text-sm font-semibold text-charcoal-900">{s.title}</h3>
+                  <p className="mt-1 text-sm leading-relaxed text-charcoal-600">{s.body}</p>
+                </div>
+              </li>
+            ))}
+          </ol>
+        </section>
+
+        {/* ── Owner CTA ────────────────────────────────────────────────
+            The desktop card's copy, word for word — none of it is new. */}
+        <section className="container-app mt-10 pb-8">
+          <div data-reveal="up" className="overflow-hidden rounded-3xl bg-maroon-gradient p-6 shadow-elevated">
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-widest text-gold-200">
+              <Crown className="h-3 w-3" aria-hidden /> For Venue Owners
+            </span>
+            <h2 className="mt-3 font-serif text-2xl font-bold leading-tight text-ivory-100">
+              List your wedding hall on Hallnect
+            </h2>
+            <p className="mt-2 text-sm text-ivory-100">
+              List your hall in minutes. Get bookings backed by gateway-verified payments
+              and a dedicated owner dashboard.
+            </p>
+            <p className="mt-3 flex items-center gap-2 text-sm font-medium text-ivory-100">
+              <CheckCircle2 className="h-4 w-4 shrink-0 text-gold-200" aria-hidden />
+              Free to list — pay only on booking
+            </p>
+            <Link
+              href="/owner/register"
+              className="mt-5 flex h-12 items-center justify-center rounded-2xl bg-gold-gradient text-sm font-semibold text-charcoal-950 shadow-gold active:scale-[0.99] motion-reduce:active:scale-100"
+            >
+              List your venue
+            </Link>
+          </div>
+        </section>
       </div>
 
       {/* ════════════════════════════════════════════════════════
@@ -428,7 +514,12 @@ export default async function HomePage() {
               </div>
             </div>
           }
-          footer={<HeroSearch cities={citiesWithVenues.map((c) => c.city)} today={today} />}
+          footer={
+            <HeroSearch
+              cities={citiesWithVenues.map((c) => ({ city: c.city, venueCount: c.venueCount }))}
+              today={today}
+            />
+          }
         />
 
         {/* ── Categories strip ─────────────────────────────────── */}
@@ -762,24 +853,6 @@ function MobileSectionTitle({ title, linkLabel, linkHref }: {
         </Link>
       )}
     </div>
-  );
-}
-
-function QuickAction({ href, label, Icon }: {
-  href: string;
-  label: string;
-  Icon: React.ComponentType<{ className?: string }>;
-}) {
-  return (
-    <Link
-      href={href}
-      className="flex flex-col items-center gap-1.5 rounded-2xl bg-white py-3 shadow-card transition-transform active:scale-95"
-    >
-      <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-maroon-50 text-maroon-600">
-        <Icon className="h-4 w-4" />
-      </span>
-      <span className="text-[11px] font-semibold text-charcoal-800">{label}</span>
-    </Link>
   );
 }
 

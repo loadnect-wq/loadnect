@@ -49,7 +49,7 @@ describe(".hit-44", () => {
 
 describe("the controls that were under 44px carry it", () => {
   const cases: [string, string, RegExp][] = [
-    ["Browse by city", "app/_components/HomeLocation.tsx", /"hit-44 mt-2 inline-flex/],
+    ["Clear dates (mobile search)", "app/_components/MobileSearch.tsx", /className="hit-44 text-sm font-semibold/],
     ["See all (section headings)", "app/page.tsx", /<Link href=\{linkHref\} className="hit-44 /],
     ["Save hall heart", "app/_components/SaveHeart.tsx", /"hit-44 flex items-center justify-center rounded-full/],
     ["Notifications bell", "components/app/AppHeader.tsx", /className="hit-44 flex h-9 w-9 items-center justify-center rounded-full bg-ivory-200/],
@@ -61,4 +61,14 @@ describe("the controls that were under 44px carry it", () => {
       expect(read(file), `${name} lost its 44px tap area`).toMatch(pattern);
     });
   }
+});
+
+describe("the mobile search is built at 44px or more", () => {
+  const src = read("app/_components/MobileSearch.tsx");
+
+  it("rows are 56px, chips 44px, buttons 48px", () => {
+    expect(src).toContain("flex min-h-14 w-full");
+    expect(src).toContain("inline-flex min-h-11 items-center");
+    expect(src.match(/h-12/g)?.length).toBeGreaterThanOrEqual(3);
+  });
 });

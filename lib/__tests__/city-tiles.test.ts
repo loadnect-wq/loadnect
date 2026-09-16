@@ -19,8 +19,9 @@ const ROOT = path.resolve(__dirname, "../..");
 const read = (p: string) => fs.readFileSync(path.join(ROOT, p), "utf8");
 
 const page       = read("app/page.tsx");
-const citiesRow  = read("app/_components/CitiesRow.tsx");
+const cityGrid   = read("app/_components/CityGrid.tsx");
 const heroSearch = read("components/sections/HeroSearch.tsx");
+const mobileSearch = read("app/_components/MobileSearch.tsx");
 
 /** Strip comments — the notes in page.tsx quote the old copy on purpose. */
 function code(src: string): string {
@@ -59,8 +60,8 @@ describe("a city with no venues cannot pretend to have them", () => {
 
   it("says Coming soon instead of Explore on both breakpoints", () => {
     expect(pageCode).toMatch(/c\.live \? "Explore →" : "Coming soon"/);
-    expect(citiesRow).toContain("!c.live");
-    expect(citiesRow).toContain("Coming soon");
+    expect(cityGrid).toContain("!c.live");
+    expect(cityGrid).toContain("Coming soon");
   });
 
   it("dropped the copy that would now be false", () => {
@@ -81,9 +82,10 @@ describe("a city with no venues cannot pretend to have them", () => {
   it("is never offered as a search option", () => {
     // The tiles may advertise a launch; a search box may not — picking Chennai
     // there would still return nothing.
-    expect(pageCode).toContain("<HeroSearch cities={citiesWithVenues.map((c) => c.city)}");
-    expect(pageCode).toContain("<HomeLocation cities={citiesWithVenues}");
+    expect(pageCode).toMatch(/<HeroSearch\s+cities=\{citiesWithVenues\.map/);
+    expect(pageCode).toMatch(/<MobileSearch\s+cities=\{citiesWithVenues\.map/);
     expect(heroSearch).not.toContain("LAUNCH_CITIES");
+    expect(mobileSearch).not.toContain("LAUNCH_CITIES");
   });
 });
 
@@ -116,11 +118,11 @@ describe("the cover photos", () => {
     // against a 4.5 bar. At /90 via /50 the weakest of all four is Chennai at
     // 5.0:1. Lightening this shade fails Chennai first.
     expect(pageCode).toContain('c.image ? "from-black/90 via-black/50"');
-    expect(citiesRow).toContain('c.image ? "from-black/90 via-black/50"');
+    expect(cityGrid).toContain('c.image ? "from-black/90 via-black/50"');
   });
 
   it("go through next/image, so a phone gets a tile-sized file", () => {
     expect(pageCode).toContain('sizes="292px"');
-    expect(citiesRow).toContain('sizes="160px"');
+    expect(cityGrid).toContain('sizes="(max-width: 512px) 50vw, 250px"');
   });
 });
