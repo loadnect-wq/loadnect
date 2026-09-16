@@ -18,6 +18,37 @@ where the work will trip over them.
 
 ---
 
+## 0a. What has since been built
+
+Four batches shipped off this plan, covering every item that was **not** behind
+one of the stop-and-ask rules in §7. Nothing gated has been touched.
+
+| Item | Status | Commit |
+|---|---|---|
+| Search reported lead venues as free on a filtered date (incl. "Available Today") | done | `54611bd` |
+| "Price: high to low" led with unpriced venues (NULL ordering) | done | `54611bd` |
+| Venue page: empty grey map tile | done | `54611bd` |
+| Venue page: lead venues get "Your date" + enquiry, not 30 grey cells | done | `54611bd` |
+| Venue page: dead `availability` query for lead venues | done | `54611bd` |
+| §4.11 `/login` named no Terms or Privacy | done | `54611bd` |
+| §4.10 Two admin screens unreachable on a phone | done | `54611bd` |
+| §4.9 `/admin/halls?q=` dead parameter | done | `54611bd` |
+| 1.2 PR1 Paragraphs destroyed at save (`sanitizeMultiline`) | done | `0cd1902` |
+| Venue page invented a description for venues with none | done | `0cd1902` |
+| 1.2 PR2/PR3 State normalised at every write path + migration `0093` | done | `0cd1902` |
+| §4.7 Admin draft form collected no amenities or slot prices | done | `861cebd` |
+| §4.5 Noindex page also nominating a canonical | done | `86441f0` |
+
+Test count went 784 → 825. Migration `0093_one_spelling_of_a_state.sql` is
+applied and verified on production.
+
+**Still open and ungated** (not yet started): 1.6 PR1–PR3 (the enquiry-consent
+gap — the production path forwards a customer's phone to a third-party business
+with no recorded consent), 1.2 PR6 (admin hall-edit screen, which wants 1.1's
+field set decided first), and the bulk of Phase 2.
+
+---
+
 ## 0. How this was produced
 
 Eight parallel inventory passes over the repository (routes/SEO, owner form, admin surface,
