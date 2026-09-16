@@ -17,6 +17,7 @@ import { AdSlot } from "@/components/ads/AdSlot";
 import { heroDelay, revealDelay } from "@/lib/motion";
 import { HeroSearch } from "@/components/sections/HeroSearch";
 import { ScrollScrubVideo } from "@/components/sections/ScrollScrubVideo";
+import { RotatingWord } from "@/components/sections/RotatingWord";
 
 import { HallCard } from "@/app/halls/_components/HallCard";
 import { countActivePremiumHalls, fetchHalls, type HallListing } from "@/lib/halls";
@@ -27,6 +28,11 @@ import {
   jsonLdGraph, organizationJsonLd, websiteJsonLd, faqJsonLd,
 } from "@/lib/seo/jsonld";
 import { fetchCityInventory, type CityInventory } from "@/lib/seo/cities";
+
+// The hero subhead cycles through these. Every one is a real category below
+// (Wedding, Party, Reception and Banquet Halls), so the sentence never offers a
+// kind of hall the site does not list.
+const HERO_EVENT_WORDS = ["wedding", "party", "reception", "banquet"] as const;
 
 const CATEGORIES = [
   { key: "wedding",   label: "Wedding Halls",   icon: "heart",      href: "/halls?category=wedding"   },
@@ -393,8 +399,13 @@ export default async function HomePage() {
                   on <span className="text-gold-200">the date you need</span>
                 </p>
 
+                {/* The event word rotates. White semibold, NOT gold: this is
+                    normal-size text needing 4.5:1, and gold-200 here works out
+                    to ~4.1:1 against the 5.39:1 white measured for this band. */}
                 <p className="hero-ink mx-auto mt-6 max-w-2xl text-base text-white/90 xl:text-lg">
-                  Discover, compare, and book wedding halls across Tamil Nadu.
+                  Discover, compare, and book{" "}
+                  <RotatingWord words={HERO_EVENT_WORDS} className="font-semibold text-white" />{" "}
+                  halls across Tamil Nadu.
                   Owner-submitted listings, transparent pricing, and a clear answer from the venue.
                 </p>
               </div>
