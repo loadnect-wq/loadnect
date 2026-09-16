@@ -97,16 +97,26 @@ describe("the cover photos", () => {
     }
   });
 
-  it("are a web-sized JPEG, not the 2.2 MB PNG they started as", () => {
-    const bytes = fs.statSync(path.join(ROOT, "public/cities/madurai.jpg")).size;
-    expect(bytes).toBeLessThan(400 * 1024);
+  it("cover every launch city", () => {
+    for (const city of LAUNCH_CITIES) {
+      expect(CITY_COVERS[city], `${city} has no cover photo`).toBeDefined();
+    }
   });
 
-  it("get a heavier shade, because the photo is bright where the name sits", () => {
-    // Measured: white text scored 4.13:1 over the Madurai photo under the
-    // gradient tiles' /55 shade, against a 4.5 bar. /80 gives 6.46:1.
-    expect(pageCode).toContain('c.image ? "from-black/80 via-black/30"');
-    expect(citiesRow).toContain('c.image ? "from-black/80 via-black/30"');
+  it("are web-sized files, not the 2.2 MB PNG Madurai started as", () => {
+    for (const src of Object.values(CITY_COVERS)) {
+      const bytes = fs.statSync(path.join(ROOT, "public", src!)).size;
+      expect(bytes, `${src} is ${Math.round(bytes / 1024)} KB`).toBeLessThan(400 * 1024);
+    }
+  });
+
+  it("get a heavier shade, because the photos are bright where the name sits", () => {
+    // Measured against the 95th-percentile brightest pixel under each label.
+    // At /80 via /30 the sunlit Chennai photo scored 3.12:1 on a phone tile
+    // against a 4.5 bar. At /90 via /50 the weakest of all four is Chennai at
+    // 5.0:1. Lightening this shade fails Chennai first.
+    expect(pageCode).toContain('c.image ? "from-black/90 via-black/50"');
+    expect(citiesRow).toContain('c.image ? "from-black/90 via-black/50"');
   });
 
   it("go through next/image, so a phone gets a tile-sized file", () => {

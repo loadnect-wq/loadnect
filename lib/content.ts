@@ -90,7 +90,10 @@ export const LAUNCH_CITIES = ["Madurai", "Chennai", "Coimbatore", "Tiruchirappal
  * photo would render as an empty box. Put the file in /public/cities/.
  */
 export const CITY_COVERS: Partial<Record<string, string>> = {
-  Madurai: "/cities/madurai.jpg",
+  Madurai:         "/cities/madurai.jpg",
+  Chennai:         "/cities/chennai.jpg",
+  Coimbatore:      "/cities/coimbatore.jpg",
+  Tiruchirappalli: "/cities/tiruchirappalli.jpg",
 };
 
 // Tamil Nadu only. No fabricated venue counts — tiles link to the real search.

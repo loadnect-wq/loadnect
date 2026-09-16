@@ -511,13 +511,20 @@ export default async function HomePage() {
                     className="object-cover object-[50%_35%] transition-transform duration-500 group-hover:scale-105 motion-reduce:transition-none motion-reduce:group-hover:scale-100"
                   />
                 )}
-                {/* HEAVIER OVER A PHOTO, MEASURED. The gradient tiles are flat
-                    colour and read fine at /55, but the Madurai photo has lit
-                    streets exactly where the name sits: white text scored
-                    4.13:1 against a 4.5 bar. /80 takes it to 6.46:1. */}
+                {/* HEAVIER OVER A PHOTO, MEASURED ON EVERY PHOTO. The gradient
+                    tiles are flat colour and read fine at /55. The photos are
+                    not: Chennai is a sunlit daytime shot with a white canopy
+                    and a red bus exactly where the name sits, and at /80 via
+                    /30 its name scored 3.12:1 on a phone tile against a 4.5
+                    bar (Tiruchirappalli 4.22). Weakest case at /90 via /50,
+                    name or the white/90 state line, desktop or mobile:
+                      Madurai 8.7  Chennai 5.0  Coimbatore 11.8  Trichy 7.1
+                    The top of each photo — sky, tower, statue — stays bright;
+                    only the ground under the label darkens. Re-measure if a
+                    cover is swapped: a brighter photo fails this silently. */}
                 <div
                   className={`absolute inset-0 bg-gradient-to-t to-transparent ${
-                    c.image ? "from-black/80 via-black/30" : "from-black/55 via-black/20"
+                    c.image ? "from-black/90 via-black/50" : "from-black/55 via-black/20"
                   }`}
                 />
                 <div className="absolute inset-x-4 bottom-4 text-white">

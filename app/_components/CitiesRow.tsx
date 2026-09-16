@@ -41,7 +41,7 @@ export function CitiesRow({ cities }: { cities: readonly City[] }) {
                   tiles in app/page.tsx. */}
               <div
                 className={`absolute inset-0 bg-gradient-to-t to-transparent ${
-                  c.image ? "from-black/80 via-black/30" : "from-black/70 via-black/20"
+                  c.image ? "from-black/90 via-black/50" : "from-black/70 via-black/20"
                 }`}
               />
               {!c.live && (
