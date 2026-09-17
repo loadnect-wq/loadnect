@@ -127,9 +127,9 @@ export const HALL_CAPACITIES = [
 ] as const;
 
 // Earlier commission models (5%, then per-hall owner-chosen rates) are
-// DISCONTINUED. The active money model: the standard 2% commission
+// DISCONTINUED. The active money model: the standard commission
 // (lib/commission.ts STANDARD_COMMISSION_PERCENT) absorbed inside the advance,
-// plus a flat ₹200 customer platform fee (lib/booking-payment.ts
+// plus a flat customer platform fee (lib/booking-payment.ts
 // PLATFORM_FEE_RUPEES). No rate constant lives here.
 
 export function getDashboardPath(role: string): string {

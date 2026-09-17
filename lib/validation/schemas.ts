@@ -965,8 +965,8 @@ export const premiumPlanUpdateSchema = z.object({
  * `commission < advance`; that is the engine's per-booking assertion, and it is
  * not a safe bound on the rates.
  *
- * At the live rates — the standard 2% commission against a 25% advance — this
- * leaves a factor of 6.25 of headroom, so it binds only on a misconfiguration. Raising
+ * At the live rates — the standard 2.5% commission against a 25% advance — this
+ * leaves a factor of 5 of headroom, so it binds only on a misconfiguration. Raising
  * the commission past half the advance is a real business decision (it needs
  * the advance raised with it), not a validation to relax.
  */

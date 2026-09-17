@@ -83,7 +83,7 @@ const FAQ_ITEMS = [
   { q: "Can I see the venue before booking?",
     a: "Yes. We strongly recommend visiting in person. On an online booking the owner's contact details are shared once the booking is confirmed; on an enquiry the venue contacts you as soon as you verify your mobile number." },
   { q: "How much does Hallnect charge?",
-    a: `On an online booking you pay the venue advance plus a ${platformFeeDisclosure()} at checkout, shown clearly before you pay; on a small booking the fee is capped at a quarter of the advance, and a promotional code can reduce it to zero. On an enquiry you pay Hallnect nothing at all — the venue settles its commission with us. There are no other charges from Hallnect.` },
+    a: `On an online booking you pay the venue advance plus a ${platformFeeDisclosure()} at checkout, shown clearly before you pay; on a small booking the fee is capped at a quarter of the advance, and a promotional code can reduce it to zero. On an enquiry you pay Hallnect nothing at all. There are no other charges from Hallnect.` },
   { q: "I'm a venue owner — how do I list?",
     a: "Register as an owner, complete your business profile, and submit your venue for approval. Listings are reviewed within 48 hours." },
 ];

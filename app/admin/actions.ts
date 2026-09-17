@@ -2219,7 +2219,7 @@ export async function cancelBookingAsAdmin(
 
 // ── Coupons ───────────────────────────────────────────────────────────────────
 //
-// A coupon waives the flat ₹200 PLATFORM FEE — Hallnect's own revenue, charged
+// A coupon waives the flat PLATFORM FEE — Hallnect's own revenue, charged
 // on top of the advance. It never touches the commission, so the venue is paid
 // exactly the same either way and Hallnect absorbs the whole discount.
 //

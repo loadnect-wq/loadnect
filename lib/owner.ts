@@ -565,7 +565,7 @@ export async function fetchOwnerBookings(
     contact_phone:  PHONE_VISIBLE_STATUSES.has(String(row.status)) ? (row.contact_phone ?? null) : null,
     owner_response_due_at: row.owner_response_due_at ?? null,
     // Only a gateway-verified payment counts as money received — and only its
-    // ADVANCE portion. payments.amount now includes the customer's ₹200
+    // ADVANCE portion. payments.amount now includes the customer's
     // platform fee, which is Hallnect's and is NOT a rupee toward the hall
     // total; counting it here understated "balance at venue" by ₹200 on every
     // online-paid booking. Legacy rows have no advance_amount and their amount
@@ -689,7 +689,7 @@ export type OwnerCommissionRow = {
   lead_id:             string | null;
   hall_id:             string | null;
   hall_name:           string;
-  /** Full hall price — the base the standard 2% commission is charged on. */
+  /** Full hall price — the base the standard commission is charged on. */
   booking_amount:      number;
   /** Gross advance the customer paid. 0 on very old rows written before the
    *  column existed. NOT the commission base: the rate applies to the hall

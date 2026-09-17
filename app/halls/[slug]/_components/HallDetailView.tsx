@@ -199,7 +199,7 @@ export function HallDetailView({ hall, similar, isPreview, sidebarAd, advancePer
   // The fee THIS venue's customer will actually be charged, not the headline
   // figure. cappedPlatformFeeRupees bounds the flat fee at 25% of the advance,
   // so on a cheap slot the real charge is far lower — this page used to quote a
-  // flat "₹200 platform fee" that was wrong in both directions at once: it
+  // flat "platform fee" that was wrong in both directions at once: it
   // omitted the 18% GST that takes it to ₹236 on a normal booking, and ignored
   // the cap that takes it below ₹200 on a small one.
   const cappedFee = cappedPlatformFeeRupees(advanceAmount);

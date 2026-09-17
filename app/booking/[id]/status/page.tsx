@@ -182,7 +182,7 @@ export default async function BookingStatusPage({ params, searchParams }: Props)
             <Line label="Hall total" value={formatPrice(booking.total_amount)} />
             {booking.payment && (
               <>
-                {/* payment.amount is the FULL charge (advance + ₹200 platform
+                {/* payment.amount is the FULL charge (advance + platform
                     fee) on new bookings — labelling it "advance paid" would
                     have the customer settle ₹200 too little at the venue.
                     Legacy payments have no breakdown and their amount WAS the

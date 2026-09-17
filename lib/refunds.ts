@@ -4,7 +4,7 @@
 //
 // The money components come from ONE calculation (lib/booking-payment.ts):
 //   • the ADVANCE is refundable per the published cancellation schedule below,
-//   • the flat ₹200 PLATFORM FEE is NOT refundable when the CUSTOMER cancels,
+//   • the flat PLATFORM FEE is NOT refundable when the CUSTOMER cancels,
 //     and IS refunded in full when the venue or Hallnect causes the
 //     cancellation — exactly what /refund-policy and /cancellation-policy
 //     promise. Nothing here invents a policy; the schedule mirrors the
@@ -72,7 +72,7 @@ export function retainedCommission(
 
 /** Who caused the cancellation — this decides the platform fee's fate. */
 export type CancellationInitiator =
-  | "customer"   // schedule applies; ₹200 fee retained
+  | "customer"   // schedule applies; platform fee retained
   | "owner"      // venue declined/cancelled: full refund INCLUDING the fee
   | "platform";  // our fault (slot race, payment issue): full refund incl. fee
 

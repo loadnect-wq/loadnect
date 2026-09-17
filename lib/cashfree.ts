@@ -102,7 +102,7 @@ function authHeaders(cfg: CashfreeConfig): Record<string, string> {
 
 export type CreateOrderParams = {
   orderId:       string;        // our unique id (must be unique per Cashfree merchant)
-  amount:        number;        // in INR — the FULL customer charge (advance + ₹200 platform fee)
+  amount:        number;        // in INR — the FULL customer charge (advance + platform fee)
   currency?:     string;        // default INR
   customerId:    string;        // our auth user id
   customerName:  string;

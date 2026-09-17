@@ -3,17 +3,17 @@
 // SERVER-ONLY.
 //
 //   advance the customer paid (fee EXCLUDED)
-//     − Hallnect's commission (the standard 2% of the FULL HALL PRICE,
+//     − Hallnect's commission (the standard rate of the FULL HALL PRICE,
 //       retained from this advance — lib/booking-payment.ts; the booking's own
 //       commission_amount snapshot is what is actually used)
 //     = the owner's net advance, settled to their Cashfree vendor balance
 //
-// For a ₹40,000 booking with a 25% advance: advance ₹10,000 − commission ₹800
-// (2% of ₹40,000) = ₹9,200 to the owner now, ₹30,000 collected at the venue. Hallnect earns
+// For a ₹40,000 booking with a 25% advance: advance ₹10,000 − commission ₹1,000
+// (2.5% of ₹40,000) = ₹9,000 to the owner now, ₹30,000 collected at the venue. Hallnect earns
 // the commission ONCE, retained from the advance, so the owner is never
 // separately billed for it.
 //
-// THE ₹200 PLATFORM FEE IS NOT THE OWNER'S MONEY AND NOT THE OWNER'S COST:
+// THE PLATFORM FEE IS NOT THE OWNER'S MONEY AND NOT THE OWNER'S COST:
 // the customer pays it on top of the advance in the same gateway order, so
 // payments.amount = advance + fee. The split below is therefore based on
 // payments.advance_amount — using payments.amount would overpay the owner the
@@ -160,7 +160,7 @@ export async function payOwnerOnAcceptance(bookingId: string): Promise<PayoutOut
       .maybeSingle();
 
     // The ADVANCE the split is based on — NEVER payments.amount directly: on
-    // new payments that includes the customer's ₹200 platform fee, which is
+    // new payments that includes the customer's platform fee, which is
     // Hallnect's, not the owner's. Legacy payments (no breakdown columns)
     // charged the advance alone, so their amount IS the advance.
     const advance =

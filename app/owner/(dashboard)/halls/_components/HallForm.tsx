@@ -4,6 +4,7 @@ import { useMemo, useRef, useState, useTransition } from "react";
 import { SERVICE_AREA_CITIES } from "@/lib/seo/service-areas";
 import { BOOKING_MODES } from "@/lib/validation/schemas";
 import { COMMISSION_PERCENT_LABEL } from "@/lib/commission";
+import { PLATFORM_FEE_RUPEES } from "@/lib/booking-payment";
 import { toBookingMode, type BookingMode } from "@/lib/booking-mode";
 import { useRouter } from "next/navigation";
 import { ImagePlus, Plus, Sparkles, Star, X } from "lucide-react";
@@ -474,7 +475,8 @@ export function HallForm({ ownerId, amenities, hall }: Props) {
         ) : (
           <p className="text-[11px] text-charcoal-500">
             Advance payment (25%) is collected automatically at booking.
-            Platform fee (5%) applies on top of these prices.
+            The customer also pays a ₹{PLATFORM_FEE_RUPEES} platform fee (plus GST) on top — it is
+            never taken from your price.
           </p>
         )}
       </FormSection>

@@ -25,23 +25,23 @@ import {
 // ── The commission a venue owes on a confirmed enquiry ───────────────────────
 
 describe("calculateLeadCommission", () => {
-  it("charges the standard 2% on the agreed amount", () => {
+  it("charges the standard 2.5% on the agreed amount", () => {
     const r = calculateLeadCommission({ agreedAmount: 100_000 });
-    expect(r.commissionAmount).toBe(2_000);
-    expect(r.ownerNet).toBe(98_000);
+    expect(r.commissionAmount).toBe(2_500);
+    expect(r.ownerNet).toBe(97_500);
     expect(r.agreedAmount).toBe(100_000);
-    expect(r.commissionRate).toBe(2);
+    expect(r.commissionRate).toBe(2.5);
   });
 
   it("matches the business examples exactly", () => {
-    for (const [amount, commission] of [[10_000, 200], [25_000, 500], [50_000, 1_000], [100_000, 2_000]] as const) {
+    for (const [amount, commission] of [[10_000, 250], [25_000, 625], [50_000, 1_250], [100_000, 2_500]] as const) {
       expect(calculateLeadCommission({ agreedAmount: amount }).commissionAmount).toBe(commission);
     }
   });
 
   it("IGNORES a rate smuggled into the input — the venue cannot pick its own", () => {
     const tampered = { agreedAmount: 100_000, commissionRate: 0.5 };
-    expect(calculateLeadCommission(tampered).commissionAmount).toBe(2_000);
+    expect(calculateLeadCommission(tampered).commissionAmount).toBe(2_500);
   });
 
   it("reconciles exactly: commission + ownerNet === agreed", () => {
@@ -53,9 +53,9 @@ describe("calculateLeadCommission", () => {
   });
 
   it("FLOORS the commission, so rounding never favours Hallnect", () => {
-    // 2% of 1,111.37 = 22.2274 — must land on 22.22, not 22.23.
-    const r = calculateLeadCommission({ agreedAmount: 1_111.37 });
-    expect(r.commissionAmount).toBe(22.22);
+    // 2.5% of 1,111.42 = 27.7855 — must land on 27.78, not 27.79.
+    const r = calculateLeadCommission({ agreedAmount: 1_111.42 });
+    expect(r.commissionAmount).toBe(27.78);
   });
 
   it("refuses an agreed amount of zero or less", () => {

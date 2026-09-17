@@ -16,7 +16,7 @@ export type CustomerPayment = {
   status:         string; // payment_status enum
   payment_method: string | null;
   created_at:     string;
-  /** 0031 breakdown — null on payments made before the ₹200 platform fee. */
+  /** 0031 breakdown — null on payments made before the platform fee. */
   advance_amount:      number | null;
   platform_fee_amount: number | null;
   refund_amount:       number | null;
@@ -41,7 +41,7 @@ export type CustomerBooking = {
   base_amount:    number;
   platform_fee:   number;
   total_amount:   number;
-  /** 0031 breakdown — null on bookings made before the ₹200 platform fee.
+  /** 0031 breakdown — null on bookings made before the platform fee.
    *  Deliberately EXCLUDES the internal commission: never a customer figure. */
   advance_amount:        number | null;
   platform_fee_amount:   number | null;

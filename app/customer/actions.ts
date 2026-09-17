@@ -77,7 +77,7 @@ export async function cancelBooking(
   await notifyBookingEvent("booking.cancelled", bookingId, { reason: cleanReason || null });
 
   // Record what is owed back per the published schedule (advance only — the
-  // ₹200 platform fee is non-refundable on a customer cancellation). Recording
+  // platform fee is non-refundable on a customer cancellation). Recording
   // is idempotent and never fails the cancellation; when money is actually due
   // the customer is told the exact figure rather than left guessing.
   // OrAlert: the cancellation above is already committed, so a recording

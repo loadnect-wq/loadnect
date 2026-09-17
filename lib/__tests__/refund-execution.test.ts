@@ -63,7 +63,7 @@ describe("refund amounts", () => {
       refundPercentOfAdvance: 100,
     });
     expect(r.refundableAmount).toBe(25_000);
-    expect(r.nonRefundablePlatformFee).toBe(200);
+    expect(r.nonRefundablePlatformFee).toBe(100);
   });
 
   it("an owner or platform cancellation returns the fee too", () => {
@@ -71,7 +71,7 @@ describe("refund amounts", () => {
       advanceAmount: advance, platformFee: PLATFORM_FEE_RUPEES,
       refundPercentOfAdvance: 100, refundPlatformFee: true,
     });
-    expect(r.refundableAmount).toBe(25_200);
+    expect(r.refundableAmount).toBe(25_100);
     expect(r.nonRefundablePlatformFee).toBe(0);
   });
 

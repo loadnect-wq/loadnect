@@ -1030,7 +1030,7 @@ export async function rejectBooking(bookingId: string, reason?: string): Promise
   await notifyBookingEvent("booking.rejected", bookingId, { reason: cleanReason || null });
 
   // The venue declined, so the customer gets EVERYTHING back — advance and the
-  // ₹200 platform fee alike, exactly as /refund-policy §5 promises. Recorded
+  // platform fee alike, exactly as /refund-policy §5 promises. Recorded
   // idempotently; never fails the decline.
   // OrAlert — see the note in app/customer/actions.ts.
   const { refund } = await recordBookingRefundOrAlert(bookingId, "owner");

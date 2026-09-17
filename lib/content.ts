@@ -36,7 +36,7 @@ export const LEGAL_LAST_UPDATED = {
   "/terms":                "2026-09-17",
   "/privacy":              "2026-09-09",
   "/refund-policy":        "2026-09-17",
-  "/cancellation-policy":  "2026-09-06",
+  "/cancellation-policy":  "2026-09-17",
   "/grievance-redressal":  "2026-09-04",
   "/disclaimer":           "2026-08-28",
 } as const;

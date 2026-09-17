@@ -14,7 +14,7 @@
 //   1. cancels the booking (status-guarded, so a simultaneous owner Accept
 //      wins and the sweep skips it),
 //   2. records the refund as PLATFORM-caused — the customer did nothing wrong
-//      and the venue never responded, so the ₹200 platform fee goes back too,
+//      and the venue never responded, so the platform fee goes back too,
 //   3. releases the calendar dates,
 //   4. notifies the customer, the owner and the admin.
 //

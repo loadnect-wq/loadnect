@@ -228,9 +228,9 @@ export async function createBookingRequest(
 
   // PRICING MODEL (the only active one — lib/booking-payment.ts):
   //   • total_amount = the hall price. The customer pays a 25% ADVANCE of it
-  //     now plus a flat ₹200 PLATFORM FEE (disclosed, non-refundable), and the
+  //     now plus a flat PLATFORM FEE (disclosed, non-refundable), and the
   //     balance directly at the venue.
-  //   • Hallnect's commission = the STANDARD 2% of the FULL HALL PRICE
+  //   • Hallnect's commission = the STANDARD rate of the FULL HALL PRICE
   //     (lib/commission.ts), RETAINED OUT OF the advance — the owner nets
   //     advance − commission at payout (lib/owner-payout.ts). It is never added
   //     on top of what the customer pays, and it is not an input anywhere: not
@@ -242,7 +242,7 @@ export async function createBookingRequest(
 
   // ── Coupon — SERVER-RESOLVED ────────────────────────────────────────────────
   // The client sends an opaque string; resolveCoupon decides what (if anything)
-  // it is worth. A coupon can only ever waive the ₹200 platform fee, which is
+  // it is worth. A coupon can only ever waive the platform fee, which is
   // Hallnect's own revenue — the commission and therefore the owner's payout
   // are computed from the hall price and are untouched below.
   //

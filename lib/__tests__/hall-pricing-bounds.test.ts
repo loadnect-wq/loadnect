@@ -49,15 +49,15 @@ describe("a listing has a price floor", () => {
 
   it("leaves the fee a sane fraction of the booking at the floor", () => {
     // The floor exists to make this true, so it is asserted rather than assumed.
-    // At Rs2,000 the advance is Rs500 and the flat Rs200 fee is not capped —
-    // 25% of 500 is 125... which means it IS capped. Pin the real numbers so a
-    // change to either constant has to be looked at.
+    // At Rs2,000 the advance is Rs500; 25% of it is Rs125, above the flat Rs100
+    // fee, so the fee is NOT capped here (it was, when the fee was Rs200). Pin
+    // the real numbers so a change to either constant has to be looked at.
     const b = calculateBookingPayment({
       hallTotal: MIN_HALL_PRICE_RUPEES,
       advanceAmount: advanceFromTotal(MIN_HALL_PRICE_RUPEES),
     });
     expect(b.advanceAmount).toBe(500);
-    expect(b.platformFee).toBe(125);
+    expect(b.platformFee).toBe(100);
     // Fee plus its tax stays under a tenth of what is being booked.
     expect((b.platformFee + b.platformFeeGst) / MIN_HALL_PRICE_RUPEES).toBeLessThan(0.1);
   });

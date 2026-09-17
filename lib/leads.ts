@@ -149,7 +149,7 @@ export function calculateLeadCommission(input: {
   const commissionPaise = commissionPaiseOn(basePaise, STANDARD_COMMISSION_PERCENT);
 
   // A commission that swallows the whole booking is a misconfiguration, not a
-  // deal. It cannot happen at 2%; the guard stays so that a future change to
+  // deal. It cannot happen at 2.5%; the guard stays so that a future change to
   // the constant can never write a debt larger than the transaction.
   if (commissionPaise >= basePaise) {
     throw new RangeError(
@@ -413,7 +413,7 @@ export async function confirmLead(input: {
     return { ok: false, error: "Only a pending enquiry can be confirmed." };
   }
 
-  // THE STANDARD 2% (lib/commission.ts), applied server-side. The request
+  // THE STANDARD RATE (lib/commission.ts), applied server-side. The request
   // carries only the agreed amount; there is no rate to send or to tamper with.
   let breakdown: LeadCommissionBreakdown;
   try {

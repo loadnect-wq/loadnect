@@ -179,7 +179,7 @@ async function loadBookingContext(bookingId: string): Promise<BookingContext | n
  *
  * opts.amount     — display rupees for payment messages. CONTRACT: for
  *                   payment.success / booking.requested this is the ADVANCE
- *                   ONLY (never advance + ₹200 platform fee — the venue-balance
+ *                   ONLY (never advance + platform fee — the venue-balance
  *                   arithmetic in balanceNote depends on it); for
  *                   refund.initiated it is the actual refund figure.
  * opts.reason     — owner's rejection note, cancellation reason, …
@@ -324,7 +324,7 @@ export async function notifyBookingEvent(
  * unless the message says the rest is due at the venue.
  *
  * `paid` must be the ADVANCE only (fee-exclusive — see the opts.amount
- * contract): the ₹200 platform fee is not a rupee toward the hall total, and
+ * contract): the platform fee is not a rupee toward the hall total, and
  * including it would understate the venue balance by ₹200 on every message.
  */
 function balanceNote(paid: number, total: number): string {

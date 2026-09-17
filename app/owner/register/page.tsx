@@ -17,9 +17,9 @@
 // but not yet switched on at the gateway, so the page describes where the money
 // goes, never how fast it arrives.
 //
-// A Server Component: the commission rate is read live from platform_settings
-// rather than written into the copy, so an admin changing the rate can never
-// leave this page quoting a number the business no longer charges.
+// It does not publish the commission RATE either (business decision,
+// 2026-09-17): it says there is one standard commission taken from the advance,
+// and the exact figure is shown to signed-in owners and admins only.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import Link from "next/link";
@@ -27,20 +27,15 @@ import {
   Gem, IndianRupee, ClipboardCheck, CalendarCheck, Images, BadgeCheck,
   ArrowRight, Wallet,
 } from "lucide-react";
-import { COMMISSION_PERCENT_LABEL, STANDARD_COMMISSION_PERCENT, calculateBookingCommission } from "@/lib/commission";
 import { PLATFORM_FEE_RUPEES } from "@/lib/booking-payment";
 import { formatPrice } from "@/lib/mock-data";
 import { OwnerRegisterForm } from "./_components/OwnerRegisterForm";
 
-/** A concrete booking, so the terms are arithmetic rather than adjectives. */
-const EXAMPLE_HALL_PRICE = 100_000;
-
 export default async function OwnerRegisterPage() {
-  // ONE STANDARD COMMISSION for every venue (lib/commission.ts). The worked
-  // example uses the same calculation a real booking does, so the page cannot
-  // promise a figure the product would not charge.
-  const commission = calculateBookingCommission(EXAMPLE_HALL_PRICE);
-  const ownerKeeps = EXAMPLE_HALL_PRICE - commission;
+  // THE COMMISSION RATE IS NOT PUBLISHED. This page is public, so it names no
+  // percentage and no worked example. Owners see the exact rate once signed in
+  // (Owner → My Halls → Add hall, Commissions, Revenue) — before any hall of
+  // theirs can take a booking — and admins in Admin → Settings.
 
   const steps = [
     {
@@ -79,12 +74,13 @@ export default async function OwnerRegisterPage() {
           </Link>
 
           <h1 className="mx-auto mt-7 max-w-2xl font-serif text-3xl font-bold leading-tight text-ivory-100 sm:text-5xl">
-            List your wedding hall. Keep {100 - STANDARD_COMMISSION_PERCENT}% of every booking.
+            List your wedding hall. Approve every booking yourself.
           </h1>
           <p className="mx-auto mt-4 max-w-xl text-base leading-relaxed text-ivory-400">
             Hallnect brings couples in Tamil Nadu to your venue, collects the advance
-            for you, and never sends you a bill. Listing is free, and Hallnect&apos;s commission is
-            a flat {COMMISSION_PERCENT_LABEL} — the same for every venue.
+            for you, and never sends you a bill. Listing is free. Hallnect earns one small
+            commission, the same for every venue — you will see the exact rate in your owner
+            dashboard before your hall goes live.
           </p>
 
           <a
@@ -109,39 +105,6 @@ export default async function OwnerRegisterPage() {
             One commission, taken from the advance Hallnect already holds. There is
             nothing to pay up front and no invoice afterwards.
           </p>
-
-          <div className="mt-8 overflow-hidden rounded-2xl border-2 border-maroon-200 bg-white shadow-card">
-            <div className="border-b border-border bg-maroon-50 px-5 py-3">
-              <p className="text-xs font-bold uppercase tracking-wide text-maroon-800">
-                On a {formatPrice(EXAMPLE_HALL_PRICE)} booking
-              </p>
-            </div>
-            <dl className="divide-y divide-border">
-              <div className="flex items-baseline justify-between px-5 py-4">
-                <dt className="text-sm text-charcoal-700">Your hall price</dt>
-                <dd className="font-serif text-lg font-semibold text-charcoal-900">
-                  {formatPrice(EXAMPLE_HALL_PRICE)}
-                </dd>
-              </div>
-              <div className="flex items-baseline justify-between px-5 py-4">
-                <dt className="text-sm text-charcoal-700">
-                  Hallnect commission
-                  <span className="ml-1.5 rounded-full bg-charcoal-100 px-2 py-0.5 text-[11px] font-semibold text-charcoal-600">
-                    {COMMISSION_PERCENT_LABEL}
-                  </span>
-                </dt>
-                <dd className="font-serif text-lg font-semibold text-charcoal-500">
-                  − {formatPrice(commission)}
-                </dd>
-              </div>
-              <div className="flex items-baseline justify-between bg-green-50 px-5 py-4">
-                <dt className="text-sm font-bold text-green-900">You keep</dt>
-                <dd className="font-serif text-2xl font-bold text-green-700">
-                  {formatPrice(ownerKeeps)}
-                </dd>
-              </div>
-            </dl>
-          </div>
 
           <div className="mt-5 grid gap-3 sm:grid-cols-2">
             <div className="rounded-xl border border-border bg-white p-4">

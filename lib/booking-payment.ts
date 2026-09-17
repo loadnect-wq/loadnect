@@ -2,23 +2,23 @@
 // lib/booking-payment.ts — THE authoritative booking-money calculation.
 //
 // BUSINESS MODEL (the only active one):
-//   • The customer pays:  ADVANCE + ₹200 PLATFORM FEE.
-//   • Hallnect's commission = the STANDARD 2% of the FULL HALL PRICE
+//   • The customer pays:  ADVANCE + PLATFORM FEE.
+//   • Hallnect's commission = the STANDARD rate (lib/commission.ts) of the FULL HALL PRICE
 //     (lib/commission.ts — one fixed rate, chosen by nobody), RETAINED OUT OF
 //     the advance — never a customer-facing line item and never an extra
 //     charge on top.
-//   • Owner's net advance = advance − commission. The ₹200 platform fee is
+//   • Owner's net advance = advance − commission. The platform fee is
 //     collected separately from the customer and NEVER deducted from the owner.
-//   • The ₹200 platform fee is NON-REFUNDABLE. Refund calculations operate on
+//   • The platform fee is NON-REFUNDABLE. Refund calculations operate on
 //     the advance only.
 //
 // THE BASE AND THE SOURCE ARE DIFFERENT NUMBERS. The rate is applied to the
 // hall price; the money comes out of the advance. Worked example, ₹1,00,000
 // hall at a 25% advance:
-//     customer pays   25,000 advance + 200 fee = 25,200
-//     commission      2% of 1,00,000           =  2,000   (8% of the advance)
-//     owner receives  25,000 − 2,000           = 23,000
-//     Hallnect keeps  2,000 + 200              =  2,200
+//     customer pays   25,000 advance + 100 fee = 25,100   (+ GST on the fee)
+//     commission      2.5% of 1,00,000         =  2,500   (10% of the advance)
+//     owner receives  25,000 − 2,500           = 22,500
+//     Hallnect keeps  2,500 + 100              =  2,600
 // An earlier revision charged the rate on the ADVANCE, a quarter of the
 // intended commission. Anything that re-derives the commission from the
 // advance is therefore WRONG — the base is the hall total.
@@ -42,7 +42,7 @@ import { commissionPaiseOn, gstPaiseOn, toPaise, PAISE_PER_RUPEE } from "@/lib/m
 import { STANDARD_COMMISSION_PERCENT } from "@/lib/commission";
 
 /** Flat, separately-collected, NON-refundable platform fee (rupees). */
-export const PLATFORM_FEE_RUPEES = 200;
+export const PLATFORM_FEE_RUPEES = 100;   // was 200 until 2026-09-17
 export const PLATFORM_FEE_PAISE = PLATFORM_FEE_RUPEES * PAISE_PER_RUPEE;
 
 /**
@@ -50,7 +50,7 @@ export const PLATFORM_FEE_PAISE = PLATFORM_FEE_RUPEES * PAISE_PER_RUPEE;
  *
  * HALLNECT LLP is GST-registered (33AATFH8253K1ZT, Regular, liable from
  * 2026-08-21) and the published fee is exclusive of tax, so the fee is grossed
- * up at checkout: ₹200 + 18% = ₹236.
+ * up at checkout: ₹100 + 18% = ₹118.
  *
  * WHAT THIS IS DELIBERATELY *NOT* APPLIED TO — the advance.
  *
@@ -132,7 +132,7 @@ export function platformFeeGstRupees(
 }
 
 /**
- * THE FIGURE A CUSTOMER IS QUOTED. Fee plus its GST, ₹236 today.
+ * THE FIGURE A CUSTOMER IS QUOTED. Fee plus its GST, ₹118 today.
  *
  * Every public page, every policy page and every FAQ must quote THIS, not
  * PLATFORM_FEE_RUPEES. They quoted the bare ₹200 while checkout charged ₹236,
@@ -149,7 +149,7 @@ export const PLATFORM_FEE_TOTAL_RUPEES = PLATFORM_FEE_RUPEES + PLATFORM_FEE_GST_
 
 /**
  * The canonical one-line disclosure, so eight surfaces cannot word it eight
- * ways. Reads "₹200 platform fee plus 18% GST (₹236)".
+ * ways. Reads "₹100 platform fee plus 18% GST (₹118)".
  *
  * NOTE it describes the STANDARD fee. On a small booking the real charge is
  * lower — cappedPlatformFeeRupees bounds it at 25% of the advance — so anywhere
@@ -317,10 +317,10 @@ export function calculateBookingPayment(input: {
   const commissionPaise = commissionPaiseOn(hallTotalPaise, STANDARD_COMMISSION_PERCENT);
 
   // The commission is drawn from a pot smaller than its own base, so the two
-  // can cross. Refuse rather than emit a negative owner payout: at 2% on a 25%
-  // advance the commission is 8% of the advance, so this only fires on a
+  // can cross. Refuse rather than emit a negative owner payout: at 2.5% on a
+  // 25% advance the commission is 10% of the advance, so this only fires on a
   // genuine misconfiguration (an advance captured far below the standard
-  // rate, e.g. an advance percentage set under 2%).
+  // rate, e.g. an advance percentage set under 2.5%).
   if (commissionPaise >= advancePaise) {
     throw new RangeError(
       `calculateBookingPayment: commission (${commissionPaise / PAISE_PER_RUPEE}) ` +
@@ -377,7 +377,7 @@ export type RefundBreakdown = {
  * Refund math for the new model. The refundable base is the ADVANCE only,
  * scaled by the policy's percentage (100 = full advance back, 0 = nothing).
  *
- * The ₹200 platform fee is NOT refundable on customer cancellations. The
+ * The platform fee is NOT refundable on customer cancellations. The
  * published Refund/Cancellation Policy, however, promises the customer a FULL
  * refund — fee included — when the cancellation is the venue's or the
  * platform's doing (owner rejection, slot race after payment). That policy

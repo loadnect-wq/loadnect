@@ -56,7 +56,7 @@ export default async function BookPage({ params }: Props) {
   const today = todayInBusinessTz();
   const end   = addDaysToIsoDate(today, BOOKING_WINDOW_DAYS - 1);
   const availability = await fetchHallAvailabilityWindow(hall.id, today, end);
-  // The commission (the standard 2%) is deliberately NOT sent to the browser:
+  // The commission (the standard rate) is deliberately NOT sent to the browser:
   // it is between Hallnect and the venue, never a customer line item, and the
   // server applies it itself when the booking is created.
 

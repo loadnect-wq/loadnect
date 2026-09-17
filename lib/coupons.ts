@@ -1,8 +1,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // lib/coupons.ts — resolving a customer-typed promo code. SERVER-ONLY.
 //
-// WHAT A COUPON DOES: waives the flat ₹200 PLATFORM FEE. Nothing else. The
-// commission is the standard 2% of the full hall price, retained out of the advance, and
+// WHAT A COUPON DOES: waives the flat PLATFORM FEE. Nothing else. The
+// commission is the standard rate of the full hall price, retained out of the advance, and
 // is the venue's side of the split — a coupon never touches it, so Hallnect
 // absorbs 100% of the discount and the owner is paid exactly the same.
 //

@@ -112,8 +112,7 @@ export default async function AboutPage() {
               The venue prefers to agree terms directly. You send a free enquiry
               and verify your mobile number with a one-time password, and the
               venue contacts you to confirm the date and the price. Hallnect
-              takes no payment from you for these venues — the venue settles its
-              commission with us afterwards.
+              takes no payment from you for these venues.
             </p>
           </div>
         </div>
@@ -125,9 +124,8 @@ export default async function AboutPage() {
         <p className="mt-3 text-sm leading-relaxed text-charcoal-700">
           On an online booking you pay the venue&apos;s advance plus a platform
           fee, shown in full before you pay and capped at a quarter of the
-          advance on a small booking. On an enquiry you pay us nothing. Venue
-          owners pay a commission on business that comes through Hallnect, and
-          listing a venue is free — the paid{" "}
+          advance on a small booking. On an enquiry you pay us nothing. Listing
+          a venue is free — the paid{" "}
           <Link href="/premium" className="font-medium text-maroon-600 hover:underline">
             premium plans
           </Link>{" "}

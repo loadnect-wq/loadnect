@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { TicketPercent } from "lucide-react";
 import { createCoupon } from "../../actions";
+import { PLATFORM_FEE_RUPEES } from "@/lib/booking-payment";
 
 /**
  * A suggested code, not a required one — the admin can type anything.
@@ -99,7 +100,7 @@ export function CreateCouponForm() {
             className="rounded-lg border border-border bg-white px-2.5 py-2 text-sm focus:border-maroon-500 focus:outline-none"
           />
           <span className="text-[11px] text-charcoal-500">
-            Counts paid bookings. Blank = unlimited (₹200 forgone each time).
+            Counts paid bookings. Blank = unlimited (₹{PLATFORM_FEE_RUPEES} forgone each time).
           </span>
         </label>
 

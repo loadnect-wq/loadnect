@@ -8,7 +8,7 @@
 //
 // SECURITY MODEL:
 //   • Amount is ALWAYS taken from the booking row in the DB — never from the
-//     client.  We charge the booking's stored ADVANCE + the flat ₹200 platform
+//     client.  We charge the booking's stored ADVANCE + the flat platform
 //     fee (lib/booking-payment.ts is the single source of that arithmetic).
 //   • customer_id is read from the booking row (which was itself created with
 //     customer_id = auth.uid()), never from the client.
@@ -238,7 +238,7 @@ export async function startPaymentForBooking(
   }
 
   // 5. Amount — from the booking's stored breakdown (0031), never the client.
-  //    The customer pays ADVANCE + ₹200 PLATFORM FEE. A pre-0031 booking with
+  //    The customer pays ADVANCE + PLATFORM FEE. A pre-0031 booking with
   //    no stored breakdown gets it computed now via the one central
   //    calculation, from DB values only.
   const storedAdvance = Number(booking.advance_amount);
@@ -254,7 +254,7 @@ export async function startPaymentForBooking(
     ? storedAdvance
     : advanceFromTotal(Number(booking.total_amount));
 
-  // CAN WE RECORD THE SPLIT? The ₹200 fee may only ride the order if the
+  // CAN WE RECORD THE SPLIT? The platform fee may only ride the order if the
   // payments row can say so. On a pre-0031 database the breakdown columns do
   // not exist, and a fee-inclusive `amount` would be indistinguishable from a
   // legacy advance-only row — every downstream reader (owner payout above all)

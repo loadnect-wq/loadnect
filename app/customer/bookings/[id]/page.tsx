@@ -291,7 +291,7 @@ export default async function BookingDetailPage({ params }: Props) {
           <p className="px-4 pt-4 pb-2 text-xs font-semibold uppercase tracking-wide text-charcoal-500">
             Amount
           </p>
-          {/* The customer pays the hall price + the flat ₹200 platform fee
+          {/* The customer pays the hall price + the flat platform fee
               (disclosed at checkout, collected with the advance). Hallnect's
               internal commission is settled with the VENUE, never billed to
               the customer — so it is deliberately not a line here. */}

@@ -13,18 +13,19 @@ import { commissionPaiseOn, toPaise } from "@/lib/money";
 import * as schemas from "@/lib/validation/schemas";
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ONE standard Hallnect commission: 2% of the booking amount (migration 0097).
+// ONE standard Hallnect commission: 2.5% of the booking amount (migration 0100;
+// it was 2% under 0097).
 //
 // Behaviour for the arithmetic, and source-level invariants for "the old
 // owner-selectable system is gone" — the only way to prove an absence is to
 // look for it. The database side was ALSO exercised against the live schema in
 // a rolled-back transaction, as the service role (the only booking writer):
 //   booking at 0.5% / ₹500 on ₹1,00,000     refused by trigger
-//   booking at 2% but ₹500                   refused by trigger
-//   booking at 2% / ₹2,000                   accepted
+//   booking at 2.5% but ₹500                 refused by trigger
+//   booking at 2.5% / ₹2,500                 accepted
 //   hall commission_rate set to 4.5          refused by CHECK
 //   platform commission_percent set to 3     refused by CHECK
-//   standard_commission_amount(12345.67)     246.91
+//   standard_commission_amount(12345.67)     308.64
 // ─────────────────────────────────────────────────────────────────────────────
 
 const ROOT = path.resolve(__dirname, "../..");
@@ -40,19 +41,19 @@ function code(rel: string): string {
 }
 
 describe("the rate", () => {
-  it("is 2%, in one place", () => {
-    expect(STANDARD_COMMISSION_PERCENT).toBe(2);
-    expect(COMMISSION_RATE).toBe(0.02);
-    expect(COMMISSION_PERCENT_LABEL).toBe("2%");
+  it("is 2.5%, in one place", () => {
+    expect(STANDARD_COMMISSION_PERCENT).toBe(2.5);
+    expect(COMMISSION_RATE).toBe(0.025);
+    expect(COMMISSION_PERCENT_LABEL).toBe("2.5%");
   });
 });
 
 describe("the business examples", () => {
   const CASES = [
-    [10_000, 200],
-    [25_000, 500],
-    [50_000, 1_000],
-    [100_000, 2_000],
+    [10_000, 250],
+    [25_000, 625],
+    [50_000, 1_250],
+    [100_000, 2_500],
   ] as const;
 
   for (const [amount, commission] of CASES) {
@@ -66,12 +67,12 @@ describe("the business examples", () => {
   }
 
   it("a non-round amount is floored to the paisa, never rounded up", () => {
-    // 12,345.67 × 2% = 246.9134 → ₹246.91
-    expect(calculateBookingCommission(12_345.67)).toBe(246.91);
-    // 11,111.37 × 2% = 222.2274 paise-exact 22,222.74 → 22,222 paise (rounding would say 22,223)
-    expect(calculateBookingCommission(11_111.37)).toBe(222.22);
-    expect(calculateBookingPayment({ hallTotal: 12_345.67 }).commissionAmount).toBe(246.91);
-    expect(calculateLeadCommission({ agreedAmount: 12_345.67 }).commissionAmount).toBe(246.91);
+    // 12,345.67 × 2.5% = 308.64175 → ₹308.64
+    expect(calculateBookingCommission(12_345.67)).toBe(308.64);
+    // 11,111.42 × 2.5% = 27,778.55 paise → 27,778 paise (rounding would say 27,779)
+    expect(calculateBookingCommission(11_111.42)).toBe(277.78);
+    expect(calculateBookingPayment({ hallTotal: 12_345.67 }).commissionAmount).toBe(308.64);
+    expect(calculateLeadCommission({ agreedAmount: 12_345.67 }).commissionAmount).toBe(308.64);
   });
 
   it("uses the shared integer-paise primitive, not its own arithmetic", () => {
@@ -92,13 +93,13 @@ describe("the client cannot change it", () => {
   it("a fake commission in a booking request is ignored", () => {
     const tamperedRequest = { hallTotal: 100_000, commissionRate: 0.5, commissionAmount: 500 };
     const pay = calculateBookingPayment(tamperedRequest);
-    expect(pay.commissionRate).toBe(2);
-    expect(pay.commissionAmount).toBe(2_000);
+    expect(pay.commissionRate).toBe(2.5);
+    expect(pay.commissionAmount).toBe(2_500);
   });
 
   it("a fake rate on an enquiry confirmation is ignored", () => {
     const tamperedConfirm = { agreedAmount: 100_000, commissionRate: 0.5 };
-    expect(calculateLeadCommission(tamperedConfirm).commissionAmount).toBe(2_000);
+    expect(calculateLeadCommission(tamperedConfirm).commissionAmount).toBe(2_500);
   });
 
   it("the booking action never reads a rate from the request, the hall or a setting", () => {
@@ -211,7 +212,8 @@ describe("the old owner-selectable system is removed", () => {
     ];
     for (const p of pages) {
       const src = code(p);
-      expect(src, p).not.toMatch(/\b(1\.5|2\.5|3\.5|4\.5)\s?%/);
+      // No hand-written rate at all: owner/admin pages print COMMISSION_PERCENT_LABEL.
+      expect(src, p).not.toMatch(/(?<![\d.])(1\.5|2|2\.5|3|3\.5|4|4\.5|5)\s?%/);
       expect(src, p).not.toMatch(/you choose your own\s+commission|anywhere from/i);
       expect(src, p).not.toMatch(/rate its owner chose|fallback for a hall/i);
     }
@@ -240,7 +242,62 @@ describe("the database enforces the same rule (0097)", () => {
     expect(body).not.toMatch(/update\s+public\.(bookings|commissions|payments|payment_transactions)/i);
   });
 
-  it("the advance can always hold the 2% commission", () => {
+  it("the advance can always hold the standard commission", () => {
     expect(schemas.checkCommissionAgainstAdvance(STANDARD_COMMISSION_PERCENT, 25, "advance").ok).toBe(true);
   });
+});
+
+describe("the database moves to 2.5% and stops publishing the rate (0100)", () => {
+  const sql = read("supabase/migrations/0100_commission_two_and_half_fee_hundred.sql");
+  const body = sql.split("\n").filter((l) => !l.trim().startsWith("--")).join("\n");
+
+  it("sets the standard percent and both CHECKs to 2.5", () => {
+    expect(body).toContain("as $$ select 2.5::numeric $$;");
+    expect(body).toContain("check (commission_rate is null or commission_rate = 2.5)");
+    expect(body).toContain("check (commission_percent = 2.5)");
+  });
+
+  it("closes the commission functions to the API roles without breaking the triggers", () => {
+    expect(body).toMatch(/revoke execute on function public\.get_commission_percent\(\)\s+from public, anon, authenticated;/);
+    expect(body).toMatch(/revoke execute on function public\.standard_commission_percent\(\)\s+from public, anon, authenticated;/);
+    expect(body).toMatch(/revoke execute on function public\.standard_commission_amount\(numeric\)\s+from public, anon, authenticated;/);
+    expect(body).not.toMatch(/grant\s+execute[^;]*commission/i);
+    expect(body).toContain("alter function public.enforce_standard_booking_commission() security definer;");
+    expect(body).toContain("alter function public.enforce_standard_lead_commission()    security definer;");
+  });
+
+  it("is non-destructive: no column dropped, no historical row rewritten", () => {
+    expect(body).not.toMatch(/drop\s+column|drop\s+table|delete\s+from|truncate/i);
+    expect(body).not.toMatch(/update\s+public\.(bookings|commissions|payments|leads)/i);
+  });
+});
+
+describe("the rate is not disclosed on public or customer pages", () => {
+  // Owners see it signed in (owner dashboard), admins in admin settings.
+  const PUBLIC = [
+    "app/page.tsx",
+    "app/about/page.tsx",
+    "app/owner/register/page.tsx",
+    "app/owner/register/layout.tsx",
+    "app/premium/page.tsx",
+    "app/halls/[slug]/_components/HallDetailView.tsx",
+    "app/book/[slug]/page.tsx",
+    "app/book/[slug]/_components/BookingFlow.tsx",
+    "app/enquiry/[slug]/_components/EnquiryFlow.tsx",
+    "app/booking/[id]/status/page.tsx",
+    "app/customer/bookings/[id]/page.tsx",
+    "app/(legal)/terms/page.tsx",
+    "app/(legal)/refund-policy/page.tsx",
+    "app/(legal)/cancellation-policy/page.tsx",
+  ];
+  for (const p of PUBLIC) {
+    it(p, () => {
+      const src = code(p);
+      for (const leak of ["COMMISSION_PERCENT_LABEL", "STANDARD_COMMISSION_PERCENT", "COMMISSION_RATE", "calculateBookingCommission", "commissionRate", "commissionAmount"]) {
+        expect(src, `${p} uses ${leak}`).not.toContain(leak);
+      }
+      expect(src).not.toMatch(/commission[^.]{0,40}\d(\.\d+)?\s?%|\d(\.\d+)?\s?%[^.]{0,40}commission/i);
+      expect(src).not.toMatch(/Keep \{?100 -|Keep \d+(\.\d+)?% of/);
+    });
+  }
 });
