@@ -205,6 +205,7 @@ describe("the old owner-selectable system is removed", () => {
       "app/owner/(dashboard)/profile/_components/PayoutSetup.tsx",
       "app/owner/(dashboard)/halls/_components/HallForm.tsx",
       "app/admin/commissions/page.tsx",
+      "app/admin/settings/_components/PaymentSettingsForm.tsx",
       "app/page.tsx",
       "app/(legal)/terms/page.tsx",
     ];
@@ -212,6 +213,7 @@ describe("the old owner-selectable system is removed", () => {
       const src = code(p);
       expect(src, p).not.toMatch(/\b(1\.5|2\.5|3\.5|4\.5)\s?%/);
       expect(src, p).not.toMatch(/you choose your own\s+commission|anywhere from/i);
+      expect(src, p).not.toMatch(/rate its owner chose|fallback for a hall/i);
     }
   });
 });

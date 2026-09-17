@@ -1,5 +1,6 @@
 "use client";
 
+import { COMMISSION_PERCENT_LABEL } from "@/lib/commission";
 import { useState, useTransition } from "react";
 import { CheckCircle2, Loader2 } from "lucide-react";
 import { updatePlatformPaymentSettings } from "@/app/admin/actions";
@@ -45,9 +46,9 @@ export function PaymentSettingsForm({ initial }: { initial: Initial }) {
       <Toggle label="Enable online customer payment (Cashfree)" checked={onlinePay} onChange={setOnlinePay} />
 
       <p className="rounded-lg bg-ivory-100 p-2.5 text-[11px] leading-relaxed text-charcoal-600">
-        Commission is a percentage of the hall price, retained from the customer&apos;s advance
-        automatically. Owners are never billed. Each hall carries the rate its owner chose when
-        they listed it; the figure above this card is only the fallback for a hall that has none.
+        The standard {COMMISSION_PERCENT_LABEL} commission on the hall price is retained from the
+        customer&apos;s advance automatically, so owners on direct booking are never billed. The advance
+        must stay large enough to hold it.
       </p>
 
       {error && <p className="text-xs text-red-600">{error}</p>}
