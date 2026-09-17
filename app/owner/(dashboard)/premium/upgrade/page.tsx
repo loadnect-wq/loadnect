@@ -46,7 +46,7 @@ export default async function OwnerPremiumUpgradePage() {
         <div className="text-center max-w-xl mx-auto">
           <h1 className="font-serif text-2xl font-bold text-charcoal-900">Boost your hall&apos;s visibility</h1>
           <p className="mt-1 text-sm text-charcoal-600">
-            Pick a plan that fits your venue. Premium and Pro listings appear higher in search.
+            Pick a plan that fits your venue. Pro and Elite listings appear higher in search.
             Billed monthly and renews on its own — cancel whenever you like.
           </p>
         </div>

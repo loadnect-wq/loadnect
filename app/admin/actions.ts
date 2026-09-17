@@ -51,6 +51,7 @@ import type { BookingExpirySummary } from "@/lib/booking-expiry";
 import type { PremiumExpirySummary } from "@/lib/premium-expiry";
 import { DEFAULT_ADVANCE_PERCENT } from "@/lib/booking-payment";
 import { STANDARD_COMMISSION_PERCENT } from "@/lib/commission";
+import { planDisplayName } from "@/lib/premium-plans";
 import { recordBookingRefundOrAlert } from "@/lib/refunds";
 import { releaseAvailabilityForBooking } from "@/lib/availability-release";
 
@@ -897,7 +898,7 @@ export async function togglePremiumActive(listingId: string, isActive: boolean):
   });
 
   // Non-critical message — respects the owner's notification preference.
-  await notifyPremiumChanged(listingId, before.hall_id, isActive, before.plan_slug === "pro" ? "Pro" : "Premium");
+  await notifyPremiumChanged(listingId, before.hall_id, isActive, planDisplayName(before.plan_slug));
 
   revalidatePath("/admin/premium-listings");
   revalidatePath("/admin/audit-logs");
@@ -1024,7 +1025,7 @@ export async function createPremiumListing(input: {
   });
 
   // Non-critical owner message — respects the owner's notification preference.
-  await notifyPremiumChanged(listing.id, v.hallId, true, v.planSlug === "pro" ? "Pro" : "Premium");
+  await notifyPremiumChanged(listing.id, v.hallId, true, planDisplayName(v.planSlug));
 
   revalidatePath("/admin/premium-listings");
   revalidatePath("/admin/dashboard");

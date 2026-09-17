@@ -1,5 +1,6 @@
 "use client";
 
+import { TIER_LABEL, planDisplayName } from "@/lib/plan-names";
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { AlertTriangle, Gift, Loader2, X } from "lucide-react";
@@ -27,7 +28,7 @@ function fmt(iso: string) {
 }
 
 /**
- * Grants a Premium or Pro plan at no charge.
+ * Grants a Pro or Elite plan at no charge.
  *
  * NOTHING HERE TOUCHES CASHFREE. The action writes a premium_listings row with
  * grant_type 'complimentary', no payment_id, no plan_purchase_id and amount 0 —
@@ -90,7 +91,7 @@ export function GrantComplimentaryForm({ halls }: { halls: HallOption[] }) {
 
       toast({
         title: "Complimentary access granted",
-        description: `${hall?.name ?? "The hall"} has ${planSlug === "pro" ? "Pro" : "Premium"} until ${fmt(endDate)}.`,
+        description: `${hall?.name ?? "The hall"} has ${TIER_LABEL[planSlug]} until ${fmt(endDate)}.`,
         variant: "success",
       });
       reset();
@@ -144,7 +145,7 @@ export function GrantComplimentaryForm({ halls }: { halls: HallOption[] }) {
         <div>
           <Label>Plan</Label>
           <div className="mt-1.5 flex flex-wrap gap-2">
-            {([["premium", "Premium"], ["pro", "Pro"]] as const).map(([slug, label]) => (
+            {([["premium", TIER_LABEL.premium], ["pro", TIER_LABEL.pro]] as const).map(([slug, label]) => (
               <button
                 key={slug} type="button"
                 onClick={() => { setPlanSlug(slug); setOverlaps(null); setAcknowledged(false); }}
@@ -232,7 +233,7 @@ export function GrantComplimentaryForm({ halls }: { halls: HallOption[] }) {
           <ul className="mt-2 space-y-1 text-xs text-amber-900">
             {overlaps.map((o) => (
               <li key={o.id}>
-                {o.planSlug === "pro" ? "Pro" : "Premium"} ({o.grantType}) — {fmt(o.startDate)} to {fmt(o.endDate)}
+                {planDisplayName(o.planSlug)} ({o.grantType}) — {fmt(o.startDate)} to {fmt(o.endDate)}
               </li>
             ))}
           </ul>

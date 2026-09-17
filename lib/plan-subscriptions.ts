@@ -21,6 +21,7 @@
 // API is the authority on whether a mandate is live.
 // ─────────────────────────────────────────────────────────────────────────────
 
+import { planDisplayName } from "@/lib/premium-plans";
 import "server-only";
 
 import crypto from "node:crypto";
@@ -96,9 +97,9 @@ function normalisePhone(raw: string | null | undefined): string {
  *  broken button. Past this, the attempt is retired and a fresh one opened. */
 const MANDATE_RESUME_WINDOW_MIN = 15;
 
-/** "premium" -> "Premium". Used in owner-facing message copy. */
+/** Slug to the plan's display name ("premium" -> "Pro"). Owner-facing copy. */
 function planLabelFor(slug: string): string {
-  return slug.charAt(0).toUpperCase() + slug.slice(1);
+  return planDisplayName(slug);
 }
 
 function gatewayMode(): "sandbox" | "production" {

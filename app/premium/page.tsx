@@ -22,10 +22,9 @@ function formatPrice(n: number) {
 
 // Server Component: the plan catalogue comes from premium_plans, the same rows
 // the owner dashboard and the upgrade flow read. This page previously rendered
-// a hardcoded list that had drifted badly out of step with it — the page
-// advertised "Pro Rs4,999" and "Elite Rs9,999" while the database sold
-// "Premium Rs4,999" and "Pro Rs9,999". An owner comparing the pricing page to
-// their dashboard saw different products at different prices.
+// a hardcoded list that had drifted out of step with it, so an owner comparing
+// the pricing page to their dashboard saw different names. Names now come from
+// the catalogue only (Free / Pro / Elite since migration 0098).
 /**
  * CACHED, AND THAT IS THE WHOLE POINT.
  *

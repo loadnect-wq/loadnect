@@ -13,12 +13,11 @@
 // below.
 //
 // PREMIUM_TIERS was removed. It was a SECOND, hardcoded plan catalogue that
-// disagreed with the real one in premium_plans: it named the Rs4,999 plan
-// "Pro" (its actual name is Premium) and advertised an "Elite" plan at Rs9,999
-// that does not exist - the Rs9,999 plan is Pro. It also sold an analytics
-// dashboard and priority support, neither of which is built. Only the owner
-// dashboard rendered it, and that now reads fetchPremiumPlans() + PLAN_FEATURES
-// like every other plan surface, so there is one catalogue again.
+// disagreed with the real one in premium_plans at the time, and sold an
+// analytics dashboard and priority support, neither of which is built. Every
+// plan surface now reads fetchPremiumPlans() + PLAN_FEATURES, so there is one
+// catalogue. (The plans have since been renamed Free / Pro / Elite in that one
+// catalogue — migration 0098 and lib/plan-names.ts.)
 
 // ─── Legal page dates ────────────────────────────────────────────────────────
 //
@@ -34,9 +33,9 @@
 // and telling a customer their binding terms changed when they did not is the
 // same lie in the other direction.
 export const LEGAL_LAST_UPDATED = {
-  "/terms":                "2026-09-06",
+  "/terms":                "2026-09-17",
   "/privacy":              "2026-09-09",
-  "/refund-policy":        "2026-09-06",
+  "/refund-policy":        "2026-09-17",
   "/cancellation-policy":  "2026-09-06",
   "/grievance-redressal":  "2026-09-04",
   "/disclaimer":           "2026-08-28",

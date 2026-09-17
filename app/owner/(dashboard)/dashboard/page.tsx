@@ -330,10 +330,9 @@ export default async function OwnerDashboardPage() {
           </p>
           <h2 className="mt-1.5 font-serif text-lg font-bold">Upgrade your listing</h2>
           {/* The SAME catalogue the plans page sells from (premium_plans +
-              PLAN_FEATURES). This used to render a second hardcoded list that
-              named the Rs4,999 plan "Pro" and advertised a nonexistent
-              "Elite" tier, so an owner saw one set of names here and another
-              when they went to buy. */}
+              PLAN_FEATURES), so an owner sees one set of names everywhere:
+              Free, Pro (₹4,999) and Elite (₹9,999) since 0098. A second
+              hardcoded list once drifted from it; do not add one back. */}
           <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
             {paidPlans.map((plan) => (
               <PlanTile

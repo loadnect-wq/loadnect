@@ -13,7 +13,7 @@ export function PremiumPlansForm({ plans }: { plans: PremiumPlan[] }) {
           <PlanRow key={plan.slug} plan={plan} />
         ))}
       <p className="text-[11px] text-charcoal-500">
-        Free plan features are fixed in code. Premium/Pro feature lists are also code-driven;
+        Free plan features are fixed in code. Pro and Elite feature lists are also code-driven;
         only price and duration are editable here.
       </p>
     </div>

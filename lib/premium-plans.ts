@@ -12,7 +12,8 @@
 
 import { getSupabasePublicClient } from "@/lib/supabase/public";
 
-export type PremiumTier = "free" | "premium" | "pro";
+import { TIER_LABEL, planDisplayName, type PremiumTier } from "@/lib/plan-names";
+export { TIER_LABEL, planDisplayName, type PremiumTier };
 
 export type PremiumPlan = {
   slug:           PremiumTier;
@@ -53,7 +54,7 @@ export const PLAN_FEATURES: Record<PremiumTier, PlanFeature[]> = {
     { label: "More visibility across categories" },
   ],
   pro: [
-    { label: "Everything in Premium" },
+    { label: "Everything in Pro" },
     { label: "Homepage promotion" },
     { label: "Top placement in search" },
   ],
@@ -70,8 +71,8 @@ export const PLAN_FEATURES: Record<PremiumTier, PlanFeature[]> = {
 // sold here any more (see PLAN_FEATURES above).
 const FALLBACK: PremiumPlan[] = [
   { slug: "free",    name: "Free",    description: "Full hall listing with photos, booking request management, and normal search ranking.",     monthly_price: 0,    duration_days: 30, is_purchasable: false, sort_order: 0 },
-  { slug: "premium", name: "Premium", description: "Featured badge on your hall card, higher search ranking, and more visibility across categories.", monthly_price: 4999, duration_days: 30, is_purchasable: true,  sort_order: 1 },
-  { slug: "pro",     name: "Pro",     description: "Everything in Premium, plus homepage promotion and top placement above Premium listings in search.", monthly_price: 9999, duration_days: 30, is_purchasable: true,  sort_order: 2 },
+  { slug: "premium", name: "Pro",     description: "Featured badge on your hall card, higher search ranking, and more visibility across categories.", monthly_price: 4999, duration_days: 30, is_purchasable: true,  sort_order: 1 },
+  { slug: "pro",     name: "Elite",   description: "Everything in Pro, plus homepage promotion and top placement above Pro listings in search.", monthly_price: 9999, duration_days: 30, is_purchasable: true,  sort_order: 2 },
 ];
 
 export async function fetchPremiumPlans(): Promise<PremiumPlan[]> {
@@ -109,14 +110,10 @@ export async function fetchPremiumPlans(): Promise<PremiumPlan[]> {
   }
 }
 
-// Label + priority helpers used by the badge + sort code.
-export const TIER_LABEL: Record<PremiumTier, string> = {
-  free:    "Free",
-  premium: "Premium",
-  pro:     "Pro",
-};
+// Label + priority helpers used by the badge + sort code. TIER_LABEL and
+// planDisplayName live in lib/plan-names.ts (pure, safe for client components).
 
-/** Higher = ranks higher in search. Pro > Premium > free. */
+/** Higher = ranks higher in search. Elite ("pro") > Pro ("premium") > Free. */
 export function tierRank(tier: PremiumTier | null): number {
   switch (tier) {
     case "pro":     return 2;

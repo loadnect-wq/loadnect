@@ -3,7 +3,7 @@ import Link from "next/link";
 import { Sparkles } from "lucide-react";
 import { requireRole } from "@/lib/auth";
 import { fetchOwnerRow, fetchOwnerHalls, fetchOwnerPremiumListings } from "@/lib/owner";
-import { PLAN_FEATURES } from "@/lib/premium-plans";
+import { PLAN_FEATURES, TIER_LABEL, planDisplayName } from "@/lib/premium-plans";
 import { formatPrice } from "@/lib/mock-data";
 import { Badge } from "@/components/ui/Badge";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -94,10 +94,10 @@ export default async function OwnerPremiumPage() {
               <div className="flex items-center gap-2">
                 <p className="text-sm font-semibold">{activeListing.hall_name}</p>
                 <span className="rounded-full bg-white/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
-                  {activeListing.plan_slug === "pro" ? "★ Pro" : "✦ Premium"}
+                  {activeListing.plan_slug === "pro" ? `★ ${TIER_LABEL.pro}` : `✦ ${TIER_LABEL.premium}`}
                 </span>
                 {/* The same plan, said honestly. This owner is getting the full
-                    Pro or Premium entitlement — the badge above is correct —
+                    Pro or Elite entitlement — the badge above is correct —
                     but they did not buy it, so nothing here may imply a price
                     or a renewal. */}
                 {activeListing.grant_type === "complimentary" && (
@@ -133,7 +133,7 @@ export default async function OwnerPremiumPage() {
               {activeListing.grant_type === "complimentary" ? (
                 <div className="mt-3 rounded-xl bg-white/15 px-3 py-2">
                   <p className="text-[11px] leading-relaxed text-white">
-                    Premium access provided by Hallnect as a special offer — there is
+                    {planDisplayName(activeListing.plan_slug)} access provided by Hallnect as a special offer — there is
                     nothing to pay and nothing to cancel.
                   </p>
                   <p className="mt-1 text-[11px] text-gold-100">
@@ -153,7 +153,7 @@ export default async function OwnerPremiumPage() {
                   </p>
                   <CancelSubscription
                     subscriptionId={subscription.id}
-                    planName={subscription.plan_slug === "pro" ? "Pro" : "Premium"}
+                    planName={planDisplayName(subscription.plan_slug)}
                     paidUntil={activeListing?.end_date ?? null}
                   />
                 </div>

@@ -1,3 +1,4 @@
+import { TIER_LABEL } from "@/lib/plan-names";
 import type { Metadata } from "next";
 import { requireRole } from "@/lib/auth";
 import { Sparkles } from "lucide-react";
@@ -164,7 +165,7 @@ export default async function AdminPremiumPage() {
                       <Td>
                         <span className="inline-flex flex-wrap items-center gap-1">
                           <Badge size="sm" variant={l.plan_slug === "pro" ? "default" : "gold"}>
-                            {l.plan_slug === "pro" ? "★ Pro" : "✦ Premium"}
+                            {l.plan_slug === "pro" ? `★ ${TIER_LABEL.pro}` : `✦ ${TIER_LABEL.premium}`}
                           </Badge>
                           {l.grant_type === "complimentary" && (
                             <Badge size="sm" variant="secondary" title={l.grant_reason ?? undefined}>

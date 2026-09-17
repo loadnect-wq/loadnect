@@ -30,7 +30,7 @@ export function RunPremiumExpiry() {
         <div>
           <p className="text-sm font-semibold text-charcoal-900">Expire lapsed listings</p>
           <p className="text-xs text-charcoal-500">
-            Retires listings past their end date and clears any hall still ranking as Premium or Pro
+            Retires listings past their end date and clears any hall still ranking as Pro or Elite
             without a live listing behind it. Runs daily on its own; safe to run repeatedly.
           </p>
         </div>

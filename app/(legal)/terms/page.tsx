@@ -40,13 +40,13 @@ export default function TermsPage() {
         All payments are processed through Cashfree Payments. By making a payment, you agree to Cashfree&apos;s terms of service. Hallnect does not store your card number, CVV, or banking credentials. The platform fee and its GST, where charged, are collected from the customer together with the advance; Hallnect&apos;s service commission is settled with the venue owner out of the advance and is never an additional customer charge.
       </Section>
 
-      <Section title="7. Venue Owner Subscriptions (Premium and Pro)">
+      <Section title="7. Venue Owner Subscriptions (Pro and Elite)">
         Venue owners may subscribe a hall to a paid listing plan. These plans are{" "}
         <strong>recurring monthly subscriptions</strong>, not one-off purchases.
         <ul className="mt-3 list-disc space-y-1.5 pl-5">
           <li>
-            Current prices are <strong>&#8377;4,999 per month</strong> for Premium and{" "}
-            <strong>&#8377;9,999 per month</strong> for Pro, charged <strong>per hall</strong>.
+            Current prices are <strong>&#8377;4,999 per month</strong> for Pro and{" "}
+            <strong>&#8377;9,999 per month</strong> for Elite, charged <strong>per hall</strong>.
             The price shown on the plans page at the time you subscribe is the price that applies.
           </li>
           <li>

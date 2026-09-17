@@ -1,5 +1,6 @@
 "use client";
 
+import { TIER_LABEL } from "@/lib/plan-names";
 import { useEffect } from "react";
 import { HARD_BLOCK_STATUSES, PARTIAL_BLOCK_STATUSES } from "@/lib/availability-status";
 import { useLiveAvailability } from "@/lib/useLiveAvailability";
@@ -358,8 +359,8 @@ export function HallDetailView({ hall, similar, isPreview, sidebarAd, advancePer
                     honest — a paid placement, not a quality rating. Same pairing
                     as HallCard; see the longer note there. */}
                 <div className="flex items-center gap-1.5 flex-wrap">
-                  {hall.premium_tier === "pro"     && <Badge variant="gold" size="sm">★ Pro</Badge>}
-                  {hall.premium_tier === "premium" && <Badge variant="gold" size="sm">✦ Premium</Badge>}
+                  {hall.premium_tier === "pro"     && <Badge variant="gold" size="sm">★ {TIER_LABEL.pro}</Badge>}
+                  {hall.premium_tier === "premium" && <Badge variant="gold" size="sm">✦ {TIER_LABEL.premium}</Badge>}
                   {(hall.premium_tier === "premium" || hall.premium_tier === "pro") && (
                     <span className="rounded-full bg-white px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-charcoal-600 shadow-sm">
                       Promoted

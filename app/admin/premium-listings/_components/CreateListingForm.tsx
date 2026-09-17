@@ -1,5 +1,6 @@
 "use client";
 
+import { TIER_LABEL } from "@/lib/plan-names";
 import { todayInBusinessTz, addDaysToIsoDate } from "@/lib/dates";
 import { useState, useTransition } from "react";
 import { Sparkles } from "lucide-react";
@@ -73,8 +74,8 @@ export function CreateListingForm({ halls }: { halls: HallOption[] }) {
             onChange={(e) => setPlan(e.target.value as "premium" | "pro")}
             className="rounded-lg border border-border bg-white px-2.5 py-2 text-sm focus:border-maroon-500 focus:outline-none"
           >
-            <option value="premium">Premium</option>
-            <option value="pro">Pro</option>
+            <option value="premium">{TIER_LABEL.premium}</option>
+            <option value="pro">{TIER_LABEL.pro}</option>
           </select>
         </label>
 

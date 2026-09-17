@@ -82,7 +82,7 @@ export default function RefundPolicyPage() {
       </Section>
 
       <Section title="5. Venue Owner Subscriptions">
-        Premium and Pro listing plans are <strong>recurring monthly subscriptions</strong> for venue
+        Pro and Elite listing plans are <strong>recurring monthly subscriptions</strong> for venue
         owners and are <strong>separate from booking refunds</strong>. The first month is charged
         when you subscribe. You may cancel at any time from Owner Dashboard &rarr; Premium, which
         stops all future charges immediately. <strong>Months already paid for are not refunded</strong>{" "}
