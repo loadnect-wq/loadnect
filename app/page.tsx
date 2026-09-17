@@ -470,7 +470,7 @@ export default async function HomePage() {
             <div className="container-page w-full">
               <div className="mx-auto max-w-4xl text-center">
                 <span className="hero-ink inline-flex items-center gap-1.5 rounded-full border border-white/25 bg-white/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-widest text-white backdrop-blur">
-                  <Sparkles className="h-3 w-3" /> Wedding Venues across Tamil Nadu
+                  <Sparkles className="h-3 w-3" /> Wedding &amp; event halls · Tamil Nadu
                 </span>
 
                 {/* Visually the desktop headline, but NOT an <h1>: the homepage
@@ -481,9 +481,9 @@ export default async function HomePage() {
                     under both shades: 4.15:1 against a 3.0 bar for 56px bold
                     (+38%). gold-300 is noticeably weaker on this footage. */}
                 <p className="hero-ink mt-6 font-sans text-5xl font-bold leading-[1.1] tracking-tight text-white xl:text-6xl">
-                  The hall you want,
+                  Find the right hall
                   <br className="hidden sm:block" />{" "}
-                  on <span className="text-gold-200">the date you need</span>
+                  for <span className="text-gold-200">every celebration</span>
                 </p>
 
                 {/* The event word rotates. White semibold, NOT gold: this is
@@ -495,13 +495,18 @@ export default async function HomePage() {
                     was wide and stayed whole when it was "party", so half a word
                     jumped between lines on every swap. With the break forced here
                     the word only re-centres line 1, and line 2 never changes.
-                    max-w-3xl so the second sentence fits on one line. */}
+                    max-w-3xl so the second sentence fits on one line.
+
+                    "Book online or send a free enquiry" is deliberately "or":
+                    each venue offers one or the other (booking_mode), and the
+                    listing says which. Nothing here promises online booking
+                    for a venue that only takes enquiries. */}
                 <p className="hero-ink mx-auto mt-6 max-w-3xl text-base text-white/90 xl:text-lg">
-                  Discover, compare, and book{" "}
+                  Compare{" "}
                   <RotatingWord words={HERO_EVENT_WORDS} className="font-semibold text-white" />{" "}
-                  halls across Tamil Nadu.
+                  halls by price, capacity and photos.
                   <br />
-                  Owner-submitted listings, transparent pricing, and a clear answer from the venue.
+                  Then book online or send a free enquiry, whichever the venue offers.
                 </p>
               </div>
 
@@ -510,12 +515,18 @@ export default async function HomePage() {
                   loose on the footage and faded into its darker lower edge.
                   The bar's 45% charcoal is ON TOP of the intro shade, so the
                   white text here is on a darker ground than the subhead above,
-                  which already passes at 4.5:1 with white/90. */}
+                  which already passes at 4.5:1 with white/90.
+
+                  Each line is something the site does today: prices are shown
+                  as the owner lists them, listings are submitted by owners and
+                  approved by an admin before they publish, and an enquiry is
+                  free (FAQ: "you pay Hallnect nothing at all"). No counts, and
+                  no "verified" — Terms section 5 rules that out. */}
               <div className="mx-auto mt-10 grid max-w-5xl grid-cols-4 divide-x divide-white/20 rounded-full border border-white/25 bg-charcoal-950/45 px-3 py-3 shadow-[0_12px_40px_-12px_rgba(0,0,0,0.5)] backdrop-blur-md">
-                <TrustItem text="Launching in Tamil Nadu" />
-                <TrustItem text="Owner-submitted listings" />
-                <TrustItem text="Secure booking flow" />
-                <TrustItem text="Owner-approved venues" />
+                <TrustItem text="Transparent pricing" />
+                <TrustItem text="Listed by venue owners" />
+                <TrustItem text="Approved before going live" />
+                <TrustItem text="Free to enquire" />
               </div>
             </div>
           }

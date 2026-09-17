@@ -4,7 +4,7 @@ import path from "node:path";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // The rotating event word in the hero subhead:
-//   "Discover, compare, and book [wedding|party|reception|banquet] halls…"
+//   "Compare [wedding|party|reception|banquet] halls by price, capacity and photos."
 //
 // First version: the box was always the widest word, so nothing around it ever
 // moved — but "party" (47px) sat in an 83px box sized for "reception", leaving
@@ -109,9 +109,9 @@ describe("screen readers and copy-paste", () => {
 describe("on the page", () => {
   it("replaces the word 'wedding' in the hero subhead", () => {
     const pageCode = code(page);
-    expect(pageCode).toContain('Discover, compare, and book{" "}');
+    expect(pageCode).toContain('Compare{" "}');
     expect(pageCode).toContain("<RotatingWord words={HERO_EVENT_WORDS}");
-    expect(pageCode).not.toContain("Discover, compare, and book wedding halls");
+    expect(pageCode).not.toContain("Compare wedding halls");
   });
 
   it("only offers kinds of hall the site actually lists", () => {
@@ -127,9 +127,9 @@ describe("on the page", () => {
     // With free wrapping, "Owner-submitted" split at its hyphen when the word
     // was wide and stayed whole for "party" — half a word jumped lines.
     const pageCode = code(page);
-    const sub = pageCode.slice(pageCode.indexOf("Discover, compare, and book"), pageCode.indexOf("from the venue."));
-    expect(sub).toContain("halls across Tamil Nadu.");
-    expect(sub).toMatch(/Tamil Nadu\.\s*<br \/>\s*Owner-submitted/);
+    const sub = pageCode.slice(pageCode.indexOf('Compare{" "}'), pageCode.indexOf("whichever the venue offers."));
+    expect(sub).toContain("halls by price, capacity and photos.");
+    expect(sub).toMatch(/capacity and photos\.\s*<br \/>\s*Then book online/);
     expect(pageCode).toContain("mx-auto mt-6 max-w-3xl");
   });
 
