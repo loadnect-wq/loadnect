@@ -9,6 +9,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { AdminPageHeader } from "../_components/AdminPageHeader";
 import { AddHallDraftForm } from "./_components/AddHallDraftForm";
 import { CancelDraftButton } from "./_components/CancelDraftButton";
+import { DraftPhotosManager } from "./_components/DraftPhotosManager";
 
 export const metadata: Metadata = { title: "Add a Hall — Admin" };
 
@@ -115,6 +116,16 @@ export default async function HallDraftsPage() {
                   <p className="mt-2 text-[11px] leading-relaxed text-charcoal-500">
                     Claimable only by someone who signs in and verifies this exact mobile number.
                   </p>
+
+                  {/* Not keyed by the photo list: a partly failed save refreshes
+                      the page, and a remount would throw away the failed photos
+                      and their reasons. The panel's own state already matches
+                      what was saved. */}
+                  <DraftPhotosManager
+                    draftId={d.id}
+                    hallName={d.name}
+                    photoUrls={d.photoUrls}
+                  />
 
                   <div className="mt-3">
                     <CancelDraftButton draftId={d.id} hallName={d.name} />

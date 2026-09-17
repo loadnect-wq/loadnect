@@ -650,6 +650,36 @@ export const adminHallDraftSchema = z
 
 export const claimHallDraftSchema = z.object({ draftId: uuidSchema });
 
+// ── Photos on an admin-recorded hall (0094) ─────────────────────────────────
+// The limits live in lib/hall-draft-photos.ts; restated as literals here only
+// where zod needs a number at module load. hall-draft-photos.test.ts pins that
+// they agree.
+
+/** Step 1: ask the server for upload slots. It names every file, not the client. */
+export const prepareHallDraftPhotosSchema = z.object({
+  draftId: uuidSchema,
+  files: z
+    .array(
+      z.object({
+        key:  z.string().trim().min(1).max(64),
+        type: z.enum(["image/jpeg", "image/png", "image/webp"]),
+        // After in-browser resizing. Storage enforces the same 5 MB itself.
+        size: z.number().int().min(1).max(5 * 1024 * 1024, "Each photo must be 5 MB or smaller after resizing."),
+      }),
+    )
+    .min(1)
+    .max(10, "A listing can have up to 10 photos."),
+});
+
+/** Step 2: the complete, ordered list to keep (first = cover). */
+export const saveHallDraftPhotosSchema = z.object({
+  draftId: uuidSchema,
+  paths:   z.array(z.string().max(200)).max(10, "A listing can have up to 10 photos."),
+  // Uploads the client knows it will not use (a failed or removed photo), so
+  // their files are removed now rather than left for the sweep.
+  discard: z.array(z.string().max(200)).max(40).default([]),
+});
+
 export const cancelHallDraftSchema = z.object({
   draftId: uuidSchema,
   // .min(1) AFTER the trim: trimmed() happily returns "", and a withdrawal

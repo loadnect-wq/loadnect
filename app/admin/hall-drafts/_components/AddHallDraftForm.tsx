@@ -9,6 +9,8 @@ import { Label } from "@/components/ui/label";
 import { toast } from "@/hooks/use-toast";
 import { VENUE_TYPE_VALUES } from "@/lib/validation/schemas";
 import { createAdminHallDraft, checkHallDraftDuplicates } from "../../actions";
+import { HallPhotosField } from "./HallPhotosField";
+import { commitDraftPhotos, revokePreview, type DraftPhoto } from "./draft-photos";
 
 type Match = { kind: "hall" | "draft"; id: string; name: string; city: string; reason: string; href: string | null };
 
@@ -40,6 +42,51 @@ export function AddHallDraftForm({ amenities = [] }: { amenities?: AmenityOption
   const [acknowledged, setAcknowledged] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  // HALL PHOTOS. Picked and previewed locally; nothing is uploaded until Save
+  // listing has created the listing, because until then there is no folder to
+  // upload into and an abandoned form would leave files behind.
+  const [photos, setPhotos] = useState<DraftPhoto[]>([]);
+  // Set once the listing exists but some photos still need attention. From
+  // then on Save retries only the photos — pressing it again must never create
+  // a second copy of the listing.
+  const [savedDraft, setSavedDraft] = useState<{ id: string; name: string; ownerName: string } | null>(null);
+  const [photoProblem, setPhotoProblem] = useState<string | null>(null);
+
+  function resetForm() {
+    photos.forEach(revokePreview);
+    setPhotos([]);
+    setSavedDraft(null);
+    setPhotoProblem(null);
+    setF({ ...BLANK });
+    setVenueTypes([]);
+    setAmenitySlugs([]);
+    setMatches(null);
+    setAcknowledged(false);
+    setError(null);
+    setOpen(false);
+  }
+
+  /** Uploads and saves the photos for a listing that already exists. */
+  async function finishPhotos(draft: { id: string; name: string; ownerName: string }, list: DraftPhoto[]) {
+    const r = await commitDraftPhotos(draft.id, list, setPhotos);
+    router.refresh();
+    if (r.error || r.failedCount > 0) {
+      setPhotoProblem(
+        r.error && r.failedCount === 0
+          ? r.error
+          : `${r.failedCount} photo${r.failedCount === 1 ? "" : "s"} could not be saved — each one says why below. ` +
+            "Press Save photos to try again, or remove them and finish.",
+      );
+      return;
+    }
+    toast({
+      title: "Listing saved",
+      description: `${draft.name} is waiting for ${draft.ownerName} to claim it` +
+        (r.savedCount > 0 ? `, with ${r.savedCount} photo${r.savedCount === 1 ? "" : "s"}.` : "."),
+      variant: "success",
+    });
+    resetForm();
+  }
 
   const set = (k: keyof typeof BLANK) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     setF((p) => ({ ...p, [k]: e.target.value }));
@@ -66,6 +113,13 @@ export function AddHallDraftForm({ amenities = [] }: { amenities?: AmenityOption
     setError(null);
 
     startTransition(async () => {
+      // The listing already exists: only the photos are left to save.
+      if (savedDraft) {
+        setPhotoProblem(null);
+        await finishPhotos(savedDraft, photos);
+        return;
+      }
+
       // WARN BEFORE WRITING, ONCE. Brief section 11 asks for a duplicate
       // warning, not a block: two venues can share a name in different cities
       // and an owner may legitimately list a second hall. So the first Save
@@ -89,18 +143,27 @@ export function AddHallDraftForm({ amenities = [] }: { amenities?: AmenityOption
         venueTypes,
         amenitySlugs,
         customAmenities: [],
-        // PHOTOS STAY EMPTY, AND THAT IS DELIBERATE. photo_urls is an
-        // unconstrained text[], but claim_admin_hall_draft() copies each entry
-        // straight into hall_images, where CHECK hall_images_url_is_our_storage
-        // (0083) requires the URL to be on our own Supabase bucket. A pasted
-        // third-party URL would therefore save here without complaint and blow
-        // up weeks later, on the OWNER, at the moment they claim the listing.
-        // Photos need a real uploader writing to our storage first; see
-        // docs/update-plan.md §4.7.
+        // NO PHOTO URLS ON CREATE, AND THAT IS DELIBERATE. claim_admin_hall_draft()
+        // copies photo_urls straight into hall_images, where CHECK
+        // hall_images_url_is_our_storage (0083) requires our own bucket — so a
+        // URL taken from the client here could fail weeks later, on the OWNER,
+        // at the moment they claim. Photos arrive only through the uploader:
+        // once this listing exists, finishPhotos() uploads them into its folder
+        // and saveHallDraftPhotos checks each file before recording it (0094).
         photoUrls: [],
       });
 
       if ("error" in result) { setError(result.error); return; }
+
+      // With photos, the listing is saved first and the photos go into its
+      // folder. A photo failure is reported on the photo — the listing itself
+      // is not rolled back, and the form says plainly that it was saved.
+      if (photos.length > 0) {
+        const draft = { id: result.draftId, name: f.name, ownerName: f.ownerName };
+        setSavedDraft(draft);
+        await finishPhotos(draft, photos);
+        return;
+      }
 
       toast({
         title: "Listing saved",
@@ -135,12 +198,21 @@ export function AddHallDraftForm({ amenities = [] }: { amenities?: AmenityOption
             For a venue whose owner has not registered yet. They claim it by signing in with the mobile number below.
           </p>
         </div>
-        <button type="button" onClick={() => setOpen(false)} aria-label="Close" className="text-charcoal-400 hover:text-charcoal-700">
+        <button
+          type="button"
+          disabled={pending}
+          onClick={() => {
+            if (savedDraft) resetForm();
+            else setOpen(false);
+          }}
+          aria-label="Close"
+          className="text-charcoal-400 hover:text-charcoal-700"
+        >
           <X className="h-4 w-4" />
         </button>
       </div>
 
-      <fieldset disabled={pending} className="space-y-4">
+      <fieldset disabled={pending || savedDraft !== null} className="space-y-4">
         <div className="grid gap-4 sm:grid-cols-2">
           <Field id="name" label="Hall name" required value={f.name} onChange={set("name")} />
           <Field id="city" label="City" required value={f.city} onChange={set("city")} />
@@ -257,7 +329,35 @@ export function AddHallDraftForm({ amenities = [] }: { amenities?: AmenityOption
             placeholder="What the venue actually offers. The owner can rewrite this after claiming."
           />
         </div>
+      </fieldset>
 
+      {/* Hall photos — next to the description, before the owner's details. */}
+      <fieldset disabled={pending} className="mt-4">
+        <HallPhotosField photos={photos} onChange={setPhotos} disabled={pending} />
+        {photoProblem && savedDraft && (
+          <div className="mt-3 rounded-xl border-2 border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+            <p className="font-semibold">The listing was saved. Some photos were not.</p>
+            <p className="mt-1 text-xs leading-relaxed">{photoProblem}</p>
+            <button
+              type="button"
+              onClick={() =>
+                startTransition(async () => {
+                  const kept = photos.filter((p) => p.status !== "failed");
+                  photos.filter((p) => p.status === "failed").forEach(revokePreview);
+                  setPhotos(kept);
+                  setPhotoProblem(null);
+                  await finishPhotos(savedDraft, kept);
+                })
+              }
+              className="mt-2 text-xs font-semibold underline underline-offset-2"
+            >
+              Remove the failed photos and finish
+            </button>
+          </div>
+        )}
+      </fieldset>
+
+      <fieldset disabled={pending || savedDraft !== null} className="mt-4 space-y-4">
         <div className="rounded-xl border border-border bg-ivory-50 p-4">
           <p className="text-xs font-semibold uppercase tracking-wide text-charcoal-500">Owner contact</p>
           <div className="mt-3 grid gap-4 sm:grid-cols-3">
@@ -308,10 +408,18 @@ export function AddHallDraftForm({ amenities = [] }: { amenities?: AmenityOption
       <div className="mt-5 flex items-center gap-3">
         <Button type="submit" variant="gold" disabled={pending || checking}>
           {(pending || checking) && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" aria-hidden />}
-          {acknowledged && matches && matches.length > 0 ? "Save anyway" : "Save listing"}
+          {savedDraft ? "Save photos" : acknowledged && matches && matches.length > 0 ? "Save anyway" : "Save listing"}
         </Button>
-        <button type="button" onClick={() => setOpen(false)} className="text-sm text-charcoal-500 hover:text-charcoal-800">
-          Cancel
+        <button
+          type="button"
+          disabled={pending}
+          onClick={() => {
+            if (savedDraft) router.refresh();
+            resetForm();
+          }}
+          className="text-sm text-charcoal-500 hover:text-charcoal-800"
+        >
+          {savedDraft ? "Close" : "Cancel"}
         </button>
       </div>
     </form>

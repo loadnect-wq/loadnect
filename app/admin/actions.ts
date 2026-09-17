@@ -19,8 +19,22 @@ import {
   couponLimitsSchema,
   adminHallDraftSchema,
   cancelHallDraftSchema,
+  prepareHallDraftPhotosSchema,
+  saveHallDraftPhotosSchema,
   parseSafe,
 } from "@/lib/validation/schemas";
+import {
+  HALL_IMAGES_BUCKET,
+  MAX_STORED_PHOTO_BYTES,
+  diffPhotoLists,
+  draftPhotoPath,
+  fileNameOf,
+  isDraftPhotoPath,
+  mimeForDraftPhotoPath,
+  sniffPhotoBytes,
+  storagePathFromPublicUrl,
+} from "@/lib/hall-draft-photos";
+import { publicUrlForStoragePath } from "@/lib/supabase/storage";
 import { findPossibleDuplicates, type DuplicateMatch } from "@/lib/admin-hall-drafts";
 import { sanitizeError } from "@/lib/errors";
 import { canonicalStateForStorage } from "@/lib/seo/state";
@@ -2664,4 +2678,324 @@ export async function cancelAdminHallDraft(input: unknown): Promise<ActionResult
 
   revalidatePath("/admin/hall-drafts");
   return { success: true };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Photos on an admin-recorded hall (migration 0094).
+//
+// REUSES WHAT EXISTS. The `hall-images` bucket (5 MB, JPEG/PNG/WebP, enforced
+// by Storage) holds the files under the draft's id; admin_hall_drafts
+// .photo_urls holds the ordered list, first = cover; claim_admin_hall_draft()
+// already copies that list into hall_images. No new bucket, table or lifecycle.
+//
+// TWO STEPS, BOTH ADMIN-GATED ON THE SERVER:
+//   1. prepareHallDraftPhotoUploads — the server names each file
+//      ({draftId}/{uuid}.{ext}) and returns a signed, single-use upload URL for
+//      it. The browser uploads straight to Storage (with progress), so a 5 MB
+//      photo never has to fit through a server action's request body.
+//   2. saveHallDraftPhotos — the complete ordered list. Every NEW file is
+//      checked where it actually landed: it exists, it is within the size
+//      limit, and its first bytes really are the image type its name claims.
+//      Only then is the list written, guarded against a concurrent edit, and
+//      anything no longer referenced is removed from Storage.
+//
+// WHY NOT UPLOAD BEFORE THE LISTING EXISTS: there is no folder to put it in,
+// and a photo uploaded for a form the admin then abandons is an orphan. The
+// form saves the listing first, then uploads into that listing's folder.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Unreferenced files older than this in a draft's folder are swept on save. */
+const DRAFT_PHOTO_SWEEP_AFTER_MS = 60 * 60 * 1000;
+
+type DraftPhotoRow = {
+  id: string;
+  claim_status: string;
+  photo_urls: string[] | null;
+  updated_at: string;
+};
+
+async function readDraftForPhotos(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  db: any,
+  draftId: string,
+): Promise<{ draft: DraftPhotoRow } | { error: string }> {
+  const { data, error } = await db
+    .from("admin_hall_drafts")
+    .select("id, claim_status, photo_urls, updated_at")
+    .eq("id", draftId)
+    .maybeSingle();
+  if (error) return { error: sanitizeError(error, "admin") };
+  if (!data) return { error: "That listing could not be found. Reload and try again." };
+  if (data.claim_status === "claimed") {
+    return { error: "This listing has been claimed. Its owner now manages the photos." };
+  }
+  if (data.claim_status !== "unclaimed") {
+    return { error: "This listing has been withdrawn, so its photos can no longer be changed." };
+  }
+  return { draft: data as DraftPhotoRow };
+}
+
+/** The first bytes of a stored object, read from its public URL. */
+async function readStoredPhotoHead(path: string): Promise<Uint8Array | null> {
+  const url = publicUrlForStoragePath(path);
+  if (!url) return null;
+  try {
+    const res = await fetch(url, {
+      headers: { Range: "bytes=0-15" },
+      cache: "no-store",
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!res.ok || !res.body) return null;
+    // Read ONE chunk and stop: if the server ignores Range it would otherwise
+    // stream the whole photo to learn sixteen bytes.
+    const reader = res.body.getReader();
+    const { value } = await reader.read();
+    await reader.cancel().catch(() => {});
+    return value ? value.slice(0, 16) : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Removes files from a draft's folder. Only ever given validated
+ * `{draftId}/{uuid}.{ext}` paths, so it cannot reach another listing's files.
+ * A failure is logged, never thrown: the save the admin asked for has already
+ * succeeded, and a stray file is a cost, not a correctness problem.
+ */
+async function removeDraftPhotoFiles(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  supabase: any,
+  paths: string[],
+  why: string,
+): Promise<void> {
+  const unique = [...new Set(paths)];
+  if (unique.length === 0) return;
+  const { error } = await supabase.storage.from(HALL_IMAGES_BUCKET).remove(unique);
+  if (error) {
+    console.error(
+      `[hall-draft-photos] could not remove ${unique.length} file(s) (${why}); orphaned:`,
+      unique,
+      error.message,
+    );
+  }
+}
+
+export async function prepareHallDraftPhotoUploads(
+  input: unknown,
+): Promise<{ uploads: { key: string; path: string; signedUrl: string }[] } | { error: string }> {
+  const actor = await requireAdminActor();
+  if (!actor.ok) return { error: actor.error };
+
+  const parsed = parseSafe(prepareHallDraftPhotosSchema, input);
+  if (!parsed.ok) return { error: parsed.error };
+  const v = parsed.data;
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const supabase = actor.supabase as any;
+  const found = await readDraftForPhotos(supabase, v.draftId);
+  if ("error" in found) return { error: found.error };
+
+  if (new Set(v.files.map((f) => f.key)).size !== v.files.length) {
+    return { error: "Each photo can only be uploaded once." };
+  }
+
+  // Signed with the ADMIN's session: createSignedUploadUrl is itself checked
+  // against hall_images_storage_insert (is_admin()), so a non-admin could not
+  // mint one even by calling Storage directly. Storage still enforces the
+  // bucket's size and type limits on the upload that follows.
+  const uploads: { key: string; path: string; signedUrl: string }[] = [];
+  for (const f of v.files) {
+    const path = draftPhotoPath(v.draftId, crypto.randomUUID(), f.type);
+    const { data, error } = await supabase.storage
+      .from(HALL_IMAGES_BUCKET)
+      .createSignedUploadUrl(path);
+    if (error || !data?.signedUrl) {
+      return {
+        error: sanitizeError(
+          error ?? "no signed upload url",
+          "admin",
+          "Photo uploads are unavailable right now. Please try again.",
+        ),
+      };
+    }
+    uploads.push({ key: f.key, path, signedUrl: data.signedUrl });
+  }
+  return { uploads };
+}
+
+export async function saveHallDraftPhotos(
+  input: unknown,
+): Promise<
+  | { success: true; saved: string[]; rejected: { path: string; reason: string }[] }
+  | { error: string }
+> {
+  const actor = await requireAdminActor();
+  if (!actor.ok) return { error: actor.error };
+
+  const parsed = parseSafe(saveHallDraftPhotosSchema, input);
+  if (!parsed.ok) return { error: parsed.error };
+  const v = parsed.data;
+
+  // Every path must be a generated name inside THIS draft's folder. Checked
+  // before anything is read, so a crafted path can neither be saved nor
+  // deleted. The DB CHECK (0094) is the second layer.
+  const allPaths = [...v.paths, ...v.discard];
+  if (allPaths.some((p) => !isDraftPhotoPath(v.draftId, p))) {
+    return { error: "One of the photos does not belong to this listing. Reload and try again." };
+  }
+  if (new Set(v.paths).size !== v.paths.length) {
+    return { error: "The same photo appears twice. Remove the duplicate and save again." };
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const supabase = actor.supabase as any;
+  const found = await readDraftForPhotos(supabase, v.draftId);
+  if ("error" in found) return { error: found.error };
+  const draft = found.draft;
+
+  const before = (draft.photo_urls ?? [])
+    .map((u) => storagePathFromPublicUrl(u))
+    .filter((p): p is string => p !== null);
+  const beforeSet = new Set(before);
+  const incoming = v.paths.filter((p) => !beforeSet.has(p));
+
+  // ── What is actually in the folder ──────────────────────────────────────
+  // Listed even when nothing is new: the same listing drives the sweep below.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let listing: any[] | null = null;
+  {
+    const { data, error } = await supabase.storage
+      .from(HALL_IMAGES_BUCKET)
+      .list(v.draftId, { limit: 1000 });
+    if (error) {
+      // Required to verify new files; without new files only the sweep is lost.
+      if (incoming.length > 0) {
+        return { error: sanitizeError(error, "admin", "The photos could not be checked. Please try again.") };
+      }
+    } else {
+      listing = data ?? [];
+    }
+  }
+  const byName = new Map((listing ?? []).map((o) => [o.name as string, o]));
+
+  // ── Verify every NEW file where it actually landed ──────────────────────
+  const rejected: { path: string; reason: string }[] = [];
+  await Promise.all(
+    incoming.map(async (path) => {
+      const obj = byName.get(fileNameOf(path));
+      if (!obj) {
+        rejected.push({ path, reason: "The upload did not finish. Try this photo again." });
+        return;
+      }
+      const size = Number(obj.metadata?.size ?? 0);
+      if (!(size > 0) || size > MAX_STORED_PHOTO_BYTES) {
+        rejected.push({ path, reason: "This photo is larger than 5 MB after resizing." });
+        return;
+      }
+      const head = await readStoredPhotoHead(path);
+      if (!head) {
+        rejected.push({ path, reason: "This photo could not be checked. Try it again." });
+        return;
+      }
+      const actual = sniffPhotoBytes(head);
+      if (!actual || actual !== mimeForDraftPhotoPath(path)) {
+        rejected.push({ path, reason: "This file is not a real JPG, PNG or WebP image." });
+      }
+    }),
+  );
+  const rejectedSet = new Set(rejected.map((r) => r.path));
+  const finalPaths = v.paths.filter((p) => !rejectedSet.has(p));
+
+  const urls = finalPaths.map((p) => publicUrlForStoragePath(p));
+  if (urls.some((u) => !u)) {
+    return { error: "Photo storage is not configured. Please try again shortly." };
+  }
+
+  // ── Write, guarded against a concurrent edit ───────────────────────────
+  // updated_at must still be what we read: another admin (or tab) saving in
+  // between would otherwise be overwritten, and the cleanup below would then
+  // delete files that save still references.
+  const { error: writeErr, count } = await supabase
+    .from("admin_hall_drafts")
+    .update({ photo_urls: urls }, { count: "exact" })
+    .eq("id", v.draftId)
+    .eq("claim_status", "unclaimed")
+    .eq("updated_at", draft.updated_at);
+
+  if (writeErr || (count ?? 0) === 0) {
+    // Nothing was attached, so files uploaded for this save are orphans.
+    await removeDraftPhotoFiles(supabase, [...incoming, ...v.discard], "save failed");
+    if (writeErr) {
+      return { error: sanitizeError(writeErr, "admin", "The photos could not be saved. Please try again.") };
+    }
+    return {
+      error:
+        "This listing changed while you were editing — it may have been claimed, or saved in another tab. Reload and try again.",
+    };
+  }
+
+  // ── Remove what is no longer referenced ────────────────────────────────
+  const finalSet = new Set(finalPaths);
+  const now = Date.now();
+  // Files in this folder that nothing references and that are over an hour
+  // old: an upload whose save never arrived (tab closed, network lost).
+  // Younger ones are left alone — they may belong to a save still in flight.
+  const stale = (listing ?? [])
+    .map((o) => ({ path: `${v.draftId}/${o.name}`, created: Date.parse(o.created_at ?? "") }))
+    .filter(({ path, created }) =>
+      !finalSet.has(path) &&
+      isDraftPhotoPath(v.draftId, path) &&
+      Number.isFinite(created) &&
+      now - created > DRAFT_PHOTO_SWEEP_AFTER_MS,
+    )
+    .map(({ path }) => path);
+  const dropped = before.filter((p) => !finalSet.has(p));
+  await removeDraftPhotoFiles(
+    supabase,
+    [...dropped, ...rejected.map((r) => r.path), ...v.discard.filter((p) => !finalSet.has(p)), ...stale],
+    "no longer referenced",
+  );
+
+  // ── Audit ──────────────────────────────────────────────────────────────
+  const diff = diffPhotoLists(before, finalPaths);
+  const base = { entityType: "admin_hall_draft", entityId: v.draftId };
+  if (diff.added.length > 0) {
+    await recordAdminAction({
+      ...base,
+      action: "hall_draft.photo_upload",
+      metadata: { added: diff.added.length, total: finalPaths.length, paths: diff.added },
+    });
+  }
+  if (diff.removed.length > 0) {
+    await recordAdminAction({
+      ...base,
+      action: "hall_draft.photo_delete",
+      metadata: { removed: diff.removed.length, total: finalPaths.length, paths: diff.removed },
+    });
+  }
+  if (diff.coverChanged) {
+    await recordAdminAction({
+      ...base,
+      action: "hall_draft.photo_cover_change",
+      metadata: { from: before[0] ?? null, to: finalPaths[0] ?? null },
+    });
+  }
+  if (diff.reordered) {
+    await recordAdminAction({
+      ...base,
+      action: "hall_draft.photo_reorder",
+      metadata: { order: finalPaths },
+    });
+  }
+  if (rejected.length > 0) {
+    await recordAdminAction({
+      ...base,
+      action: "hall_draft.photo_rejected",
+      metadata: { rejected },
+    });
+  }
+
+  revalidatePath("/admin/hall-drafts");
+  return { success: true, saved: finalPaths, rejected };
 }
