@@ -174,3 +174,38 @@ describe("complimentary offers are not revenue", () => {
     expect(adminPage).toContain("Complimentary");
   });
 });
+
+describe("an admin's grant reaches the hall's tier (0096)", () => {
+  // "Grant Premium" failed for a real admin with "You don't have permission to
+  // do this." — Postgres 42501, permission denied for function
+  // recompute_hall_premium. The premium_listings sync trigger ran as the
+  // admin's session role, which 0034 had (correctly) barred from calling that
+  // function. The fix makes the TRIGGER run as its owner; it must not do it by
+  // handing EXECUTE back to API roles, and it must not touch who may write.
+  const sql = read("supabase/migrations/0096_premium_sync_trigger_runs_as_owner.sql");
+  const code = sql.split("\n").filter((l) => !l.trim().startsWith("--")).join("\n");
+
+  it("makes the sync trigger function SECURITY DEFINER", () => {
+    expect(code).toContain("alter function public.trg_recompute_hall_premium() security definer;");
+  });
+
+  it("keeps recompute_hall_premium out of reach of the API roles", () => {
+    expect(code).toContain("revoke execute on function public.recompute_hall_premium(uuid) from public, anon, authenticated;");
+    expect(code).not.toMatch(/grant\s+execute[^;]*recompute_hall_premium[^;]*(authenticated|anon|public)/i);
+  });
+
+  it("does not loosen who may write premium_listings", () => {
+    expect(code).not.toMatch(/create\s+policy|drop\s+policy|disable\s+row\s+level\s+security/i);
+    expect(code).toContain("qual = 'is_admin()' and with_check = 'is_admin()'");
+    expect(code).toContain("trg_guard_premium_listing_writes");
+  });
+
+  it("the grant action still starts at the server-side admin gate and records the admin from the session", () => {
+    const actions = read("app/admin/actions.ts");
+    const fn = actions.slice(actions.indexOf("export async function createPremiumListing"));
+    const body = fn.slice(0, fn.indexOf("\nexport async function", 10));
+    expect(body.indexOf("requireAdminActor()")).toBeGreaterThan(0);
+    expect(body.indexOf("requireAdminActor()")).toBeLessThan(body.indexOf("parseSafe("));
+    expect(body).toContain("granted_by:   complimentary ? actor.user.id : null");
+  });
+});
