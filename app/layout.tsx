@@ -4,6 +4,7 @@ import "./globals.css";
 import { Navbar }     from "@/components/layout/Navbar";
 import { Footer }     from "@/components/layout/Footer";
 import { AnalyticsConsent } from "@/components/analytics/AnalyticsConsent";
+import { ChatLauncher } from "@/components/chat/ChatLauncher";
 import { BottomNav }  from "@/components/app/BottomNav";
 import { Toaster }    from "@/components/ui/toaster";
 import { APP_NAME, APP_DESCRIPTION } from "@/lib/constants";
@@ -127,6 +128,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             from cache identically to everyone, so reading a consent cookie on
             the server would make every route dynamic again. */}
         <AnalyticsConsent />
+
+        {/* HallNect Assistant. Only the floating button is in the initial
+            bundle; the chat window loads on first open (components/chat). */}
+        <ChatLauncher />
 
         {/* The single IntersectionObserver behind every `data-reveal` in the
             app. Renders nothing; mounted here so one instance covers every
