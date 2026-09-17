@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// lib/ai/tools.server.ts — the only ways the HallNect Assistant can look at
+// lib/ai/tools.server.ts — the only ways the Hallnect Assistant can look at
 // live data. SERVER-ONLY.
 //
 // READ-ONLY, AND THROUGH THE SAME DOORS AS THE WEBSITE. Every tool calls a
@@ -84,7 +84,7 @@ export async function buildChatTools(role: ChatRole) {
   const common = {
     searchHalls: tool({
       description:
-        "Search HallNect's live catalogue of approved halls. Use for any request to find, list or compare venues " +
+        "Search Hallnect's live catalogue of approved halls. Use for any request to find, list or compare venues " +
         "(by city, area, guest capacity, amenity, budget, or date). Returns at most 6 halls, rendered to the user as cards. " +
         "An empty list means no approved hall matches — say so honestly and suggest widening the search.",
       inputSchema: z.object({

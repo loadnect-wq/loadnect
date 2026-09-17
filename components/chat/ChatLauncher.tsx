@@ -1,7 +1,7 @@
 "use client";
 
 // ─────────────────────────────────────────────────────────────────────────────
-// components/chat/ChatLauncher.tsx — the floating HallNect Assistant button.
+// components/chat/ChatLauncher.tsx — the floating Hallnect Assistant button.
 //
 // LIGHT UNTIL USED. This file is all that ships with every page: a button. The
 // chat window, the AI SDK client and its markdown/tool renderers live in
@@ -19,7 +19,7 @@
 import dynamic from "next/dynamic";
 import { useCallback, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
-import { MessageCircle } from "lucide-react";
+import { AssistantLogo } from "./AssistantLogo";
 import { CHAT_HIDDEN_PREFIXES, ASSISTANT_NAME } from "@/lib/ai/chat-config";
 import { trackChatEvent } from "./chat-analytics";
 
@@ -61,7 +61,7 @@ export function ChatLauncher() {
           aria-haspopup="dialog"
           className="group fixed right-4 z-[45] flex h-14 w-14 items-center justify-center rounded-full bg-maroon-900 text-gold-300 shadow-elevated ring-1 ring-gold-400/40 transition duration-200 hover:-translate-y-0.5 hover:bg-maroon-800 hover:shadow-gold focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-gold-400/60 active:scale-95 motion-reduce:transition-none motion-reduce:hover:translate-y-0 motion-reduce:active:scale-100 bottom-[calc(5.5rem+env(safe-area-inset-bottom))] lg:bottom-6 lg:right-6"
         >
-          <MessageCircle className="h-6 w-6" aria-hidden />
+          <AssistantLogo size={32} className="transition-transform duration-200 group-hover:scale-105 motion-reduce:group-hover:scale-100" />
           <span className="absolute right-1 top-1 h-3 w-3 rounded-full border-2 border-maroon-900 bg-emerald-400" aria-hidden />
         </button>
       )}

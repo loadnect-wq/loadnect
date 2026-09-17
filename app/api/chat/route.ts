@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// app/api/chat/route.ts — the HallNect Assistant endpoint (streaming).
+// app/api/chat/route.ts — the Hallnect Assistant endpoint (streaming).
 //
 // ORDER OF CHECKS, cheapest and most protective first — the model is the last
 // thing that runs and the only thing that costs money:

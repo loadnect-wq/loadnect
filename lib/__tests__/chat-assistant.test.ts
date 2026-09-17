@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 // ─────────────────────────────────────────────────────────────────────────────
-// HallNect Assistant (app/api/chat, lib/ai, components/chat).
+// Hallnect Assistant (app/api/chat, lib/ai, components/chat).
 //
 // What is pinned here, and why each matters:
 //   • every action button points at a page that exists (no fake routes)

@@ -1,7 +1,7 @@
 "use client";
 
 // ─────────────────────────────────────────────────────────────────────────────
-// components/chat/ChatPanel.tsx — the HallNect Assistant window. Loaded lazily
+// components/chat/ChatPanel.tsx — the Hallnect Assistant window. Loaded lazily
 // by ChatLauncher on first open.
 //
 // LAYOUT. Phones: a full-screen sheet whose height follows visualViewport, so
@@ -21,7 +21,8 @@ import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport, type InferUITools, type UIDataTypes, type UIMessage } from "ai";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
-import { ArrowUp, Gem, Minus, RotateCcw, Square, X } from "lucide-react";
+import { ArrowUp, Minus, RotateCcw, Square, X } from "lucide-react";
+import { AssistantLogo } from "./AssistantLogo";
 import {
   ASSISTANT_NAME,
   ASSISTANT_TAGLINE,
@@ -202,7 +203,7 @@ export default function ChatPanel({ open, onClose }: { open: boolean; onClose: (
           className="flex items-center gap-3 rounded-full bg-maroon-950 py-2 pl-2 pr-4 text-left text-ivory-100 shadow-elevated ring-1 ring-gold-400/30 transition hover:bg-maroon-900 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-gold-400/60"
           aria-label={`Restore ${ASSISTANT_NAME}`}
         >
-          <span className="flex h-9 w-9 items-center justify-center rounded-full bg-gold-gradient text-maroon-950"><Gem className="h-4 w-4" aria-hidden /></span>
+          <span className="flex h-9 w-9 items-center justify-center rounded-full bg-ivory-50 ring-1 ring-gold-400/50"><AssistantLogo size={22} /></span>
           <span className="text-sm font-semibold">{ASSISTANT_NAME}</span>
           {busy && <span className="text-xs text-gold-300">typing…</span>}
         </button>
@@ -221,8 +222,8 @@ export default function ChatPanel({ open, onClose }: { open: boolean; onClose: (
     >
       {/* Header */}
       <div className="flex items-center gap-3 bg-maroon-950 px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] text-ivory-100 sm:pt-3">
-        <span className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gold-gradient text-maroon-950 shadow-gold">
-          <Gem className="h-5 w-5" aria-hidden />
+        <span className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-ivory-50 shadow-gold ring-1 ring-gold-400/60">
+          <AssistantLogo size={26} />
           <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-maroon-950 bg-emerald-400" aria-hidden />
         </span>
         <div className="min-w-0 flex-1">
@@ -337,7 +338,7 @@ export default function ChatPanel({ open, onClose }: { open: boolean; onClose: (
               e.target.style.height = `${Math.min(e.target.scrollHeight, 120)}px`;
             }}
             onKeyDown={onKeyDown}
-            placeholder="Ask about halls, bookings or HallNect…"
+            placeholder="Ask about halls, bookings or Hallnect…"
             enterKeyHint="send"
             className="max-h-[120px] min-h-[40px] flex-1 resize-none bg-transparent py-2 text-base text-charcoal-900 placeholder:text-charcoal-400 focus:outline-none sm:text-sm"
           />
@@ -366,8 +367,8 @@ export default function ChatPanel({ open, onClose }: { open: boolean; onClose: (
 function AssistantBubble({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex items-start gap-2 animate-in fade-in slide-in-from-bottom-1 motion-reduce:animate-none">
-      <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-maroon-950 text-gold-300" aria-hidden>
-        <Gem className="h-3.5 w-3.5" />
+      <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-ivory-50 ring-1 ring-gold-400/50" aria-hidden>
+        <AssistantLogo size={18} />
       </span>
       <div className="min-w-0 max-w-[88%] rounded-2xl rounded-tl-md border border-border bg-white px-3.5 py-2.5 text-sm leading-relaxed text-charcoal-800 shadow-sm">
         {children}

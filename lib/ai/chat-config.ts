@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// lib/ai/chat-config.ts — the HallNect Assistant's fixed, client-safe settings.
+// lib/ai/chat-config.ts — the Hallnect Assistant's fixed, client-safe settings.
 //
 // Pure data, no I/O and no secrets, so the chat UI and the /api/chat route
 // read the SAME limits, quick actions and route allowlist. Keep it that way:
@@ -12,12 +12,12 @@
 
 export const CHAT_API_PATH = "/api/chat";
 
-export const ASSISTANT_NAME = "HallNect Assistant";
+export const ASSISTANT_NAME = "Hallnect Assistant";
 export const ASSISTANT_TAGLINE = "Your smart venue booking assistant";
 
 export const WELCOME_MESSAGE =
-  "Hi! 👋 I'm the HallNect Assistant.\n" +
-  "I can help you find halls, understand bookings, explore HallNect features, or answer your questions.";
+  "Hi! 👋 I'm the Hallnect Assistant.\n" +
+  "I can help you find halls, understand bookings, explore Hallnect features, or answer your questions.";
 
 /** Characters in one message typed by the user. Enforced on the server too. */
 export const MAX_INPUT_CHARS = 1000;
@@ -29,10 +29,10 @@ export type QuickAction = { id: string; label: string; prompt: string };
 export const QUICK_ACTIONS: readonly QuickAction[] = [
   { id: "find_hall",      label: "🏛️ Find a Hall",         prompt: "Help me find a wedding hall." },
   { id: "availability",   label: "📅 Check Availability",  prompt: "How can I check if a hall is available on my date?" },
-  { id: "pricing",        label: "💰 Pricing & Plans",      prompt: "What does it cost to book a hall on HallNect, and what are the plans for hall owners?" },
-  { id: "how_booking",    label: "📖 How Booking Works",    prompt: "How does booking a hall on HallNect work?" },
-  { id: "owner",          label: "👤 I'm a Hall Owner",     prompt: "I own a hall. How do I list it on HallNect?" },
-  { id: "support",        label: "❓ Help & Support",       prompt: "I need help. How do I contact HallNect support?" },
+  { id: "pricing",        label: "💰 Pricing & Plans",      prompt: "What does it cost to book a hall on Hallnect, and what are the plans for hall owners?" },
+  { id: "how_booking",    label: "📖 How Booking Works",    prompt: "How does booking a hall on Hallnect work?" },
+  { id: "owner",          label: "👤 I'm a Hall Owner",     prompt: "I own a hall. How do I list it on Hallnect?" },
+  { id: "support",        label: "❓ Help & Support",       prompt: "I need help. How do I contact Hallnect support?" },
 ] as const;
 
 /**
@@ -71,7 +71,7 @@ export function hallHref(slug: string): string | null {
 export const CHAT_ERROR_MESSAGE = "Sorry, I'm having trouble responding right now. Please try again.";
 /** Shown when the AI provider is throttling (the free AI Gateway tier allows only a few requests a minute). */
 export const CHAT_BUSY_MESSAGE =
-  "HallNect Assistant is busy right now. Please try again in a minute.";
+  "Hallnect Assistant is busy right now. Please try again in a minute.";
 export const CHAT_RATE_LIMIT_MESSAGE =
   "You've sent a lot of messages in a short time. Please wait a little and try again.";
 
