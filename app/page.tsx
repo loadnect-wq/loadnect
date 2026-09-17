@@ -611,7 +611,10 @@ export default async function HomePage() {
             title="Wedding halls by city"
             blurb="Browse the cities where halls are listed today, and see where Hallnect is launching next."
           />
-          <div className="mt-8 grid grid-cols-4 gap-4">
+          {/* Three to a row when the count divides by three (six launch
+              cities = two full rows), otherwise four — never a hole at the
+              end of a row that a divisible count could have avoided. */}
+          <div className={`mt-8 grid gap-4 ${cities.length % 3 === 0 ? "grid-cols-3" : "grid-cols-4"}`}>
             {cities.map((c, i) => (
               <Link
                 key={c.name}
@@ -626,8 +629,8 @@ export default async function HomePage() {
                     alt=""
                     fill
                     // The desktop tree only renders from lg up, where a tile is
-                    // 228-292px wide.
-                    sizes="292px"
+                    // 228-292px wide in four columns and up to ~395px in three.
+                    sizes="(min-width: 1280px) 400px, 320px"
                     // 35% down rather than centred: the frame is nearly square
                     // and the tile is wide, so a centred crop cut the gopuram
                     // tops off.
@@ -642,6 +645,8 @@ export default async function HomePage() {
                     bar (Tiruchirappalli 4.22). Weakest case at /90 via /50,
                     name or the white/90 state line, desktop or mobile:
                       Madurai 8.7  Chennai 5.0  Coimbatore 11.8  Trichy 7.1
+                      Salem 7.9  Theni 12.2   (Mettur Dam's white water sits
+                      under the name; still +76% over the bar)
                     The top of each photo — sky, tower, statue — stays bright;
                     only the ground under the label darkens. Re-measure if a
                     cover is swapped: a brighter photo fails this silently. */}

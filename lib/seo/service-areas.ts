@@ -37,4 +37,5 @@ export const SERVICE_AREA_CITIES = [
   "Rajapalayam",
   "Pollachi",
   "Chengalpattu",
+  "Theni",
 ] as const;

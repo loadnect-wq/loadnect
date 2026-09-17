@@ -80,7 +80,7 @@ export function legalLastModified(path: LegalPath): Date {
  * Search controls (the hero pill, the city picker) deliberately do NOT use
  * this list. Offering Chennai in a search box would still lead to nothing.
  */
-export const LAUNCH_CITIES = ["Madurai", "Chennai", "Coimbatore", "Tiruchirappalli"] as const;
+export const LAUNCH_CITIES = ["Madurai", "Chennai", "Coimbatore", "Tiruchirappalli", "Salem", "Theni"] as const;
 
 /**
  * Cover photos for city tiles, keyed by canonical city name. A city without one
@@ -94,6 +94,8 @@ export const CITY_COVERS: Partial<Record<string, string>> = {
   Chennai:         "/cities/chennai.jpg",
   Coimbatore:      "/cities/coimbatore.jpg",
   Tiruchirappalli: "/cities/tiruchirappalli.jpg",
+  Salem:           "/cities/salem.jpg",   // Mettur Dam
+  Theni:           "/cities/theni.jpg",   // tea estate and hill temple
 };
 
 // Tamil Nadu only. No fabricated venue counts — tiles link to the real search.
@@ -106,4 +108,5 @@ export const POPULAR_CITIES = [
   { name: "Tirunelveli",      state: "Tamil Nadu", gradient: "linear-gradient(135deg,#1E3A8A 0%,#1D4ED8 100%)" },
   { name: "Thanjavur",        state: "Tamil Nadu", gradient: "linear-gradient(135deg,#134E4A 0%,#0F766E 100%)" },
   { name: "Erode",            state: "Tamil Nadu", gradient: "linear-gradient(135deg,#1C1917 0%,#44403C 100%)" },
+  { name: "Theni",            state: "Tamil Nadu", gradient: "linear-gradient(135deg,#14532D 0%,#15803D 100%)" },
 ] as const;

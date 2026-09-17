@@ -33,10 +33,10 @@ function code(src: string): string {
 const pageCode = code(page);
 
 describe("the launch cities", () => {
-  it("are the four the owner asked for, in canonical spelling", () => {
+  it("are the six the owner asked for, in canonical spelling", () => {
     // "Tiruchirappalli", not "Trichy": /wedding-halls/trichy is a 404, and the
     // inventory query matches on the stored city name.
-    expect([...LAUNCH_CITIES]).toEqual(["Madurai", "Chennai", "Coimbatore", "Tiruchirappalli"]);
+    expect([...LAUNCH_CITIES]).toEqual(["Madurai", "Chennai", "Coimbatore", "Tiruchirappalli", "Salem", "Theni"]);
   });
 
   it("are all declared service areas, so every tile's landing page exists", () => {
@@ -122,7 +122,7 @@ describe("the cover photos", () => {
   });
 
   it("go through next/image, so a phone gets a tile-sized file", () => {
-    expect(pageCode).toContain('sizes="292px"');
+    expect(pageCode).toContain('sizes="(min-width: 1280px) 400px, 320px"');
     expect(cityGrid).toContain('sizes="(max-width: 512px) 50vw, 250px"');
   });
 });
