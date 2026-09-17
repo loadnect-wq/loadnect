@@ -247,7 +247,10 @@ describe("POST /api/chat forwards only text, from the caller's own session", () 
     expect(sent).not.toContain('"system"');
     expect(call.instructions).toContain("The user is a signed-in customer.");
     expect(call.instructions).toContain('slug "grand-mahal"');
-    expect(call.model).toBe("anthropic/claude-sonnet-5");
+    expect(call.model).toBe("deepseek/deepseek-v4-flash");
+    const opts = (h.streamTextCalls[0] as { providerOptions: { gateway: { disallowPromptTraining: boolean; models: string[] } } }).providerOptions.gateway;
+    expect(opts.disallowPromptTraining).toBe(true);
+    expect(opts.models).toEqual(["google/gemini-2.5-flash"]);
   });
 
   it("a suspended account is treated as a guest", async () => {

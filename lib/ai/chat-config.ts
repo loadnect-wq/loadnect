@@ -69,6 +69,9 @@ export function hallHref(slug: string): string | null {
 
 /** Friendly text shown for any failure; technical details stay in server logs. */
 export const CHAT_ERROR_MESSAGE = "Sorry, I'm having trouble responding right now. Please try again.";
+/** Shown when the AI provider is throttling (the free AI Gateway tier allows only a few requests a minute). */
+export const CHAT_BUSY_MESSAGE =
+  "HallNect Assistant is busy right now. Please try again in a minute.";
 export const CHAT_RATE_LIMIT_MESSAGE =
   "You've sent a lot of messages in a short time. Please wait a little and try again.";
 

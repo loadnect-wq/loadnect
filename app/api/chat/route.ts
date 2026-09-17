@@ -25,7 +25,7 @@ import {
 } from "ai";
 import { z } from "zod";
 import { getProfile } from "@/lib/auth";
-import { CHAT_ERROR_MESSAGE, CHAT_RATE_LIMIT_MESSAGE, MAX_HISTORY_MESSAGES, MAX_INPUT_CHARS } from "@/lib/ai/chat-config";
+import { CHAT_BUSY_MESSAGE, CHAT_ERROR_MESSAGE, CHAT_RATE_LIMIT_MESSAGE, MAX_HISTORY_MESSAGES, MAX_INPUT_CHARS } from "@/lib/ai/chat-config";
 import { consumeChatQuota } from "@/lib/ai/quota.server";
 import { chatRoleFor } from "@/lib/ai/knowledge.server";
 import { buildSystemPrompt, pageContextFor } from "@/lib/ai/system-prompt.server";
@@ -35,8 +35,20 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-/** Current Claude model on Vercel AI Gateway (verified against the gateway model list). */
-const DEFAULT_MODEL = "anthropic/claude-sonnet-5";
+/**
+ * THE MODEL IS CHOSEN FOR THE FREE AI GATEWAY TIER (owner's decision: no paid
+ * credits). Verified 2026-09-17 against this team's gateway: Anthropic models
+ * are refused on the free tier ("Free tier users do not have access to this
+ * model"); DeepSeek V4 Flash is served, calls tools correctly and answers in
+ * Tamil and Tanglish. Gemini 2.5 Flash is also served and is the fallback.
+ * Free-tier requests are rate-limited per model, which is why a throttled
+ * request shows CHAT_BUSY_MESSAGE instead of a generic error.
+ *
+ * If paid credits are ever added, set HALLNECT_CHAT_MODEL (for example
+ * anthropic/claude-sonnet-5) — no code change needed.
+ */
+const DEFAULT_MODEL = "deepseek/deepseek-v4-flash";
+const FALLBACK_MODELS = ["google/gemini-2.5-flash"];
 const MAX_BODY_BYTES = 48_000;
 /** Assistant turns in history are the model's own words; allow more room than user input. */
 const MAX_ASSISTANT_CHARS = 6000;
@@ -59,6 +71,12 @@ const bodySchema = z.object({
     .min(1)
     .max(MAX_HISTORY_MESSAGES * 2),
 });
+
+/** Provider throttling (free tier) gets its own message; everything else is generic. */
+function friendlyError(error: unknown): string {
+  const text = error instanceof Error ? `${error.name} ${error.message}` : String(error ?? "");
+  return /RateLimit|rate-limited|rate limit|429/i.test(text) ? CHAT_BUSY_MESSAGE : CHAT_ERROR_MESSAGE;
+}
 
 function json(status: number, error: string): Response {
   return Response.json({ error }, { status, headers: { "cache-control": "no-store" } });
@@ -126,14 +144,25 @@ export async function POST(req: Request): Promise<Response> {
       buildChatTools(role),
     ]);
 
+    const model = (process.env.HALLNECT_CHAT_MODEL ?? "").trim() || DEFAULT_MODEL;
     const result = streamText({
-      model: (process.env.HALLNECT_CHAT_MODEL ?? "").trim() || DEFAULT_MODEL,
+      model,
       instructions,
       messages: await convertToModelMessages(history),
       tools,
-      stopWhen: isStepCount(5),
-      maxOutputTokens: 900,
+      stopWhen: isStepCount(4),
+      maxOutputTokens: 1200,
       temperature: 0.3,
+      // A retry inside a throttled window only burns the next allowance.
+      maxRetries: 1,
+      providerOptions: {
+        gateway: {
+          // Visitors type names and phone numbers: only route to providers
+          // that do not train on prompts.
+          disallowPromptTraining: true,
+          models: FALLBACK_MODELS.filter((m) => m !== model),
+        },
+      },
       timeout: { totalMs: 55_000 },
       abortSignal: req.signal,
       onError: ({ error }) => {
@@ -150,7 +179,7 @@ export async function POST(req: Request): Promise<Response> {
         sendSources: false,
         onError: (error) => {
           console.error("[chat] ui stream error:", error instanceof Error ? `${error.name}: ${error.message}` : "unknown");
-          return CHAT_ERROR_MESSAGE;
+          return friendlyError(error);
         },
       }),
     });

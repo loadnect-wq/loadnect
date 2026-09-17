@@ -26,6 +26,7 @@ import {
   ASSISTANT_NAME,
   ASSISTANT_TAGLINE,
   CHAT_API_PATH,
+  CHAT_BUSY_MESSAGE,
   CHAT_ERROR_MESSAGE,
   CHAT_RATE_LIMIT_MESSAGE,
   MAX_HISTORY_MESSAGES,
@@ -175,8 +176,11 @@ export default function ChatPanel({ open, onClose }: { open: boolean; onClose: (
     if (small) onClose();
   };
 
+  // Only ever one of our own fixed sentences — never text from the network.
   const errorText = error
-    ? /429|too many|a lot of messages/i.test(error.message) ? CHAT_RATE_LIMIT_MESSAGE : CHAT_ERROR_MESSAGE
+    ? /a lot of messages/i.test(error.message) ? CHAT_RATE_LIMIT_MESSAGE
+      : error.message.includes(CHAT_BUSY_MESSAGE) ? CHAT_BUSY_MESSAGE
+      : CHAT_ERROR_MESSAGE
     : null;
 
   const hasUserMessage = messages.some((m) => m.role === "user");
@@ -374,7 +378,13 @@ function AssistantBubble({ children }: { children: React.ReactNode }) {
 
 function AssistantMessage({ message, onNavigate }: { message: ChatMessage; onNavigate: () => void }) {
   const blocks: React.ReactNode[] = [];
-  const text = message.parts.filter((p) => p.type === "text").map((p) => p.text).join("").trim();
+  // A reply that used a tool arrives as several text parts (one per step);
+  // separate them, or the last sentence of one runs into the next.
+  const text = message.parts
+    .filter((p) => p.type === "text")
+    .map((p) => p.text.trim())
+    .filter(Boolean)
+    .join("\n\n");
 
   message.parts.forEach((part, i) => {
     const key = `${message.id}-${i}`;
