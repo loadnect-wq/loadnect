@@ -181,7 +181,10 @@ export function ResponseDeadline({ dueAt }: { dueAt: string | null }) {
       {overdue
         ? "Response overdue"
         : hours >= 24
-          ? `Respond within ${Math.floor(hours / 24)}d`
+          // Days AND hours: a bare "1d" read as one day left on a fresh
+          // 48-hour window (47h floors to 1d) and contradicted the "48 hours"
+          // the customer is told.
+          ? `Respond within ${Math.floor(hours / 24)}d ${hours % 24}h`
           : `Respond within ${Math.max(1, hours)}h`}
     </span>
   );

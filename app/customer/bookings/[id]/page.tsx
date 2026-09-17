@@ -333,7 +333,7 @@ export default async function BookingDetailPage({ params }: Props) {
                 Balance {formatPrice(Math.max(0, booking.total_amount - booking.advance_amount))} is
                 payable directly at the venue.
                 {booking.platform_fee_amount != null && booking.platform_fee_amount > 0
-                  ? " The platform fee is separate from the hall total and non-refundable."
+                  ? " The platform fee is separate from the hall total. It is non-refundable if you cancel, and refunded in full if the venue declines, cancels or does not respond in time."
                   : ""}
               </p>
             )}

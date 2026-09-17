@@ -849,7 +849,8 @@ export function BookingFlow({ hall, availability, windowDays, onlinePaymentEnabl
                     ) : (
                       <>
                         The {formatPrice(effectivePlatformFee)} platform fee covers secure payment and
-                        booking support, and is non-refundable. GST at {PLATFORM_FEE_GST_PERCENT}% applies
+                        booking support. It is non-refundable if you cancel, and refunded in full if the
+                        venue declines, cancels or does not respond within 48 hours. GST at {PLATFORM_FEE_GST_PERCENT}% applies
                         to this fee only — not to the advance, which goes to the venue. The balance is
                         paid directly to the venue — nothing else is added.
                       </>
