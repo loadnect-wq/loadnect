@@ -5,7 +5,8 @@ import { LogOut, Shield, AlertTriangle, Settings as SettingsIcon, Database, Time
 import { requireRole } from "@/lib/auth";
 import { PENDING_PAYMENT_TIMEOUT_MIN } from "@/lib/booking-payment";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
-import { getCommissionPercent, getPublicPaymentSettings } from "@/lib/platform-settings";
+import { getPublicPaymentSettings } from "@/lib/platform-settings";
+import { COMMISSION_PERCENT_LABEL } from "@/lib/commission";
 import { fetchPremiumPlans } from "@/lib/premium-plans";
 import { checkAuthRedirectHealth } from "@/lib/auth-health";
 import { checkCashfreeHealth } from "@/lib/cashfree-health";
@@ -15,7 +16,6 @@ import { Badge } from "@/components/ui/Badge";
 import { AdminPageHeader } from "../_components/AdminPageHeader";
 import { CleanupButton } from "./_components/CleanupButton";
 import { InternalTrafficToggle } from "./_components/InternalTrafficToggle";
-import { CommissionRateForm } from "./_components/CommissionRateForm";
 import { PremiumPlansForm } from "./_components/PremiumPlansForm";
 import { PaymentSettingsForm } from "./_components/PaymentSettingsForm";
 
@@ -71,8 +71,7 @@ async function countVerifiedBeneficiaries(): Promise<number | null> {
 
 export default async function AdminSettingsPage() {
   const profile = await requireRole(["admin"]);
-  const [commissionPercent, premiumPlans, paymentSettings, authHealth, cashfree, payouts, schemaState, verifiedBeneficiaries] = await Promise.all([
-    getCommissionPercent(),
+  const [premiumPlans, paymentSettings, authHealth, cashfree, payouts, schemaState, verifiedBeneficiaries] = await Promise.all([
     fetchPremiumPlans(),
     getPublicPaymentSettings(),
     // Live probe of the Supabase redirect allow-list. A mismatch here is
@@ -117,12 +116,17 @@ export default async function AdminSettingsPage() {
           </div>
         </div>
 
-        {/* Commission rate (editable) */}
+        {/* Commission — fixed, not editable. One standard rate for every venue
+            (lib/commission.ts). There is deliberately no form here: a rate an
+            admin can type is a rate that can be mistyped for the whole country. */}
         <Section title="Commission" icon={<Percent className="h-4 w-4" />}>
-          <ConfigRow label="Fallback commission (halls with none set)" value={`${commissionPercent}%`} />
-          <div className="mt-3 border-t border-border pt-3">
-            <CommissionRateForm initialPercent={commissionPercent} />
-          </div>
+          <ConfigRow label="Standard Hallnect commission" value={COMMISSION_PERCENT_LABEL} />
+          <p className="mt-2 text-xs leading-relaxed text-charcoal-500">
+            Applied to every new booking: direct bookings on the full hall price (retained from the
+            customer&apos;s advance), enquiries on the amount the venue confirms. Existing bookings keep
+            the rate they were charged. It is fixed in the platform and cannot be changed by owners,
+            customers or this page.
+          </p>
         </Section>
 
         {/* Payment & commission settings (editable) */}

@@ -34,8 +34,7 @@
 import "server-only";
 
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
-import { readHallCommissionRateStrict } from "@/lib/hall-commission";
-import { getCommissionPercent } from "@/lib/platform-settings";
+import { STANDARD_COMMISSION_PERCENT } from "@/lib/commission";
 import { commissionPaiseOn, toPaise, PAISE_PER_RUPEE } from "@/lib/money";
 import { normalizePhoneE164 } from "@/lib/notifications/phone";
 import type { LeadEventType } from "@/lib/validation/schemas";
@@ -137,58 +136,34 @@ export type LeadCommissionBreakdown = {
  * floored — so a lead commission and a booking commission round the same way
  * and reconcile in the same ledger.
  *
- * Pure. No I/O, so the rate must be resolved by the caller.
+ * Pure. The rate is the standard one (lib/commission.ts) and is not an input:
+ * nothing — owner, customer or request body — can choose it.
  */
 export function calculateLeadCommission(input: {
   agreedAmount: number;
-  commissionRate: number;
 }): LeadCommissionBreakdown {
   const basePaise = toPaise(input.agreedAmount);
   if (!Number.isFinite(basePaise) || basePaise <= 0) {
     throw new RangeError("calculateLeadCommission: agreed amount must be positive");
   }
-  if (!Number.isFinite(input.commissionRate) || input.commissionRate <= 0 || input.commissionRate > 100) {
-    throw new RangeError(`calculateLeadCommission: rate ${input.commissionRate} out of (0,100]`);
-  }
-
-  const commissionPaise = commissionPaiseOn(basePaise, input.commissionRate);
+  const commissionPaise = commissionPaiseOn(basePaise, STANDARD_COMMISSION_PERCENT);
 
   // A commission that swallows the whole booking is a misconfiguration, not a
-  // deal. It cannot happen at the eight offered rates, which top out at 5% —
-  // this refuses the case where a rate arrived from somewhere it should not
-  // have, rather than writing a debt larger than the transaction.
+  // deal. It cannot happen at 2%; the guard stays so that a future change to
+  // the constant can never write a debt larger than the transaction.
   if (commissionPaise >= basePaise) {
     throw new RangeError(
-      `calculateLeadCommission: a ${input.commissionRate}% commission is not less ` +
+      `calculateLeadCommission: a ${STANDARD_COMMISSION_PERCENT}% commission is not less ` +
       `than the agreed amount of ${input.agreedAmount}`,
     );
   }
 
   return {
     agreedAmount: basePaise / PAISE_PER_RUPEE,
-    commissionRate: input.commissionRate,
+    commissionRate: STANDARD_COMMISSION_PERCENT,
     commissionAmount: commissionPaise / PAISE_PER_RUPEE,
     ownerNet: (basePaise - commissionPaise) / PAISE_PER_RUPEE,
   };
-}
-
-/**
- * The rate to charge THIS hall, resolved server-side.
- *
- * Returns null when the rate could not be READ, which is different from a hall
- * that has never had one set. The caller must refuse the confirmation in that
- * case rather than falling back — silently charging the platform default on a
- * venue that negotiated 4.5% is a fail-open read that shows up as a shortfall
- * nobody can explain months later.
- */
-async function resolveLeadCommissionRate(hallId: string): Promise<number | null> {
-  const hallRate = await readHallCommissionRateStrict(hallId);
-  if (!hallRate.ok) return null;
-  if (hallRate.rate != null) return hallRate.rate;
-  // A hall with no configured rate is a real, expected state (every hall listed
-  // before migration 0071). The platform default is the correct answer there,
-  // and getCommissionPercent has its own compile-time fallback.
-  return await getCommissionPercent();
 }
 
 // ── Creation ─────────────────────────────────────────────────────────────────
@@ -438,21 +413,14 @@ export async function confirmLead(input: {
     return { ok: false, error: "Only a pending enquiry can be confirmed." };
   }
 
-  // THE RATE IS RESOLVED SERVER-SIDE FROM THE HALL, never from the request.
-  const rate = await resolveLeadCommissionRate(lead.hall_id);
-  if (rate == null) {
-    return {
-      ok: false,
-      error: "We could not read this venue's commission rate. Nothing has been confirmed — please try again.",
-    };
-  }
-
+  // THE STANDARD 2% (lib/commission.ts), applied server-side. The request
+  // carries only the agreed amount; there is no rate to send or to tamper with.
   let breakdown: LeadCommissionBreakdown;
   try {
-    breakdown = calculateLeadCommission({ agreedAmount: input.agreedAmount, commissionRate: rate });
+    breakdown = calculateLeadCommission({ agreedAmount: input.agreedAmount });
   } catch (e) {
     console.error("[leads] commission calc refused", e instanceof Error ? e.message : e);
-    return { ok: false, error: "That amount cannot be used for this venue's commission rate." };
+    return { ok: false, error: "That amount cannot be used. Enter the amount agreed with the customer." };
   }
 
   const now = new Date().toISOString();
@@ -684,9 +652,9 @@ async function raiseLeadCommission(input: {
       hall_owner_id: input.lead.owner_id,
       customer_id: input.lead.customer_id,
       booking_amount: input.breakdown.agreedAmount,
-      // SNAPSHOT. The hall's rate today; a later change by the owner does not
-      // reach back and rewrite this row, which is the whole reason the column
-      // is here rather than being joined from halls at read time.
+      // SNAPSHOT of the standard rate at confirmation. If the rule ever
+      // changes again, this row keeps what the venue was actually billed.
+      // trg_enforce_standard_lead_commission (0097) refuses any other value.
       commission_rate: input.breakdown.commissionRate,
       commission_amount: input.breakdown.commissionAmount,
       owner_payout_amount: input.breakdown.ownerNet,

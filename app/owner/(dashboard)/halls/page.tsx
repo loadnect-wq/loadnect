@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/Badge";
 import { buttonVariants } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { AppHeader } from "@/components/app/AppHeader";
+import { COMMISSION_PERCENT_LABEL } from "@/lib/commission";
 
 export const metadata: Metadata = { title: "My Halls" };
 
@@ -78,17 +79,9 @@ export default async function OwnerHallsPage() {
                       <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-charcoal-600">
                         <span>👥 Up to {hall.capacity_max.toLocaleString("en-IN")}</span>
                         <span>💰 {hasPrice(hall.price_per_day) ? `${formatPrice(hall.price_per_day)}/day` : PRICE_ON_REQUEST}</span>
-                        {/* The owner's own agreed rate, per hall. Shown as
-                            information, not as a control: it is changed from
-                            the edit form, where the "future bookings only"
-                            warning sits next to it. */}
-                        {hall.commission_rate != null ? (
-                          <span>Hallnect commission {hall.commission_rate}%</span>
-                        ) : (
-                          <span className="font-semibold text-amber-700">
-                            Commission not set
-                          </span>
-                        )}
+                        {/* The standard rate, the same for every venue — shown,
+                            never set (lib/commission.ts). */}
+                        <span>Hallnect commission {COMMISSION_PERCENT_LABEL}</span>
                         {hall.is_premium && (
                           <span className="flex items-center gap-0.5 font-bold text-gold-600">
                             <Sparkles className="h-3 w-3" /> Premium

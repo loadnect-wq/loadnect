@@ -1,51 +1,21 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// lib/platform-settings.ts — global commission % helper.
+// lib/platform-settings.ts — public reads of platform_settings.
 //
-// Use this anywhere we need the active platform commission rate (booking flow,
-// owner revenue UI, admin settings UI).
+// THE COMMISSION IS NOT A SETTING. It is the fixed STANDARD_COMMISSION_PERCENT
+// in lib/commission.ts. getCommissionPercent() — which read an admin-editable
+// platform rate — was removed with the per-hall rates, so no code path can
+// price a booking from a database value that someone could change.
 //
-// The rate lives in `platform_settings` (migration 0012). RLS restricts that
-// table to admins, so non-admin callers read the rate through the SECURITY
-// DEFINER RPC `get_commission_percent()` which returns the number only.
+// What remains here are the settings that ARE configurable (advance percentage,
+// online payment switch). RLS restricts platform_settings to admins, so
+// non-admin callers read through SECURITY DEFINER RPCs that return only the
+// public fields.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { getSupabasePublicClient } from "@/lib/supabase/public";
 import { isCashfreeConfigured } from "@/lib/cashfree";
-import { DEFAULT_COMMISSION_PERCENT, DEFAULT_ADVANCE_PERCENT } from "@/lib/booking-payment";
+import { DEFAULT_ADVANCE_PERCENT } from "@/lib/booking-payment";
 import { cache } from "react";
-
-const FALLBACK = DEFAULT_COMMISSION_PERCENT; // 2.5
-
-/** Returns the active platform commission rate as a percent (e.g. 5, 7.5).
- *  Falls back to the compile-time default if the settings row or table is
- *  missing (e.g. migration 0012 has not been run yet in dev). */
-export async function getCommissionPercent(): Promise<number> {
-  try {
-    // Cookie-free: reading cookies makes the route dynamic, and this page
-    // has nothing per-visitor on it — the commission rate is shown on public pages.
-    const supabase = getSupabasePublicClient();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const db = supabase as any;
-    const { data, error } = await db.rpc("get_commission_percent");
-    if (error) {
-      if (error.code !== "PGRST202" && error.code !== "42883") {
-        console.error("[getCommissionPercent]", error.message);
-      }
-      return FALLBACK;
-    }
-    const n = Number(data);
-    if (!Number.isFinite(n) || n < 0 || n > 100) return FALLBACK;
-    return n;
-  } catch (e) {
-    console.error("[getCommissionPercent]", e instanceof Error ? e.message : e);
-    return FALLBACK;
-  }
-}
-
-/** Convenience: rate as a multiplier (0.05 for 5%). */
-export async function getCommissionRate(): Promise<number> {
-  return (await getCommissionPercent()) / 100;
-}
 
 export type PublicPaymentSettings = {
   defaultAdvancePercentage:    number;

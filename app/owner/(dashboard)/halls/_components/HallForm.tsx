@@ -2,7 +2,8 @@
 
 import { useMemo, useRef, useState, useTransition } from "react";
 import { SERVICE_AREA_CITIES } from "@/lib/seo/service-areas";
-import { HALL_COMMISSION_RATES, BOOKING_MODES } from "@/lib/validation/schemas";
+import { BOOKING_MODES } from "@/lib/validation/schemas";
+import { COMMISSION_PERCENT_LABEL } from "@/lib/commission";
 import { toBookingMode, type BookingMode } from "@/lib/booking-mode";
 import { useRouter } from "next/navigation";
 import { ImagePlus, Plus, Sparkles, Star, X } from "lucide-react";
@@ -42,18 +43,6 @@ const VENUE_TYPE_OPTIONS = [
 // so an approved venue in any of them would have put a 404 in the sitemap.
 const CITIES = SERVICE_AREA_CITIES;
 
-/**
- * numeric(4,2) arrives from PostgREST as a STRING — 2.5 round-trips as "2.50",
- * which matches no button below and would render a configured hall as
- * unconfigured. Parse before comparing, and accept only a rate we actually
- * offer so an unrecognised value reads as "not set" rather than as itself.
- */
-function normaliseRate(raw: unknown): number | null {
-  if (raw == null) return null;
-  const n = typeof raw === "number" ? raw : Number(String(raw).trim());
-  return (HALL_COMMISSION_RATES as readonly number[]).includes(n) ? n : null;
-}
-
 export function HallForm({ ownerId, amenities, hall }: Props) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -75,23 +64,15 @@ export function HallForm({ ownerId, amenities, hall }: Props) {
   const [capMin,       setCapMin]       = useState(String(hall?.capacity_min  ?? ""));
   const [capMax,       setCapMax]       = useState(String(hall?.capacity_max  ?? ""));
   const [priceDay,     setPriceDay]     = useState(String(hall?.price_per_day ?? ""));
-  // DEFAULTS TO DIRECT_BOOKING for a NEW hall, unlike the commission rate,
-  // which is deliberately unset. The two are different kinds of choice: a
-  // commission is a commercial term nobody may agree to on the owner's behalf,
-  // whereas a booking mode has a right answer for almost every venue and one of
-  // the two radios has to be on for the control to make sense. On EDIT the
-  // hall's stored mode wins, so opening and saving the form cannot silently
-  // switch a live listing.
+  // DEFAULTS TO DIRECT_BOOKING for a NEW hall: a booking mode has a right
+  // answer for almost every venue and one of the two radios has to be on for
+  // the control to make sense. On EDIT the hall's stored mode wins, so opening
+  // and saving the form cannot silently switch a live listing.
   const [bookingMode,  setBookingMode]  =
     useState<BookingMode>(toBookingMode(hall?.booking_mode));
   const [priceMorn,    setPriceMorn]    = useState(String(hall?.price_morning ?? ""));
   const [priceEven,    setPriceEven]    = useState(String(hall?.price_evening ?? ""));
 
-  // Null until the owner actively chooses. NOT defaulted to a rate: silently
-  // pre-selecting one would pick a commercial term on their behalf and they
-  // would never know they had agreed to it.
-  const [commissionRate, setCommissionRate] =
-    useState<number | null>(normaliseRate(hall?.commission_rate));
   const [description,  setDescription]  = useState(hall?.description   ?? "");
   const [selectedAms,  setSelectedAms]  = useState<Set<string>>(new Set(hall?.amenity_ids ?? []));
   // Which event types this venue serves. Drives the homepage category tiles
@@ -242,10 +223,6 @@ export function HallForm({ ownerId, amenities, hall }: Props) {
       amenityIds: [...selectedAms],
       venueTypes: [...venueTypes],
       customAmenities: customAms,
-      // Sent as a number the schema will re-check server-side. On edit this may
-      // be the value it already had, which setHallCommissionRate treats as a
-      // no-op rather than an audit-worthy change.
-      commissionRate: commissionRate ?? "",
       bookingMode,
       // Always sent, so clearing the box clears the pin. The server re-parses
       // and bounds-checks it — nothing here is trusted.
@@ -544,78 +521,32 @@ export function HallForm({ ownerId, amenities, hall }: Props) {
         )}
       </FormSection>
 
-      {/* Hallnect commission — the owner's own commercial term, chosen per hall.
-          Deliberately NOT pre-selected: a default here would agree to a rate on
-          their behalf. The eight values come from HALL_COMMISSION_RATES, the
-          same list the server schema and the database CHECK use, so the three
-          can never drift apart. */}
-      <FormSection title="Hallnect Commission">
-        {/* THE RATE IS THE SAME NUMBER; HOW IT IS COLLECTED IS THE OPPOSITE.
-            On a direct booking Hallnect holds the customer's advance and keeps
-            its commission out of it, so the owner is genuinely never billed.
-            On a lead Hallnect never touches the customer's money — the venue
-            collects in full and is INVOICED afterwards.
+      {/* Hallnect commission — ONE standard rate for every venue, shown and
+          never chosen (lib/commission.ts). There is no control here and no
+          field in the request: the server applies the rate itself.
 
-            Saying "retained from the advance we collect — never charged" to a
-            lead-generation owner is not a rough edge, it is a false statement
-            about money at the exact moment they agree to the rate, and it is
-            contradicted by the Pay Commission button they will meet later. */}
+          THE RATE IS THE SAME NUMBER; HOW IT IS COLLECTED IS THE OPPOSITE. On a
+          direct booking Hallnect holds the customer's advance and keeps its
+          commission out of it, so the owner is genuinely never billed. On a
+          lead Hallnect never touches the customer's money — the venue collects
+          in full and is INVOICED afterwards. Saying "retained from the advance"
+          to a lead-generation owner would be a false statement about money. */}
+      <FormSection title="Hallnect Commission">
+        <p className="text-sm font-semibold text-charcoal-900">
+          Hallnect Commission: <span className="text-maroon-700">{COMMISSION_PERCENT_LABEL}</span>
+        </p>
         {bookingMode === "LEAD_GENERATION" ? (
           <p className="-mt-1 text-xs text-charcoal-500">
-            Choose the commission percentage you are willing to give Hallnect for enquiries we
-            send you. Because you collect the customer&apos;s payment yourself, this is{" "}
-            <strong>billed to you</strong> after you confirm an enquiry — you pay it here by
-            card, UPI or net banking. It is never shown to customers.
+            The standard commission on enquiries Hallnect sends you, calculated on the amount you
+            confirm. Because you collect the customer&apos;s payment yourself, it is{" "}
+            <strong>billed to you</strong> after you confirm an enquiry — you pay it here by card,
+            UPI or net banking. It is the same for every venue and never shown to customers.
           </p>
         ) : (
           <p className="-mt-1 text-xs text-charcoal-500">
-            Choose the commission percentage you are willing to give Hallnect for bookings made
-            through our platform. It is retained from the advance we collect — never charged on
-            top of your price, and never shown to customers.
-          </p>
-        )}
-        <div
-          role="radiogroup"
-          aria-label="Hallnect commission percentage"
-          aria-required="true"
-          className="grid grid-cols-4 gap-2"
-        >
-          {HALL_COMMISSION_RATES.map((rate) => {
-            const on = commissionRate === rate;
-            return (
-              <button
-                key={rate}
-                type="button"
-                role="radio"
-                aria-checked={on}
-                onClick={() => setCommissionRate(rate)}
-                className={`min-h-[44px] rounded-xl border px-2 text-sm font-semibold tabular-nums transition-colors ${
-                  on
-                    ? "border-maroon-500 bg-maroon-50 text-maroon-800"
-                    : "border-border bg-white text-charcoal-700 hover:border-maroon-300"
-                }`}
-              >
-                {rate}%
-              </button>
-            );
-          })}
-        </div>
-
-        {commissionRate == null ? (
-          <p className="text-xs font-medium text-amber-700">
-            {hall
-              ? "This hall has no commission rate set yet. Choose one so bookings use your rate rather than the platform default."
-              : "Choose a commission rate — it is required to list your hall."}
-          </p>
-        ) : (
-          <p className="text-xs text-charcoal-600">
-            Selected: <strong className="text-charcoal-900">{commissionRate}%</strong>
-            {hall && (
-              <>
-                {" — "}changing this applies to <strong>future bookings only</strong>. Bookings
-                you already have keep the rate they were made at.
-              </>
-            )}
+            The standard commission on bookings made through Hallnect, calculated on the hall
+            price. It is retained from the advance we collect — never charged on top of your price,
+            and never shown to customers. It is the same for every venue.
           </p>
         )}
       </FormSection>

@@ -3,9 +3,10 @@
 //
 // BUSINESS MODEL (the only active one):
 //   • The customer pays:  ADVANCE + ₹200 PLATFORM FEE.
-//   • Hallnect's commission = 2.5% of the FULL HALL PRICE (admin-configurable
-//     rate), RETAINED OUT OF the advance — never a customer-facing line item
-//     and never an extra charge on top.
+//   • Hallnect's commission = the STANDARD 2% of the FULL HALL PRICE
+//     (lib/commission.ts — one fixed rate, chosen by nobody), RETAINED OUT OF
+//     the advance — never a customer-facing line item and never an extra
+//     charge on top.
 //   • Owner's net advance = advance − commission. The ₹200 platform fee is
 //     collected separately from the customer and NEVER deducted from the owner.
 //   • The ₹200 platform fee is NON-REFUNDABLE. Refund calculations operate on
@@ -15,21 +16,21 @@
 // hall price; the money comes out of the advance. Worked example, ₹1,00,000
 // hall at a 25% advance:
 //     customer pays   25,000 advance + 200 fee = 25,200
-//     commission      2.5% of 1,00,000         =  2,500   (10% of the advance)
-//     owner receives  25,000 − 2,500           = 22,500
-//     Hallnect keeps  2,500 + 200              =  2,700
-// An earlier revision charged 2.5% of the ADVANCE (₹625 on the same booking).
-// That was a quarter of the intended commission. Anything that re-derives the
-// commission from the advance is therefore WRONG — the base is the hall total.
+//     commission      2% of 1,00,000           =  2,000   (8% of the advance)
+//     owner receives  25,000 − 2,000           = 23,000
+//     Hallnect keeps  2,000 + 200              =  2,200
+// An earlier revision charged the rate on the ADVANCE, a quarter of the
+// intended commission. Anything that re-derives the commission from the
+// advance is therefore WRONG — the base is the hall total.
 //
 // Because the base is larger than the pot it is drawn from, the two can cross:
 // a high enough rate, or a low enough advance, makes the commission exceed the
 // advance and the owner's payout negative. That is a misconfiguration, not a
 // booking, so it throws here rather than creating an unpayable booking.
 //
-// The old 5%-commission / 2%-advance-deduction model is discontinued. Historic
-// bookings keep their stored figures untouched (audit trail); every NEW
-// calculation must go through this module.
+// Earlier models — a 5% commission, then per-hall owner-selected rates from
+// 1.5% to 5% — are discontinued. Historic bookings keep their stored figures
+// untouched (audit trail); every NEW calculation must go through this module.
 //
 // Pure and framework-free: all arithmetic is integer paise (lib/money.ts), so
 // commission + ownerNet always reconciles exactly to the advance and
@@ -38,6 +39,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { commissionPaiseOn, gstPaiseOn, toPaise, PAISE_PER_RUPEE } from "@/lib/money";
+import { STANDARD_COMMISSION_PERCENT } from "@/lib/commission";
 
 /** Flat, separately-collected, NON-refundable platform fee (rupees). */
 export const PLATFORM_FEE_RUPEES = 200;
@@ -159,10 +161,6 @@ export function platformFeeDisclosure(): string {
   return `${r(PLATFORM_FEE_RUPEES)} platform fee plus ${PLATFORM_FEE_GST_PERCENT}% GST (${r(PLATFORM_FEE_TOTAL_RUPEES)})`;
 }
 
-/** Default commission percent of the FULL HALL PRICE. The live rate is read
- *  from platform_settings (admin-editable); this is the fallback when the
- *  settings row is missing. */
-export const DEFAULT_COMMISSION_PERCENT = 2.5;
 
 /**
  * How long a booking holds its slot while awaiting payment, in minutes.
@@ -266,17 +264,14 @@ export function calculateBookingPayment(input: {
   /** Advance percent from platform_settings; only used when advanceAmount is
    *  omitted. Defaults to the compile-time constant. */
   advancePercent?: number;
-  /** Commission percent, e.g. 2.5. Callers pass the server-side rate from
-   *  platform_settings — NEVER a client-supplied value. */
-  commissionRate: number;
   /**
    * Platform fee in rupees FOR THIS BOOKING. Omit for the standard fee.
    *
    * Exists so a coupon can waive it. A coupon may only ever REDUCE the fee:
    * a value above PLATFORM_FEE_RUPEES throws, so no caller and no bug can
-   * quietly charge a customer MORE than the advertised fee. Like
-   * commissionRate this is SERVER-RESOLVED — the browser sends a code string,
-   * never a number.
+   * quietly charge a customer MORE than the advertised fee. It is
+   * SERVER-RESOLVED — the browser sends a code string, never a number. (There
+   * is no commission input at all: the rate is STANDARD_COMMISSION_PERCENT.)
    */
   platformFeeRupees?: number;
   /**
@@ -319,18 +314,18 @@ export function calculateBookingPayment(input: {
 
   // THE BASE IS THE HALL TOTAL, not the advance. The platform fee is NOT part
   // of it — waiving the fee must never move the owner's money.
-  const commissionPaise = commissionPaiseOn(hallTotalPaise, input.commissionRate);
+  const commissionPaise = commissionPaiseOn(hallTotalPaise, STANDARD_COMMISSION_PERCENT);
 
   // The commission is drawn from a pot smaller than its own base, so the two
-  // can cross. Refuse rather than emit a negative owner payout: at 2.5% on a
-  // 25% advance the commission is 10% of the advance, so this only fires on a
-  // genuine misconfiguration (rate raised past the advance percentage, or an
-  // advance captured far below the standard rate).
+  // can cross. Refuse rather than emit a negative owner payout: at 2% on a 25%
+  // advance the commission is 8% of the advance, so this only fires on a
+  // genuine misconfiguration (an advance captured far below the standard
+  // rate, e.g. an advance percentage set under 2%).
   if (commissionPaise >= advancePaise) {
     throw new RangeError(
       `calculateBookingPayment: commission (${commissionPaise / PAISE_PER_RUPEE}) ` +
       `is not less than the advance (${advancePaise / PAISE_PER_RUPEE}) — ` +
-      `a ${input.commissionRate}% rate on a hall total of ${input.hallTotal} ` +
+      `a ${STANDARD_COMMISSION_PERCENT}% rate on a hall total of ${input.hallTotal} ` +
       `cannot be retained from that advance`,
     );
   }
@@ -354,7 +349,7 @@ export function calculateBookingPayment(input: {
     platformFeeGst:  gstPaise / PAISE_PER_RUPEE,
     gstRate,
     customerTotal:   customerTotalPaise / PAISE_PER_RUPEE,
-    commissionRate:  input.commissionRate,
+    commissionRate:  STANDARD_COMMISSION_PERCENT,
     commissionAmount: commissionPaise / PAISE_PER_RUPEE,
     ownerNetAdvance: ownerPaise / PAISE_PER_RUPEE,
     paise: {

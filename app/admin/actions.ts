@@ -12,7 +12,6 @@ import {
   uuidSchema,
   premiumListingSchema,
   premiumPlanUpdateSchema,
-  commissionPercentSchema,
   checkCommissionAgainstAdvance,
   ticketResponseSchema,
   couponCreateSchema,
@@ -38,7 +37,6 @@ import { publicUrlForStoragePath } from "@/lib/supabase/storage";
 import { findPossibleDuplicates, type DuplicateMatch } from "@/lib/admin-hall-drafts";
 import { sanitizeError } from "@/lib/errors";
 import { canonicalStateForStorage } from "@/lib/seo/state";
-import { maxConfiguredCommissionRate } from "@/lib/hall-commission";
 import { SUSPENSION_BAN_DURATION } from "@/lib/constants";
 import { recordAdminAction } from "@/lib/audit";
 import { createCashfreeRefund, getCashfreeRefund, classifyRefundStatus } from "@/lib/cashfree";
@@ -51,7 +49,8 @@ import {
 } from "@/lib/notifications/events";
 import type { BookingExpirySummary } from "@/lib/booking-expiry";
 import type { PremiumExpirySummary } from "@/lib/premium-expiry";
-import { DEFAULT_ADVANCE_PERCENT, DEFAULT_COMMISSION_PERCENT } from "@/lib/booking-payment";
+import { DEFAULT_ADVANCE_PERCENT } from "@/lib/booking-payment";
+import { STANDARD_COMMISSION_PERCENT } from "@/lib/commission";
 import { recordBookingRefundOrAlert } from "@/lib/refunds";
 import { releaseAvailabilityForBooking } from "@/lib/availability-release";
 
@@ -104,17 +103,12 @@ async function requireAdminActor() {
 /**
  * The two money percentages as they stand RIGHT NOW.
  *
- * Read straight off platform_settings with the admin's own session client
- * (platform_settings_admin_read allows it) rather than through the public
- * get_commission_percent / get_public_payment_settings RPCs. Those helpers
- * swallow a failed read and hand back the compile-time default, which is the
- * right behaviour for a customer-facing price but exactly wrong here: the pair
- * below is validated against each other, and silently substituting 25 for a
- * live 5% advance would approve a commission that bricks every checkout.
- *
- * The constants remain the fallback for a row or column that genuinely is not
- * there yet (pre-0012 / pre-0017 database), which is the same value the booking
- * engine itself would use in that state.
+ * The commission is the fixed STANDARD_COMMISSION_PERCENT (lib/commission.ts);
+ * there is no setting behind it any more. The advance IS a setting, read
+ * straight off platform_settings with the admin's own session client rather
+ * than through get_public_payment_settings, which swallows a failed read and
+ * hands back the compile-time default — right for a customer-facing price,
+ * wrong for a value about to be validated.
  */
 async function readMoneyPercents(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -122,15 +116,14 @@ async function readMoneyPercents(
 ): Promise<{ commission: number; advance: number }> {
   const { data } = await db
     .from("platform_settings")
-    .select("commission_percent, default_advance_percentage")
+    .select("default_advance_percentage")
     .eq("id", true)
     .maybeSingle();
 
-  const commission = Number(data?.commission_percent);
-  const advance    = Number(data?.default_advance_percentage);
+  const advance = Number(data?.default_advance_percentage);
   return {
-    commission: Number.isFinite(commission) ? commission : DEFAULT_COMMISSION_PERCENT,
-    advance:    Number.isFinite(advance)    ? advance    : DEFAULT_ADVANCE_PERCENT,
+    commission: STANDARD_COMMISSION_PERCENT,
+    advance:    Number.isFinite(advance) ? advance : DEFAULT_ADVANCE_PERCENT,
   };
 }
 
@@ -1135,69 +1128,9 @@ export async function updatePremiumPlan(input: {
 }
 
 // ── Platform settings ─────────────────────────────────────────────────────────
-// Updates the global commission percentage. RLS allows only admins to write
-// the platform_settings row; validation is also done server-side here so a
-// malicious form post can't sneak past the UI.
-
-export async function updateCommissionPercent(
-  percent: number,
-): Promise<ActionResult> {
-  // requireAdminActor, not getAuthUser: this sets the rate every venue in the
-  // country is charged. Same reasoning as updatePremiumPlan.
-  const actor = await requireAdminActor();
-  if (!actor.ok) return { error: actor.error };
-
-  const parsed = parseSafe(commissionPercentSchema, percent);
-  if (!parsed.ok) return { error: parsed.error };
-  const clean = Math.round(parsed.data * 100) / 100; // 2-decimal precision
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const db = actor.supabase as any;
-
-  // THE RANGE CHECK ALONE WAS NOT A VALIDATION. commissionPercentSchema accepts
-  // anything in [0,100], but the commission is charged on the full hall price
-  // and retained out of the advance, so a rate that is fine in isolation can be
-  // impossible against the live advance percentage — and calculateBookingPayment
-  // THROWS on that pair. Typing 40 here used to save cleanly and then fail every
-  // single checkout, sitewide, with the settings page still showing 40% as
-  // accepted. Checked against what the advance actually is right now, not
-  // against the constant.
-  const live = await readMoneyPercents(db);
-  const bound = checkCommissionAgainstAdvance(clean, live.advance, "commission");
-  if (!bound.ok) return { error: bound.error };
-
-  const { error, count } = await db
-    .from("platform_settings")
-    .upsert(
-      { id: true, commission_percent: clean, updated_by: actor.user.id },
-      { onConflict: "id", count: "exact" },
-    );
-
-  if (error) return { error: sanitizeError(error, "admin") };
-  // Never report a rate change that touched no row — the admin would go on
-  // believing venues are charged what they typed. Same guard as updatePremiumPlan.
-  if ((count ?? 0) === 0) return { error: "The commission rate could not be saved. Reload and try again." };
-
-  // AUDITED, because this is the single number every venue in the country is
-  // charged on, and it was the largest unlogged change in the product: the live
-  // admin_audit_log carried fifteen distinct actions and not one settings.*
-  // entry, despite the rate having been configured in production. previous is
-  // read from the value we just replaced so the trail says what it moved FROM,
-  // which is the only part that makes a rate change reviewable after the fact.
-  await recordAdminAction({
-    action:         "settings.commission_percent",
-    entityType:     "platform_settings",
-    entityId:       null,
-    previousStatus: String(live.commission),
-    newStatus:      String(clean),
-  });
-
-  revalidatePath("/admin/settings");
-  revalidatePath("/admin/commissions");
-  revalidatePath("/admin/dashboard");
-  revalidatePath("/admin/audit-logs");
-  return { success: true };
-}
+// There is no commission setting to update. The Hallnect commission is the
+// fixed STANDARD_COMMISSION_PERCENT (lib/commission.ts); updateCommissionPercent
+// and the admin form that called it were removed with the per-hall rates.
 
 /**
  * Cancels booking requests the owner never answered inside the 48-hour window,
@@ -1301,34 +1234,14 @@ export async function updatePlatformPaymentSettings(input: {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = supabase as any;
 
-  // THE MIRROR OF updateCommissionPercent, and it breaks the catalogue from the
-  // other end. The old check was `0 <= advance <= 100` with no reference to the
-  // commission, so lowering the advance under the live rate — or to 0, which
-  // advanceFromTotal() rejects outright — saved happily and then threw a
-  // RangeError on every booking of every hall. The bound is symmetric and lives
-  // in one place, so the two settings screens can never disagree about it.
+  // The advance must still be able to hold the commission. The old check was
+  // `0 <= advance <= 100` with no reference to the commission, so lowering the
+  // advance under the rate — or to 0, which advanceFromTotal() rejects
+  // outright — saved happily and then threw a RangeError on every booking of
+  // every hall. There is one standard rate now, so there is one bound.
   const liveRates = await readMoneyPercents(db);
-  const bound = checkCommissionAgainstAdvance(liveRates.commission, advancePct, "advance");
+  const bound = checkCommissionAgainstAdvance(STANDARD_COMMISSION_PERCENT, advancePct, "advance");
   if (!bound.ok) return { error: bound.error };
-
-  // AND AGAINST THE HIGHEST RATE ANY HALL ACTUALLY CARRIES, which since halls
-  // gained their own commission_rate is no longer the platform figure above.
-  // An advance that clears the platform default can still be too small for a
-  // hall that agreed to more, and nothing would surface that until a customer
-  // tried to book THAT hall and calculateBookingPayment threw at checkout —
-  // one venue silently unbookable, with the settings page reporting success.
-  const highest = await maxConfiguredCommissionRate();
-  if (highest != null && highest > liveRates.commission) {
-    const hallBound = checkCommissionAgainstAdvance(highest, advancePct, "advance");
-    if (!hallBound.ok) {
-      return {
-        error:
-          `${hallBound.error} (The highest commission any hall currently gives is ` +
-          `${highest}%, which is what this has to cover — not the ${liveRates.commission}% ` +
-          `platform default.)`,
-      };
-    }
-  }
 
   const { error } = await db.from("platform_settings").upsert(
     {

@@ -11,41 +11,38 @@
 // WHAT THIS COMPONENT CANNOT DO, structurally:
 //   • It cannot set a status. It calls a server action which resolves the lead,
 //     proves ownership and performs the transition under a status guard.
-//   • It cannot choose the commission rate. It does not know it and never
-//     receives it — the server reads it from the hall.
+//   • It cannot choose the commission rate. There is one standard rate
+//     (lib/commission.ts) and the server applies it; nothing here is sent.
 //   • It cannot confirm twice. `pending` disables the button, and the server is
 //     idempotent underneath (uq_commission_per_lead, plus the compare-and-set
 //     on the lead's status).
 //
-// The estimate shown under the amount field is computed FROM A RATE THE SERVER
-// SENT DOWN for this owner's own hall. It is a courtesy, and it is labelled as
-// an estimate, because the figure that will actually be charged is recomputed
-// server-side from the same rate at the moment of confirmation.
+// The estimate shown under the amount field uses the same function the server
+// charges with (calculateBookingCommission). It is still labelled an estimate,
+// because the figure actually charged is computed server-side at confirmation.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useState, useTransition } from "react";
 import { Check, Loader2, X } from "lucide-react";
 import { confirmLeadAction, rejectLeadAction } from "../../actions";
+import { COMMISSION_PERCENT_LABEL, calculateBookingCommission } from "@/lib/commission";
 
 type Props = {
   leadId: string;
-  /** The hall's rate today, for the on-screen estimate only. Null when unset. */
-  commissionRate: number | null;
   /** Prefill for the agreed amount — the hall's listed price, when it has one. */
   suggestedAmount: number | null;
 };
 
-function estimateCommission(amount: string, rate: number | null): string | null {
-  if (rate == null) return null;
+function estimateCommission(amount: string): string | null {
   const n = Number(String(amount).trim());
   if (!Number.isFinite(n) || n <= 0) return null;
-  // Math.floor, matching commissionPaiseOn — the estimate must never read
-  // higher than the charge.
-  const paise = Math.floor((Math.round(n * 100) * Math.round(rate * 100)) / 10_000);
-  return `₹${(paise / 100).toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
+  // The same calculation the server charges with, so the estimate can never
+  // read higher than the charge.
+  const rupees = calculateBookingCommission(n);
+  return `₹${rupees.toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
 }
 
-export function LeadActions({ leadId, commissionRate, suggestedAmount }: Props) {
+export function LeadActions({ leadId, suggestedAmount }: Props) {
   const [mode, setMode] = useState<"idle" | "confirm" | "reject">("idle");
   const [amount, setAmount] = useState(suggestedAmount == null ? "" : String(suggestedAmount));
   const [notes, setNotes] = useState("");
@@ -131,7 +128,7 @@ export function LeadActions({ leadId, commissionRate, suggestedAmount }: Props) 
     );
   }
 
-  const estimate = estimateCommission(amount, commissionRate);
+  const estimate = estimateCommission(amount);
 
   return (
     <div className="mt-3 rounded-xl border border-green-200 bg-green-50 p-3">
@@ -150,18 +147,13 @@ export function LeadActions({ leadId, commissionRate, suggestedAmount }: Props) 
         className="mt-1.5 w-full rounded-lg border border-border bg-white px-2.5 py-2 text-sm font-semibold focus:border-maroon-500 focus:outline-none"
       />
       <p className="mt-1.5 text-[11px] leading-relaxed text-charcoal-600">
-        {commissionRate == null ? (
+        {estimate ? (
           <>
-            Hallnect&apos;s commission is charged on this amount. This venue has no rate set,
-            so the platform default applies.
-          </>
-        ) : estimate ? (
-          <>
-            Hallnect&apos;s commission at <strong>{commissionRate}%</strong> would be about{" "}
+            Hallnect commission at <strong>{COMMISSION_PERCENT_LABEL}</strong> would be about{" "}
             <strong>{estimate}</strong>. The exact figure is calculated when you confirm.
           </>
         ) : (
-          <>Hallnect&apos;s commission is <strong>{commissionRate}%</strong> of this amount.</>
+          <>Hallnect commission is <strong>{COMMISSION_PERCENT_LABEL}</strong> of this amount.</>
         )}
       </p>
 

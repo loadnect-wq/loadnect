@@ -25,54 +25,47 @@ import {
 // ── The commission a venue owes on a confirmed enquiry ───────────────────────
 
 describe("calculateLeadCommission", () => {
-  it("charges the rate on the agreed amount", () => {
-    const r = calculateLeadCommission({ agreedAmount: 100_000, commissionRate: 2.5 });
-    expect(r.commissionAmount).toBe(2_500);
-    expect(r.ownerNet).toBe(97_500);
+  it("charges the standard 2% on the agreed amount", () => {
+    const r = calculateLeadCommission({ agreedAmount: 100_000 });
+    expect(r.commissionAmount).toBe(2_000);
+    expect(r.ownerNet).toBe(98_000);
     expect(r.agreedAmount).toBe(100_000);
-    expect(r.commissionRate).toBe(2.5);
+    expect(r.commissionRate).toBe(2);
+  });
+
+  it("matches the business examples exactly", () => {
+    for (const [amount, commission] of [[10_000, 200], [25_000, 500], [50_000, 1_000], [100_000, 2_000]] as const) {
+      expect(calculateLeadCommission({ agreedAmount: amount }).commissionAmount).toBe(commission);
+    }
+  });
+
+  it("IGNORES a rate smuggled into the input — the venue cannot pick its own", () => {
+    const tampered = { agreedAmount: 100_000, commissionRate: 0.5 };
+    expect(calculateLeadCommission(tampered).commissionAmount).toBe(2_000);
   });
 
   it("reconciles exactly: commission + ownerNet === agreed", () => {
     // Deliberately awkward numbers — the ones where float arithmetic drifts.
     for (const amount of [2_000, 33_333, 87_654.21, 1_00_000, 9_99_999.99]) {
-      for (const rate of [1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5]) {
-        const r = calculateLeadCommission({ agreedAmount: amount, commissionRate: rate });
-        expect(r.commissionAmount + r.ownerNet).toBeCloseTo(r.agreedAmount, 2);
-      }
+      const r = calculateLeadCommission({ agreedAmount: amount });
+      expect(r.commissionAmount + r.ownerNet).toBeCloseTo(r.agreedAmount, 2);
     }
   });
 
   it("FLOORS the commission, so rounding never favours Hallnect", () => {
-    // 3.5% of 1,111.11 = 38.888... — must land on 38.88, not 38.89.
-    const r = calculateLeadCommission({ agreedAmount: 1_111.11, commissionRate: 3.5 });
-    expect(r.commissionAmount).toBe(38.88);
+    // 2% of 1,111.37 = 22.2274 — must land on 22.22, not 22.23.
+    const r = calculateLeadCommission({ agreedAmount: 1_111.37 });
+    expect(r.commissionAmount).toBe(22.22);
   });
 
   it("refuses an agreed amount of zero or less", () => {
-    expect(() => calculateLeadCommission({ agreedAmount: 0, commissionRate: 2.5 })).toThrow(RangeError);
-    expect(() => calculateLeadCommission({ agreedAmount: -1, commissionRate: 2.5 })).toThrow(RangeError);
-  });
-
-  it("refuses a rate outside (0, 100]", () => {
-    for (const rate of [0, -1, 101, NaN, Infinity]) {
-      expect(() => calculateLeadCommission({ agreedAmount: 100_000, commissionRate: rate }))
-        .toThrow(RangeError);
-    }
-  });
-
-  it("refuses a commission that would swallow the whole booking", () => {
-    // Not reachable at the eight offered rates; this guards the case where a
-    // rate arrived from somewhere it should not have.
-    expect(() => calculateLeadCommission({ agreedAmount: 100_000, commissionRate: 100 }))
-      .toThrow(/not less than the agreed amount/);
+    expect(() => calculateLeadCommission({ agreedAmount: 0 })).toThrow(RangeError);
+    expect(() => calculateLeadCommission({ agreedAmount: -1 })).toThrow(RangeError);
   });
 
   it("never returns a negative owner net", () => {
-    for (const rate of [1.5, 5]) {
-      const r = calculateLeadCommission({ agreedAmount: MIN_LEAD_AGREED_AMOUNT, commissionRate: rate });
-      expect(r.ownerNet).toBeGreaterThan(0);
-    }
+    const r = calculateLeadCommission({ agreedAmount: MIN_LEAD_AGREED_AMOUNT });
+    expect(r.ownerNet).toBeGreaterThan(0);
   });
 });
 
@@ -365,7 +358,6 @@ describe("hallCreateSchema — THE PATH AN OWNER ACTUALLY TAKES", () => {
       description: "",
       amenityIds: [] as string[],
       venueTypes: ["wedding"],
-      commissionRate: 2.5,
       ...over,
     };
   }
@@ -378,9 +370,6 @@ describe("hallCreateSchema — THE PATH AN OWNER ACTUALLY TAKES", () => {
     if (r.success) {
       expect(r.data.pricePerDay).toBeNull();
       expect(r.data.bookingMode).toBe("LEAD_GENERATION");
-      // The commission still has to come through the intersection intact — it
-      // is the term the venue agreed to.
-      expect(r.data.commissionRate).toBe(2.5);
     }
   });
 
@@ -407,12 +396,14 @@ describe("hallCreateSchema — THE PATH AN OWNER ACTUALLY TAKES", () => {
     if (r.success) expect(r.data.pricePerDay).toBe(40_000);
   });
 
-  it("still requires a commission rate on a LEAD venue", () => {
-    // A lead commission is billed to the venue, so the rate matters MORE here,
-    // not less — there is no advance to fall back on.
-    const withoutRate = listing({ bookingMode: "LEAD_GENERATION", pricePerDay: "" }) as Record<string, unknown>;
-    delete withoutRate.commissionRate;
-    expect(hallCreateSchema.safeParse(withoutRate).success).toBe(false);
+  it("asks for NO commission rate — and drops one if a request sends it", () => {
+    // The owner-selectable rate is gone. A venue lists without one, and a
+    // crafted request carrying a rate has it stripped, not stored.
+    const r = hallCreateSchema.safeParse(
+      listing({ bookingMode: "LEAD_GENERATION", pricePerDay: "", commissionRate: 0.5 }),
+    );
+    expect(r.success).toBe(true);
+    if (r.success) expect(r.data).not.toHaveProperty("commissionRate");
   });
 
   it("rejects an unknown mode rather than defaulting it", () => {

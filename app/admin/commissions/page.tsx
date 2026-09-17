@@ -1,3 +1,4 @@
+import { COMMISSION_PERCENT_LABEL } from "@/lib/commission";
 import type { Metadata } from "next";
 import { requireRole } from "@/lib/auth";
 import Link from "next/link";
@@ -93,7 +94,7 @@ export default async function AdminCommissionsPage({ searchParams }: Props) {
 
   return (
     <div>
-      <AdminPageHeader title="Commissions" description="A percentage of the hall price, set per venue. On a direct booking it is retained out of the customer's advance at settlement and the owner is never billed. On a lead enquiry the customer pays the venue directly, so the commission is invoiced to the owner with a due date and they settle it themselves — the Source column says which. Records are written by the server after verified payment, never by the browser. Each row shows the rate that was actually charged, which is the only rate that means anything: a single headline number was wrong the moment halls gained their own commission_rate." />
+      <AdminPageHeader title="Commissions" description={`The standard Hallnect commission is ${COMMISSION_PERCENT_LABEL} of the hall price, the same for every venue. On a direct booking it is retained out of the customer's advance at settlement and the owner is never billed. On a lead enquiry the customer pays the venue directly, so the commission is invoiced to the owner with a due date and they settle it themselves — the Source column says which. Records are written by the server after verified payment, never by the browser. Each row shows the rate that booking was actually charged, so older records keep the rate they were made at.`} />
 
       <div className="px-4 py-4 sm:px-6 lg:px-8 space-y-4">
 

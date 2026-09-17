@@ -28,6 +28,7 @@
 
 import "server-only";
 
+import { STANDARD_COMMISSION_PERCENT } from "@/lib/commission";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import { sanitizeError } from "@/lib/errors";
 import { releaseAvailabilityForBooking } from "@/lib/availability-release";
@@ -44,7 +45,6 @@ import {
   calculateBookingPayment,
   advanceFromTotal,
   cappedPlatformFeeRupees,
-  DEFAULT_COMMISSION_PERCENT,
   PLATFORM_FEE_RUPEES,
 } from "@/lib/booking-payment";
 import { issueTaxInvoice } from "@/lib/tax-invoice";
@@ -1091,7 +1091,7 @@ async function createCommission(db: any, booking: ApplyBooking): Promise<void> {
   if (booking.advance_amount != null && booking.advance_amount > 0) {
     // New-model booking: use the exact snapshot.
     advance    = booking.advance_amount;
-    rate       = booking.commission_rate ?? DEFAULT_COMMISSION_PERCENT;
+    rate       = booking.commission_rate ?? STANDARD_COMMISSION_PERCENT;
     // The snapshot written at creation is authoritative. The fallback must
     // pass the HALL TOTAL: the rate applies to the hall price, so deriving it
     // from the advance would recompute a quarter of the real commission.
@@ -1099,7 +1099,6 @@ async function createCommission(db: any, booking: ApplyBooking): Promise<void> {
       ?? calculateBookingPayment({
            hallTotal:      booking.total_amount,
            advanceAmount:  advance,
-           commissionRate: rate,
          }).commissionAmount;
   } else {
     // Legacy booking (pre-0031): platform_fee stored the commission actually
@@ -1111,7 +1110,7 @@ async function createCommission(db: any, booking: ApplyBooking): Promise<void> {
     commission = booking.platform_fee;
     rate       = booking.total_amount > 0
       ? Math.round((commission / booking.total_amount) * 10000) / 100
-      : DEFAULT_COMMISSION_PERCENT;
+      : STANDARD_COMMISSION_PERCENT;
   }
 
   // due_date is a legacy column (owner-billed era). Kept for schema

@@ -17,9 +17,9 @@ import {
   platformFeeGstRupees,
   PLATFORM_FEE_MAX_PERCENT_OF_ADVANCE,
   PLATFORM_FEE_RUPEES,
-  DEFAULT_COMMISSION_PERCENT,
   DEFAULT_ADVANCE_PERCENT,
 } from "@/lib/booking-payment";
+import { STANDARD_COMMISSION_PERCENT } from "@/lib/commission";
 import { commissionPaiseOn, splitFromParts, toPaise } from "@/lib/money";
 import { customerRefundPercent, daysUntilEventFromToday } from "@/lib/refund-schedule";
 import { computeOwnerShare } from "@/lib/owner-payout";
@@ -29,33 +29,33 @@ describe("calculateBookingPayment — spec acceptance cases", () => {
   // published fee was declared EXCLUSIVE of tax: the ₹200 fee is now charged as
   // ₹236. The advance, the commission and the owner's net are all unchanged —
   // GST applies to Hallnect's fee, never to the venue's supply.
-  it("hall ₹1,00,000 → advance ₹25,000 + fee ₹200 + GST ₹36; commission ₹2,500; owner ₹22,500", () => {
-    // The worked example from the business owner, verbatim, plus tax.
-    const b = calculateBookingPayment({ hallTotal: 100_000, commissionRate: 2.5 });
+  it("hall ₹1,00,000 → advance ₹25,000 + fee ₹200 + GST ₹36; commission ₹2,000; owner ₹23,000", () => {
+    // The standard 2% commission on the full hall price, plus tax on the fee.
+    const b = calculateBookingPayment({ hallTotal: 100_000 });
     expect(b.advanceAmount).toBe(25_000);
     expect(b.platformFee).toBe(200);
     expect(b.platformFeeGst).toBe(36);
     expect(b.gstRate).toBe(18);
     expect(b.customerTotal).toBe(25_236);
-    expect(b.commissionAmount).toBe(2_500);
-    expect(b.ownerNetAdvance).toBe(22_500);
+    expect(b.commissionAmount).toBe(2_000);
+    expect(b.ownerNetAdvance).toBe(23_000);
     // What Hallnect actually keeps: commission + the fee. The GST is collected,
     // not earned — it is the government's and must not be counted as revenue.
-    expect(b.commissionAmount + b.platformFee).toBe(2_700);
+    expect(b.commissionAmount + b.platformFee).toBe(2_200);
   });
 
-  it("hall ₹40,000 → advance ₹10,000 + fee ₹200 + GST ₹36; commission ₹1,000; owner ₹9,000", () => {
-    const b = calculateBookingPayment({ hallTotal: 40_000, commissionRate: 2.5 });
+  it("hall ₹40,000 → advance ₹10,000 + fee ₹200 + GST ₹36; commission ₹800; owner ₹9,200", () => {
+    const b = calculateBookingPayment({ hallTotal: 40_000 });
     expect(b.customerTotal).toBe(10_236);
-    expect(b.commissionAmount).toBe(1_000);
-    expect(b.ownerNetAdvance).toBe(9_000);
+    expect(b.commissionAmount).toBe(800);
+    expect(b.ownerNetAdvance).toBe(9_200);
   });
 
-  it("hall ₹20,000 → advance ₹5,000 + fee ₹200 + GST ₹36; commission ₹500; owner ₹4,500", () => {
-    const b = calculateBookingPayment({ hallTotal: 20_000, commissionRate: 2.5 });
+  it("hall ₹20,000 → advance ₹5,000 + fee ₹200 + GST ₹36; commission ₹400; owner ₹4,600", () => {
+    const b = calculateBookingPayment({ hallTotal: 20_000 });
     expect(b.customerTotal).toBe(5_236);
-    expect(b.commissionAmount).toBe(500);
-    expect(b.ownerNetAdvance).toBe(4_500);
+    expect(b.commissionAmount).toBe(400);
+    expect(b.ownerNetAdvance).toBe(4_600);
   });
 
   it("never charges GST on the advance — tax follows Hallnect's supply, not the venue's", () => {
@@ -64,7 +64,7 @@ describe("calculateBookingPayment — spec acceptance cases", () => {
     // gap between what the customer pays and the advance+fee must be exactly
     // the tax on the FEE, whatever the hall costs.
     for (const total of [400, 20_000, 100_000, 999_999]) {
-      const b = calculateBookingPayment({ hallTotal: total, commissionRate: 2.5 });
+      const b = calculateBookingPayment({ hallTotal: total });
       expect(b.paise.platformFeeGst).toBe(Math.round((b.paise.platformFee * 1800) / 10_000));
       expect(b.paise.customerTotal - b.paise.advance - b.paise.platformFee)
         .toBe(b.paise.platformFeeGst);
@@ -73,7 +73,7 @@ describe("calculateBookingPayment — spec acceptance cases", () => {
 
   it("charges no GST when a coupon waives the fee — tax follows the amount actually charged", () => {
     const b = calculateBookingPayment({
-      hallTotal: 100_000, commissionRate: 2.5, platformFeeRupees: 0,
+      hallTotal: 100_000, platformFeeRupees: 0,
     });
     expect(b.platformFee).toBe(0);
     expect(b.platformFeeGst).toBe(0);
@@ -84,7 +84,7 @@ describe("calculateBookingPayment — spec acceptance cases", () => {
     // The bug this cap exists for: a ₹100 morning slot was advance ₹25 + fee
     // ₹200 + GST ₹36 = ₹261 to reserve, while the UI told the customer the
     // balance due at the venue was ₹75. The fee was 236% of the booking.
-    const tiny = calculateBookingPayment({ hallTotal: 100, commissionRate: 2.5 });
+    const tiny = calculateBookingPayment({ hallTotal: 100 });
     expect(tiny.advanceAmount).toBe(25);
     expect(tiny.platformFee).toBe(6.25);          // was 200
     expect(tiny.platformFeeGst).toBe(1.13);       // tax follows the capped fee
@@ -93,7 +93,7 @@ describe("calculateBookingPayment — spec acceptance cases", () => {
     // The ceiling holds across the whole range, including the values where the
     // flat fee is the lower of the two and nothing changes.
     for (const total of [40, 100, 200, 1_500, 3_200, 4_000, 20_000, 999_999]) {
-      const b = calculateBookingPayment({ hallTotal: total, commissionRate: 2.5 });
+      const b = calculateBookingPayment({ hallTotal: total });
       expect(b.paise.platformFee).toBeLessThanOrEqual(
         Math.floor((b.paise.advance * PLATFORM_FEE_MAX_PERCENT_OF_ADVANCE * 100) / 10_000),
       );
@@ -105,7 +105,7 @@ describe("calculateBookingPayment — spec acceptance cases", () => {
     // Above roughly a ₹3,200 hall the flat ₹200 is the lower bound, so this
     // change must be invisible to actual inventory.
     for (const total of [4_000, 20_000, 40_000, 60_000, 100_000, 999_999]) {
-      expect(calculateBookingPayment({ hallTotal: total, commissionRate: 2.5 }).platformFee)
+      expect(calculateBookingPayment({ hallTotal: total }).platformFee)
         .toBe(PLATFORM_FEE_RUPEES);
     }
   });
@@ -114,19 +114,19 @@ describe("calculateBookingPayment — spec acceptance cases", () => {
     // Both bounds take the fee DOWN, so whichever is lower wins and neither can
     // be used to charge more. A waiver still wins on a tiny booking.
     const waived = calculateBookingPayment({
-      hallTotal: 100, commissionRate: 2.5, platformFeeRupees: 0,
+      hallTotal: 100, platformFeeRupees: 0,
     });
     expect(waived.platformFee).toBe(0);
     expect(waived.platformFeeGst).toBe(0);
 
     // A coupon reducing the fee to ₹50 loses to the ₹6.25 ceiling on a ₹100 hall…
     expect(calculateBookingPayment({
-      hallTotal: 100, commissionRate: 2.5, platformFeeRupees: 50,
+      hallTotal: 100, platformFeeRupees: 50,
     }).platformFee).toBe(6.25);
 
     // …and wins on a hall large enough for the ceiling not to bind.
     expect(calculateBookingPayment({
-      hallTotal: 100_000, commissionRate: 2.5, platformFeeRupees: 50,
+      hallTotal: 100_000, platformFeeRupees: 50,
     }).platformFee).toBe(50);
   });
 
@@ -165,17 +165,17 @@ describe("calculateBookingPayment — spec acceptance cases", () => {
   it("snapshots the rate, so a replay at the old rate reproduces the old total", () => {
     // A booking captured before the rate changed must reconcile against the
     // rate it was charged at, not today's.
-    const b = calculateBookingPayment({ hallTotal: 100_000, commissionRate: 2.5, gstPercent: 0 });
+    const b = calculateBookingPayment({ hallTotal: 100_000, gstPercent: 0 });
     expect(b.platformFeeGst).toBe(0);
     expect(b.gstRate).toBe(0);
     expect(b.customerTotal).toBe(25_200);
   });
 
   it("is exactly 4x what the retired advance-based formula produced", () => {
-    // Guards the specific regression: 2.5% of a 25% advance is 0.625% of the
-    // hall price. If someone reverts the base, this fails loudly.
-    const b = calculateBookingPayment({ hallTotal: 100_000, commissionRate: 2.5 });
-    const advanceBased = 25_000 * 0.025; // the old, wrong number
+    // Guards the specific regression: 2% of a 25% advance is 0.5% of the hall
+    // price. If someone reverts the base, this fails loudly.
+    const b = calculateBookingPayment({ hallTotal: 100_000 });
+    const advanceBased = 25_000 * 0.02; // the old, wrong number
     expect(b.commissionAmount).toBe(advanceBased * 4);
   });
 });
@@ -184,14 +184,14 @@ describe("calculateBookingPayment — invariants", () => {
   const totals = [400, 4_000, 20_000, 29_400, 40_004, 100_000, 133_333, 399_999, 1_000_000];
   for (const total of totals) {
     it(`reconciles exactly for a hall total of ₹${total}`, () => {
-      const b = calculateBookingPayment({ hallTotal: total, commissionRate: 2.5 });
+      const b = calculateBookingPayment({ hallTotal: total });
       // Commission + owner net always equals the advance — paise-exact.
       expect(b.paise.commission + b.paise.ownerNetAdvance).toBe(b.paise.advance);
       // Advance + fee + GST always equals the customer total — paise-exact.
       expect(b.paise.advance + b.paise.platformFee + b.paise.platformFeeGst)
         .toBe(b.paise.customerTotal);
-      // The commission is charged on the HALL TOTAL, never the advance.
-      expect(b.paise.commission).toBe(Math.floor((b.paise.hallTotal * 250) / 10_000));
+      // The standard 2% is charged on the HALL TOTAL, never the advance.
+      expect(b.paise.commission).toBe(Math.floor((b.paise.hallTotal * 200) / 10_000));
       // It still has to fit inside the advance it is retained from.
       expect(b.paise.commission).toBeGreaterThanOrEqual(0);
       expect(b.paise.commission).toBeLessThan(b.paise.advance);
@@ -203,48 +203,43 @@ describe("calculateBookingPayment — invariants", () => {
   }
 
   it("commission rounds DOWN deterministically (never rounds in Hallnect's favour)", () => {
-    // ₹40,004 hall at 2.5% = ₹1,000.10 exactly; ₹40,005 → ₹1,000.125 → floor.
-    expect(calculateBookingPayment({ hallTotal: 40_004, commissionRate: 2.5 }).paise.commission)
-      .toBe(100_010);
-    expect(calculateBookingPayment({ hallTotal: 40_005, commissionRate: 2.5 }).paise.commission)
-      .toBe(100_012);
+    // ₹40,004 hall at 2% = ₹800.08 exactly.
+    expect(calculateBookingPayment({ hallTotal: 40_004 }).paise.commission).toBe(80_008);
+    // ₹11,111.37 at 2% = 22,222.74 paise → floor 22,222, where rounding would give 22,223.
+    expect(calculateBookingPayment({ hallTotal: 11_111.37 }).paise.commission).toBe(22_222);
   });
 
   it("uses the same integer formula as the shared primitive (no duplicated math)", () => {
-    const b = calculateBookingPayment({ hallTotal: 29_400, commissionRate: 2.5 });
-    expect(b.paise.commission).toBe(commissionPaiseOn(toPaise(29_400), 2.5));
+    const b = calculateBookingPayment({ hallTotal: 29_400 });
+    expect(b.paise.commission).toBe(commissionPaiseOn(toPaise(29_400), STANDARD_COMMISSION_PERCENT));
   });
 
   it("honours an explicitly captured advance while still charging on the hall price", () => {
     // Verification/webhook replays pass the advance that was really captured.
     const b = calculateBookingPayment({
-      hallTotal: 100_000, advanceAmount: 30_000, commissionRate: 2.5,
+      hallTotal: 100_000, advanceAmount: 30_000,
     });
     expect(b.advanceAmount).toBe(30_000);
-    expect(b.commissionAmount).toBe(2_500);      // base is still the hall price
-    expect(b.ownerNetAdvance).toBe(27_500);
+    expect(b.commissionAmount).toBe(2_000);      // base is still the hall price
+    expect(b.ownerNetAdvance).toBe(28_000);
   });
 
   it("REFUSES when the commission cannot fit inside the advance", () => {
-    // The failure mode the new base introduces: the rate is applied to a bigger
-    // number than the pot it comes out of, so a misconfigured rate can cross it.
-    // Better to throw at creation than to mint a booking that pays the owner
-    // nothing — or a negative amount.
-    expect(() => calculateBookingPayment({ hallTotal: 100_000, commissionRate: 25 })).toThrow(/commission/i);
-    expect(() => calculateBookingPayment({ hallTotal: 100_000, commissionRate: 30 })).toThrow();
-    // A tiny captured advance against a large hall price crosses it too.
-    expect(() => calculateBookingPayment({
-      hallTotal: 100_000, advanceAmount: 1_000, commissionRate: 2.5,
-    })).toThrow();
+    // The rate is applied to a bigger number than the pot it comes out of, so
+    // a captured advance far below the standard rate can cross it. Better to
+    // throw at creation than to mint a booking that pays the owner nothing —
+    // or a negative amount. 2% of ₹1,00,000 is ₹2,000.
+    expect(() => calculateBookingPayment({ hallTotal: 100_000, advanceAmount: 2_000 })).toThrow(/commission/i);
+    expect(() => calculateBookingPayment({ hallTotal: 100_000, advanceAmount: 1_000 })).toThrow();
   });
 
-  it("allows a rate right up to, but not including, the advance percentage", () => {
-    // 24.9% of the hall price still fits inside a 25% advance; 25% does not.
-    expect(() => calculateBookingPayment({ hallTotal: 100_000, commissionRate: 24.9 })).not.toThrow();
+  it("allows an advance right above the commission", () => {
+    expect(() => calculateBookingPayment({ hallTotal: 100_000, advanceAmount: 2_000.01 })).not.toThrow();
   });
 
-  it("default commission rate is 2.5%", () => {
-    expect(DEFAULT_COMMISSION_PERCENT).toBe(2.5);
+  it("the commission rate is the standard 2%, and every breakdown says so", () => {
+    expect(STANDARD_COMMISSION_PERCENT).toBe(2);
+    expect(calculateBookingPayment({ hallTotal: 100_000 }).commissionRate).toBe(2);
   });
 
   it("platform fee is a flat ₹200", () => {
@@ -252,13 +247,17 @@ describe("calculateBookingPayment — invariants", () => {
   });
 
   it("rejects a zero or negative hall total", () => {
-    expect(() => calculateBookingPayment({ hallTotal: 0, commissionRate: 2.5 })).toThrow();
-    expect(() => calculateBookingPayment({ hallTotal: -5, commissionRate: 2.5 })).toThrow();
+    expect(() => calculateBookingPayment({ hallTotal: 0 })).toThrow();
+    expect(() => calculateBookingPayment({ hallTotal: -5 })).toThrow();
   });
 
-  it("rejects an out-of-range rate (defense against a corrupted setting)", () => {
-    expect(() => calculateBookingPayment({ hallTotal: 100_000, commissionRate: -1 })).toThrow();
-    expect(() => calculateBookingPayment({ hallTotal: 100_000, commissionRate: 101 })).toThrow();
+  it("IGNORES a commission rate or amount smuggled into the input", () => {
+    // What a tampered request body would look like if a caller spread it in.
+    // The function has no commission input, so the extra keys change nothing.
+    const tampered = { hallTotal: 100_000, commissionRate: 0.5, commissionAmount: 500 };
+    const b = calculateBookingPayment(tampered);
+    expect(b.commissionRate).toBe(2);
+    expect(b.commissionAmount).toBe(2_000);
   });
 });
 
@@ -373,7 +372,7 @@ describe("checkout preview matches the actual charge", () => {
         const previewFee = cappedPlatformFeeRupees(advance, fee);
         const previewed = advance + previewFee + platformFeeGstRupees(previewFee);
         const charged = calculateBookingPayment({
-          hallTotal: total, advanceAmount: advance, commissionRate: 2.5,
+          hallTotal: total, advanceAmount: advance,
           platformFeeRupees: fee,
         }).customerTotal;
         expect(previewed).toBe(charged);
@@ -390,7 +389,7 @@ describe("checkout preview matches the actual charge", () => {
 // with and without a coupon, because Hallnect absorbs 100% of the discount.
 // ─────────────────────────────────────────────────────────────────────────────
 describe("platform fee waiver", () => {
-  const base = { hallTotal: 100_000, advanceAmount: 25_000, commissionRate: 2.5 };
+  const base = { hallTotal: 100_000, advanceAmount: 25_000 };
 
   it("defaults to the standard fee when no override is given", () => {
     const r = calculateBookingPayment(base);
@@ -408,9 +407,9 @@ describe("platform fee waiver", () => {
 
   it("keeps the paise invariant exact at a zero fee", () => {
     for (const hallTotal of [1, 33_333, 100_001]) {
-      for (const advancePercent of [1, 25, 100]) {
+      for (const advancePercent of [5, 25, 100]) {
         const r = calculateBookingPayment({
-          hallTotal, advancePercent, commissionRate: 0.5, platformFeeRupees: 0,
+          hallTotal, advancePercent, platformFeeRupees: 0,
         });
         expect(Number.isInteger(r.paise.customerTotal)).toBe(true);
         expect(r.paise.advance + r.paise.platformFee).toBe(r.paise.customerTotal);
@@ -447,7 +446,7 @@ describe("platform fee waiver", () => {
 
   it("still refuses a commission that exceeds the advance when the fee is waived", () => {
     expect(() => calculateBookingPayment({
-      hallTotal: 100_000, advanceAmount: 1_000, commissionRate: 2.5, platformFeeRupees: 0,
+      hallTotal: 100_000, advanceAmount: 1_000, platformFeeRupees: 0,
     })).toThrow(RangeError);
   });
 
@@ -465,11 +464,11 @@ describe("platform fee waiver", () => {
 
 describe("server-authoritative amounts (frontend manipulation)", () => {
   it("the calculation takes no client input — identical output for identical DB state", () => {
-    // Every caller derives advance from the DB total and the rate from
-    // platform_settings; there is no code path from request body to these
+    // Every caller derives the advance from the DB total, and the commission is
+    // the standard rate; there is no code path from request body to these
     // numbers. This pins that the function itself is deterministic.
-    const a = calculateBookingPayment({ hallTotal: 40_000, commissionRate: 2.5 });
-    const b = calculateBookingPayment({ hallTotal: 40_000, commissionRate: 2.5 });
+    const a = calculateBookingPayment({ hallTotal: 40_000 });
+    const b = calculateBookingPayment({ hallTotal: 40_000 });
     expect(a).toEqual(b);
     expect(a.customerTotal).toBe(10_236); // any tampered client figure is ignored by construction
   });
@@ -481,10 +480,10 @@ describe("END TO END — the money actually reaches the right accounts", () => {
   // the advance-vs-hall-price base error, and it also proves nothing leaks:
   // what the customer pays equals what the owner and Hallnect receive.
   const HALL = 100_000;
-  const RATE = 2.5;
+  const RATE = STANDARD_COMMISSION_PERCENT;
 
   // 1. Booking creation writes this snapshot onto the booking row.
-  const pay = calculateBookingPayment({ hallTotal: HALL, commissionRate: RATE });
+  const pay = calculateBookingPayment({ hallTotal: HALL });
   // 2. Owner accepts → payOwnerOnAcceptance computes the vendor share.
   const share = computeOwnerShare({
     advance: pay.advanceAmount,
@@ -501,16 +500,16 @@ describe("END TO END — the money actually reaches the right accounts", () => {
     expect(pay.customerTotal).toBe(25_236);
   });
 
-  it("pays the owner ₹22,500 — the advance minus commission on the HALL price", () => {
+  it("pays the owner ₹23,000 — the advance minus the 2% commission on the HALL price", () => {
     expect(share.ok).toBe(true);
     if (share.ok) {
-      expect(share.commission).toBe(2_500);
-      expect(share.ownerAmount).toBe(22_500);
+      expect(share.commission).toBe(2_000);
+      expect(share.ownerAmount).toBe(23_000);
     }
   });
 
-  it("leaves Hallnect ₹2,700 — the ₹2,500 commission plus the ₹200 fee", () => {
-    expect(pay.commissionAmount + pay.platformFee).toBe(2_700);
+  it("leaves Hallnect ₹2,200 — the ₹2,000 commission plus the ₹200 fee", () => {
+    expect(pay.commissionAmount + pay.platformFee).toBe(2_200);
   });
 
   it("loses nothing: owner + Hallnect + the taxman === what the customer paid", () => {
@@ -573,11 +572,11 @@ describe("advance percentage is admin-configurable", () => {
     // The two rates are independent: dropping the advance to 20% must not
     // shrink the commission, which is a percentage of the hall price.
     const b = calculateBookingPayment({
-      hallTotal: 100_000, advancePercent: 20, commissionRate: 2.5,
+      hallTotal: 100_000, advancePercent: 20,
     });
     expect(b.advanceAmount).toBe(20_000);
-    expect(b.commissionAmount).toBe(2_500);
-    expect(b.ownerNetAdvance).toBe(17_500);
+    expect(b.commissionAmount).toBe(2_000);
+    expect(b.ownerNetAdvance).toBe(18_000);
   });
 });
 

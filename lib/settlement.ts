@@ -23,6 +23,7 @@ import "server-only";
 
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import { commissionPaiseOn, splitFromParts, type CommissionSplit } from "@/lib/money";
+import { STANDARD_COMMISSION_PERCENT } from "@/lib/commission";
 
 // ── Webhook idempotency ─────────────────────────────────────────────────────────
 
@@ -142,8 +143,10 @@ export async function resolveSplitForBooking(bookingId: string): Promise<
     platformFeePaise = Math.round(Number(booking.platform_fee_amount ?? 0) * 100);
     commissionPaise = booking.commission_amount != null
       ? Math.round(Number(booking.commission_amount) * 100)
-      // Only if the snapshot is missing: recompute against the HALL TOTAL.
-      : commissionPaiseOn(totalPaise, Number(booking.commission_rate ?? 0));
+      // Only if the snapshot is missing: recompute against the HALL TOTAL, at
+      // the booking's own stored rate, or the standard rate if none was stored
+      // (never 0%, which would silently hand the whole commission to the owner).
+      : commissionPaiseOn(totalPaise, Number(booking.commission_rate ?? STANDARD_COMMISSION_PERCENT));
   } else {
     // Legacy booking: advance = 25% of total; platform_fee stored the
     // commission actually charged. That AMOUNT is preserved verbatim —

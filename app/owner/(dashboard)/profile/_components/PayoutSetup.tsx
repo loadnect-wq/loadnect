@@ -1,5 +1,6 @@
 "use client";
 
+import { COMMISSION_PERCENT_LABEL } from "@/lib/commission";
 import { useState, useTransition } from "react";
 import { Banknote, CheckCircle2, Clock, AlertTriangle, Loader2, Pencil } from "lucide-react";
 import { savePayoutDetails, refreshPayoutStatus } from "@/app/owner/(dashboard)/actions";
@@ -176,23 +177,17 @@ export function PayoutSetup({
             {verified || awaitingKyc ? "Automatic payouts" : "Payout account"}
           </h3>
 
-          {/* NO PERCENTAGE IS NAMED HERE, deliberately. This copy used to say
-              "2.5% of the hall price", which was wrong three ways at once:
-              platform_settings.commission_percent is 1.50, a hall's real rate
-              comes from its own commission_rate (one of a fixed set agreed per
-              venue), and an owner with two halls has two different rates. A
-              single hardcoded number in a generic panel cannot be right for all
-              three, and quoting a rate an owner is not charged is the kind of
-              wrong that becomes a dispute at settlement. The actual rate is
-              shown per hall, which is the only place it is well defined. */}
+          {/* The rate is the ONE standard commission (lib/commission.ts), the
+              same for every hall, so it can be named here without being wrong
+              for any owner. Read from the constant, never typed as a number. */}
           <p className="mt-0.5 text-xs leading-relaxed text-charcoal-600">
             {verified
-              ? "Connected. When you accept a booking, the customer's advance is paid to you automatically — minus Hallnect's commission on that hall, which is deducted at the same time. You never receive a separate commission bill."
+              ? `Connected. When you accept a booking, the customer's advance is paid to you automatically — minus Hallnect's ${COMMISSION_PERCENT_LABEL} commission, which is deducted at the same time. You never receive a separate commission bill.`
               : awaitingKyc
                 ? "Your payout account is registered and awaiting verification by Cashfree. Once verified, accepted bookings pay out automatically."
                 : savedNotConnected
-                  ? "Your details are on file. Automatic payouts are not switched on for you yet, so nothing pays out on its own: when you accept a booking, Hallnect transfers your share of the advance to this account by hand. There is no fixed schedule and no promised date — Revenue shows a booking as paid only once its transfer has been made. Hallnect's commission on that hall is deducted from the advance, so you never get a separate bill."
-                  : "Add the account you want to be paid into. Hallnect's commission on each hall is deducted from the advance, so you never get a separate bill."}
+                  ? `Your details are on file. Automatic payouts are not switched on for you yet, so nothing pays out on its own: when you accept a booking, Hallnect transfers your share of the advance to this account by hand. There is no fixed schedule and no promised date — Revenue shows a booking as paid only once its transfer has been made. Hallnect's ${COMMISSION_PERCENT_LABEL} commission is deducted from the advance, so you never get a separate bill.`
+                  : `Add the account you want to be paid into. Hallnect's ${COMMISSION_PERCENT_LABEL} commission is deducted from the advance, so you never get a separate bill.`}
           </p>
 
           {!hasBusinessName && (

@@ -4,7 +4,6 @@ import { CalendarDays, Inbox, MessageSquare, Phone, Users } from "lucide-react";
 import { requireRole } from "@/lib/auth";
 import { fetchOwnerRow, fetchOwnerHalls } from "@/lib/owner";
 import { fetchLeadsForHalls, fetchLeadCommissions, type LeadStatus } from "@/lib/leads";
-import { readHallCommissionRates } from "@/lib/hall-commission";
 import { formatPrice } from "@/lib/mock-data";
 import { formatBookingDates } from "@/lib/dates";
 import { Badge } from "@/components/ui/Badge";
@@ -79,10 +78,7 @@ export default async function OwnerLeadsPage({ searchParams }: Props) {
   // enquiry whose number has not been proved is invisible here, exactly as
   // leads_select makes it invisible to a direct database read.
   const leads = await fetchLeadsForHalls(hallIds);
-  const [commissions, rates] = await Promise.all([
-    fetchLeadCommissions(leads.map((l) => l.id)),
-    readHallCommissionRates(hallIds),
-  ]);
+  const commissions = await fetchLeadCommissions(leads.map((l) => l.id));
 
   const shown = currentTab.statuses.length
     ? leads.filter((l) => currentTab.statuses.includes(l.status))
@@ -279,7 +275,6 @@ export default async function OwnerLeadsPage({ searchParams }: Props) {
                   {lead.status === "pending" && (
                     <LeadActions
                       leadId={lead.id}
-                      commissionRate={rates.get(lead.hall_id) ?? null}
                       suggestedAmount={hall?.price_per_day ?? null}
                     />
                   )}

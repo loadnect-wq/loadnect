@@ -23,12 +23,11 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import Link from "next/link";
-import { HALL_COMMISSION_RATES } from "@/lib/validation/schemas";
 import {
   Gem, IndianRupee, ClipboardCheck, CalendarCheck, Images, BadgeCheck,
   ArrowRight, Wallet,
 } from "lucide-react";
-import { getCommissionPercent } from "@/lib/platform-settings";
+import { COMMISSION_PERCENT_LABEL, STANDARD_COMMISSION_PERCENT, calculateBookingCommission } from "@/lib/commission";
 import { PLATFORM_FEE_RUPEES } from "@/lib/booking-payment";
 import { formatPrice } from "@/lib/mock-data";
 import { OwnerRegisterForm } from "./_components/OwnerRegisterForm";
@@ -37,19 +36,10 @@ import { OwnerRegisterForm } from "./_components/OwnerRegisterForm";
 const EXAMPLE_HALL_PRICE = 100_000;
 
 export default async function OwnerRegisterPage() {
-  // THE OWNER CHOOSES THEIR OWN RATE NOW, per hall, from HALL_COMMISSION_RATES.
-  // This page used to state the single platform rate as a fact — "Keep 98.5% of
-  // every booking" — which stopped being true the moment halls carried their
-  // own. The worked example is pinned to the LOWEST rate on offer and labelled
-  // as the lowest, so the headline promise is one the product can always keep.
-  const lowestRate  = Math.min(...HALL_COMMISSION_RATES);
-  const highestRate = Math.max(...HALL_COMMISSION_RATES);
-
-  // The platform default still applies to a hall whose owner has not chosen.
-  const commissionPercent = await getCommissionPercent();
-  void commissionPercent;
-
-  const commission = Math.round((EXAMPLE_HALL_PRICE * lowestRate) / 100);
+  // ONE STANDARD COMMISSION for every venue (lib/commission.ts). The worked
+  // example uses the same calculation a real booking does, so the page cannot
+  // promise a figure the product would not charge.
+  const commission = calculateBookingCommission(EXAMPLE_HALL_PRICE);
   const ownerKeeps = EXAMPLE_HALL_PRICE - commission;
 
   const steps = [
@@ -89,12 +79,12 @@ export default async function OwnerRegisterPage() {
           </Link>
 
           <h1 className="mx-auto mt-7 max-w-2xl font-serif text-3xl font-bold leading-tight text-ivory-100 sm:text-5xl">
-            List your wedding hall. Keep up to {100 - lowestRate}% of every booking.
+            List your wedding hall. Keep {100 - STANDARD_COMMISSION_PERCENT}% of every booking.
           </h1>
           <p className="mx-auto mt-4 max-w-xl text-base leading-relaxed text-ivory-400">
             Hallnect brings couples in Tamil Nadu to your venue, collects the advance
-            for you, and never sends you a bill. Listing is free, and you choose your own
-            commission — anywhere from {lowestRate}% to {highestRate}% — when you add each hall.
+            for you, and never sends you a bill. Listing is free, and Hallnect&apos;s commission is
+            a flat {COMMISSION_PERCENT_LABEL} — the same for every venue.
           </p>
 
           <a
@@ -137,7 +127,7 @@ export default async function OwnerRegisterPage() {
                 <dt className="text-sm text-charcoal-700">
                   Hallnect commission
                   <span className="ml-1.5 rounded-full bg-charcoal-100 px-2 py-0.5 text-[11px] font-semibold text-charcoal-600">
-                    {commissionPercent}%
+                    {COMMISSION_PERCENT_LABEL}
                   </span>
                 </dt>
                 <dd className="font-serif text-lg font-semibold text-charcoal-500">

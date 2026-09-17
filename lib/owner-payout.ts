@@ -3,11 +3,13 @@
 // SERVER-ONLY.
 //
 //   advance the customer paid (fee EXCLUDED)
-//     − Hallnect's commission (2.5% of that advance — lib/booking-payment.ts)
+//     − Hallnect's commission (the standard 2% of the FULL HALL PRICE,
+//       retained from this advance — lib/booking-payment.ts; the booking's own
+//       commission_amount snapshot is what is actually used)
 //     = the owner's net advance, settled to their Cashfree vendor balance
 //
-// For a ₹40,000 booking with a 25% advance: advance ₹10,000 − commission ₹250
-// = ₹9,750 to the owner now, ₹30,000 collected at the venue. Hallnect earns
+// For a ₹40,000 booking with a 25% advance: advance ₹10,000 − commission ₹800
+// (2% of ₹40,000) = ₹9,200 to the owner now, ₹30,000 collected at the venue. Hallnect earns
 // the commission ONCE, retained from the advance, so the owner is never
 // separately billed for it.
 //

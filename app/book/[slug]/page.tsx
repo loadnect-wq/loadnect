@@ -56,8 +56,9 @@ export default async function BookPage({ params }: Props) {
   const today = todayInBusinessTz();
   const end   = addDaysToIsoDate(today, BOOKING_WINDOW_DAYS - 1);
   const availability = await fetchHallAvailabilityWindow(hall.id, today, end);
-  // The commission rate is deliberately NOT sent to the browser: it is an
-  // internal figure between Hallnect and the venue, never a customer line item.
+  // The commission (the standard 2%) is deliberately NOT sent to the browser:
+  // it is between Hallnect and the venue, never a customer line item, and the
+  // server applies it itself when the booking is created.
 
   // Cashfree is optional, AND an admin can switch online payment off. When
   // either is false the booking flow runs in manual "submit booking request"

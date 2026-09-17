@@ -55,7 +55,6 @@ describe("a listing has a price floor", () => {
     const b = calculateBookingPayment({
       hallTotal: MIN_HALL_PRICE_RUPEES,
       advanceAmount: advanceFromTotal(MIN_HALL_PRICE_RUPEES),
-      commissionRate: 2.5,
     });
     expect(b.advanceAmount).toBe(500);
     expect(b.platformFee).toBe(125);

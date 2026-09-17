@@ -398,84 +398,17 @@ export const hallSchema = z
 
 export type HallInput = z.input<typeof hallSchema>;
 
-// ── Hallnect commission, chosen per hall by the owner ────────────────────────
-
-/**
- * The only commission percentages a hall may carry.
- *
- * ONE declaration, exported, because this list has to agree in four places or
- * the feature breaks in a different way at each: the selector the owner sees,
- * this schema, the CHECK constraint in migration 0071, and the admin filter.
- * A value that passes here but fails the CHECK is a 500 on a form the owner
- * filled in correctly; one that passes the CHECK but is missing from the
- * selector is a rate nobody can choose.
- *
- * WHY A FIXED SET AND NOT A RANGE. The commission is charged on the FULL hall
- * price but retained out of the 25% advance, so rate and advance can cross —
- * see MAX_COMMISSION_SHARE_OF_ADVANCE below, which caps the commission at half
- * the advance. At the live 25% advance that ceiling is 12.5%, so every value
- * here clears it with room to spare. A free-text percentage would have to be
- * bounded against the advance at the point of entry by every owner
- * independently, which is a worse design than eight buttons.
- */
-export const HALL_COMMISSION_RATES = [1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5] as const;
-
-export type HallCommissionRate = (typeof HALL_COMMISSION_RATES)[number];
-
-/** True only for a value the database will also accept. */
-export function isAllowedCommissionRate(n: unknown): n is HallCommissionRate {
-  return typeof n === "number"
-    && (HALL_COMMISSION_RATES as readonly number[]).includes(n);
-}
-
-const COMMISSION_CHOICES = HALL_COMMISSION_RATES.join("%, ").concat("%");
-
-/**
- * A commission rate as submitted by the owner's form.
- *
- * Accepts a number or the string an HTML control actually sends, and then
- * admits ONLY the eight values — so "2.4999999", "2.5abc", 0, 6, -1, NaN, null
- * and "" are all rejected with the same message rather than being coerced to
- * something plausible. Membership is tested AFTER parseFloat, on the parsed
- * number, because that is the value that reaches the database.
- *
- * Deliberately NOT a z.coerce.number(): coerce turns "" into 0, and 0 is a
- * commission rate that would silently pay Hallnect nothing while looking like
- * a valid choice.
- */
-export const commissionRateSchema = z
-  // null and undefined are admitted into the union DELIBERATELY, so that a rate
-  // which never arrives is answered with the message below rather than with
-  // Zod's bare "Invalid input". This is the same trap couponCreateSchema
-  // documents: a Next.js server action DROPS undefined properties, so a field
-  // the owner left blank can reach the server as a MISSING KEY rather than as
-  // an empty string. Both must fail, and both must say which values are valid —
-  // an owner who has just been refused a listing needs to know what to pick.
-  .union([z.number(), z.string(), z.null(), z.undefined()])
-  .transform((v) => {
-    if (v == null) return NaN;
-    if (typeof v === "number") return v;
-    const s = String(v).trim();
-    // NOT parseFloat. parseFloat("2.5%") is 2.5 and parseFloat("2.5abc") is
-    // 2.5 — it stops at the first character it cannot use and returns what it
-    // has, so a string pretending to be a rate would sail through the
-    // membership test below. Only a clean decimal literal is accepted; anything
-    // else becomes NaN, which is in no allowed set.
-    return /^\d+(?:\.\d+)?$/.test(s) ? Number(s) : NaN;
-  })
-  .refine(isAllowedCommissionRate, `Choose one of ${COMMISSION_CHOICES}.`);
+// ── Hall creation ─────────────────────────────────────────────────────────────
 
 // Owner-side input also has ownerId on create; edit doesn't need it.
 //
-// commissionRate lives HERE, on create only, and not on the shared hallSchema.
-// Two reasons, and they point the same way: it is required when a hall is
-// listed, and migration 0046's column-scoped UPDATE grant deliberately excludes
-// money columns, so updateHall could not write it through the session client
-// even if it were accepted. Changing the rate later is its own audited action.
+// THERE IS NO commissionRate. Hallnect charges one standard commission
+// (lib/commission.ts), so an owner has nothing to choose — the per-hall rate
+// list (1.5% to 5%), its schema and its admin filter were removed. A request
+// that still sends the key has it stripped by Zod and ignored.
 export const hallCreateSchema = hallSchema.and(
   z.object({
-    ownerId:        uuidSchema,
-    commissionRate: commissionRateSchema,
+    ownerId: uuidSchema,
   }),
 );
 
@@ -865,7 +798,7 @@ export const MIN_LEAD_AGREED_AMOUNT = MIN_HALL_PRICE_RUPEES;
  */
 export const leadConfirmSchema = z.object({
   agreedAmount: z
-    // The same union shape as commissionRateSchema, and for the same reason: a
+    // Null and undefined are admitted into the union deliberately: a
     // server action drops undefined, so a field the owner left blank arrives as
     // a MISSING KEY. Admitting null/undefined into the union is what turns
     // Zod's bare "Invalid input" into the sentence below.
@@ -992,19 +925,8 @@ export const premiumPlanUpdateSchema = z.object({
     .refine((n) => Number.isInteger(n) && n > 0, "Duration must be a positive integer."),
 });
 
-/**
- * SHAPE AND RANGE ONLY — this is not the whole rule.
- *
- * A commission percent that is well-formed and inside [0,100] can still be
- * unusable, because it is not independent of the advance percentage. Anything
- * writing this value must ALSO run checkCommissionAgainstAdvance() below; the
- * range check on its own is what let a rate through that throws at checkout.
- */
-export const commissionPercentSchema = z
-  .union([z.number(), z.string()])
-  .transform((v) => (typeof v === "number" ? v : parseFloat(String(v))))
-  .refine((n) => Number.isFinite(n), "Enter a valid number.")
-  .refine((n) => n >= 0 && n <= 100, "Rate must be between 0 and 100.");
+// commissionPercentSchema was removed with the admin commission setting: the
+// commission is the fixed STANDARD_COMMISSION_PERCENT, not an input.
 
 /**
  * The commission may take at most HALF the advance.
@@ -1043,8 +965,8 @@ export const commissionPercentSchema = z
  * `commission < advance`; that is the engine's per-booking assertion, and it is
  * not a safe bound on the rates.
  *
- * At the live rates — 2.5% commission against a 25% advance — this leaves a
- * factor of five of headroom, so it binds only on a misconfiguration. Raising
+ * At the live rates — the standard 2% commission against a 25% advance — this
+ * leaves a factor of 6.25 of headroom, so it binds only on a misconfiguration. Raising
  * the commission past half the advance is a real business decision (it needs
  * the advance raised with it), not a validation to relax.
  */

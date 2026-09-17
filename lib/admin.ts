@@ -21,7 +21,7 @@
 // silently and returns an empty list instead.
 
 import { getSupabaseServerClient } from "@/lib/supabase/server";
-import { readHallCommissionRates, readBookingCommissions } from "@/lib/hall-commission";
+import { readBookingCommissions } from "@/lib/hall-commission";
 import { toBookingMode, type BookingMode } from "@/lib/booking-mode";
 import { buildFreeTextOrFilter } from "@/lib/halls";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
@@ -82,17 +82,6 @@ export type AdminHallRow = {
   owner_business: string | null;
   custom_amenities: string[];
   created_at:     string;
-  /**
-   * The Hallnect commission this hall gives, or null when never configured.
-   *
-   * Merged in from a SEPARATE service-role query, never added to the select()
-   * below. Migration 0072 hides halls.commission_rate from `authenticated`, and
-   * this function runs on the session client — so naming the column in that
-   * select would raise 42703, which handleError swallows into `return []`,
-   * blanking both /admin/halls and the hall-approval queue with no visible
-   * error. One extra query per page is the cheaper failure mode.
-   */
-  commission_rate: number | null;
 };
 
 export type AdminBookingRow = {
@@ -632,13 +621,6 @@ export async function fetchAllHalls(statusFilter?: string): Promise<AdminHallRow
   const { data, error } = await query;
   if (error) { handleError("fetchAllHalls", error); return []; }
 
-  // One batched service-role read for the whole page, keyed by hall id — not a
-  // per-row lookup, which would be an N+1 against a table already queried.
-  const rates = await readHallCommissionRates(
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (data ?? []).map((r: any) => r.id as string),
-  );
-
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return (data ?? []).map((row: any): AdminHallRow => {
     const imgs: { url: string; is_cover: boolean }[] = row.hall_images ?? [];
@@ -655,7 +637,6 @@ export async function fetchAllHalls(statusFilter?: string): Promise<AdminHallRow
       // Number(null) is 0; a Rs.0 venue reads as free even in the admin list.
       price_per_day:  row.price_per_day == null ? null : Number(row.price_per_day),
       booking_mode:   toBookingMode(row.booking_mode),
-      commission_rate: rates.get(row.id) ?? null,
       rating_average: Number(row.rating_average),
       rating_count:   row.rating_count,
       cover_url:      coverUrl,

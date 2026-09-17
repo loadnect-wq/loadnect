@@ -4,7 +4,6 @@
 // owns_hall() or owns_owner_row() at the DB level.
 
 import { getSupabaseServerClient } from "@/lib/supabase/server";
-import { readHallCommissionRate, readHallCommissionRates } from "@/lib/hall-commission";
 import { toBookingMode, type BookingMode } from "@/lib/booking-mode";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -58,12 +57,6 @@ export type OwnerHall = {
   created_at:     string;
   /** Admin's written reason when the hall was rejected or suspended (0025). */
   rejection_reason: string | null;
-  /**
-   * The Hallnect commission this hall gives, or null when never configured.
-   * Merged in from a service-role read — the column is hidden from the session
-   * client this query uses (migration 0072).
-   */
-  commission_rate: number | null;
 };
 
 export type OwnerHallDetail = OwnerHall & {
@@ -78,16 +71,6 @@ export type OwnerHallDetail = OwnerHall & {
   amenity_ids:   string[];
   /** Event types this venue serves (0037). Drives the category filters. */
   venue_types:   string[];
-  /**
-   * The Hallnect commission this hall gives, or null when never configured.
-   *
-   * NOT part of the select() below, and it cannot be: migration 0072 hides
-   * halls.commission_rate from `authenticated`, which is the role this
-   * session-client read runs as. It is fetched separately through the service
-   * role and merged in. Asking for it in the main select would fail the entire
-   * query with 42501 and blank the owner's whole listing page.
-   */
-  commission_rate: number | null;
   custom_amenities: string[];
 };
 
@@ -349,12 +332,6 @@ export async function fetchOwnerHalls(ownerId: string): Promise<OwnerHall[]> {
     throw new Error("Could not load your venues.");
   }
 
-  // One batched service-role read for the whole list, not one per hall.
-  const rates = await readHallCommissionRates(
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (data ?? []).map((r: any) => r.id as string),
-  );
-
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return (data ?? []).map((row: any): OwnerHall => {
     const imgs: { url: string; is_cover: boolean }[] = row.hall_images ?? [];
@@ -377,7 +354,6 @@ export async function fetchOwnerHalls(ownerId: string): Promise<OwnerHall[]> {
       cover_url:      coverUrl,
       created_at:     row.created_at,
       rejection_reason: row.rejection_reason ?? null,
-      commission_rate: rates.get(row.id) ?? null,
     };
   });
 }
@@ -449,10 +425,6 @@ export async function fetchOwnerHall(hallId: string): Promise<OwnerHallDetail | 
     rejection_reason: data.rejection_reason ?? null,
     amenity_ids:    amenityIds,
     venue_types:    Array.isArray(data.venue_types) ? data.venue_types : [],
-    // Service-role read: the column is hidden from this session client. One
-    // extra query on a single-hall page, which is the price of the column not
-    // being visible to the customer role that also holds `authenticated`.
-    commission_rate: await readHallCommissionRate(data.id),
   };
 }
 
@@ -717,7 +689,7 @@ export type OwnerCommissionRow = {
   lead_id:             string | null;
   hall_id:             string | null;
   hall_name:           string;
-  /** Full hall price — the base the 2.5% commission is charged on. */
+  /** Full hall price — the base the standard 2% commission is charged on. */
   booking_amount:      number;
   /** Gross advance the customer paid. 0 on very old rows written before the
    *  column existed. NOT the commission base: the rate applies to the hall

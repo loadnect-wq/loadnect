@@ -5,7 +5,7 @@ import { requireRole } from "@/lib/auth";
 import { fetchOwnerRow, fetchOwnerHalls, fetchOwnerRevenue, fetchOwnerCommissions } from "@/lib/owner";
 import type { AdvancePayout } from "@/lib/owner";
 import { isPayoutsConfigured } from "@/lib/cashfree-payouts";
-import { getCommissionPercent } from "@/lib/platform-settings";
+import { COMMISSION_PERCENT_LABEL } from "@/lib/commission";
 import { formatPrice } from "@/lib/mock-data";
 import { Badge } from "@/components/ui/Badge";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -53,28 +53,15 @@ export default async function OwnerRevenuePage() {
   // money travels toward the owner and a payout account means anything.
   const takesOnlinePayments = halls.some((h) => h.booking_mode === "DIRECT_BOOKING");
   const hallIds       = halls.map((h) => h.id);
-  const [bookings, commissions, commissionPercent] = await Promise.all([
+  const [bookings, commissions] = await Promise.all([
     fetchOwnerRevenue(hallIds),
     fetchOwnerCommissions(hallIds),
-    getCommissionPercent(),
   ]);
 
-  // WHAT RATE TO SHOW, now that it is per hall. The single "current rate" this
-  // page used to print is only correct for an owner whose halls all agree, so
-  // it is derived from their actual halls instead: one rate if they all match,
-  // a range if they differ, and the platform default only when none is set.
-  const configuredRates = Array.from(
-    new Set(halls.map((h) => h.commission_rate).filter((r): r is number => r != null)),
-  ).sort((a, b) => a - b);
-
-  const rateLabel =
-    configuredRates.length === 0
-      ? `${commissionPercent}%`
-      : configuredRates.length === 1
-        ? `${configuredRates[0]}%`
-        : `${configuredRates[0]}%–${configuredRates[configuredRates.length - 1]}%`;
-
-  const ratesVary = configuredRates.length > 1;
+  // ONE standard rate for every venue (lib/commission.ts). The records below
+  // carry their own snapshot, so an older booking still shows what it was
+  // actually charged.
+  const rateLabel = COMMISSION_PERCENT_LABEL;
 
   const totalBookingAmount = bookings.reduce((s, b) => s + b.total_amount, 0);
   const totalPayout        = bookings.reduce((s, b) => s + (b.payout_amount ?? 0), 0);
@@ -184,7 +171,7 @@ export default async function OwnerRevenuePage() {
               </p>
             </div>
             <span className="rounded-full bg-maroon-50 px-2.5 py-1 text-[11px] font-semibold text-maroon-700">
-              {ratesVary ? "Your rates" : "Current rate"} {rateLabel}
+              Hallnect commission {rateLabel}
             </span>
           </div>
           {/* Says which mechanism produced the figure above. Stating "never
@@ -271,12 +258,10 @@ export default async function OwnerRevenuePage() {
         )}
 
         <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-xs text-blue-800">
-          {/* rateLabel comes from the owner's OWN halls, not the platform
-              default, so this is the rate they will actually be charged. The
-              sentence after it is the part that has to follow the mode: "never
-              billed separately" is true of a booking and false of an enquiry. */}
-          Hallnect&apos;s commission is {rateLabel} of the hall price
-          {ratesVary && " — you set it per hall, so it differs between your venues"}
+          {/* The standard rate. The sentence after it is the part that has to
+              follow the mode: "never billed separately" is true of a booking
+              and false of an enquiry. */}
+          Hallnect commission: {rateLabel} of the hall price
           {takesOnlinePayments ? (
             <>
               , retained from the customer&apos;s advance when you accept. You are never billed

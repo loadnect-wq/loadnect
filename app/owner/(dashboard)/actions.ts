@@ -18,11 +18,10 @@ import {
   normalizeAmenityName,
   CUSTOM_AMENITY_LIMITS,
   customAmenityListSchema,
-  commissionRateSchema,
   leadConfirmSchema,
 } from "@/lib/validation/schemas";
 import { sanitizeError } from "@/lib/errors";
-import { setHallCommissionRate } from "@/lib/hall-commission";
+import { STANDARD_COMMISSION_PERCENT } from "@/lib/commission";
 import { canonicalStateForStorage } from "@/lib/seo/state";
 import { resolveMapInput } from "@/lib/geo";
 import { recordOwnerAction } from "@/lib/audit";
@@ -249,9 +248,6 @@ export async function createHall(data: {
   amenityIds:   string[];
   venueTypes:   string[];
   customAmenities?: string[];
-  /** One of HALL_COMMISSION_RATES. Required — hallCreateSchema rejects anything
-   *  else, and the halls_commission_rate_allowed CHECK rejects it again. */
-  commissionRate: number | string;
   /** DIRECT_BOOKING (the default when absent) or LEAD_GENERATION. */
   bookingMode?: string;
   /** A Google Maps link (or plain "lat, lng") for the venue's pin.
@@ -355,11 +351,10 @@ export async function createHall(data: {
     price_evening:  v.priceEvening ?? null,
     venue_types:    v.venueTypes,
     booking_mode:   v.bookingMode,
-    // The owner's own commercial term. Taken from the PARSED value, so the
-    // eight-value bound has already been applied — the raw form string never
-    // reaches the database. The halls_commission_rate_allowed CHECK is the
-    // second line of defence for a request that never touched this action.
-    commission_rate: v.commissionRate,
+    // The STANDARD rate, recorded for reference. It is not an input and not
+    // read to price anything — bookings and leads apply lib/commission.ts
+    // directly. halls_commission_rate_standard (0097) refuses any other value.
+    commission_rate: STANDARD_COMMISSION_PERCENT,
     ...pinColumns,
     status: "pending_approval",
   });
@@ -431,10 +426,6 @@ export async function updateHall(hallId: string, data: {
   amenityIds:   string[];
   venueTypes:   string[];
   customAmenities?: string[];
-  /** Optional here, unlike on create. Omit it and the hall keeps the rate it
-   *  has; supply a different one and it is changed, audited, and applied to
-   *  FUTURE bookings only — existing bookings carry their own snapshot. */
-  commissionRate?: number | string;
   /** DIRECT_BOOKING or LEAD_GENERATION. Absent means DIRECT_BOOKING, which is
    *  what every caller written before lead generation meant. */
   bookingMode?: string;
@@ -466,14 +457,8 @@ export async function updateHall(hallId: string, data: {
     .eq("id", hallId)
     .maybeSingle();
 
-  // NOTE ON commission_rate: it is deliberately absent from the select above.
-  // Migration 0072 hides the column from anon and authenticated, so asking for
-  // it on the session client would fail the whole read and take the rest of the
-  // edit down with it. The prior value is not needed here either — the write
-  // below goes through setHallCommissionRate, which returns `previous` and
-  // `changed` from inside the service-role transaction. Reading it separately
-  // up front was a second round-trip whose answer was then thrown away, and
-  // could disagree with the value the write actually replaced.
+  // NOTE ON commission_rate: there is nothing to edit. The commission is the
+  // standard rate (lib/commission.ts); an owner cannot set or change it.
 
   // ── Map pin ─────────────────────────────────────────────────────────────────
   // Resolved BEFORE anything is written, so a link that cannot be read fails
@@ -534,44 +519,6 @@ export async function updateHall(hallId: string, data: {
     return { error: "This hall could not be updated (it may not be yours)." };
   }
 
-  // ── Commission rate ─────────────────────────────────────────────────────────
-  // Written only AFTER the update above returned a non-zero count. That count is
-  // the ownership proof: it came back through the session client, so RLS decided
-  // this hall is theirs. The write itself must then use the service role,
-  // because 0046's column-scoped UPDATE grant deliberately excludes money
-  // columns from what an owner may PATCH — which is also why an owner cannot
-  // change this value by talking to PostgREST directly and skipping the audit
-  // row below.
-  //
-  // Failure here does NOT fail the edit: the rest of the listing is already
-  // saved, and reporting a total failure would send the owner back to re-enter
-  // work that was persisted. It is reported instead.
-  if (data.commissionRate !== undefined && data.commissionRate !== "") {
-    const rateParsed = parseSafe(commissionRateSchema, data.commissionRate);
-    if (!rateParsed.ok) return { error: rateParsed.error };
-
-    const res = await setHallCommissionRate(hallId, rateParsed.data);
-    if (!res.ok) return { error: res.error };
-
-    if (res.changed) {
-      // Money changed hands differently from this moment on, so it is recorded
-      // against the person who did it. Existing bookings are untouched — each
-      // carries its own commission_rate snapshot taken at creation.
-      await recordOwnerAction({
-        action:         "hall.commission_changed",
-        entityType:     "hall",
-        entityId:       hallId,
-        previousStatus: res.previous == null ? "not configured" : `${res.previous}%`,
-        newStatus:      `${rateParsed.data}%`,
-        reason:
-          `Hallnect commission changed from ` +
-          `${res.previous == null ? "not configured" : `${res.previous}%`} to ` +
-          `${rateParsed.data}% by the hall owner. Applies to future bookings only; ` +
-          `existing bookings keep the rate they were made at.`,
-        metadata: { previous: res.previous, next: rateParsed.data, changedBy: "owner" },
-      });
-    }
-  }
 
   // Sync amenities: delete existing, re-insert selected
   // DELETE-THEN-INSERT, with both halves checked. Neither error was inspected

@@ -7,8 +7,7 @@ import { fetchAllHalls } from "@/lib/admin";
 import { formatPrice } from "@/lib/mock-data";
 import { hasPrice, PRICE_ON_REQUEST } from "@/lib/booking-mode";
 import { Badge } from "@/components/ui/Badge";
-import { HALL_COMMISSION_RATES } from "@/lib/validation/schemas";
-import { sortByCommissionRate } from "@/lib/hall-commission";
+import { COMMISSION_PERCENT_LABEL } from "@/lib/commission";
 import { AdminPageHeader } from "../_components/AdminPageHeader";
 import { ConfirmButton } from "../_components/ConfirmButton";
 import { ReasonButton } from "../_components/ReasonButton";
@@ -36,7 +35,7 @@ function fmtDate(iso: string) {
   return new Date(iso).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
 }
 
-type Props = { searchParams: Promise<{ status?: string; commission?: string; sort?: string; mode?: string; q?: string }> };
+type Props = { searchParams: Promise<{ status?: string; mode?: string; q?: string }> };
 
 /**
  * Booking-mode filter. Deliberately its own row rather than another value in
@@ -50,41 +49,19 @@ const MODE_FILTERS = [
   { key: "LEAD_GENERATION", label: "Lead Generation" },
 ] as const;
 
-/**
- * Commission filter options. "unset" is the one that earns its place: a hall
- * with no configured rate bills at the platform default, which is a commercial
- * term nobody agreed to, so admin needs to be able to list exactly those.
- */
-const COMMISSION_FILTERS = [
-  { key: "all",   label: "All rates" },
-  { key: "unset", label: "Not configured" },
-  ...HALL_COMMISSION_RATES.map((r) => ({ key: String(r), label: `${r}%` })),
-] as const;
+// NO COMMISSION FILTER OR SORT. Every hall carries the same standard rate
+// (lib/commission.ts), so "by rate" and "not configured" no longer mean
+// anything. They were removed with the per-hall rates.
 
 /**
- * Sort options. "newest" is the default and is what this page has always done
- * (fetchAllHalls orders by created_at desc in the query); the two commission
- * orders are applied in memory, because the rate is not a column this page's
- * session client may read — see the note where the sort is applied.
+ * One place that builds this page's URLs, so a chip in either row preserves
+ * the other. Written once because the alternative — near-identical
+ * URLSearchParams blocks — is how a filter silently starts dropping another.
  */
-const SORTS = [
-  { key: "newest",    label: "Newest" },
-  { key: "comm_desc", label: "Commission, high to low" },
-  { key: "comm_asc",  label: "Commission, low to high" },
-] as const;
-
-/**
- * One place that builds this page's URLs, so a chip in any of the three rows
- * preserves the other two. Written once because the alternative — three
- * near-identical URLSearchParams blocks — is how a filter silently starts
- * dropping the sort the moment someone edits one of them.
- */
-function hrefFor(current: { status: string; commission: string; sort: string; mode: string }): string {
+function hrefFor(current: { status: string; mode: string }): string {
   const params = new URLSearchParams();
   if (current.status !== "all") params.set("status", current.status);
-  if (current.commission !== "all") params.set("commission", current.commission);
   if (current.mode !== "all") params.set("mode", current.mode);
-  if (current.sort !== "newest") params.set("sort", current.sort);
   const qs = params.toString();
   return qs ? `?${qs}` : "?";
 }
@@ -98,36 +75,18 @@ export default async function AdminHallsPage({ searchParams }: Props) {
   // denial now logs at error level, which would bury real failures. Guarding
   // here also means this page is not relying on a file it does not control.
   await requireRole(["admin"]);
-  const { status, commission, sort, mode, q } = await searchParams;
+  const { status, mode, q } = await searchParams;
   const activeFilter = FILTERS.find((f) => f.key === status) ?? FILTERS[0];
-  const activeCommission =
-    COMMISSION_FILTERS.find((f) => f.key === commission) ?? COMMISSION_FILTERS[0];
   const activeMode = MODE_FILTERS.find((m) => m.key === mode) ?? MODE_FILTERS[0];
-  const activeSort = SORTS.find((s) => s.key === sort) ?? SORTS[0];
 
   const allHalls = await fetchAllHalls(activeFilter.value);
 
-  // Filtered in memory, not in the query: the rate is not readable by the
-  // session client this page's query runs on (migration 0072), so it arrives
-  // merged in from a service-role read afterwards. These pages are already
-  // fully materialised — fetchAllHalls has no pagination — so this costs
-  // nothing beyond an array pass.
-  const byCommission =
-    activeCommission.key === "all"
-      ? allHalls
-      : activeCommission.key === "unset"
-        ? allHalls.filter((h) => h.commission_rate == null)
-        : allHalls.filter((h) => h.commission_rate === Number(activeCommission.key));
-
-  // booking_mode IS a readable column, so this one could have gone in the
-  // query. It is done here so the two filters compose the same way and so the
-  // counts on every chip are computed against the same materialised set —
-  // a mode filter in SQL and a commission filter in memory would make the
-  // commission chips count rows the mode filter had already removed.
+  // Filtered in memory so the mode chip counts are computed against the same
+  // materialised set the list shows. fetchAllHalls has no pagination.
   const byMode =
     activeMode.key === "all"
-      ? byCommission
-      : byCommission.filter((h) => h.booking_mode === activeMode.key);
+      ? allHalls
+      : allHalls.filter((h) => h.booking_mode === activeMode.key);
 
   // ?q= WAS A DEAD PARAMETER. Two places already build this link — the
   // duplicate warning in lib/admin-hall-drafts.ts:206 and the "View listing"
@@ -136,7 +95,7 @@ export default async function AdminHallsPage({ searchParams }: Props) {
   // on name and city rather than name alone, because the draft duplicate check
   // that generates the link matches on both.
   const search = (q ?? "").trim().toLowerCase().slice(0, 80);
-  const filtered = search
+  const halls = search
     ? byMode.filter(
         (h) =>
           h.name.toLowerCase().includes(search) ||
@@ -144,29 +103,6 @@ export default async function AdminHallsPage({ searchParams }: Props) {
       )
     : byMode;
 
-  // SORTED IN MEMORY, for the same reason it is filtered in memory: the query
-  // above runs on the session client, which migration 0072 forbids from reading
-  // commission_rate at all, so `.order("commission_rate")` would raise 42501 —
-  // and lib/admin.ts swallows that into `return []`, blanking the page. The
-  // value only exists after the service-role merge, which is here.
-  //
-  // Sorting the whole set is only honest because fetchAllHalls has no LIMIT or
-  // RANGE: every matching hall is already in `allHalls`. If pagination is ever
-  // added to that query, this sort silently becomes "sort the current page",
-  // which is worse than no sort at all — move it into the query then, which
-  // will mean moving the whole read to the service role.
-  //
-  // Unconfigured halls go LAST in both directions rather than sorting as 0 or
-  // as Infinity. They are not a low rate or a high one; they are an absent one,
-  // and burying real rates behind them would make the sort useless in exactly
-  // the case it is reached for. They remain one click away via the
-  // "Not configured" chip, which carries a count.
-  const halls =
-    activeSort.key === "newest"
-      ? filtered
-      : sortByCommissionRate(filtered, activeSort.key === "comm_asc" ? "asc" : "desc");
-
-  const unconfigured = allHalls.filter((h) => h.commission_rate == null).length;
 
   return (
     <div>
@@ -187,10 +123,8 @@ export default async function AdminHallsPage({ searchParams }: Props) {
             </span>
             <Link
               href={hrefFor({
-                status:     activeFilter.key,
-                commission: activeCommission.key,
-                sort:       activeSort.key,
-                mode:       activeMode.key,
+                status: activeFilter.key,
+                mode:   activeMode.key,
               })}
               className="font-semibold text-maroon-700 underline underline-offset-2"
             >
@@ -206,9 +140,7 @@ export default async function AdminHallsPage({ searchParams }: Props) {
               key={f.key}
               href={hrefFor({
                 status: f.key,
-                commission: activeCommission.key,
                 mode: activeMode.key,
-                sort: activeSort.key,
               })}
               className={[
                 "rounded-full border px-3 py-1 text-xs font-semibold",
@@ -240,9 +172,7 @@ export default async function AdminHallsPage({ searchParams }: Props) {
                 key={m.key}
                 href={hrefFor({
                   status: activeFilter.key,
-                  commission: activeCommission.key,
                   mode: m.key,
-                  sort: activeSort.key,
                 })}
                 className={[
                   "rounded-full border px-2.5 py-0.5 text-[11px] font-semibold tabular-nums",
@@ -257,73 +187,11 @@ export default async function AdminHallsPage({ searchParams }: Props) {
           })}
         </div>
 
-        {/* Commission filter. Kept on its own row and visually lighter than the
-            status chips above: status is the primary axis of this page and the
-            commission rate is a secondary lens on it. Both are carried in the
-            query string so a filtered view is linkable. */}
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-[11px] font-semibold uppercase tracking-wide text-charcoal-400">
-            Commission
-          </span>
-          {COMMISSION_FILTERS.map((f) => {
-            return (
-              <Link
-                key={f.key}
-                href={hrefFor({
-                  status: activeFilter.key,
-                  commission: f.key,
-                  mode: activeMode.key,
-                  sort: activeSort.key,
-                })}
-                className={[
-                  "rounded-full border px-2.5 py-0.5 text-[11px] font-semibold tabular-nums",
-                  activeCommission.key === f.key
-                    ? "border-maroon-700 bg-maroon-700 text-white"
-                    : f.key === "unset" && unconfigured > 0
-                      ? "border-amber-300 bg-amber-50 text-amber-800 hover:border-amber-400"
-                      : "border-border bg-white text-charcoal-600 hover:border-maroon-300",
-                ].join(" ")}
-              >
-                {f.label}
-                {f.key === "unset" && unconfigured > 0 && ` (${unconfigured})`}
-              </Link>
-            );
-          })}
-        </div>
-
-        {/* Sort. Same row treatment as the commission filter — it is the other
-            secondary lens — and it composes with both chip rows above rather
-            than replacing them. */}
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-[11px] font-semibold uppercase tracking-wide text-charcoal-400">
-            Sort
-          </span>
-          {SORTS.map((o) => (
-            <Link
-              key={o.key}
-              href={hrefFor({
-                status: activeFilter.key,
-                commission: activeCommission.key,
-                mode: activeMode.key,
-                sort: o.key,
-              })}
-              aria-current={activeSort.key === o.key ? "true" : undefined}
-              className={[
-                "rounded-full border px-2.5 py-0.5 text-[11px] font-semibold",
-                activeSort.key === o.key
-                  ? "border-maroon-700 bg-maroon-700 text-white"
-                  : "border-border bg-white text-charcoal-600 hover:border-maroon-300",
-              ].join(" ")}
-            >
-              {o.label}
-            </Link>
-          ))}
-          {activeSort.key !== "newest" && unconfigured > 0 && (
-            <span className="text-[11px] text-charcoal-500">
-              {unconfigured} unconfigured hall{unconfigured !== 1 ? "s" : ""} sorted last
-            </span>
-          )}
-        </div>
+        {/* One standard commission for every hall — stated, not filterable. */}
+        <p className="text-[11px] text-charcoal-500">
+          Standard Hallnect commission: <strong className="text-charcoal-800">{COMMISSION_PERCENT_LABEL}</strong> on
+          every hall — retained from the advance on direct bookings, billed to the venue on confirmed enquiries.
+        </p>
 
         {halls.length === 0 ? (
           <p className="rounded-2xl bg-white p-8 text-center text-sm text-charcoal-500 shadow-card">
@@ -367,10 +235,6 @@ export default async function AdminHallsPage({ searchParams }: Props) {
                       <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-charcoal-600">
                         <span>👥 Up to {h.capacity_max.toLocaleString("en-IN")}</span>
                         <span>💰 {hasPrice(h.price_per_day) ? `${formatPrice(h.price_per_day)}/day` : PRICE_ON_REQUEST}</span>
-                        {/* The commercial term, not a customer-facing figure.
-                            Amber rather than neutral when unset: such a hall
-                            bills at the platform default, which nobody agreed
-                            to, so it should read as needing attention. */}
                         {/* Mode badge. Amber for lead generation, because it
                             is the mode where Hallnect has to COLLECT rather
                             than deduct — which is the row an admin chasing
@@ -382,15 +246,6 @@ export default async function AdminHallsPage({ searchParams }: Props) {
                         ) : (
                           <span className="rounded-full border border-border bg-ivory-50 px-1.5 py-0.5 text-[10px] font-semibold text-charcoal-500">
                             Direct
-                          </span>
-                        )}
-                        {h.commission_rate != null ? (
-                          <span className="font-semibold text-charcoal-700">
-                            Commission {h.commission_rate}%
-                          </span>
-                        ) : (
-                          <span className="font-semibold text-amber-700">
-                            Commission not configured
                           </span>
                         )}
                         {h.rating_count > 0 && (
