@@ -36,13 +36,22 @@
 // the card rises over it. Every animation is decorative and switched off for
 // visitors who ask their system for reduced motion (useReducedMotion). The
 // sign-in logic below the visuals is unchanged.
+//
+// ENTRANCES ARE CSS, NOT FRAMER. The first version faded the card and buttons
+// in with framer-motion `initial={{ opacity: 0 }}`, which the server renders as
+// inline opacity:0 — so until JavaScript hydrated and requestAnimationFrame ran,
+// the sign-in card was invisible. On the live site that showed as a photo and
+// an empty column. Anything a visitor must see now enters with a CSS animation
+// (tailwindcss-animate), which runs from the server HTML with no JavaScript;
+// framer-motion is kept only for things that start visible (hover, step
+// changes, the drifting light, the rotating word).
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useEffect, useState, useTransition } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
-import { AnimatePresence, motion, useReducedMotion, type Variants } from "framer-motion";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { ArrowLeft, CheckCircle2, Loader2, Phone, ShieldCheck, Smartphone } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { buildAuthCallbackUrl, rememberAuthNext } from "@/lib/app-url";
@@ -133,16 +142,6 @@ const SPARKS = [
 ] as const;
 
 const EASE = [0.22, 1, 0.36, 1] as const;
-
-const stagger: Variants = {
-  hidden: {},
-  show: { transition: { staggerChildren: 0.09, delayChildren: 0.15 } },
-};
-
-const rise: Variants = {
-  hidden: { opacity: 0, y: 18 },
-  show: { opacity: 1, y: 0, transition: { duration: 0.6, ease: EASE } },
-};
 
 export default function LoginPage() {
   const router = useRouter();
@@ -269,35 +268,34 @@ export default function LoginPage() {
         )}
 
         {/* Copy — the headline block is decorative on phones (small header). */}
-        <motion.div
-          className="absolute inset-x-0 bottom-0 z-10 px-6 pb-16 sm:px-10 lg:bottom-auto lg:top-1/2 lg:-translate-y-1/2 lg:px-14 lg:pb-0"
-          variants={stagger}
-          initial="hidden"
-          animate="show"
-        >
-          <motion.p variants={rise} className="inline-flex items-center gap-2 rounded-full border border-gold-400/40 bg-white/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-gold-200 backdrop-blur">
+        <div className="absolute inset-x-0 bottom-0 z-10 px-6 pb-16 sm:px-10 lg:bottom-auto lg:top-1/2 lg:-translate-y-1/2 lg:px-14 lg:pb-0">
+          <p className="motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-3 motion-safe:duration-700 motion-safe:fill-mode-both motion-safe:delay-[150ms] inline-flex items-center gap-2 rounded-full border border-gold-400/40 bg-white/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-gold-200 backdrop-blur">
             <span className="h-1.5 w-1.5 rounded-full bg-gold-400" />
             Wedding &amp; event halls · Tamil Nadu
-          </motion.p>
+          </p>
 
-          <motion.h2 variants={rise} className="mt-4 max-w-xl font-serif text-3xl font-bold leading-[1.1] text-ivory-50 sm:text-4xl lg:text-5xl">
+          <h2 className="motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-3 motion-safe:duration-700 motion-safe:fill-mode-both motion-safe:delay-[280ms] mt-4 max-w-xl font-serif text-3xl font-bold leading-[1.1] text-ivory-50 sm:text-4xl lg:text-5xl">
             Every{" "}
             <span className="relative inline-block min-w-[6.5ch] align-bottom">
               <RotatingOccasion reduceMotion={reduceMotion} />
             </span>
             <br />
             starts with the right hall.
-          </motion.h2>
+          </h2>
 
-          <motion.ul variants={stagger} className="mt-7 hidden max-w-md grid-cols-2 gap-x-6 gap-y-3 lg:grid">
-            {TRUST_POINTS.map((t) => (
-              <motion.li key={t} variants={rise} className="flex items-center gap-2 text-sm text-ivory-100/90">
+          <ul className="mt-7 hidden max-w-md grid-cols-2 gap-x-6 gap-y-3 lg:grid">
+            {TRUST_POINTS.map((t, i) => (
+              <li
+                key={t}
+                className="motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-3 motion-safe:duration-700 motion-safe:fill-mode-both flex items-center gap-2 text-sm text-ivory-100/90"
+                style={{ animationDelay: `${420 + i * 90}ms` }}
+              >
                 <CheckCircle2 className="h-4 w-4 shrink-0 fill-gold-400 text-maroon-950" />
                 {t}
-              </motion.li>
+              </li>
             ))}
-          </motion.ul>
-        </motion.div>
+          </ul>
+        </div>
       </section>
 
       {/* ── Sign-in ────────────────────────────────────────────────────────── */}
@@ -316,19 +314,11 @@ export default function LoginPage() {
           />
         </div>
 
-        <motion.div
-          className="w-full max-w-md"
-          initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 32, scale: 0.98 }}
-          animate={{ opacity: 1, y: 0, scale: 1 }}
-          transition={{ duration: 0.7, ease: EASE, delay: 0.1 }}
-        >
+        <div className="w-full max-w-md motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-8 motion-safe:zoom-in-[0.98] motion-safe:duration-700 motion-safe:fill-mode-both motion-safe:delay-100">
           <div className="mb-7 text-center">
             <Link href="/" className="group inline-flex flex-col items-center gap-2" aria-label="Hallnect home">
               <motion.span
-                className="relative block h-16 w-16 rounded-full bg-white p-2.5 shadow-gold ring-1 ring-gold-400/40"
-                initial={reduceMotion ? false : { rotate: -12, scale: 0.6, opacity: 0 }}
-                animate={{ rotate: 0, scale: 1, opacity: 1 }}
-                transition={{ type: "spring", stiffness: 180, damping: 14, delay: 0.25 }}
+                className="relative block h-16 w-16 rounded-full bg-white p-2.5 shadow-gold ring-1 ring-gold-400/40 motion-safe:animate-in motion-safe:zoom-in-50 motion-safe:spin-in-12 motion-safe:duration-700 motion-safe:fill-mode-both motion-safe:delay-300"
                 whileHover={reduceMotion ? undefined : { rotate: 6, scale: 1.06 }}
               >
                 <span className="relative block h-full w-full">
@@ -377,14 +367,13 @@ export default function LoginPage() {
                     under it for anyone who would rather not use Google at all. */}
                 {step === "choose" && (
                   <motion.div key="choose" {...stepMotion} transition={{ duration: 0.3, ease: EASE }}>
-                    <motion.div className="space-y-3" variants={stagger} initial="hidden" animate="show">
+                    <div className="space-y-3">
                       <motion.button
-                        variants={rise}
                         type="button"
                         onClick={googleLogin}
                         whileHover={reduceMotion ? undefined : { y: -2 }}
                         whileTap={reduceMotion ? undefined : { scale: 0.98 }}
-                        className="group relative flex min-h-[54px] w-full items-center justify-center gap-3 overflow-hidden rounded-2xl bg-charcoal-900 px-4 text-sm font-semibold text-white shadow-lg transition-colors hover:bg-charcoal-800"
+                        className="motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-3 motion-safe:duration-700 motion-safe:fill-mode-both motion-safe:delay-[350ms] group relative flex min-h-[54px] w-full items-center justify-center gap-3 overflow-hidden rounded-2xl bg-charcoal-900 px-4 text-sm font-semibold text-white shadow-lg transition-colors hover:bg-charcoal-800"
                       >
                         {/* light sweep on hover */}
                         <span
@@ -397,19 +386,18 @@ export default function LoginPage() {
                         Continue with Google
                       </motion.button>
 
-                      <motion.div variants={rise} className="flex items-center gap-3 py-1" aria-hidden>
+                      <div className="motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-3 motion-safe:duration-700 motion-safe:fill-mode-both motion-safe:delay-[430ms] flex items-center gap-3 py-1" aria-hidden>
                         <span className="h-px flex-1 bg-gradient-to-r from-transparent to-gold-300/70" />
                         <span className="text-[11px] font-semibold uppercase tracking-[0.2em] text-charcoal-400">or</span>
                         <span className="h-px flex-1 bg-gradient-to-l from-transparent to-gold-300/70" />
-                      </motion.div>
+                      </div>
 
                       <motion.button
-                        variants={rise}
                         type="button"
                         onClick={() => go("mobile")}
                         whileHover={reduceMotion ? undefined : { y: -2 }}
                         whileTap={reduceMotion ? undefined : { scale: 0.98 }}
-                        className="group flex min-h-[54px] w-full items-center justify-center gap-3 rounded-2xl border border-gold-300/60 bg-white px-4 text-sm font-semibold text-charcoal-800 shadow-sm transition-colors hover:border-maroon-300 hover:bg-ivory-50"
+                        className="motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-3 motion-safe:duration-700 motion-safe:fill-mode-both motion-safe:delay-[510ms] group flex min-h-[54px] w-full items-center justify-center gap-3 rounded-2xl border border-gold-300/60 bg-white px-4 text-sm font-semibold text-charcoal-800 shadow-sm transition-colors hover:border-maroon-300 hover:bg-ivory-50"
                       >
                         <span className="flex h-7 w-7 items-center justify-center rounded-full bg-maroon-50 transition-colors group-hover:bg-maroon-100">
                           <Smartphone className="h-4 w-4 text-maroon-700" aria-hidden />
@@ -433,7 +421,7 @@ export default function LoginPage() {
                           browsewrap. The stored, versioned artifact already
                           exists where money changes hands —
                           bookings.terms_accepted / terms_version. */}
-                      <motion.p variants={rise} className="pt-2 text-center text-xs leading-relaxed text-charcoal-500">
+                      <p className="motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-3 motion-safe:duration-700 motion-safe:fill-mode-both motion-safe:delay-[590ms] pt-2 text-center text-xs leading-relaxed text-charcoal-500">
                         New here? Either option creates your account. By continuing you agree to our{" "}
                         <Link href="/terms" className="font-semibold text-maroon-700 underline underline-offset-2">
                           Terms of Service
@@ -443,8 +431,8 @@ export default function LoginPage() {
                           Privacy Policy
                         </Link>
                         .
-                      </motion.p>
-                    </motion.div>
+                      </p>
+                    </div>
                   </motion.div>
                 )}
 
@@ -556,7 +544,7 @@ export default function LoginPage() {
               List your hall
             </Link>
           </p>
-        </motion.div>
+        </div>
       </section>
     </div>
   );
