@@ -58,7 +58,8 @@ describe("the hero is the scroll walk-through", () => {
   it("carries the headline as intro and the search pill as footer", () => {
     const hero = desktop.slice(desktop.indexOf("<ScrollScrubVideo"), desktop.indexOf("/>", desktop.indexOf("footer={")) + 2);
     expect(hero).toContain("intro={");
-    expect(hero).toContain("Find the right hall");
+    expect(hero).toContain("starts with the right hall.");
+    expect(hero).toContain("<HeroOccasionWord />");
     expect(hero).toMatch(/footer=\{\s*<HeroSearch/);
   });
 

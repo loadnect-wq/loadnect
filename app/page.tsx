@@ -16,6 +16,7 @@ import { heroDelay, revealDelay } from "@/lib/motion";
 import { HeroSearch } from "@/components/sections/HeroSearch";
 import { ScrollScrubVideo } from "@/components/sections/ScrollScrubVideo";
 import { RotatingWord } from "@/components/sections/RotatingWord";
+import { HeroOccasionWord } from "@/components/sections/HeroOccasionWord";
 
 import { HallCard } from "@/app/halls/_components/HallCard";
 import { countActivePremiumHalls, fetchHalls, type HallListing } from "@/lib/halls";
@@ -480,10 +481,10 @@ export default async function HomePage() {
                     gold-200, re-measured over the walk-through's opening frames
                     under both shades: 4.15:1 against a 3.0 bar for 56px bold
                     (+38%). gold-300 is noticeably weaker on this footage. */}
-                <p className="hero-ink mt-6 font-sans text-5xl font-bold leading-[1.1] tracking-tight text-white xl:text-6xl">
-                  Find the right hall
-                  <br className="hidden sm:block" />{" "}
-                  for <span className="text-gold-200">every celebration</span>
+                <p className="hero-ink mt-6 font-serif text-5xl font-bold leading-[1.1] text-white xl:text-6xl">
+                  Every <HeroOccasionWord />
+                  <br />
+                  starts with the right hall.
                 </p>
 
                 {/* The event word rotates. White semibold, NOT gold: this is
