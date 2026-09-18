@@ -23,8 +23,9 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import Link from "next/link";
+import Image from "next/image";
 import {
-  Gem, IndianRupee, ClipboardCheck, CalendarCheck, Images, BadgeCheck,
+  IndianRupee, ClipboardCheck, CalendarCheck, Images, BadgeCheck,
   ArrowRight, Wallet,
 } from "lucide-react";
 import { PLATFORM_FEE_RUPEES } from "@/lib/booking-payment";
@@ -67,8 +68,11 @@ export default async function OwnerRegisterPage() {
       <section className="bg-maroon-950 px-4 py-14 text-center sm:py-20">
         <div className="container-page">
           <Link href="/" className="inline-flex items-center gap-2">
-            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-maroon-600 text-ivory-100">
-              <Gem className="h-4 w-4" />
+            {/* The Hallnect HN monogram (public/logo.png), on an ivory disc so
+                the gold reads against the maroon hero — same treatment as the
+                sign-in page. Decorative: the wordmark beside it names the link. */}
+            <span className="relative flex h-11 w-11 items-center justify-center rounded-full bg-ivory-50 p-1.5 shadow-gold ring-1 ring-gold-400/50">
+              <Image src="/logo.png" alt="" width={30} height={30} className="object-contain" priority />
             </span>
             <span className="font-serif text-xl font-bold text-ivory-100">Hallnect</span>
           </Link>
