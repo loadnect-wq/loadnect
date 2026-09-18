@@ -15,7 +15,6 @@ import { AdSlot } from "@/components/ads/AdSlot";
 import { heroDelay, revealDelay } from "@/lib/motion";
 import { HeroSearch } from "@/components/sections/HeroSearch";
 import { ScrollScrubVideo } from "@/components/sections/ScrollScrubVideo";
-import { RotatingWord } from "@/components/sections/RotatingWord";
 import { HeroOccasionWord } from "@/components/sections/HeroOccasionWord";
 
 import { HallCard } from "@/app/halls/_components/HallCard";
@@ -27,11 +26,6 @@ import {
   jsonLdGraph, organizationJsonLd, websiteJsonLd, faqJsonLd,
 } from "@/lib/seo/jsonld";
 import { fetchCityInventory, type CityInventory } from "@/lib/seo/cities";
-
-// The hero subhead cycles through these. Every one is a real category below
-// (Wedding, Party, Reception and Banquet Halls), so the sentence never offers a
-// kind of hall the site does not list.
-const HERO_EVENT_WORDS = ["wedding", "party", "reception", "banquet"] as const;
 
 const CATEGORIES = [
   { key: "wedding",   label: "Wedding Halls",   icon: "heart",      href: "/halls?category=wedding"   },
@@ -487,28 +481,6 @@ export default async function HomePage() {
                   starts with the right hall.
                 </p>
 
-                {/* The event word rotates. White semibold, NOT gold: this is
-                    normal-size text needing 4.5:1, and gold-200 here works out
-                    to ~4.1:1 against the 5.39:1 white measured for this band. */}
-                {/* TWO FIXED LINES, broken by hand. The rotating word changes the
-                    first line's width, and with free wrapping that moved where the
-                    line broke: "Owner-submitted" split at its hyphen when the word
-                    was wide and stayed whole when it was "party", so half a word
-                    jumped between lines on every swap. With the break forced here
-                    the word only re-centres line 1, and line 2 never changes.
-                    max-w-3xl so the second sentence fits on one line.
-
-                    "Book online or send a free enquiry" is deliberately "or":
-                    each venue offers one or the other (booking_mode), and the
-                    listing says which. Nothing here promises online booking
-                    for a venue that only takes enquiries. */}
-                <p className="hero-ink mx-auto mt-6 max-w-3xl text-base text-white/90 xl:text-lg">
-                  Compare{" "}
-                  <RotatingWord words={HERO_EVENT_WORDS} className="font-semibold text-white" />{" "}
-                  halls by price, capacity and photos.
-                  <br />
-                  Then book online or send a free enquiry, whichever the venue offers.
-                </p>
               </div>
 
               {/* Trust strip — honest launch-stage messaging (no fabricated numbers).

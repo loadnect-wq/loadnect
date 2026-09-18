@@ -107,33 +107,14 @@ describe("screen readers and copy-paste", () => {
 });
 
 describe("on the page", () => {
-  it("replaces the word 'wedding' in the hero subhead", () => {
+  // The hero subhead that used this component ("Compare [word] halls by price,
+  // capacity and photos. Then book online or send a free enquiry…") was
+  // removed from the homepage on the owner's instruction (2026-09-18). The
+  // component is kept, tested above, for reuse.
+  it("the hero subhead is gone", () => {
     const pageCode = code(page);
-    expect(pageCode).toContain('Compare{" "}');
-    expect(pageCode).toContain("<RotatingWord words={HERO_EVENT_WORDS}");
-    expect(pageCode).not.toContain("Compare wedding halls");
-  });
-
-  it("only offers kinds of hall the site actually lists", () => {
-    const words = page.match(/const HERO_EVENT_WORDS = \[([^\]]+)\]/)?.[1].match(/"([^"]+)"/g)?.map((w) => w.slice(1, -1)) ?? [];
-    expect(words).toEqual(["wedding", "party", "reception", "banquet"]);
-    for (const w of words) {
-      const label = `${w[0].toUpperCase()}${w.slice(1)} Halls`;
-      expect(page, `no "${label}" category behind the word "${w}"`).toContain(`label: "${label}"`);
-    }
-  });
-
-  it("breaks the subhead by hand, so the word cannot move a line break", () => {
-    // With free wrapping, "Owner-submitted" split at its hyphen when the word
-    // was wide and stayed whole for "party" — half a word jumped lines.
-    const pageCode = code(page);
-    const sub = pageCode.slice(pageCode.indexOf('Compare{" "}'), pageCode.indexOf("whichever the venue offers."));
-    expect(sub).toContain("halls by price, capacity and photos.");
-    expect(sub).toMatch(/capacity and photos\.\s*<br \/>\s*Then book online/);
-    expect(pageCode).toContain("mx-auto mt-6 max-w-3xl");
-  });
-
-  it("stays white, not gold — normal-size text needs 4.5:1", () => {
-    expect(page).toContain('<RotatingWord words={HERO_EVENT_WORDS} className="font-semibold text-white" />');
+    expect(pageCode).not.toContain("<RotatingWord");
+    expect(pageCode).not.toContain("halls by price, capacity and photos.");
+    expect(pageCode).not.toContain("whichever the venue offers.");
   });
 });
