@@ -135,7 +135,13 @@ describe("the mobile hero card", () => {
   it("keeps the H1 in the mobile tree, in white", () => {
     const h1 = mobile.slice(mobile.indexOf("<h1"));
     expect(h1.slice(0, h1.indexOf(">"))).toContain("text-white");
-    expect(h1).toContain("Wedding Halls &amp; Marriage Halls in Tamil Nadu");
+    // WIDENED when Hallnect stopped being a wedding-only marketplace, but
+    // "Wedding" still LEADS — this is the H1 Google indexes and the phrase the
+    // ranking pages were built on. Both halves are pinned: the lead word, so a
+    // future rewrite cannot quietly drop it, and the breadth, so the page does
+    // not slide back to wedding-only.
+    expect(h1).toContain("Wedding, Party &amp; Event Halls in Tamil Nadu");
+    expect(h1.indexOf("Wedding")).toBeLessThan(h1.indexOf("Event"));
     expect(desktop).not.toContain("<h1");
   });
 

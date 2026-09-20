@@ -112,7 +112,25 @@ function prettyPhone(ten: string): string {
 // ── Visual constants ────────────────────────────────────────────────────────
 
 /** The same events the homepage hero rotates through. */
-const OCCASIONS = ["wedding", "reception", "engagement", "celebration"] as const;
+// The words the hero cycles through.
+//
+// BROADENED WHEN HALLNECT STOPPED BEING A WEDDING-HALL SITE. It was
+// wedding/reception/engagement/celebration — four words that told a visitor,
+// before they read anything else, that this was a wedding product. It now
+// spans the catalogue's range, because this line is the single most prominent
+// statement the site makes about what it is for.
+//
+// CURATED, NOT THE WHOLE CATALOGUE, and deliberately so. This is a headline,
+// not a directory: the words have to fit "Every ___ starts with the right
+// hall." and read naturally there. "naming ceremony" and "product launch" are
+// real categories and both make that sentence clumsy. The full twenty-eight
+// live in the discovery grid, which is the surface that owes completeness.
+//
+// Kept identical to the sign-in page's list on purpose — the two screens were
+// matched deliberately and should be changed together.
+const OCCASIONS = [
+  "wedding", "reception", "birthday", "party", "meeting", "conference", "celebration",
+] as const;
 
 /** The homepage trust points, verbatim — true statements about how Hallnect works. */
 const TRUST_POINTS = [
@@ -271,7 +289,7 @@ export default function LoginPage() {
         <div className="absolute inset-x-0 bottom-0 z-10 px-6 pb-16 sm:px-10 lg:bottom-auto lg:top-1/2 lg:-translate-y-1/2 lg:px-14 lg:pb-0">
           <p className="motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-3 motion-safe:duration-700 motion-safe:fill-mode-both motion-safe:delay-[150ms] inline-flex items-center gap-2 rounded-full border border-gold-400/40 bg-white/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-gold-200 backdrop-blur">
             <span className="h-1.5 w-1.5 rounded-full bg-gold-400" />
-            Wedding &amp; event halls · Tamil Nadu
+            Halls for every occasion · Tamil Nadu
           </p>
 
           <h2 className="motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-3 motion-safe:duration-700 motion-safe:fill-mode-both motion-safe:delay-[280ms] mt-4 max-w-xl font-serif text-3xl font-bold leading-[1.1] text-ivory-50 sm:text-4xl lg:text-5xl">

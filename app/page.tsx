@@ -218,9 +218,11 @@ export default async function HomePage() {
     ? typeTiles
     : [...typeTiles, { key: "all", icon: "all", href: "/halls", short: "All halls" }];
 
-  // EVERY OCCASION WITH AT LEAST ONE APPROVED VENUE, most first. Empty until
-  // an owner declares something, which is the correct home page for a
-  // marketplace with no inventory — see the note in OccasionDiscovery.
+  // EVERY occasion in the catalogue, the ones with venues first. No limit: this
+  // grid is where a visitor learns Hallnect is not a wedding-only site, and
+  // showing two of twenty-eight defeated the point. Empty only when the
+  // catalogue itself could not be read. See OccasionDiscovery for why showing
+  // the empty ones to PEOPLE is safe while indexing them would not be.
   const occasions = occasionTiles(catalogue, categoryInventory);
 
   // 3. CITY TILES. This strip once rendered a static list of eight cities, so
@@ -303,11 +305,16 @@ export default async function HomePage() {
               {/* THE page H1. Google indexes mobile-first, so the keyword- and
                   location-bearing heading must live in the MOBILE tree — the
                   desktop hero below is display:none to Googlebot. */}
+              {/* "Wedding" STAYS FIRST. This is the H1 Google indexes and the
+                  phrase the only pages that rank were built on; re-leading it
+                  with a generic word to sound broader would trade live traffic
+                  for a positioning statement nobody searches. The breadth is
+                  added after it, and matches the page title exactly. */}
               <h1 className="hero-ink mt-2 text-balance font-serif text-[28px] font-bold leading-[1.15] text-white">
-                Wedding Halls &amp; Marriage Halls in Tamil Nadu
+                Wedding, Party &amp; Event Halls in Tamil Nadu
               </h1>
               <p className="hero-ink mt-2 text-sm text-white">
-                Owner-submitted listings, transparent pricing.
+                Weddings, parties, meetings and more. Owner-submitted listings, transparent pricing.
               </p>
             </div>
           </div>
@@ -511,7 +518,7 @@ export default async function HomePage() {
             <div className="container-page w-full">
               <div className="mx-auto max-w-4xl text-center">
                 <span className="hero-ink inline-flex items-center gap-1.5 rounded-full border border-white/25 bg-white/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-widest text-white backdrop-blur">
-                  <Sparkles className="h-3 w-3" /> Wedding &amp; event halls · Tamil Nadu
+                  <Sparkles className="h-3 w-3" /> Halls for every occasion · Tamil Nadu
                 </span>
 
                 {/* Visually the desktop headline, but NOT an <h1>: the homepage

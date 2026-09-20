@@ -143,15 +143,24 @@ export default async function HallsPage({
   // decides whether their landing page is indexable at all.
   const citiesWithVenues = cityInventory.filter((c) => c.venueCount > 0);
 
-  // Occasion chips, gated on live inventory for the same reason the city links
-  // above are: a chip that filters to nothing is a control that looks like it
-  // works. Eight is what fits a phone's scrolling row beside the sort button
-  // and the two commercial chips; the rest are one tap away on the category
-  // pages, and SearchControls always keeps whichever one the visitor arrived
-  // on so they can switch it off.
-  const chipCategories = catalogue
-    .filter((c) => (categoryInventory.get(c.slug)?.venueCount ?? 0) > 0)
-    .slice(0, 8)
+  // EVERY occasion gets a chip, the ones with venues first.
+  //
+  // These were gated on inventory, which made the search page look like it
+  // filtered two things. A chip that returns no venue is not the defect that
+  // gating was for — that defect was a chip which returned EVERYTHING because
+  // the filter silently dropped a value it did not recognise (migration 0037).
+  // This one filters correctly and truthfully reports an empty result, and the
+  // page's own empty state then offers the way out.
+  //
+  // The row scrolls horizontally, so length costs nothing above the fold, and
+  // SearchControls keeps whichever chip the visitor arrived on regardless.
+  const chipCategories = [...catalogue]
+    .sort(
+      (a, b) =>
+        (categoryInventory.get(b.slug)?.venueCount ?? 0) -
+          (categoryInventory.get(a.slug)?.venueCount ?? 0) ||
+        a.displayOrder - b.displayOrder,
+    )
     .map((c) => ({ slug: c.slug, name: c.name }));
 
   // Names for the badges on every card in this list. Built from the whole

@@ -1,26 +1,33 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // components/sections/OccasionDiscovery.tsx — "What are you planning?"
 //
-// The homepage's entry point into the multi-purpose catalogue: a tile per
-// occasion, each leading to that occasion's landing page.
+// EVERY occasion in the catalogue, whether or not a venue has declared it yet.
+// Hallnect is a multi-purpose venue marketplace and this grid is where a
+// visitor learns that; showing only the two occasions that currently have
+// inventory made the product look like the wedding-hall site it used to be.
 //
-// EVERY TILE HERE HAS INVENTORY BEHIND IT. The caller passes counts and this
-// component drops anything at zero, which is the single most important rule on
-// the page and the one this codebase has had to learn twice:
+// ════════════════════════════════════════════════════════════════════════════
+// WHAT IS SHOWN vs WHAT IS INDEXED — TWO DIFFERENT DECISIONS
+// ════════════════════════════════════════════════════════════════════════════
+// This grid deliberately does NOT gate on inventory. The SEO layer still does,
+// and that separation is the whole reason showing everything here is safe:
 //
-//   * the four venue-type tiles that this replaces linked to ?category=… with
-//     nothing checking whether any hall declared it, so "Party Halls" could
-//     lead to "No halls found";
-//   * the "✦ Premium" tile and chip did exactly the same for a tier no hall
-//     held, and had to be hidden until premium_listings was non-empty.
+//   * a visitor clicking "Baby Shower" gets a real page that says, plainly,
+//     that no venue has listed for it yet, and offers the two things that
+//     actually help — browse everything, or list your venue;
+//   * Google is told nothing of the sort. /venues/baby-shower is noindex and
+//     absent from the sitemap until a venue declares it (see
+//     MIN_VENUES_FOR_CATEGORY_INDEX). Twenty-six thin pages in a sitemap is
+//     the doorway-page pattern that earns manual actions; twenty-six honest
+//     pages a human can reach from a grid is a catalogue.
 //
-// A grid of 28 occasions where 24 lead nowhere is that defect at scale. So the
-// list is gated on live counts and the whole section disappears when nothing
-// qualifies — which is the correct homepage for a marketplace with no
-// inventory, and it fills itself in, tile by tile, as owners declare more.
+// So: humans see the full marketplace, crawlers see only what is real. Do not
+// "simplify" this by gating the grid again, and do not "simplify" it by
+// indexing the empty pages.
 //
-// NO FABRICATED VARIETY. It would be easy to render all 28 and call it a
-// marketplace. The counts are real or the tile is absent.
+// NO FABRICATED NUMBERS. A tile shows a venue count only when that count is
+// above zero. It never prints "0 venues", because a grid of zeroes is worse
+// than a grid without counts — and it never invents one.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import Link from "next/link";
@@ -31,22 +38,25 @@ import { CategoryIcon } from "@/components/venues/CategoryIcon";
 export type OccasionTile = VenueCategory & { venueCount: number };
 
 /**
- * Tiles worth showing, most inventory first.
+ * Every active occasion, the ones with venues first.
  *
- * Cut at twelve. Beyond that the strip stops being a shortcut and becomes a
- * list the visitor has to read — and everything below the cut is still one tap
- * away through "See all", which the caller renders.
+ * ORDERING CARRIES THE HONESTY the filter used to. Nothing is hidden, but what
+ * Hallnect can actually deliver today leads — so the grid reads as a real
+ * marketplace with depth in some corners rather than a uniform wall that
+ * implies inventory everywhere.
+ *
+ * `limit` is optional and unset by default: the caller decides, and the home
+ * page shows all of them.
  */
 export function occasionTiles(
   categories: readonly VenueCategory[],
   counts: Map<string, { venueCount: number }>,
-  limit = 12,
+  limit?: number,
 ): OccasionTile[] {
-  return categories
+  const tiles = categories
     .map((c) => ({ ...c, venueCount: counts.get(c.slug)?.venueCount ?? 0 }))
-    .filter((c) => c.venueCount > 0)
-    .sort((a, b) => b.venueCount - a.venueCount || a.displayOrder - b.displayOrder)
-    .slice(0, limit);
+    .sort((a, b) => b.venueCount - a.venueCount || a.displayOrder - b.displayOrder);
+  return typeof limit === "number" ? tiles.slice(0, limit) : tiles;
 }
 
 export function OccasionDiscovery({
@@ -69,32 +79,42 @@ export function OccasionDiscovery({
       }
     >
       {tiles.map((c, i) => (
-        <li key={c.slug} data-reveal="scale" style={{ animationDelay: `${i * 50}ms` }}>
+        <li
+          key={c.slug}
+          data-reveal="scale"
+          // Capped, not i * 50: with 28 tiles an uncapped stagger would leave
+          // the last row waiting 1.4s after the first.
+          style={{ animationDelay: `${Math.min(i, 11) * 45}ms` }}
+        >
           <Link
             href={`/venues/${c.slug}`}
             className={
               mobile
-                ? "flex min-h-[88px] flex-col items-center justify-center gap-2 rounded-2xl bg-white px-2 py-3 text-center shadow-card transition-transform active:scale-95 motion-reduce:active:scale-100"
+                ? "flex min-h-[92px] flex-col items-center justify-center gap-1.5 rounded-2xl bg-white px-2 py-3 text-center shadow-card transition-transform active:scale-95 motion-reduce:active:scale-100"
                 : "group flex flex-col items-center gap-2 rounded-2xl border border-border bg-white p-4 transition-all hover:-translate-y-1 hover:border-maroon-300 hover:shadow-card-hover"
             }
           >
             <span
               className={
                 mobile
-                  ? "flex h-10 w-10 items-center justify-center rounded-full bg-maroon-50 text-maroon-600"
+                  ? "flex h-9 w-9 items-center justify-center rounded-full bg-maroon-50 text-maroon-600"
                   : "flex h-12 w-12 items-center justify-center rounded-xl bg-maroon-50 text-maroon-600 transition-colors group-hover:bg-maroon-100"
               }
             >
-              <CategoryIcon name={c.icon} className="h-5 w-5" />
+              <CategoryIcon name={c.icon} className={mobile ? "h-4 w-4" : "h-5 w-5"} />
             </span>
-            <span className="text-center text-xs font-semibold leading-tight text-charcoal-800">
+
+            <span className="text-center text-[11px] font-semibold leading-tight text-charcoal-800 sm:text-xs">
               {c.name}
             </span>
-            {/* The real count, or nothing. A tile never reaches this component
-                at zero, so this line is always a fact. */}
-            <span className="text-[10px] text-charcoal-500">
-              {c.venueCount} {c.venueCount === 1 ? "venue" : "venues"}
-            </span>
+
+            {/* A REAL COUNT OR NOTHING AT ALL. Never "0 venues" — an occasion
+                nobody has listed for yet is an invitation, not a report. */}
+            {c.venueCount > 0 && (
+              <span className="text-[10px] text-charcoal-500">
+                {c.venueCount} {c.venueCount === 1 ? "venue" : "venues"}
+              </span>
+            )}
           </Link>
         </li>
       ))}

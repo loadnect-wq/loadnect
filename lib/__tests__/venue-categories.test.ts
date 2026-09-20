@@ -334,29 +334,68 @@ describe("occasionTiles", () => {
   const inv = (m: Record<string, number>) =>
     new Map(Object.entries(m).map(([k, v]) => [k, { venueCount: v }]));
 
-  it("drops every occasion with no venue behind it", () => {
-    // The defect this exists for, twice over: the four venue-type tiles linked
-    // to ?category=… with nothing checking inventory, and the Premium tile
-    // advertised a tier no hall held. A grid of 28 occasions where 24 lead to
-    // "No halls found" is that bug at scale.
-    const tiles = occasionTiles(CATALOGUE, inv({ wedding: 3, meeting: 0 }));
-    expect(tiles.map((t) => t.slug)).toEqual(["wedding"]);
+  // THIS CONTRACT WAS DELIBERATELY INVERTED. The grid first dropped every
+  // occasion with no inventory, by analogy with the Premium chip — which had
+  // to be hidden because it advertised a tier no hall held. The analogy was
+  // wrong for occasions: with two of twenty-eight showing, the home page
+  // looked like the wedding-only site the expansion exists to replace.
+  //
+  // The defect that gating really guards against is a control that returns
+  // EVERYTHING because the filter silently dropped a value (migration 0037).
+  // These tiles filter correctly and land on a page that states plainly that
+  // nothing is listed, so showing them costs a visitor nothing and tells them
+  // what Hallnect is for. Indexability is gated separately and still is.
+
+  it("shows every occasion, including the ones with no venue yet", () => {
+    const tiles = occasionTiles(CATALOGUE, inv({ wedding: 3 }));
+    expect(tiles).toHaveLength(CATALOGUE.length);
+    expect(tiles.map((t) => t.slug)).toContain("exhibition");
   });
 
-  it("is empty when nothing is listed, so the whole section disappears", () => {
-    expect(occasionTiles(CATALOGUE, inv({}))).toEqual([]);
+  it("still renders the whole catalogue when nothing at all is listed", () => {
+    expect(occasionTiles(CATALOGUE, inv({})).map((t) => t.slug).sort())
+      .toEqual(CATALOGUE.map((c) => c.slug).sort());
+  });
+
+  it("is empty only when the catalogue itself could not be read", () => {
+    // The one case that must still render nothing — see OccasionDiscovery,
+    // which returns null for an empty list.
+    expect(occasionTiles([], inv({}))).toEqual([]);
   });
 
   it("leads with the most inventory, then catalogue order", () => {
+    // Ordering carries the honesty the filter used to: what Hallnect can
+    // actually deliver today comes first, nothing is hidden behind it.
     const tiles = occasionTiles(CATALOGUE, inv({ wedding: 2, "birthday-party": 9, meeting: 2 }));
-    expect(tiles.map((t) => t.slug)).toEqual(["birthday-party", "wedding", "meeting"]);
+    expect(tiles.slice(0, 3).map((t) => t.slug)).toEqual(["birthday-party", "wedding", "meeting"]);
+    expect(tiles.at(-1)!.venueCount).toBe(0);
   });
 
-  it("caps the strip so it stays a shortcut", () => {
+  it("reports a real count or zero, never an invented one", () => {
+    const tiles = occasionTiles(CATALOGUE, inv({ wedding: 3 }));
+    expect(tiles.find((t) => t.slug === "wedding")!.venueCount).toBe(3);
+    expect(tiles.find((t) => t.slug === "meeting")!.venueCount).toBe(0);
+    // The component renders the count only when it is above zero.
+    const src = read("components/sections/OccasionDiscovery.tsx");
+    expect(src).toContain("c.venueCount > 0 &&");
+  });
+
+  it("still honours an explicit limit where a caller wants one", () => {
     const many = Array.from({ length: 20 }, (_, i) => cat(`c-${i}`, `C${i}`, `c${i}s`, i));
     const counts = inv(Object.fromEntries(many.map((c) => [c.slug, 1])));
-    expect(occasionTiles(many, counts)).toHaveLength(12);
+    expect(occasionTiles(many, counts)).toHaveLength(20);
     expect(occasionTiles(many, counts, 3)).toHaveLength(3);
+  });
+
+  it("keeps the SEO gate even though the UI gate is gone", () => {
+    // The whole reason showing all 28 to PEOPLE is safe. If this ever stops
+    // being true, the grid becomes 26 links into a doorway-page farm.
+    const hub = read("app/venues/[category]/page.tsx");
+    const sitemap = read("app/sitemap.ts");
+    expect(hub).toContain("indexable: venueCount >= MIN_VENUES_FOR_CATEGORY_INDEX");
+    expect(sitemap).toContain("if (!inv || inv.venueCount < MIN_VENUES_FOR_CATEGORY_INDEX) continue");
+    // And an empty occasion page is a real destination, not a dead end.
+    expect(hub).toContain("List your venue");
   });
 });
 

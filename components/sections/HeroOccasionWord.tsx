@@ -13,7 +13,25 @@
 import { useEffect, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 
-const OCCASIONS = ["wedding", "reception", "engagement", "celebration"] as const;
+// The words the hero cycles through.
+//
+// BROADENED WHEN HALLNECT STOPPED BEING A WEDDING-HALL SITE. It was
+// wedding/reception/engagement/celebration — four words that told a visitor,
+// before they read anything else, that this was a wedding product. It now
+// spans the catalogue's range, because this line is the single most prominent
+// statement the site makes about what it is for.
+//
+// CURATED, NOT THE WHOLE CATALOGUE, and deliberately so. This is a headline,
+// not a directory: the words have to fit "Every ___ starts with the right
+// hall." and read naturally there. "naming ceremony" and "product launch" are
+// real categories and both make that sentence clumsy. The full twenty-eight
+// live in the discovery grid, which is the surface that owes completeness.
+//
+// Kept identical to the sign-in page's list on purpose — the two screens were
+// matched deliberately and should be changed together.
+const OCCASIONS = [
+  "wedding", "reception", "birthday", "party", "meeting", "conference", "celebration",
+] as const;
 const EASE = [0.22, 1, 0.36, 1] as const;
 
 export function HeroOccasionWord() {

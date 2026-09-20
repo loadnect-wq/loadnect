@@ -166,11 +166,17 @@ export default async function CategoryPage({ params }: Props) {
     .filter((c) => c.count > 0 && c.slug)
     .sort((a, b) => b.count - a.count || a.city.localeCompare(b.city));
 
-  // Sibling occasions that have inventory — how a visitor who landed on the
-  // wrong one gets to the right one without going back to the home page.
+  // Every other occasion — how a visitor who landed on the wrong one gets to
+  // the right one without going back to the home page, and the second place
+  // (after the home grid) where the full range of the marketplace is visible.
+  // Ones with venues lead; none are hidden.
   const siblings = catalogue
-    .filter((c) => c.slug !== slug && (inventory.get(c.slug)?.venueCount ?? 0) > 0)
-    .slice(0, 12);
+    .filter((c) => c.slug !== slug)
+    .sort(
+      (a, b) =>
+        (inventory.get(b.slug)?.venueCount ?? 0) - (inventory.get(a.slug)?.venueCount ?? 0) ||
+        a.displayOrder - b.displayOrder,
+    );
 
   return (
     <div className="min-h-screen bg-ivory-100">
@@ -217,20 +223,36 @@ export default async function CategoryPage({ params }: Props) {
 
       <main className="container-app py-6 lg:max-w-7xl">
         {halls.length === 0 ? (
+          /* EVERY OCCASION IS REACHABLE FROM THE DISCOVERY GRID, including the
+             ones nobody has listed for yet — so this page is a real
+             destination, not an accident, and it has to earn the click.
+             It says plainly that nothing is listed (never implies otherwise),
+             then offers the two things that actually help: the full catalogue,
+             because most halls suit more than one occasion, and the owner
+             pathway, because an unserved occasion is a supply gap. */
           <EmptyState
             icon={<Building2 className="h-6 w-6" />}
             title={`No ${categoryVenuePhrase(category)} listed yet`}
             description={
               `No venue on Hallnect has said it hosts ${category.pluralNoun} so far. ` +
-              `Browse every listed hall instead — many suit more than one occasion.`
+              `Plenty of halls suit more than one occasion, so it is worth browsing everything — ` +
+              `and if you run a venue that takes them, this is an open spot.`
             }
             action={
-              <Link
-                href="/halls"
-                className="inline-flex min-h-[44px] items-center rounded-full bg-maroon-600 px-5 text-sm font-semibold text-white"
-              >
-                Browse all venues
-              </Link>
+              <div className="flex flex-wrap justify-center gap-2">
+                <Link
+                  href="/halls"
+                  className="inline-flex min-h-[44px] items-center rounded-full bg-maroon-600 px-5 text-sm font-semibold text-white"
+                >
+                  Browse all venues
+                </Link>
+                <Link
+                  href="/owner/register"
+                  className="inline-flex min-h-[44px] items-center rounded-full border border-border bg-white px-5 text-sm font-semibold text-charcoal-800"
+                >
+                  List your venue
+                </Link>
+              </div>
             }
           />
         ) : (
