@@ -11,12 +11,17 @@ import { todayInBusinessTz } from "@/lib/dates";
 
 // ── Static configuration ──────────────────────────────────────────────────────
 
-const QUICK_CHIPS = [
+/**
+ * The chips that are NOT occasions.
+ *
+ * The three venue types that used to follow these moved out in 0102: they are
+ * rows in public.venue_categories now, and the page passes whichever of them
+ * actually have inventory. These two are platform properties, not occasions,
+ * so they stay here.
+ */
+const COMMERCIAL_CHIPS = [
   { key: "premium", label: "✦ Premium"      },
   { key: "budget",  label: "Budget-friendly" },
-  { key: "wedding", label: "Wedding"          },
-  { key: "banquet", label: "Banquet"          },
-  { key: "party",   label: "Party"            },
 ] as const;
 
 const SORT_OPTIONS = [
@@ -70,6 +75,17 @@ interface Props {
    * or premium owners lose the category filter their plan sells.
    */
   premiumCount?:   number;
+  /**
+   * Occasion chips, already filtered to those with approved inventory and in
+   * catalogue order — see app/halls/page.tsx.
+   *
+   * A chip for an occasion nothing declares is a control that looks like a
+   * filter and dead-ends on "No halls found". That is the defect migration
+   * 0037 was written for (four tiles that filtered nothing) and the one the
+   * Premium chip below had to be fixed for separately. Gating is the caller's
+   * job because only the server can count.
+   */
+  categories?:     { slug: string; name: string }[];
 }
 
 export function SearchControls({
@@ -78,6 +94,7 @@ export function SearchControls({
   defaultQuery, defaultCategory, defaultAmenity,
   defaultDate, defaultSort, count,
   premiumCount = 0,
+  categories = [],
 }: Props) {
   const router      = useRouter();
   const searchParams = useSearchParams();
@@ -123,9 +140,25 @@ export function SearchControls({
   // Hide the premium chip while there is no premium inventory — but keep it
   // when it is already the active category, or a visitor who arrived on
   // ?category=premium would have no way to switch it off.
-  const visibleChips = QUICK_CHIPS.filter(
+  const commercialChips = COMMERCIAL_CHIPS.filter(
     (c) => c.key !== "premium" || premiumCount > 0 || activeChip === "premium",
   );
+
+  // The occasion the visitor arrived on is ALWAYS offered, even when it has no
+  // inventory — otherwise someone who followed /halls?category=photoshoot into
+  // an empty result has no control to switch it off, which is how a filtered
+  // page becomes a dead end. Same reasoning as the Premium chip above.
+  const occasionChips = categories.map((c) => ({ key: c.slug, label: c.name }));
+  const activeIsKnown =
+    !activeChip ||
+    commercialChips.some((c) => c.key === activeChip) ||
+    occasionChips.some((c) => c.key === activeChip);
+
+  const visibleChips = [
+    ...commercialChips,
+    ...(activeIsKnown ? [] : [{ key: activeChip, label: activeChip }]),
+    ...occasionChips,
+  ];
 
   // RANKING DISCLOSURE — Rule 5(3)(f), Consumer Protection (E-Commerce) Rules
   // 2020: a marketplace must publish the main parameters that determine the

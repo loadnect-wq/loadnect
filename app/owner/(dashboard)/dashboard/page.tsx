@@ -7,6 +7,8 @@ import {
 } from "lucide-react";
 import { requireRole } from "@/lib/auth";
 import { fetchOwnerRow, fetchOwnerHalls, fetchOwnerStats, fetchOwnerCommissions } from "@/lib/owner";
+import { fetchVenueCategories } from "@/lib/venue-categories.server";
+import { EventTypeBreakdown } from "@/components/venues/EventTypeBreakdown";
 import { formatPrice } from "@/lib/mock-data";
 import { advanceFromTotal } from "@/lib/booking-payment";
 import { fetchPremiumPlans, PLAN_FEATURES } from "@/lib/premium-plans";
@@ -65,7 +67,10 @@ export default async function OwnerDashboardPage() {
 
   const halls   = await fetchOwnerHalls(ownerRow.id);
   const hallIds = halls.map((h) => h.id);
-  const [stats, commissions, plans, pendingLeads, claimable] = await Promise.all([
+  const [catalogue, stats, commissions, plans, pendingLeads, claimable] = await Promise.all([
+    // Lenient: without it the breakdown below names occasions by slug rather
+    // than not rendering — a dashboard panel is not worth failing a dashboard.
+    fetchVenueCategories(),
     fetchOwnerStats(ownerRow.id, hallIds),
     fetchOwnerCommissions(hallIds),
     fetchPremiumPlans(),
@@ -236,6 +241,12 @@ export default async function OwnerDashboardPage() {
             wide
           />
         </div>
+
+        {/* What this owner's venues are actually booked FOR — the panel that
+            makes the multi-purpose expansion pay off for them: an owner whose
+            bookings are half birthdays learns to tick that box. Renders
+            nothing at all until there is a booking or an enquiry to count. */}
+        <EventTypeBreakdown rows={stats.byEventType} catalogue={catalogue} />
 
         {/* Quick actions */}
         <div className="flex flex-wrap gap-2">

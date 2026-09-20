@@ -26,12 +26,21 @@ import {
   jsonLdGraph, organizationJsonLd, websiteJsonLd, faqJsonLd,
 } from "@/lib/seo/jsonld";
 import { fetchCityInventory, type CityInventory } from "@/lib/seo/cities";
+import { fetchVenueCategories, fetchCategoryInventory } from "@/lib/venue-categories.server";
+import { OccasionDiscovery, occasionTiles } from "@/components/sections/OccasionDiscovery";
+import { categoryVenueLabel } from "@/lib/venue-categories";
 
+/**
+ * The tiles that are NOT occasions.
+ *
+ * The four venue types that used to sit at the top of this list moved out in
+ * 0102, to <OccasionDiscovery>, which reads the catalogue and — crucially —
+ * drops any occasion no approved hall declares. These three are different in
+ * kind: a price band and a tier are not occasions, and "Available today" is a
+ * date filter. They stay hard-coded because they are properties of the
+ * platform rather than rows an admin can add.
+ */
 const CATEGORIES = [
-  { key: "wedding",   label: "Wedding Halls",   icon: "heart",      href: "/halls?category=wedding"   },
-  { key: "reception", label: "Reception Halls", icon: "sparkles",   href: "/halls?category=reception" },
-  { key: "party",     label: "Party Halls",     icon: "party",      href: "/halls?category=party"     },
-  { key: "banquet",   label: "Banquet Halls",   icon: "building",   href: "/halls?category=banquet"   },
   { key: "budget",    label: "Budget Halls",    icon: "wallet",     href: "/halls?category=budget"    },
   { key: "premium",   label: "Premium Halls",   icon: "crown",      href: "/halls?category=premium"   },
   { key: "today",     label: "Available Today", icon: "zap",        href: "/halls?available=today"    },
@@ -65,7 +74,7 @@ const MOBILE_HERO_SHADE =
 const CITY_GRADIENT_FALLBACK = "linear-gradient(135deg,#6B1525 0%,#9B2038 100%)";
 
 const HOW_IT_WORKS = [
-  { step: "01", title: "Discover", body: "Browse wedding halls across Tamil Nadu with photos, capacity, pricing and amenities, as listed by each venue." },
+  { step: "01", title: "Discover", body: "Browse halls across Tamil Nadu for weddings, parties, meetings and more — photos, capacity, pricing and amenities, as listed by each venue." },
   { step: "02", title: "Compare",  body: "Filter by city, capacity, budget, and amenities. Venues that publish a calendar show their open dates." },
   { step: "03", title: "Book or enquire", body: "Some venues take an online advance to hold your date. Others take a free enquiry and confirm the details with you directly." },
 ];
@@ -96,10 +105,20 @@ export const metadata: Metadata = buildMetadata({
   // The brand is written in literally, NOT left to title.template: a layout's
   // template does not apply to a page in its own segment, which is why this
   // one page shipped brandless while all twelve others read "… | Hallnect".
-  title: "Wedding Halls & Marriage Halls in Tamil Nadu | Hallnect",
+  // "Wedding" STAYS FIRST. The expansion to every occasion is real and the
+  // rest of this page reflects it, but this one string is what the pages that
+  // currently rank were built on, and re-leading it with a generic word to
+  // sound broader would trade live traffic for a positioning statement no
+  // searcher types. The breadth is added in the second half and in the
+  // description; see APP_DESCRIPTION for the same rule.
+  title: "Wedding, Party & Event Halls in Tamil Nadu | Hallnect",
+  // 147 characters. buildMetadata's clamp cuts at 158 and the first draft of
+  // this widening ran to 166 — count before you lengthen it, as the note above
+  // says. "marriage" is kept as a bare adjective rather than "marriage halls"
+  // for exactly those characters; it is still the phrase people search.
   description:
-    "Find and book wedding halls, marriage halls and event venues across Tamil Nadu. " +
-    "Compare owner-submitted photos, capacity and pricing, then reserve online.",
+    "Find and book wedding, marriage, party and meeting halls across Tamil Nadu. " +
+    "Compare owner-submitted photos, capacity and pricing, then book online.",
   path: "/",
 });
 
@@ -142,12 +161,18 @@ export default async function HomePage() {
   //
   // countActivePremiumHalls is in here too: it was awaited further down the
   // function, which made it a fifth serial hop.
-  const [featuredAll, advancePercent, cityInventory, premiumCount] = await Promise.all([
-    fetchHalls({}),
-    getAdvancePercent(),
-    fetchCityInventory(),
-    countActivePremiumHalls(),
-  ]);
+  const [featuredAll, advancePercent, cityInventory, premiumCount, catalogue, categoryInventory] =
+    await Promise.all([
+      fetchHalls({}),
+      getAdvancePercent(),
+      fetchCityInventory(),
+      countActivePremiumHalls(),
+      // LENIENT, both of them. If either read fails the occasions strip is
+      // absent and every other section of the home page is untouched — the
+      // same trade the city tiles already make.
+      fetchVenueCategories(),
+      fetchCategoryInventory(),
+    ]);
   const featured: HallListing[] = featuredAll.slice(0, 6);
   const citiesWithVenues = cityInventory.filter((c) => c.venueCount > 0);
   // Computed on the SERVER and handed to the search pill. A browser in another
@@ -180,10 +205,10 @@ export default async function HomePage() {
   const visibleCategories = premiumCount > 0
     ? [...CATEGORIES]
     : CATEGORIES.filter((c) => c.key !== "premium");
-  const popularSearches = visibleCategories.filter((c) => c.key !== "today").slice(0, 6);
-  // The phone's "halls by type" grid, three to a row. Five types without
-  // Premium, so "All halls" fills the row rather than leaving a gap.
-  const typeTiles = popularSearches.map((c) => ({
+  // The phone's quick tiles, three to a row: the commercial ones plus "All
+  // halls", which both fills the row and is the honest destination when no
+  // occasion has inventory yet.
+  const typeTiles = visibleCategories.map((c) => ({
     key: c.key as string,
     icon: c.icon as string,
     href: c.href as string,
@@ -192,6 +217,11 @@ export default async function HomePage() {
   const mobileTypes = typeTiles.length % 3 === 0
     ? typeTiles
     : [...typeTiles, { key: "all", icon: "all", href: "/halls", short: "All halls" }];
+
+  // EVERY OCCASION WITH AT LEAST ONE APPROVED VENUE, most first. Empty until
+  // an owner declares something, which is the correct home page for a
+  // marketplace with no inventory — see the note in OccasionDiscovery.
+  const occasions = occasionTiles(catalogue, categoryInventory);
 
   // 3. CITY TILES. This strip once rendered a static list of eight cities, so
   //    seven of the eight tiles led to an empty search. Every tile is now
@@ -297,10 +327,26 @@ export default async function HomePage() {
           <AdSlot placement="homepage_banner" limit={1} />
         </section>
 
+        {/* ── What are you planning? ────────────────────────────────────
+            The multi-purpose catalogue: one tile per occasion that actually
+            has a venue behind it. Absent entirely when none do — see
+            OccasionDiscovery for why an ungated version of this is the exact
+            defect the premium tile had to be fixed for twice. */}
+        {occasions.length > 0 && (
+          <section className="mt-8">
+            <MobileSectionTitle
+              title="What are you planning?"
+              linkLabel="All venues"
+              linkHref="/halls"
+            />
+            <OccasionDiscovery tiles={occasions} variant="mobile" />
+          </section>
+        )}
+
         {/* ── Halls by type ─────────────────────────────────────────────
             A grid, not a sideways strip: all of them are visible at once.
             Three to a row, so the count is padded to a whole row with "All
-            halls" when Premium is gated off — never a hole. */}
+            halls" — never a hole. */}
         <section className="mt-8">
           <MobileSectionTitle title="Browse halls by type" />
           <ul className="container-app grid grid-cols-3 gap-2.5">
@@ -510,6 +556,22 @@ export default async function HomePage() {
             />
           }
         />
+
+        {/* ── What are you planning? ───────────────────────────── */}
+        {occasions.length > 0 && (
+          <section className="container-page pt-12">
+            <DesktopSectionHeader
+              eyebrow="Every occasion"
+              title="Find a hall for your occasion"
+              blurb="Weddings, parties, meetings, celebrations — one place to find the right venue."
+              linkLabel="Browse all venues →"
+              linkHref="/halls"
+            />
+            <div className="mt-6">
+              <OccasionDiscovery tiles={occasions} variant="desktop" />
+            </div>
+          </section>
+        )}
 
         {/* ── Categories strip ─────────────────────────────────── */}
         <section className="container-page py-12">
@@ -788,18 +850,27 @@ export default async function HomePage() {
           </div>
         )}
 
-        <div data-reveal="up" style={revealDelay(1, 80)} className="mt-6">
-          <h3 className="text-sm font-semibold text-charcoal-900">Popular searches</h3>
-          <ul className="mt-2 flex flex-wrap gap-2 text-xs">
-            {popularSearches.map((c) => (
-              <li key={c.key}>
-                <Link href={c.href} className="text-maroon-700 underline-offset-2 hover:underline">
-                  {c.label} in Tamil Nadu
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </div>
+        {/* Internal links into the occasion landing pages, and the one place
+            on this page where the multi-purpose catalogue is spelled out in
+            words a crawler reads: "Birthday Party Halls in Tamil Nadu".
+
+            BUILT FROM `occasions`, so every link here has inventory behind it.
+            A block of twenty-eight links to empty pages is precisely the
+            programmatic-SEO pattern lib/seo/cities.ts exists to avoid. */}
+        {occasions.length > 0 && (
+          <div data-reveal="up" style={revealDelay(1, 80)} className="mt-6">
+            <h3 className="text-sm font-semibold text-charcoal-900">Popular searches</h3>
+            <ul className="mt-2 flex flex-wrap gap-2 text-xs">
+              {occasions.map((c) => (
+                <li key={c.slug}>
+                  <Link href={`/venues/${c.slug}`} className="text-maroon-700 underline-offset-2 hover:underline">
+                    {categoryVenueLabel(c)} in Tamil Nadu
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         {/* The ONLY rendering of FAQ_ITEMS on this page, and the answers the
             FAQPage JSON-LD above declares. Visible at every viewport, which is

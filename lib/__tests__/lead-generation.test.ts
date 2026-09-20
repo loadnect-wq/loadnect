@@ -439,13 +439,29 @@ describe("leadEnquirySchema", () => {
     expect(leadEnquirySchema.safeParse({ ...base, eventDate: "2020-01-01" }).success).toBe(false);
   });
 
-  it("rejects an event type outside the venue vocabulary", () => {
-    expect(leadEnquirySchema.safeParse({ ...base, eventType: "conference" }).success).toBe(false);
+  // "conference" used to be rejected here by a four-value z.enum. It is a real
+  // category since 0102 — which is the whole expansion — so the vocabulary
+  // check moved to trg_leads_event_type in the database, where a client cannot
+  // reach it. This layer owns the shape.
+  it("rejects an event type that is not slug-shaped", () => {
+    for (const bad of ["Wedding", "corporate event", "corporate_event", "x"]) {
+      expect(leadEnquirySchema.safeParse({ ...base, eventType: bad }).success).toBe(false);
+    }
   });
 
-  it("accepts each of the four real event types", () => {
-    for (const t of ["wedding", "reception", "party", "banquet"]) {
+  it("accepts the four original types and the ones the expansion added", () => {
+    for (const t of ["wedding", "reception", "party", "banquet", "birthday-party", "conference"]) {
       expect(leadEnquirySchema.safeParse({ ...base, eventType: t }).success).toBe(true);
+    }
+  });
+
+  it("keeps \"they did not say\" distinct from every category", () => {
+    // null, not "wedding". The owner's and admin's breakdowns count this
+    // bucket separately and must never see it defaulted into a real occasion.
+    for (const empty of ["", null, undefined]) {
+      const r = leadEnquirySchema.safeParse({ ...base, eventType: empty });
+      expect(r.success).toBe(true);
+      if (r.success) expect(r.data.eventType).toBeNull();
     }
   });
 

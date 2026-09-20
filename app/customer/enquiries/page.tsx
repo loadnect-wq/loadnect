@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { CalendarDays, Inbox, Phone, Users } from "lucide-react";
 import { requireRole } from "@/lib/auth";
+import { fetchVenueCategories } from "@/lib/venue-categories.server";
+import { categoryLabelMap } from "@/lib/venue-categories";
 import { getSession } from "@/lib/auth";
 import { fetchLeadsForCustomer, fetchVenueContactsForCustomer, type LeadStatus } from "@/lib/leads";
 import { formatBookingDates } from "@/lib/dates";
@@ -45,16 +47,12 @@ const STATUS_CFG: Record<LeadStatus, { label: string; variant: BadgeVar; note: s
   },
 };
 
-const EVENT_LABELS: Record<string, string> = {
-  wedding: "Wedding", reception: "Reception", party: "Party", banquet: "Banquet",
-};
-
 export default async function CustomerEnquiriesPage() {
   await requireRole(["customer", "owner_pending", "owner_approved", "admin"]);
   const user = await getSession();
   if (!user) return null;
 
-  const [leads, venueContacts] = await Promise.all([
+  const [leads, venueContacts, catalogue] = await Promise.all([
     fetchLeadsForCustomer(user.id),
     // THE VENUE'S NUMBER, released only for enquiries that actually reached
     // them. Deliberately not on the public venue page: a lead venue earns
@@ -63,7 +61,15 @@ export default async function CustomerEnquiriesPage() {
     // no confirmation, no commission, and no record that Hallnect made the
     // introduction. Here the introduction has already been made and recorded.
     fetchVenueContactsForCustomer(user.id),
+    fetchVenueCategories(),
   ]);
+
+  // slug -> name for the occasion on each enquiry. This WAS four hard-coded
+  // values; with the catalogue open (0102) a customer can pick
+  // "birthday-party", and the raw-slug fallback at the render site would have
+  // printed the hyphen. Lenient read — an unnamed occasion falls back to its
+  // slug, which is ugly but true, and never blocks the page.
+  const EVENT_LABELS = categoryLabelMap(catalogue);
 
   return (
     <div className="min-h-screen bg-ivory-100 pb-20">

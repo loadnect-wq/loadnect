@@ -164,9 +164,18 @@ export type VenueJsonLdInput = {
   images: { url: string; alt: string | null }[];
   amenities: string[];
   /**
-   * Declared event types from halls.venue_types — already the 0037 vocabulary.
-   * An empty array means the owner declared none, and compact() then drops the
-   * key entirely, so an undeclared venue publishes no claim.
+   * The occasions the owner declared, as DISPLAY NAMES — "Birthday Party", not
+   * "birthday-party".
+   *
+   * This used to be the raw halls.venue_types slugs, which was harmless while
+   * the whole vocabulary was four single words. With the catalogue open (0102)
+   * a slug can be hyphenated, and `keywords: "birthday-party"` is a worse
+   * keyword than the phrase a person would search for. The caller resolves the
+   * names against public.venue_categories — which also means a slug the
+   * catalogue no longer knows is absent here rather than published raw.
+   *
+   * An empty array means the owner declared none (or the catalogue could not
+   * be read), and compact() then drops the key entirely, so nothing is claimed.
    */
   venueTypes: string[];
   // NOTE: no `reviews` input. fetchHallBySlug deliberately does not join
@@ -306,6 +315,61 @@ export function cityCollectionJsonLd(input: {
             url: absoluteUrl(`/halls/${v.slug}`),
             // By @id, so the list references the SAME node the venue page
             // publishes rather than a second, thinner description of it.
+            item: { "@id": `${absoluteUrl(`/halls/${v.slug}`)}#venue` },
+          })),
+        }
+      : undefined,
+  });
+}
+
+/**
+ * CollectionPage for an occasion listing — /venues/birthday-party, optionally
+ * narrowed to one city.
+ *
+ * A SEPARATE FUNCTION rather than a parameter on cityCollectionJsonLd, whose
+ * `name` is hard-coded to "Wedding halls in X". Generalising that one would
+ * have quietly changed the string on the only city pages Google currently
+ * indexes; these pages are new, so they can have their own name without
+ * touching what is already ranked.
+ *
+ * `about` is the CITY when there is one, because that is what the page is
+ * narrowed to and what a reader searching "birthday halls in Madurai" means.
+ * Without a city there is nothing of schema.org's to point `about` at — an
+ * occasion is not a Place — so the key is simply absent rather than filled
+ * with something approximate.
+ */
+export function categoryCollectionJsonLd(input: {
+  categoryName: string;
+  city?: string | null;
+  path: string;
+  description: string;
+  venues: { name: string; slug: string }[];
+}) {
+  return compact({
+    "@type": "CollectionPage",
+    "@id": `${absoluteUrl(input.path)}#collection`,
+    url: absoluteUrl(input.path),
+    name: input.city
+      ? `${input.categoryName} halls in ${input.city}`
+      : `${input.categoryName} halls in Tamil Nadu`,
+    description: input.description,
+    isPartOf: { "@id": WEBSITE_ID },
+    about: input.city
+      ? compact({
+          "@type": "City",
+          name: input.city,
+          containedInPlace: { "@type": "State", name: "Tamil Nadu" },
+        })
+      : undefined,
+    mainEntity: input.venues.length
+      ? {
+          "@type": "ItemList",
+          numberOfItems: input.venues.length,
+          itemListElement: input.venues.map((v, i) => ({
+            "@type": "ListItem",
+            position: i + 1,
+            name: v.name,
+            url: absoluteUrl(`/halls/${v.slug}`),
             item: { "@id": `${absoluteUrl(`/halls/${v.slug}`)}#venue` },
           })),
         }

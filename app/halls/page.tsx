@@ -14,6 +14,8 @@ import { buildMetadata } from "@/lib/seo/metadata";
 import { JsonLd } from "@/components/seo/JsonLd";
 import { jsonLdGraph, breadcrumbJsonLd } from "@/lib/seo/jsonld";
 import { fetchCityInventory } from "@/lib/seo/cities";
+import { fetchVenueCategories, fetchCategoryInventory } from "@/lib/venue-categories.server";
+import { categoryLabelMap } from "@/lib/venue-categories";
 
 /**
  * CRAWL-TRAP CONTROL. This route accepts TEN independent query parameters
@@ -77,10 +79,10 @@ export async function generateMetadata({
   // combination risks carrying the noindex over to /halls itself. noindex
   // alone does the job; buildMetadata self-canonicalises to path otherwise.
   return buildMetadata({
-    title: filtered ? "Wedding Hall Search Results" : "Browse Wedding Halls & Event Venues",
+    title: filtered ? "Venue Search Results" : "Browse Halls & Venues for Every Occasion",
     description:
-      "Browse every wedding hall, marriage hall and event venue listed on Hallnect. " +
-      "Filter by city, guest capacity, budget, date and amenities.",
+      "Browse every wedding hall, party hall, banquet and meeting venue listed on Hallnect. " +
+      "Filter by occasion, city, guest capacity, budget, date and amenities.",
     path: "/halls",
     indexable: !filtered,
   });
@@ -119,7 +121,8 @@ export default async function HallsPage({
   // empty array from a genuine no-match are the same value, and this page's
   // whole job is to say which. Especially now, when zero venues is the expected
   // state and a failure would hide inside the ordinary empty screen.
-  const [advancePercent, hallsResult, premiumCount, cityInventory] = await Promise.all([
+  const [advancePercent, hallsResult, premiumCount, cityInventory, catalogue, categoryInventory] =
+    await Promise.all([
     getAdvancePercent(),
     fetchHallsResult({
       city, area, capacity, priceMin, priceMax, q, category, amenity,
@@ -130,11 +133,31 @@ export default async function HallsPage({
     // does not render. A browse page must not 500 because a secondary
     // navigation aid could not load.
     fetchCityInventory(),
+    // Same trade for the occasion chips — a failed read means fewer chips, not
+    // a broken search.
+    fetchVenueCategories(),
+    fetchCategoryInventory(),
   ]);
   const { halls, failed: hallsFailed } = hallsResult;
   // Only cities that actually hold inventory get a link — the same gate that
   // decides whether their landing page is indexable at all.
   const citiesWithVenues = cityInventory.filter((c) => c.venueCount > 0);
+
+  // Occasion chips, gated on live inventory for the same reason the city links
+  // above are: a chip that filters to nothing is a control that looks like it
+  // works. Eight is what fits a phone's scrolling row beside the sort button
+  // and the two commercial chips; the rest are one tap away on the category
+  // pages, and SearchControls always keeps whichever one the visitor arrived
+  // on so they can switch it off.
+  const chipCategories = catalogue
+    .filter((c) => (categoryInventory.get(c.slug)?.venueCount ?? 0) > 0)
+    .slice(0, 8)
+    .map((c) => ({ slug: c.slug, name: c.name }));
+
+  // Names for the badges on every card in this list. Built from the whole
+  // active catalogue, not just the chips: a hall may declare an occasion that
+  // did not make the eight-chip cut, and its badge should still read properly.
+  const categoryLabels = categoryLabelMap(catalogue);
 
   // effectiveDate, not date — an "Available Today" visit with no matches must
   // read as a filter that found nothing, not as "no halls are listed yet".
@@ -146,7 +169,7 @@ export default async function HallsPage({
         data={jsonLdGraph(
           breadcrumbJsonLd([
             { name: "Home", path: "/" },
-            { name: "Wedding Halls", path: "/halls" },
+            { name: "Venues", path: "/halls" },
           ]),
         )}
       />
@@ -161,6 +184,7 @@ export default async function HallsPage({
               actually buys a plan. */}
           <SearchControls
             premiumCount={premiumCount}
+            categories={chipCategories}
             defaultCity={city}
             defaultArea={area}
             defaultCapacity={capacity}
@@ -185,8 +209,8 @@ export default async function HallsPage({
       <section className="container-app pt-4 lg:max-w-7xl">
         <h1 className="font-serif text-xl font-bold text-charcoal-900 lg:text-2xl">
           {city
-            ? `Wedding halls in ${city}`
-            : "Wedding halls and event venues in Tamil Nadu"}
+            ? `Halls and venues in ${city}`
+            : "Halls and venues for every occasion in Tamil Nadu"}
         </h1>
         <p className="mt-1 text-sm text-charcoal-600">
           {/* NOT "live availability". This list mixes both booking modes, and a
@@ -224,6 +248,7 @@ export default async function HallsPage({
                  and the LCP cost is bounded to the stagger delay. That is what
                  previously forced the first row to sit the effect out. */
               <HallCard
+                categoryLabels={categoryLabels}
                 key={hall.id}
                 hall={hall}
                 advancePercent={advancePercent}

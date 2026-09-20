@@ -176,6 +176,23 @@ export type PremiumListing = {
   grant_type: "paid" | "complimentary";
 };
 
+/**
+ * Bookings and enquiries grouped by the occasion the customer chose (0102).
+ *
+ * `slug` IS NULLABLE AND THAT BUCKET IS RENDERED, not dropped. Every booking
+ * taken before bookings.event_type existed has null, and so does any enquiry
+ * where the customer skipped the optional question. Hiding them would make a
+ * handful of recorded bookings look like the whole picture — an owner reading
+ * "Wedding 3" under a heading that omitted "Not recorded 47" would draw a
+ * conclusion the data does not support. The column is never backfilled
+ * (migration 0102), precisely so this distinction survives.
+ */
+export type OwnerEventTypeCount = {
+  slug:      string | null;
+  bookings:  number;
+  enquiries: number;
+};
+
 export type OwnerStats = {
   totalHalls:      number;
   approvedHalls:   number;
@@ -183,6 +200,8 @@ export type OwnerStats = {
   pendingBookings: number;
   confirmedBookings: number;
   totalRevenue:    number;
+  /** Most-booked first. Empty when this owner has no bookings or enquiries. */
+  byEventType:     OwnerEventTypeCount[];
 };
 
 // ── Error handling helper ─────────────────────────────────────────────────────
@@ -871,15 +890,34 @@ export async function fetchOwnerStats(
   const pendingHalls  = (halls ?? []).filter((h: any) => h.status === "pending_approval").length;
 
   if (hallIds.length === 0) {
-    return { totalHalls, approvedHalls, pendingHalls, pendingBookings: 0, confirmedBookings: 0, totalRevenue: 0 };
+    return {
+      totalHalls, approvedHalls, pendingHalls,
+      pendingBookings: 0, confirmedBookings: 0, totalRevenue: 0,
+      byEventType: [],
+    };
   }
 
   // Booking counts + revenue
-  const { data: bookings } = await db
+  //
+  // event_type rides along on the SELECT that was already happening rather than
+  // being a second query — the breakdown is a re-grouping of rows this function
+  // fetches anyway. `.select` on a column that does not exist yet is a 42703 on
+  // the whole query, which would take the owner's dashboard numbers down with
+  // it, so the fallback below re-runs without it.
+  let { data: bookings, error: bookingsErr } = await db
     .from("bookings")
-    .select("status, total_amount")
+    .select("status, total_amount, event_type")
     .in("hall_id", hallIds)
     .in("status", ["booking_requested", "owner_confirmed", "completed"]);
+
+  if (bookingsErr?.code === "42703" || bookingsErr?.code === "PGRST204") {
+    console.info("[fetchOwnerStats] bookings.event_type missing — apply migration 0102.");
+    ({ data: bookings } = await db
+      .from("bookings")
+      .select("status, total_amount")
+      .in("hall_id", hallIds)
+      .in("status", ["booking_requested", "owner_confirmed", "completed"]));
+  }
 
   const pendingBookings   = (bookings ?? []).filter((b: { status: string }) => b.status === "booking_requested").length;
   const confirmedBookings = (bookings ?? []).filter((b: { status: string }) => ["owner_confirmed", "completed"].includes(b.status)).length;
@@ -887,7 +925,41 @@ export async function fetchOwnerStats(
     .filter((b: { status: string }) => ["owner_confirmed", "completed"].includes(b.status))
     .reduce((sum: number, b: { total_amount: string | number }) => sum + Number(b.total_amount), 0);
 
-  return { totalHalls, approvedHalls, pendingHalls, pendingBookings, confirmedBookings, totalRevenue };
+  // ── By occasion ────────────────────────────────────────────────────────────
+  // Enquiries count alongside bookings because a LEAD_GENERATION venue has no
+  // bookings at all — an "Events you host" panel built from bookings only would
+  // be permanently empty for half the owners on the platform.
+  const { data: leads } = await db
+    .from("leads")
+    .select("event_type")
+    .in("hall_id", hallIds);
+
+  const counts = new Map<string | null, OwnerEventTypeCount>();
+  const bump = (slug: string | null, key: "bookings" | "enquiries") => {
+    const k = slug || null;
+    const row = counts.get(k) ?? { slug: k, bookings: 0, enquiries: 0 };
+    row[key] += 1;
+    counts.set(k, row);
+  };
+  for (const b of (bookings ?? []) as { event_type?: string | null }[]) {
+    bump(b.event_type ?? null, "bookings");
+  }
+  for (const l of (leads ?? []) as { event_type?: string | null }[]) {
+    bump(l.event_type ?? null, "enquiries");
+  }
+
+  const byEventType = [...counts.values()].sort(
+    (a, b) =>
+      b.bookings + b.enquiries - (a.bookings + a.enquiries) ||
+      // Nulls last, so "Not recorded" never heads the list on a tie.
+      (a.slug === null ? 1 : b.slug === null ? -1 : a.slug.localeCompare(b.slug)),
+  );
+
+  return {
+    totalHalls, approvedHalls, pendingHalls,
+    pendingBookings, confirmedBookings, totalRevenue,
+    byEventType,
+  };
 }
 
 // ── Slug generation ───────────────────────────────────────────────────────────

@@ -79,8 +79,32 @@ describe("adminHallDraftSchema", () => {
     expect(adminHallDraftSchema.safeParse({ ...VALID, capacityMin: 900, capacityMax: 500 }).success).toBe(false);
   });
 
-  it("refuses an event type outside the database vocabulary", () => {
-    expect(adminHallDraftSchema.safeParse({ ...VALID, venueTypes: ["nightclub"] }).success).toBe(false);
+  // ── The vocabulary moved to the database in 0102 ──────────────────────────
+  //
+  // This used to be `venueTypes: ["nightclub"]` -> false, because the schema
+  // held a four-value z.enum. An admin can now ADD a category from a form, so
+  // a closed enum here would make the feature impossible — and this module is
+  // imported by the browser, which cannot read the catalogue.
+  //
+  // Membership is therefore enforced by assert_venue_categories() behind a
+  // BEFORE trigger on admin_hall_drafts (migration 0102), which no client can
+  // bypass. What is left to assert at THIS layer is the shape guard and the
+  // deduplication, which is what these two do. "nightclub" is now a
+  // well-formed slug that the DATABASE rejects, not the schema.
+  it("accepts a well-formed slug and leaves membership to the database", () => {
+    expect(adminHallDraftSchema.safeParse({ ...VALID, venueTypes: ["birthday-party"] }).success).toBe(true);
+  });
+
+  it("refuses a value that is not slug-shaped at all", () => {
+    for (const bad of ["Wedding", "wedding hall", "wedding_hall", "-wedding", "w", "a".repeat(49)]) {
+      expect(adminHallDraftSchema.safeParse({ ...VALID, venueTypes: [bad] }).success).toBe(false);
+    }
+  });
+
+  it("deduplicates, because assert_venue_categories raises on a repeat", () => {
+    const r = adminHallDraftSchema.safeParse({ ...VALID, venueTypes: ["wedding", "wedding", "party"] });
+    expect(r.success).toBe(true);
+    if (r.success) expect(r.data.venueTypes).toEqual(["wedding", "party"]);
   });
 
   it("requires a reason to withdraw a draft", () => {

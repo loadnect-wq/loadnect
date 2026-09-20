@@ -88,7 +88,14 @@ describe("availability — an owner may not rewrite booking-owned dates", () => 
 });
 
 describe("venue types — the category tiles now filter for real", () => {
-  it("names exactly the vocabulary the database CHECK allows", async () => {
+  it("still names the four types every pre-0102 hall was built on", async () => {
+    // THIS ASSERTION CHANGED MEANING IN 0102 AND THAT IS THE POINT. It used to
+    // say "this is the whole vocabulary, matching the database CHECK". The
+    // vocabulary is now a table an admin edits, so no constant can claim that.
+    // What it asserts instead is the promise the expansion had to keep: the
+    // original four slugs still exist, so every hall, lead and indexed page
+    // created before it still resolves. The migration's own verify block
+    // asserts the same four are present and ACTIVE in the catalogue.
     const { VENUE_TYPE_CATEGORIES } = await import("@/lib/halls");
     expect([...VENUE_TYPE_CATEGORIES].sort()).toEqual(["banquet", "party", "reception", "wedding"]);
   });
@@ -109,14 +116,28 @@ describe("venue types — the category tiles now filter for real", () => {
     expect(parseSafe(hallSchema, { ...base, venueTypes: ["wedding", "banquet"] }).ok).toBe(true);
   });
 
-  it("rejects a type outside the vocabulary, matching the DB constraint", async () => {
+  it("rejects a malformed type, and leaves membership to the DB trigger", async () => {
+    // BEFORE 0102 this asserted `["nightclub"]` -> false, matching a four-value
+    // CHECK constraint. The vocabulary is a table an admin edits now, so this
+    // module — which the browser imports — cannot hold the list, and a
+    // well-formed slug it has never heard of has to reach the database.
+    //
+    // That is not a hole. assert_venue_categories() runs in a BEFORE trigger on
+    // halls (migration 0102) and rejects both an unknown slug and one that has
+    // been retired, with no client able to bypass it. What this layer still
+    // owns is the SHAPE — the guard that stops anything strange reaching
+    // PostgREST as an array element in the first place.
     const { hallSchema, parseSafe } = await import("@/lib/validation/schemas");
     const base = {
       name: "Grand Lotus Mahal", city: "Madurai", state: "", address: "", pincode: "",
       capacityMin: "", capacityMax: "800", pricePerDay: "100000",
       priceMorning: "", priceEvening: "", description: "", amenityIds: [],
     };
-    expect(parseSafe(hallSchema, { ...base, venueTypes: ["nightclub"] }).ok).toBe(false);
+    for (const bad of ["Nightclub", "night club", "night_club", "n", "-night", "night-"]) {
+      expect(parseSafe(hallSchema, { ...base, venueTypes: [bad] }).ok).toBe(false);
+    }
+    // A slug the admin added last week is well-formed and must get through.
+    expect(parseSafe(hallSchema, { ...base, venueTypes: ["birthday-party"] }).ok).toBe(true);
   });
 });
 

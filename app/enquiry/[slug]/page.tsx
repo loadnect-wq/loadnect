@@ -8,6 +8,8 @@ import { isOtpConfigured } from "@/lib/msg91";
 import { todayInBusinessTz } from "@/lib/dates";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { EnquiryFlow } from "./_components/EnquiryFlow";
+import { fetchVenueCategories } from "@/lib/venue-categories.server";
+import { selectCategories } from "@/lib/venue-categories";
 
 type Props = { params: Promise<{ slug: string }> };
 
@@ -55,6 +57,17 @@ export default async function EnquiryPage({ params }: Props) {
     initialPhone = prof?.phone ?? "";
   } catch { /* prefill is convenience only */ }
 
+  // The occasions offered — this venue's own declarations first, then the rest
+  // of the catalogue, capped. Same reasoning as the booking flow: the venue's
+  // list is the RELEVANT one, not a restriction, and an unreadable catalogue
+  // removes an optional question rather than blocking a free enquiry.
+  const catalogue = await fetchVenueCategories();
+  const declared = selectCategories(hall.venue_types, catalogue);
+  const declaredSlugs = new Set(declared.map((c) => c.slug));
+  const eventOptions = [...declared, ...catalogue.filter((c) => !declaredSlugs.has(c.slug))]
+    .slice(0, 8)
+    .map((c) => ({ slug: c.slug, name: c.name }));
+
   return (
     <EnquiryFlow
       hall={{
@@ -72,6 +85,7 @@ export default async function EnquiryPage({ params }: Props) {
       initialName={initialName}
       initialPhone={initialPhone}
       otpConfigured={isOtpConfigured()}
+      eventOptions={eventOptions}
     />
   );
 }

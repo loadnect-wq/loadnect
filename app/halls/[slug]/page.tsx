@@ -9,6 +9,8 @@ import { venueTitle, venueDescription, venueImageAlt } from "@/lib/seo/venue";
 import { JsonLd } from "@/components/seo/JsonLd";
 import { jsonLdGraph, venueJsonLd, breadcrumbJsonLd } from "@/lib/seo/jsonld";
 import { citySlug } from "@/lib/seo/cities";
+import { fetchVenueCategories } from "@/lib/venue-categories.server";
+import { selectCategories } from "@/lib/venue-categories";
 
 type Props = { params: Promise<{ slug: string }> };
 
@@ -62,10 +64,20 @@ export default async function HallDetailPage({ params }: Props) {
   // Together, not one after the other. Only fetchSimilarHalls needs the hall;
   // getAdvancePercent needs nothing, and awaiting it second added a whole
   // Mumbai-to-Sydney round trip to the page a customer books from.
-  const [similar, advancePercent] = await Promise.all([
+  const [similar, advancePercent, catalogue] = await Promise.all([
     fetchSimilarHalls(hall.id, hall.city),
     getAdvancePercent(),
+    // LENIENT. If the catalogue cannot be read, this venue's "Suitable for"
+    // chips and its one-line summary of what it hosts are simply absent. Every
+    // other fact on the page — price, capacity, photos, availability, the
+    // booking button — is unaffected, so failing the whole venue page over a
+    // decorative strip would be the worse trade.
+    fetchVenueCategories(),
   ]);
+
+  // Resolved HERE, on the server, and only this hall's few rows cross to the
+  // client. See venueCategoriesSentence for why the whole catalogue does not.
+  const hallCategories = selectCategories(hall.venue_types, catalogue);
 
   // isPreview is true only when an owner/admin fetched a non-approved hall.
   // Public users can never reach this point with a non-approved hall (RLS → 404).
@@ -98,7 +110,7 @@ export default async function HallDetailPage({ params }: Props) {
                 ...hall.amenities.map((a) => a.name),
                 ...hall.custom_amenities,
               ],
-              venueTypes: hall.venue_types,
+              venueTypes: hallCategories.map((c) => c.name),
             }),
             breadcrumbJsonLd([
               { name: "Home", path: "/" },
@@ -113,6 +125,7 @@ export default async function HallDetailPage({ params }: Props) {
       hall={hall}
       citySlug={citySlug(hall.city)}
       advancePercent={advancePercent}
+      categories={hallCategories}
       similar={similar}
       isPreview={isPreview}
         sidebarAd={<AdSlot placement="hall_detail_sidebar" limit={1} variant="card" />}

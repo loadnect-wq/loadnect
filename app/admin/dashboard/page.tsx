@@ -5,7 +5,9 @@ import {
   AlertCircle, Building2, CalendarDays, CheckCircle2,
   ClipboardCheck, MessageSquare, ScrollText, Users, Wallet,
 } from "lucide-react";
-import { fetchAdminStats, fetchAuditLog } from "@/lib/admin";
+import { fetchAdminStats, fetchAuditLog, fetchAdminEventTypeDemand } from "@/lib/admin";
+import { fetchVenueCategories } from "@/lib/venue-categories.server";
+import { EventTypeBreakdown } from "@/components/venues/EventTypeBreakdown";
 import { formatPrice } from "@/lib/mock-data";
 import { AdminPageHeader } from "../_components/AdminPageHeader";
 import { CountUp } from "@/components/motion/CountUp";
@@ -22,9 +24,11 @@ export default async function AdminDashboardPage() {
   // here also means this page is not relying on a file it does not control.
   await requireRole(["admin"]);
   // Independent reads — run them together rather than serially.
-  const [stats, recentActivity] = await Promise.all([
+  const [stats, recentActivity, eventDemand, catalogue] = await Promise.all([
     fetchAdminStats(),
     fetchAuditLog({ page: 1 }),
+    fetchAdminEventTypeDemand(),
+    fetchVenueCategories(),
   ]);
 
   // A figure whose source query did not run is not zero, it is unknown. Printing
@@ -265,6 +269,18 @@ export default async function AdminDashboardPage() {
               except on venue/platform-caused cancellations, where one was charged).
             </p>
           )}
+        </section>
+
+        {/* Which occasions the platform is actually booked for — the one
+            number that says whether the multi-purpose expansion is landing.
+            Absent until there is something to count, and it names its own
+            coverage rather than implying the recorded slice is the whole. */}
+        <section data-reveal="up">
+          <EventTypeBreakdown
+            rows={eventDemand}
+            catalogue={catalogue}
+            title="Demand by occasion"
+          />
         </section>
 
         {/* Recent admin activity — real entries from the append-only audit log.

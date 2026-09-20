@@ -59,6 +59,16 @@ interface HallCardProps {
    */
   dateFiltered?: boolean;
   /**
+   * slug -> display name for the occasion badges, from public.venue_categories.
+   *
+   * OPTIONAL, AND ABSENT MEANS NO BADGES. Resolving a name needs the
+   * catalogue, this card renders in half a dozen places (including client
+   * components that cannot read it), and a badge reading "birthday-party" is
+   * worse than no badge. So the pages that have the catalogue pass it and the
+   * rest keep working exactly as before.
+   */
+  categoryLabels?: Record<string, string>;
+  /**
    * True for the first card in a grid — the LCP element on both listing pages.
    *
    * next/image lazy-loads by default, which for the largest above-the-fold
@@ -77,7 +87,18 @@ function gradientForId(id: string): string {
   return CARD_GRADIENTS[Math.abs(hash) % CARD_GRADIENTS.length];
 }
 
-export function HallCard({ hall, advancePercent, revealIndex, revealNow, eager, dateFiltered }: HallCardProps) {
+export function HallCard({ hall, advancePercent, revealIndex, revealNow, eager, dateFiltered, categoryLabels }: HallCardProps) {
+  // The occasions this venue declared, named. Order follows the STORED array
+  // here rather than the catalogue, because the card has no catalogue to sort
+  // by — the labels arrive as a lookup, not a list. That is acceptable for
+  // three badges; the venue page, which does have the catalogue, is the one
+  // that must not reshuffle.
+  const badges = categoryLabels
+    ? (hall.venue_types ?? []).map((slug) => categoryLabels[slug]).filter(Boolean)
+    : [];
+  // Three, then a count. A card is a glance; the venue page lists them all.
+  const shownBadges = badges.slice(0, 3);
+  const extraBadges = badges.length - shownBadges.length;
   // Say what this listing cannot tell you, rather than letting the filter imply
   // an answer it never had.
   const availabilityUnknown = dateFiltered === true && isLeadGeneration(hall.booking_mode);
@@ -193,6 +214,21 @@ export function HallCard({ hall, advancePercent, revealIndex, revealNow, eager, 
             <MapPin className="h-3 w-3 shrink-0" />
             <span className="line-clamp-1">{hall.city}</span>
           </p>
+
+          {/* What this venue is FOR — the one fact that tells a visitor who
+              searched for "birthday halls" that this result is not just
+              another wedding mahal. Plain text, separated by middots rather
+              than pills, so three of them cost one line instead of two.
+              NOT LINKS: the whole card is already a link to the venue, and a
+              nested anchor is invalid HTML. */}
+          {shownBadges.length > 0 && (
+            <p className="mt-1 line-clamp-1 text-[11px] font-medium text-maroon-700">
+              {shownBadges.join(" · ")}
+              {extraBadges > 0 && (
+                <span className="text-charcoal-500"> +{extraBadges} more</span>
+              )}
+            </p>
+          )}
         </div>
 
         <div className="mt-3 flex items-end justify-between">

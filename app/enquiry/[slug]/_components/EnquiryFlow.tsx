@@ -28,18 +28,16 @@ import {
   Phone, PhoneCall, ShieldCheck, Users,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
-import { LEAD_EVENT_TYPES } from "@/lib/validation/schemas";
+
 import { formatHallPrice, hasPrice } from "@/lib/booking-mode";
 import { startLeadEnquiry, resendLeadOtp, verifyLeadOtp } from "../actions";
 
 const OTP_LENGTH = 6;
 
-const EVENT_TYPE_LABELS: Record<(typeof LEAD_EVENT_TYPES)[number], string> = {
-  wedding: "Wedding",
-  reception: "Reception",
-  party: "Party",
-  banquet: "Banquet",
-};
+// The four hard-coded labels that used to live here came from a CHECK
+// constraint. The options now arrive as a prop from public.venue_categories
+// (0102), led by the ones this venue itself declared — see the page.
+export type EnquiryEventOption = { slug: string; name: string };
 
 type Props = {
   hall: {
@@ -56,9 +54,11 @@ type Props = {
   initialPhone: string;
   /** False when MSG91's auth key or OTP template id is missing. */
   otpConfigured: boolean;
+  /** Occasions offered, this venue's own first. Empty hides the question. */
+  eventOptions?: EnquiryEventOption[];
 };
 
-export function EnquiryFlow({ hall, minDate, initialName, initialPhone, otpConfigured }: Props) {
+export function EnquiryFlow({ hall, minDate, initialName, initialPhone, otpConfigured, eventOptions = [] }: Props) {
   const [step, setStep] = useState<"details" | "code" | "sent">("details");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -361,26 +361,28 @@ export function EnquiryFlow({ hall, minDate, initialName, initialPhone, otpConfi
             </div>
           </Field>
 
-          <fieldset>
+          {/* Already optional, so an unreadable catalogue simply removes the
+              question rather than blocking a free enquiry. */}
+          <fieldset className={eventOptions.length === 0 ? "hidden" : undefined}>
             <legend className="text-xs font-semibold uppercase tracking-wide text-charcoal-500">
               Event type (optional)
             </legend>
             <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
-              {LEAD_EVENT_TYPES.map((t) => {
-                const on = eventType === t;
+              {eventOptions.map((t) => {
+                const on = eventType === t.slug;
                 return (
                   <button
-                    key={t}
+                    key={t.slug}
                     type="button"
                     aria-pressed={on}
-                    onClick={() => setEventType(on ? "" : t)}
+                    onClick={() => setEventType(on ? "" : t.slug)}
                     className={`min-h-[44px] rounded-xl border px-3 text-sm font-medium transition-colors ${
                       on
                         ? "border-maroon-500 bg-maroon-50 text-maroon-800"
                         : "border-border bg-white text-charcoal-700 hover:border-maroon-300"
                     }`}
                   >
-                    {EVENT_TYPE_LABELS[t]}
+                    {t.name}
                   </button>
                 );
               })}

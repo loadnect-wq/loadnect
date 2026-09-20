@@ -77,7 +77,15 @@ const SLOTS: SlotMeta[] = [
   { id: "full_day", label: "Full Day", time: "8 AM – 11 PM" },
 ];
 
-const EVENT_TYPES = ["Wedding", "Reception", "Engagement", "Birthday", "Corporate", "Other"] as const;
+// The six hard-coded strings that used to live here — "Wedding", "Reception",
+// "Engagement", "Birthday", "Corporate", "Other" — were display labels and
+// nothing else. The customer's answer was pasted into the first sentence of
+// customer_notes and never stored as data, so no owner or admin could count
+// what their venue was actually being booked FOR.
+//
+// The options now come from public.venue_categories (0102) and carry a slug
+// that lands in bookings.event_type. The page supplies them; see its comment
+// for why the hall's own declared occasions come first.
 
 // Display-only preview constants from the ONE central money module
 // (lib/booking-payment.ts — pure, client-safe). The server recomputes every
@@ -95,8 +103,19 @@ export type BookingHall = {
   price_evening: number | null;
 };
 
+export type BookingEventOption = { slug: string; name: string };
+
 interface Props {
   hall:                 BookingHall;
+  /**
+   * The occasions offered at step 2, in the order they are shown.
+   *
+   * EMPTY IS HANDLED, not assumed away: if the catalogue could not be read the
+   * question is skipped entirely and the booking proceeds without it. This
+   * field is metadata on a payment flow — it must never be the reason a
+   * customer cannot book.
+   */
+  eventOptions?:        BookingEventOption[];
   availability:         DaySlotAvailability[];
   windowDays:           number;
   onlinePaymentEnabled: boolean;
@@ -106,7 +125,7 @@ interface Props {
   initialPhone?:        string | null;
 }
 
-export function BookingFlow({ hall, availability, windowDays, onlinePaymentEnabled, advancePercent, initialPhone }: Props) {
+export function BookingFlow({ hall, availability, windowDays, onlinePaymentEnabled, advancePercent, initialPhone, eventOptions = [] }: Props) {
   const router = useRouter();
   const [step, setStep] = useState<StepIndex>(0);
 
@@ -123,7 +142,12 @@ export function BookingFlow({ hall, availability, windowDays, onlinePaymentEnabl
   const [date,      setDate]      = useState<string>("");   // range START
   const [endDate,   setEndDate]   = useState<string>("");   // range END (inclusive; ""=single day)
   const [slot,      setSlot]      = useState<SlotId | "">("");
-  const [eventType, setEventType] = useState<string>("Wedding");
+  // The SLUG, or "" when nothing is offered. Defaults to the first option —
+  // which is one the venue itself declared — rather than to "Wedding", which
+  // was the old default and is plainly wrong on a conference hall.
+  const [eventType, setEventType] = useState<string>(eventOptions[0]?.slug ?? "");
+  const eventTypeLabel =
+    eventOptions.find((o) => o.slug === eventType)?.name ?? "";
   const [guests,    setGuests]    = useState<string>("");
   const [name,      setName]      = useState<string>("");
   const [phone,     setPhone]     = useState<string>(initialPhone ?? "");
@@ -293,7 +317,7 @@ export function BookingFlow({ hall, availability, windowDays, onlinePaymentEnabl
     (step === 0 && !!date &&
       (isMultiDay ? rangeFullyAvailable(date, rangeEnd, "full_day") : dayHasAnySlot(date))) ||
     (step === 1 && !!effSlot && rangeFullyAvailable(date, rangeEnd, effSlot as SlotId)) ||
-    (step === 2 && !!eventType && !!guests && !!name && isValidPhoneNumber(phone) &&
+    (step === 2 && (eventOptions.length === 0 || !!eventType) && !!guests && !!name && isValidPhoneNumber(phone) &&
       parseInt(guests, 10) > 0 && parseInt(guests, 10) <= hall.capacity_max) ||
     (step === 3 && termsAccepted) ||
     (step === 4) ||
@@ -317,7 +341,14 @@ export function BookingFlow({ hall, availability, windowDays, onlinePaymentEnabl
           slot:          effSlot as SlotId,
           guestCount:    parseInt(guests, 10),
           contactPhone:  phone,
-          customerNotes: `${eventType} event. Contact: ${name}, ${phone}.`,
+          // THE SENTENCE STAYS. Owners read these notes, and on a database
+          // where 0102 has not been applied yet it is the only record of the
+          // occasion — so the human-readable line is kept and the machine
+          // -readable slug travels beside it rather than replacing it.
+          customerNotes: eventTypeLabel
+            ? `${eventTypeLabel} event. Contact: ${name}, ${phone}.`
+            : `Contact: ${name}, ${phone}.`,
+          eventType: eventType || undefined,
           termsAccepted,
           couponCode: appliedCoupon?.code,
         });
@@ -403,7 +434,14 @@ export function BookingFlow({ hall, availability, windowDays, onlinePaymentEnabl
           slot:          effSlot as SlotId,
           guestCount:    parseInt(guests, 10),
           contactPhone:  phone,
-          customerNotes: `${eventType} event. Contact: ${name}, ${phone}.`,
+          // THE SENTENCE STAYS. Owners read these notes, and on a database
+          // where 0102 has not been applied yet it is the only record of the
+          // occasion — so the human-readable line is kept and the machine
+          // -readable slug travels beside it rather than replacing it.
+          customerNotes: eventTypeLabel
+            ? `${eventTypeLabel} event. Contact: ${name}, ${phone}.`
+            : `Contact: ${name}, ${phone}.`,
+          eventType: eventType || undefined,
           termsAccepted,
           couponCode: appliedCoupon?.code,
         });
@@ -665,23 +703,26 @@ export function BookingFlow({ hall, availability, windowDays, onlinePaymentEnabl
             {step === 2 && (
               <StepWrap title="Event details" subtitle="Tell us a bit about your event.">
                 <div className="space-y-4">
-                  <div>
+                  {/* Hidden entirely when the catalogue could not be read, so
+                      the step shows the questions it can answer rather than an
+                      empty group of buttons. */}
+                  <div className={eventOptions.length === 0 ? "hidden" : undefined}>
                     <Label>Event type</Label>
                     <div className="mt-2 flex flex-wrap gap-2" role="group" aria-label="Event type">
-                      {EVENT_TYPES.map((t) => (
+                      {eventOptions.map((t) => (
                         <button
-                          key={t}
+                          key={t.slug}
                           type="button"
-                          aria-pressed={eventType === t}
-                          onClick={() => setEventType(t)}
+                          aria-pressed={eventType === t.slug}
+                          onClick={() => setEventType(t.slug)}
                           className={cn(
-                            "rounded-full border px-3 py-1.5 text-xs font-semibold",
-                            eventType === t
+                            "min-h-[36px] rounded-full border px-3 py-1.5 text-xs font-semibold",
+                            eventType === t.slug
                               ? "border-maroon-600 bg-maroon-600 text-white"
                               : "border-border bg-white text-charcoal-700",
                           )}
                         >
-                          {t}
+                          {t.name}
                         </button>
                       ))}
                     </div>
@@ -751,7 +792,12 @@ export function BookingFlow({ hall, availability, windowDays, onlinePaymentEnabl
                     }
                   />
                   <Row icon={<Clock className="h-4 w-4" />} label="Slot" value={`${SLOTS.find((s) => s.id === effSlot)?.label} · ${SLOTS.find((s) => s.id === effSlot)?.time}`} />
-                  <Row icon={<Sparkles className="h-4 w-4" />} label="Event" value={eventType} />
+                  {/* Absent rather than blank when no occasion was offered —
+                      a summary row reading "Event: " is a question the page
+                      asks and then refuses to answer. */}
+                  {eventTypeLabel && (
+                    <Row icon={<Sparkles className="h-4 w-4" />} label="Event" value={eventTypeLabel} />
+                  )}
                   <Row icon={<Users className="h-4 w-4" />} label="Guests" value={guests} />
                 </div>
 

@@ -9,6 +9,8 @@ import { isOnlinePaymentEnabled, getAdvancePercent } from "@/lib/platform-settin
 import { todayInBusinessTz, addDaysToIsoDate } from "@/lib/dates";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { BookingFlow } from "./_components/BookingFlow";
+import { fetchVenueCategories } from "@/lib/venue-categories.server";
+import { selectCategories } from "@/lib/venue-categories";
 
 type Props = { params: Promise<{ slug: string }> };
 
@@ -78,6 +80,29 @@ export default async function BookPage({ params }: Props) {
     initialPhone = prof?.phone ?? null;
   } catch { /* prefill is convenience only */ }
 
+  // ── The occasions offered at step 2 (0102) ─────────────────────────────────
+  //
+  // THIS VENUE'S OWN DECLARED OCCASIONS FIRST, then the rest of the catalogue
+  // up to eight. Two things are being balanced:
+  //
+  //   * The venue's list is the relevant one. Defaulting a conference hall's
+  //     booking to "Wedding" — which the six hard-coded strings did — put a
+  //     wrong answer into the owner's notes on every booking nobody corrected.
+  //   * The venue's list is not a RESTRICTION. A customer may perfectly well
+  //     book a wedding hall for a birthday, and the owner would rather know
+  //     that than have the form insist otherwise. The trigger accepts any
+  //     active category, so the extra options are legitimate values.
+  //
+  // Eight, because this is one question inside a payment flow, not a browse
+  // screen. LENIENT read: no catalogue means the question is skipped and the
+  // booking proceeds — see BookingFlow's eventOptions.
+  const catalogue = await fetchVenueCategories();
+  const declared = selectCategories(hall.venue_types, catalogue);
+  const declaredSlugs = new Set(declared.map((c) => c.slug));
+  const eventOptions = [...declared, ...catalogue.filter((c) => !declaredSlugs.has(c.slug))]
+    .slice(0, 8)
+    .map((c) => ({ slug: c.slug, name: c.name }));
+
   return (
     <BookingFlow
       hall={{
@@ -95,6 +120,7 @@ export default async function BookPage({ params }: Props) {
       onlinePaymentEnabled={onlinePaymentEnabled}
       advancePercent={advancePercent}
       initialPhone={initialPhone}
+      eventOptions={eventOptions}
     />
   );
 }

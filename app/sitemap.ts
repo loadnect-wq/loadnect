@@ -19,6 +19,11 @@ import type { MetadataRoute } from "next";
 import { absoluteUrl, isPublishableUrl } from "@/lib/seo/config";
 import { fetchIndexableVenues } from "@/lib/seo/sitemap-data";
 import { fetchIndexableCities, citySlug } from "@/lib/seo/cities";
+import {
+  fetchVenueCategoriesStrict,
+  fetchCategoryInventoryStrict,
+  MIN_VENUES_FOR_CATEGORY_INDEX,
+} from "@/lib/venue-categories.server";
 import { legalLastModified } from "@/lib/content";
 
 // Always reflect current inventory: a hall approved an hour ago should be
@@ -62,9 +67,15 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   // lastmod it can disprove — and disproving one teaches it to distrust the
   // other ten, which is how a real signal gets thrown away to dress up four
   // fake ones.
-  const [venues, cities] = await Promise.all([
+  const [venues, cities, categories, categoryInventory] = await Promise.all([
     fetchIndexableVenues(),
     fetchIndexableCities(),
+    // STRICT, both. A swallowed failure here would silently empty the category
+    // half of the sitemap behind an HTTP 200 — the same shape of bug
+    // lib/seo/cities.ts documents. This route is ISR, so a throw during
+    // revalidation keeps the last good sitemap being served.
+    fetchVenueCategoriesStrict(),
+    fetchCategoryInventoryStrict(),
   ]);
 
   // The only honest date this file has for a listing page: the newest change to
@@ -126,6 +137,45 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     };
   });
 
+  // ── Occasion landing pages (0102) ─────────────────────────────────────────
+  //
+  // ONLY WHAT HAS INVENTORY, which is the same gate the city pages pass
+  // through. 28 occasions across ~20 service areas is 560 possible URLs, and
+  // listing the empty ones would be the thin programmatic-SEO pattern the whole
+  // of lib/seo/cities.ts is written to avoid — with the added cost that a
+  // sitemap full of noindex pages teaches Google to distrust the rest of it.
+  //
+  // No lastmod. The honest bound would be the newest halls.updated_at among the
+  // venues in that occasion, which fetchIndexableVenues does not carry (it has
+  // no venue_types), and a date this file cannot justify is worth less than
+  // none — see the note on the static entries above.
+  const categoryEntries: MetadataRoute.Sitemap = [];
+  for (const c of categories) {
+    const inv = categoryInventory.get(c.slug);
+    if (!inv || inv.venueCount < MIN_VENUES_FOR_CATEGORY_INDEX) continue;
+
+    categoryEntries.push({
+      url: absoluteUrl(`/venues/${c.slug}`),
+      changeFrequency: "daily" as const,
+      priority: 0.7,
+    });
+
+    // /venues/wedding/<city> 308s to /wedding-halls/<city>, which is already
+    // in cityEntries. A sitemap must never list a redirect.
+    if (c.slug === "wedding") continue;
+
+    for (const [city, count] of inv.byCity) {
+      if (count < MIN_VENUES_FOR_CATEGORY_INDEX) continue;
+      const slug = citySlug(city);
+      if (!slug) continue;
+      categoryEntries.push({
+        url: absoluteUrl(`/venues/${c.slug}/${slug}`),
+        changeFrequency: "daily" as const,
+        priority: 0.6,
+      });
+    }
+  }
+
   const venueEntries: MetadataRoute.Sitemap = venues.map((v) => {
     // Parsed, not trusted. `new Date(badString)` is an Invalid Date, which is
     // truthy and blows up in Next's serializer — one malformed timestamp would
@@ -141,7 +191,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
   // Final guard: nothing on a preview/localhost/retired host ever ships, even
   // if an env var is misconfigured at build time.
-  return [...staticEntries, ...cityEntries, ...venueEntries].filter((e) =>
+  return [...staticEntries, ...cityEntries, ...categoryEntries, ...venueEntries].filter((e) =>
     isPublishableUrl(typeof e.url === "string" ? e.url : String(e.url)),
   );
 }

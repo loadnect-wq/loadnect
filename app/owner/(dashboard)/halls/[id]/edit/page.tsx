@@ -5,6 +5,7 @@ import { ArrowLeft, ExternalLink } from "lucide-react";
 import { requireRole } from "@/lib/auth";
 import { fetchOwnerRow, fetchOwnerHall, fetchAllAmenities } from "@/lib/owner";
 import { AppHeader } from "@/components/app/AppHeader";
+import { fetchVenueCategoriesStrict } from "@/lib/venue-categories.server";
 import { Badge } from "@/components/ui/Badge";
 import { HallForm } from "../../_components/HallForm";
 import { SubmitForApprovalButton } from "./_components/SubmitForApprovalButton";
@@ -25,10 +26,14 @@ export default async function EditHallPage({ params }: Props) {
   await requireRole(["owner_approved"]);
   const { id } = await params;
 
-  const [ownerRow, hall, amenities] = await Promise.all([
+  // STRICT on the categories: this form saves over an existing listing, and an
+  // empty picker would invite an owner to wipe the categories their hall is
+  // found by without ever being shown what they were.
+  const [ownerRow, hall, amenities, categories] = await Promise.all([
     fetchOwnerRow(),
     fetchOwnerHall(id),
     fetchAllAmenities(),
+    fetchVenueCategoriesStrict(),
   ]);
 
   // Hall not found OR belongs to a different owner (RLS returns null)
@@ -90,7 +95,7 @@ export default async function EditHallPage({ params }: Props) {
           </div>
         )}
 
-        <HallForm ownerId={ownerRow.id} amenities={amenities} hall={hall} />
+        <HallForm ownerId={ownerRow.id} amenities={amenities} categories={categories} hall={hall} />
 
         <Link
           href="/owner/halls"

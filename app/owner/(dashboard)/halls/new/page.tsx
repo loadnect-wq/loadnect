@@ -5,6 +5,7 @@ import { AlertCircle } from "lucide-react";
 import { requireRole } from "@/lib/auth";
 import { fetchOwnerRow, fetchAllAmenities } from "@/lib/owner";
 import { AppHeader } from "@/components/app/AppHeader";
+import { fetchVenueCategoriesStrict } from "@/lib/venue-categories.server";
 import { HallForm } from "../_components/HallForm";
 
 export const metadata: Metadata = { title: "Add Hall" };
@@ -17,7 +18,13 @@ export default async function NewHallPage() {
     redirect("/owner/profile");
   }
 
-  const amenities = await fetchAllAmenities();
+  // STRICT on the categories: this form saves, and an empty picker would let
+  // an owner publish a hall that appears under no category at all. Two
+  // independent reads, so they go together rather than one after the other.
+  const [amenities, categories] = await Promise.all([
+    fetchAllAmenities(),
+    fetchVenueCategoriesStrict(),
+  ]);
 
   return (
     <div className="min-h-screen bg-ivory-100">
@@ -31,7 +38,7 @@ export default async function NewHallPage() {
           </p>
         </div>
 
-        <HallForm ownerId={ownerRow.id} amenities={amenities} />
+        <HallForm ownerId={ownerRow.id} amenities={amenities} categories={categories} />
 
         <p className="text-center text-xs text-charcoal-500">
           Already have halls?{" "}

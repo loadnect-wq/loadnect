@@ -16,6 +16,8 @@
 
 import { z } from "zod";
 
+import { VENUE_CATEGORY_GROUPS, VENUE_CATEGORY_SLUG_PATTERN } from "@/lib/venue-categories";
+
 // ── Primitives ────────────────────────────────────────────────────────────────
 
 /**
@@ -312,6 +314,131 @@ export const bookingModeSchema = z
   .transform((v) => (v == null || v === "" ? "DIRECT_BOOKING" : String(v).trim()))
   .refine(isBookingMode, `Choose either ${BOOKING_MODES.join(" or ")}.`);
 
+/**
+ * A venue-category slug, as public.venue_categories stores it (migration 0102).
+ *
+ * SHAPE ONLY — THE VOCABULARY IS NOT IN THIS FILE ANY MORE, and that is the
+ * whole change 0102 made. Before it, the list was `z.enum(["wedding",
+ * "reception", "party", "banquet"])` written out three separate times below,
+ * plus the owner's form and the homepage, plus three CHECK constraints. Adding
+ * "Birthday Party" meant a deploy; an admin now adds it with a form.
+ *
+ * A closed enum therefore cannot live here any more — this module is imported
+ * by the browser and cannot read the catalogue. Two layers replace it:
+ *
+ *   1. THIS, which pins the SHAPE (so nothing strange reaches PostgREST) and
+ *      the count, and produces a sentence instead of a Postgres error.
+ *   2. MEMBERSHIP, enforced by the database — assert_venue_categories() behind
+ *      a BEFORE trigger on every table that stores one. That is the real
+ *      guard: no client can bypass it, and it knows something a static list
+ *      cannot, namely whether the category is still OFFERED.
+ *
+ * Layer 2 is not a backstop for layer 1, it is the authority. "Never trust
+ * category ids sent from the browser" is satisfied by the trigger, not by this
+ * regex.
+ */
+export const venueCategorySlugSchema = z
+  .string()
+  .trim()
+  .min(2, "Choose a valid category.")
+  .max(48, "Choose a valid category.")
+  .regex(VENUE_CATEGORY_SLUG_PATTERN, "Choose a valid category.");
+
+/**
+ * A venue's categories.
+ *
+ * The cap is 40 — above the 28 seeded categories, far below anything that
+ * would make the trigger's unnest interesting.
+ *
+ * TWO EXPORTS, NOT ONE WITH .min() BOLTED ON AT THE CALL SITE. Both end in a
+ * .transform, and in zod 4 that yields a ZodPipe, which has no .min() — so
+ * `venueCategorySlugsSchema.min(1)` is a compile error rather than a stricter
+ * schema. The length rule has to be applied before the transform, which means
+ * it has to be applied here.
+ */
+const venueCategorySlugArray = z
+  .array(venueCategorySlugSchema)
+  .max(40, "Too many categories.");
+
+/**
+ * DEDUPLICATED RATHER THAN REJECTED: two identical values are a UI bug, not
+ * something to fail an owner's save over — but the array that reaches the
+ * database is clean, which is what assert_venue_categories insists on (it
+ * raises on a repeat, because a listing that says "weddings and weddings" is
+ * a defect worth surfacing somewhere).
+ */
+const dedupeSlugs = (v: string[]) => [...new Set(v)];
+
+/** Zero or more categories. */
+export const venueCategorySlugsSchema = venueCategorySlugArray.transform(dedupeSlugs);
+
+/** At least one — what a live listing must declare to be findable at all. */
+export const requiredVenueCategorySlugsSchema = venueCategorySlugArray
+  .min(1, "Choose at least one type of event your venue hosts.")
+  .transform(dedupeSlugs);
+
+/**
+ * One optional category — what a customer picks on a booking or an enquiry.
+ * "" and null both mean "they did not say", which must stay distinguishable
+ * from every real category for as long as the analytics exist.
+ */
+export const optionalVenueCategorySlugSchema = z
+  .union([venueCategorySlugSchema, z.literal(""), z.null(), z.undefined()])
+  .transform((v) => (v == null || v === "" ? null : v));
+
+// ── Venue category management (admin, migration 0102) ────────────────────────
+
+/**
+ * What an admin may type when creating a category.
+ *
+ * THE SLUG IS SET ONCE AND NEVER EDITED. It is what every hall stores, what
+ * every enquiry and booking stores, and what sits in the URL of an indexed
+ * landing page — so renaming it orphans halls and 404s a page Google already
+ * knows. `name` is the field that gets corrected; the update schema below has
+ * no slug at all, and 0102 additionally revokes the column UPDATE grant so
+ * that a direct PostgREST call cannot do what this form will not offer.
+ */
+export const venueCategoryCreateSchema = z.object({
+  slug:        venueCategorySlugSchema,
+  name:        trimmed(60).pipe(z.string().min(2, "Enter a name.")),
+  pluralNoun:  trimmed(80).pipe(z.string().min(2, "Enter the plural form.")),
+  description: optionalTrimmed(400),
+  // Free text, but shaped: it is resolved through a fixed map in
+  // components/venues/CategoryIcon.tsx, so an unknown name renders the
+  // fallback icon rather than failing. The regex only keeps nonsense out of
+  // the column.
+  icon:        z.union([z.string().trim().regex(/^[A-Za-z][A-Za-z0-9]{0,39}$/, "Invalid icon name."), z.literal("")])
+    .optional()
+    .transform((v) => (v ? v : null)),
+  group:       z.enum(VENUE_CATEGORY_GROUPS),
+  displayOrder: z.union([z.number(), z.string()])
+    .transform((v) => (typeof v === "number" ? v : parseInt(v, 10)))
+    .refine((n) => Number.isInteger(n) && n >= 0 && n <= 100_000, "Order must be between 0 and 100000."),
+});
+
+/** Editing an existing category. Everything but the slug. */
+export const venueCategoryUpdateSchema = venueCategoryCreateSchema
+  .omit({ slug: true })
+  .extend({ id: uuidSchema });
+
+/**
+ * Activate / deactivate.
+ *
+ * Deactivation is the ONLY removal mechanism — there is no delete action here
+ * and no DELETE grant in the database. A category halls already declared must
+ * keep existing or those halls stop validating, which would lock their owners
+ * out of their own edit form. See migration 0102.
+ */
+export const venueCategoryActiveSchema = z.object({
+  id:       uuidSchema,
+  isActive: z.boolean(),
+});
+
+/** Drag-to-reorder: the ids, in their new order, within one group. */
+export const venueCategoryReorderSchema = z.object({
+  ids: z.array(uuidSchema).min(1).max(200),
+});
+
 export const hallSchema = z
   .object({
     name:         trimmed(160).pipe(z.string().min(2, "Hall name is required.")),
@@ -345,10 +472,7 @@ export const hallSchema = z
     // At least one is REQUIRED. The homepage and search offer these as
     // filters, so a hall with none declared is invisible in every typed view —
     // which is a worse outcome for the owner than being asked to tick a box.
-    // The vocabulary is pinned by a CHECK constraint in migration 0037.
-    venueTypes:   z.array(z.enum(["wedding", "reception", "party", "banquet"]))
-      .min(1, "Choose at least one type of event your venue hosts.")
-      .max(4),
+    venueTypes:   requiredVenueCategorySlugsSchema,
   })
   .refine(
     (d) => d.capacityMin == null || d.capacityMin <= d.capacityMax,
@@ -523,6 +647,13 @@ export const updateHallImageAltSchema = z.object({
 // eventually hit is among them, because the alternative is the OWNER
 // discovering the admin's mistake weeks later when they press Claim.
 
+/**
+ * SUPERSEDED BY THE CATALOGUE (0102). Kept only because it names the four
+ * values every hall recorded before the expansion; nothing validates against
+ * it any more. Use venueCategorySlugsSchema.
+ *
+ * @deprecated read public.venue_categories instead.
+ */
 export const VENUE_TYPE_VALUES = ["wedding", "reception", "party", "banquet"] as const;
 
 export const adminHallDraftSchema = z
@@ -550,7 +681,11 @@ export const adminHallDraftSchema = z
     priceEvening: optionalMoneySchema.optional(),
 
     bookingMode: z.enum(["DIRECT_BOOKING", "LEAD_GENERATION"]),
-    venueTypes:  z.array(z.enum(VENUE_TYPE_VALUES)).default([]),
+    // Same vocabulary as a real hall, because a draft BECOMES one: 0090's
+    // claim copies this array straight into halls.venue_types, so anything
+    // this accepts and halls refuses would fail weeks later, in front of the
+    // owner, at the one moment the pathway is meant to feel effortless.
+    venueTypes:  venueCategorySlugArray.default([]).transform(dedupeSlugs),
 
     amenitySlugs:    z.array(z.string().trim().max(80)).max(50).default([]),
     customAmenities: z.array(z.string().trim().max(80)).max(20).default([]),
@@ -697,6 +832,16 @@ export const bookingSchema = z
       .refine((n) => Number.isInteger(n) && n >= 1, "Enter the number of guests.")
       .refine((n) => n <= 100_000, "Guest count is unrealistically large."),
     customerNotes: optionalTrimmed(2000),
+    // OPTIONAL, AND THE OPTIONALITY IS LOAD-BEARING. The form has always asked
+    // ("Wedding", "Reception", ...) and has always thrown the answer into a
+    // sentence at the front of customerNotes, where nothing could count it. It
+    // now also travels as data, to bookings.event_type.
+    //
+    // It stays optional so that a client which does not send it still books —
+    // this field must never be the reason a payment fails — and so that null
+    // keeps meaning "not recorded" rather than being defaulted to "wedding",
+    // which would put a guess into the analytics it exists to feed.
+    eventType:     optionalVenueCategorySlugSchema,
   })
   .refine(
     (d) => {
@@ -725,13 +870,14 @@ export type BookingInput = z.input<typeof bookingSchema>;
 // ── Lead generation ──────────────────────────────────────────────────────────
 
 /**
- * The kinds of event a lead can be about.
+ * SUPERSEDED BY THE CATALOGUE (0102). An enquiry's event type is now any
+ * active venue category, validated by trg_leads_event_type — still the SAME
+ * vocabulary halls declare, which was the property that mattered and the
+ * reason this constant existed: an owner who ticked "reception" and a customer
+ * who picked "reception" are talking about the same thing, and the admin can
+ * filter across both without a translation table.
  *
- * Deliberately the SAME vocabulary as halls.venue_types (pinned by
- * halls_venue_types_allowed in 0037 and by leads.event_type in 0073). One list
- * means an owner who declared "wedding, reception" and a customer who picked
- * "party" are talking about the same four things, and the admin can filter
- * across both without a translation table.
+ * @deprecated read public.venue_categories instead.
  */
 export const LEAD_EVENT_TYPES = ["wedding", "reception", "party", "banquet"] as const;
 export type LeadEventType = (typeof LEAD_EVENT_TYPES)[number];
@@ -760,9 +906,7 @@ export const leadEnquirySchema = z
     eventDate:   dateStringSchema,
     // Optional, because a customer who is still deciding between a reception
     // and a full wedding should not be blocked from asking the price.
-    eventType:   z
-      .union([z.enum(LEAD_EVENT_TYPES), z.literal(""), z.null(), z.undefined()])
-      .transform((v) => (v == null || v === "" ? null : v)),
+    eventType:   optionalVenueCategorySlugSchema,
     guestCount:  optionalCapacitySchema,
     requirements: optionalTrimmed(1000),
   })

@@ -20,6 +20,7 @@ import {
   Star,
   TicketPercent,
   Users,
+  Tags,
   Wallet,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -60,6 +61,7 @@ const ITEMS: {
   // both screens were unreachable by navigation on a phone — including the one
   // an admin uses to record a venue while standing in it.
   { label: "Add a Hall", href: "/admin/hall-drafts",     icon: PlusCircle },
+  { label: "Categories", href: "/admin/venue-categories", icon: Tags },
   { label: "Bookings",   href: "/admin/bookings",        icon: CalendarDays },
   { label: "Enquiries",  href: "/admin/leads",           icon: Inbox },
   { label: "Payments",   href: "/admin/payments",        icon: CreditCard },

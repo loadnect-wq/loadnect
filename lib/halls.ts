@@ -8,6 +8,7 @@ import { FULL_BLOCK_STATUSES } from "@/lib/availability-status";
 import type { PremiumTier } from "@/lib/premium-plans";
 import { toBookingMode, type BookingMode } from "@/lib/booking-mode";
 import { VENUE_TYPE_CATEGORIES, type VenueType } from "@/lib/venue-types";
+import { isVenueCategorySlug } from "@/lib/venue-categories";
 
 /**
  * A hall's price as a number, or null.
@@ -43,7 +44,40 @@ export type HallListing = {
   rating_count:   number;
   cover_url:      string | null;
   amenities:      string[];
+  /**
+   * Occasion slugs the owner declared (0037 / 0102), for the card's badges.
+   *
+   * SLUGS, NOT NAMES. The card is rendered in half a dozen places, several of
+   * them client components, and resolving a name needs the catalogue — so the
+   * row carries what the database has and the page that renders the card
+   * supplies the labels. A card given no labels shows no badges, which is why
+   * every existing caller keeps working untouched.
+   */
+  venue_types:    string[];
 };
+
+/**
+ * The three values of `?category=` that are NOT occasions.
+ *
+ * They predate the venue types and mean something else entirely — a price band
+ * and two paid tiers — so they are handled by their own branches in buildQuery
+ * and must never reach the venue_types overlap. Named here so the two places
+ * that care cannot drift apart.
+ */
+const COMMERCIAL_CATEGORY_CHIPS = ["premium", "pro", "budget"] as const;
+
+/**
+ * True when `?category=` should be read as a venue-category slug.
+ *
+ * Shape only, no catalogue lookup — see the comment at the overlap in
+ * buildQuery for why. The shape check is what stops a hostile value ever
+ * reaching PostgREST as an array element.
+ */
+function isVenueCategoryFilter(value: string | undefined): value is string {
+  if (!value) return false;
+  if ((COMMERCIAL_CATEGORY_CHIPS as readonly string[]).includes(value)) return false;
+  return isVenueCategorySlug(value);
+}
 
 // The vocabulary moved to lib/venue-types.ts so a Client Component can read it
 // without pulling this module (and the database client) into the browser
@@ -59,7 +93,9 @@ export type HallsFilters = {
   priceMin?:  string; // min price_per_day
   priceMax?:  string; // max price_per_day
   amenity?:   string; // single amenity slug
-  category?:  string; // premium | budget | wedding | banquet | party
+  /** A venue-category slug from public.venue_categories (0102), or one of the
+   *  three commercial chips: premium | pro | budget. See buildQuery. */
+  category?:  string;
   date?:      string; // YYYY-MM-DD — exclude fully-blocked halls
   /** YYYY-MM-DD. With `date`, makes the filter an INCLUSIVE RANGE: a
    *  hall blocked on any single day between the two is excluded, which
@@ -176,11 +212,12 @@ export type HallDetail = {
   booking_mode:   BookingMode;
   description:    string | null;
   /**
-   * Event types the owner declared: 'wedding' | 'reception' | 'party' |
-   * 'banquet'. `not null default '{}'` in migration 0037, whose own column
-   * comment says EMPTY MEANS UNDECLARED — not "all of them". Render it through
-   * venueTypesSentence, which returns null for an empty array so the page says
-   * nothing rather than inventing a claim about a real venue.
+   * Occasions the owner declared, as public.venue_categories slugs (0102 —
+   * before that, one of four hard-coded values). `not null default '{}'` in
+   * migration 0037, whose own column comment says EMPTY MEANS UNDECLARED — not
+   * "all of them". Render it through venueTypesSentence, which returns null for
+   * an empty array so the page says nothing rather than inventing a claim about
+   * a real venue.
    */
   venue_types:    string[];
   status:         string; // hall_status enum value
@@ -318,12 +355,12 @@ export async function fetchHalls(filters: HallsFilters, failure?: FailureFlag): 
     const select = includeTier
       ? `id, slug, name, city, address,
          capacity_max, price_per_day, booking_mode, is_premium, premium_tier,
-         rating_average, rating_count,
+         rating_average, rating_count, venue_types,
          hall_images(url, is_cover),
          hall_amenities(amenities(name))`
       : `id, slug, name, city, address,
          capacity_max, price_per_day, booking_mode, is_premium,
-         rating_average, rating_count,
+         rating_average, rating_count, venue_types,
          hall_images(url, is_cover),
          hall_amenities(amenities(name))`;
 
@@ -363,12 +400,30 @@ export async function fetchHalls(filters: HallsFilters, failure?: FailureFlag): 
     }
     if (filters.category === "budget") q = q.lte("price_per_day", 100000);
 
-    // Venue-type categories (0037). These four tiles used to filter NOTHING:
-    // the category was read and then never applied, so "Party Halls" returned
-    // every hall on the platform. `overlaps` matches a hall that declares this
-    // type among the several it may serve. A hall with no types declared is
-    // deliberately absent here rather than assumed into every category.
-    if (VENUE_TYPE_CATEGORIES.includes(filters.category as VenueType)) {
+    // ── Venue-category filter (0037, opened up in 0102) ──────────────────
+    //
+    // ANY slug that is not one of the three commercial chips above is treated
+    // as a venue category. It is NOT checked against the catalogue first, and
+    // that is the deliberate choice:
+    //
+    //   * A catalogue read here would be an extra round trip to Sydney on
+    //     every search, on the hottest query in the app, to answer a question
+    //     the database is about to answer anyway.
+    //   * An unknown slug then matches no hall and the page says "no venues
+    //     found", which is TRUE — nothing declares it. The alternative, which
+    //     is what this code did before 0037, is to not recognise the value and
+    //     silently drop the filter, returning EVERY hall under a heading that
+    //     says "Birthday Party Halls". A filter that fails open is worse than
+    //     one that returns nothing.
+    //
+    // Routes that must distinguish "no inventory" from "no such category" —
+    // /venues/[category] — resolve the slug against the catalogue themselves
+    // and 404 before they ever call this.
+    //
+    // `overlaps` matches a hall that declares this category among the several
+    // it may serve. A hall with none declared is deliberately absent rather
+    // than assumed into every category (migration 0037's own rule).
+    if (isVenueCategoryFilter(filters.category)) {
       q = q.overlaps("venue_types", [filters.category]);
     }
 
@@ -457,6 +512,7 @@ export async function fetchHalls(filters: HallsFilters, failure?: FailureFlag): 
       rating_count:   row.rating_count,
       cover_url:      coverUrl,
       amenities:      amenityNames,
+      venue_types:    Array.isArray(row.venue_types) ? row.venue_types : [],
     };
   });
 }
@@ -793,7 +849,7 @@ export async function fetchSimilarHalls(
   const SELECT_WITH_TIER = `
       id, slug, name, city, address,
       capacity_max, price_per_day, is_premium, premium_tier,
-      rating_average, rating_count,
+      rating_average, rating_count, venue_types,
       hall_images(url, is_cover)
     `;
   const SELECT_LEGACY = SELECT_WITH_TIER.replace(", premium_tier", "");
@@ -837,6 +893,7 @@ export async function fetchSimilarHalls(
       rating_count:   row.rating_count,
       cover_url:      coverUrl,
       amenities:      [],
+      venue_types:    Array.isArray(row.venue_types) ? row.venue_types : [],
     };
   });
 }

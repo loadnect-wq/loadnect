@@ -95,6 +95,9 @@ export type CreateBookingInput = {
   /** Promo code as typed. An opaque string — the SERVER decides what it is
    *  worth (lib/coupons.ts). There is no path from here to an amount. */
   couponCode?: string;
+  /** A venue-category slug (0102) — the occasion the customer picked. Pure
+   *  metadata: it changes no amount, no date and no availability. */
+  eventType?: string;
 };
 
 export type CreateBookingResult =
@@ -423,6 +426,34 @@ export async function createBookingRequest(
     // The 0045 guard raises P0001 with internal text like "platform_fee_amount 0
     // below the standard fee requires a coupon_id" — never show that to a customer.
     return { error: sanitizeError(insertErr, "createBookingRequest") };
+  }
+
+  // ── The occasion (0102) ────────────────────────────────────────────────────
+  //
+  // STAMPED AFTER THE INSERT, NOT INSIDE IT, and this is a deliberate choice
+  // about where to put risk rather than tidiness.
+  //
+  // The insert above is a four-rung fallback ladder that drops columns to suit
+  // older databases, and one of its rungs REFUSES THE WHOLE BOOKING when a
+  // coupon is present and any column came back unknown. Adding event_type to
+  // that payload would mean that, in the minutes between this deploy and 0102
+  // being applied, every coupon booking on the site fails — a real payment
+  // broken by a metadata field.
+  //
+  // So it is written separately, and a failure is swallowed: the booking, the
+  // money and the notifications are already correct without it. The occasion is
+  // also still in customer_notes as a sentence, which is where it has lived all
+  // along, so nothing is LOST when this misses — only the countable copy.
+  // Logged, not silent, because a permanent failure here would otherwise empty
+  // the owner's analytics with no trace of why.
+  if (v.eventType) {
+    const { error: typeErr } = await insertDb
+      .from("bookings")
+      .update({ event_type: v.eventType })
+      .eq("id", inserted.id);
+    if (typeErr && !isUnknownColumn(typeErr)) {
+      console.error("[createBookingRequest] event_type not recorded:", typeErr.message);
+    }
   }
 
   // Prefill convenience for next time: save the phone to the profile ONLY when

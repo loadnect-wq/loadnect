@@ -18,6 +18,10 @@ import {
   couponLimitsSchema,
   adminHallDraftSchema,
   cancelHallDraftSchema,
+  venueCategoryCreateSchema,
+  venueCategoryUpdateSchema,
+  venueCategoryActiveSchema,
+  venueCategoryReorderSchema,
   prepareHallDraftPhotosSchema,
   saveHallDraftPhotosSchema,
   parseSafe,
@@ -2912,4 +2916,211 @@ export async function saveHallDraftPhotos(
 
   revalidatePath("/admin/hall-drafts");
   return { success: true, saved: finalPaths, rejected };
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// VENUE CATEGORIES (migration 0102)
+// ═════════════════════════════════════════════════════════════════════════════
+//
+// The vocabulary every hall, enquiry and booking stores. Managing it from a
+// form is the whole point of the catalogue table: adding "Baby Shower" used to
+// mean editing five hard-coded arrays and three CHECK constraints, i.e. a
+// deploy.
+//
+// WHY THERE IS NO DELETE ACTION HERE. A category that halls already declared
+// cannot be removed without those halls failing validation the next time their
+// owner saves the form — a lockout they did not cause and cannot fix.
+// Deactivation does what an admin actually wants (stop offering it), keeps the
+// listings that use it intact, and is reversible. The database agrees rather
+// than merely tolerating it: 0102 grants no DELETE on this table, so this is
+// not just a UI that declines to draw the button.
+//
+// Every action follows this file's pattern — gate, validate, write with
+// count:"exact", refuse on zero rows, then audit — and writes through the
+// SESSION client, so the venue_categories_admin_* policies (which call
+// is_admin()) are evaluated and auth.uid() reaches the audit log.
+
+/** The pages whose content is decided by the catalogue. */
+function revalidateCategorySurfaces() {
+  revalidatePath("/admin/venue-categories");
+  revalidatePath("/");
+  revalidatePath("/halls");
+  // The category hubs are ISR, and which ones exist just changed.
+  revalidatePath("/venues", "layout");
+}
+
+export async function createVenueCategory(input: unknown): Promise<ActionResult> {
+  const actor = await requireAdminActor();
+  if (!actor.ok) return { error: actor.error };
+
+  const parsed = parseSafe(venueCategoryCreateSchema, input);
+  if (!parsed.ok) return { error: parsed.error };
+  const v = parsed.data;
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const db = actor.supabase as any;
+  const { error } = await db.from("venue_categories").insert({
+    slug:           v.slug,
+    name:           v.name,
+    plural_noun:    v.pluralNoun,
+    description:    v.description || null,
+    icon:           v.icon,
+    category_group: v.group,
+    display_order:  v.displayOrder,
+    is_active:      true,
+  });
+
+  if (error) {
+    // 23505 on the unique slug. What the admin does next depends entirely on
+    // knowing WHICH collision this was, and "Database error" does not tell
+    // them — a deactivated row is invisible in most of the UI, so reactivating
+    // is the likely intent. Say that.
+    if (error.code === "23505") {
+      return {
+        error:
+          `The slug "${v.slug}" already exists. If it was deactivated, reactivate it here rather than ` +
+          `creating a second one — halls already declare it.`,
+      };
+    }
+    return { error: sanitizeError(error, "admin") };
+  }
+
+  await recordAdminAction({
+    action:     "venue_category.create",
+    entityType: "venue_category",
+    entityId:   v.slug,
+    metadata:   { name: v.name, group: v.group },
+  });
+
+  revalidateCategorySurfaces();
+  return { success: true };
+}
+
+export async function updateVenueCategory(input: unknown): Promise<ActionResult> {
+  const actor = await requireAdminActor();
+  if (!actor.ok) return { error: actor.error };
+
+  const parsed = parseSafe(venueCategoryUpdateSchema, input);
+  if (!parsed.ok) return { error: parsed.error };
+  const v = parsed.data;
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const db = actor.supabase as any;
+  // NO `slug` IN THIS UPDATE, and that is a rule rather than an omission — see
+  // venueCategoryUpdateSchema. 0102 also revokes the column grant, so a direct
+  // PostgREST call cannot do what this form will not offer.
+  const { error, count } = await db
+    .from("venue_categories")
+    .update({
+      name:           v.name,
+      plural_noun:    v.pluralNoun,
+      description:    v.description || null,
+      icon:           v.icon,
+      category_group: v.group,
+      display_order:  v.displayOrder,
+    }, { count: "exact" })
+    .eq("id", v.id);
+
+  if (error) return { error: sanitizeError(error, "admin") };
+  if (count === 0) return { error: "That category no longer exists. Reload the page." };
+
+  await recordAdminAction({
+    action:     "venue_category.update",
+    entityType: "venue_category",
+    entityId:   v.id,
+    metadata:   { name: v.name, group: v.group, displayOrder: v.displayOrder },
+  });
+
+  revalidateCategorySurfaces();
+  return { success: true };
+}
+
+export async function setVenueCategoryActive(input: unknown): Promise<ActionResult> {
+  const actor = await requireAdminActor();
+  if (!actor.ok) return { error: actor.error };
+
+  const parsed = parseSafe(venueCategoryActiveSchema, input);
+  if (!parsed.ok) return { error: parsed.error };
+  const v = parsed.data;
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const db = actor.supabase as any;
+
+  // Read first, so the audit entry names the category rather than a UUID.
+  const { data: before } = await db
+    .from("venue_categories").select("slug, name, is_active").eq("id", v.id).maybeSingle();
+  if (!before) return { error: "That category no longer exists. Reload the page." };
+
+  const { error, count } = await db
+    .from("venue_categories")
+    .update({ is_active: v.isActive }, { count: "exact" })
+    .eq("id", v.id);
+
+  if (error) return { error: sanitizeError(error, "admin") };
+  if (count === 0) return { error: "That category no longer exists. Reload the page." };
+
+  await recordAdminAction({
+    action:         v.isActive ? "venue_category.activate" : "venue_category.deactivate",
+    entityType:     "venue_category",
+    entityId:       v.id,
+    previousStatus: before.is_active ? "active" : "inactive",
+    newStatus:      v.isActive ? "active" : "inactive",
+    metadata:       { slug: before.slug, name: before.name },
+  });
+
+  revalidateCategorySurfaces();
+  return { success: true };
+}
+
+/**
+ * Reorder within one group: `ids` in their new order.
+ *
+ * Numbered from the group's existing base in steps of ten, so a later
+ * hand-edit of a single row has somewhere to land without renumbering its
+ * neighbours. The writes are sequential rather than one bulk upsert because an
+ * upsert here would have to carry the FULL row — PostgREST replaces rather
+ * than merges, so a partial one would null out `name` — and this list is a few
+ * dozen rows saved by one person.
+ */
+export async function reorderVenueCategories(input: unknown): Promise<ActionResult> {
+  const actor = await requireAdminActor();
+  if (!actor.ok) return { error: actor.error };
+
+  const parsed = parseSafe(venueCategoryReorderSchema, input);
+  if (!parsed.ok) return { error: parsed.error };
+  const { ids } = parsed.data;
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const db = actor.supabase as any;
+
+  // Every id must sit in the SAME group, or "reorder" would quietly move a
+  // category under a different heading — a different operation, with a
+  // different audit entry, reached by editing the category itself.
+  const { data: rows, error: readErr } = await db
+    .from("venue_categories").select("id, category_group, display_order").in("id", ids);
+  if (readErr) return { error: sanitizeError(readErr, "admin") };
+  if (!rows || rows.length !== ids.length) {
+    return { error: "That list is out of date. Reload the page." };
+  }
+  const groups = new Set(rows.map((r: { category_group: string }) => r.category_group));
+  if (groups.size > 1) return { error: "Categories can only be reordered within one group." };
+
+  const base = Math.min(...rows.map((r: { display_order: number }) => Number(r.display_order) || 0));
+
+  for (let i = 0; i < ids.length; i++) {
+    const { error } = await db
+      .from("venue_categories")
+      .update({ display_order: base + i * 10 })
+      .eq("id", ids[i]);
+    if (error) return { error: sanitizeError(error, "admin") };
+  }
+
+  await recordAdminAction({
+    action:     "venue_category.reorder",
+    entityType: "venue_category",
+    metadata:   { order: ids },
+  });
+
+  revalidateCategorySurfaces();
+  return { success: true };
 }

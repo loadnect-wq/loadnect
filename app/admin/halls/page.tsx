@@ -4,6 +4,7 @@ import { requireRole } from "@/lib/auth";
 import Link from "next/link";
 import { Building2, ExternalLink, Sparkles } from "lucide-react";
 import { fetchAllHalls } from "@/lib/admin";
+import { fetchVenueCategories } from "@/lib/venue-categories.server";
 import { formatPrice } from "@/lib/mock-data";
 import { hasPrice, PRICE_ON_REQUEST } from "@/lib/booking-mode";
 import { Badge } from "@/components/ui/Badge";
@@ -35,7 +36,7 @@ function fmtDate(iso: string) {
   return new Date(iso).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
 }
 
-type Props = { searchParams: Promise<{ status?: string; mode?: string; q?: string }> };
+type Props = { searchParams: Promise<{ status?: string; mode?: string; q?: string; category?: string }> };
 
 /**
  * Booking-mode filter. Deliberately its own row rather than another value in
@@ -58,10 +59,11 @@ const MODE_FILTERS = [
  * the other. Written once because the alternative — near-identical
  * URLSearchParams blocks — is how a filter silently starts dropping another.
  */
-function hrefFor(current: { status: string; mode: string }): string {
+function hrefFor(current: { status: string; mode: string; category: string }): string {
   const params = new URLSearchParams();
   if (current.status !== "all") params.set("status", current.status);
   if (current.mode !== "all") params.set("mode", current.mode);
+  if (current.category) params.set("category", current.category);
   const qs = params.toString();
   return qs ? `?${qs}` : "?";
 }
@@ -75,11 +77,19 @@ export default async function AdminHallsPage({ searchParams }: Props) {
   // denial now logs at error level, which would bury real failures. Guarding
   // here also means this page is not relying on a file it does not control.
   await requireRole(["admin"]);
-  const { status, mode, q } = await searchParams;
+  const { status, mode, q, category } = await searchParams;
   const activeFilter = FILTERS.find((f) => f.key === status) ?? FILTERS[0];
   const activeMode = MODE_FILTERS.find((m) => m.key === mode) ?? MODE_FILTERS[0];
+  const activeCategory = (category ?? "").trim();
 
-  const allHalls = await fetchAllHalls(activeFilter.value);
+  // The category narrows the QUERY, not the array. Unlike the mode chips below
+  // — which count against the materialised set on purpose — this list is
+  // unpaginated and a JavaScript filter over every hall on the platform is the
+  // thing that stops working first.
+  const [allHalls, catalogue] = await Promise.all([
+    fetchAllHalls(activeFilter.value, activeCategory || undefined),
+    fetchVenueCategories(),
+  ]);
 
   // Filtered in memory so the mode chip counts are computed against the same
   // materialised set the list shows. fetchAllHalls has no pagination.
@@ -124,7 +134,8 @@ export default async function AdminHallsPage({ searchParams }: Props) {
             <Link
               href={hrefFor({
                 status: activeFilter.key,
-                mode:   activeMode.key,
+                mode:     activeMode.key,
+                category: activeCategory,
               })}
               className="font-semibold text-maroon-700 underline underline-offset-2"
             >
@@ -141,6 +152,7 @@ export default async function AdminHallsPage({ searchParams }: Props) {
               href={hrefFor({
                 status: f.key,
                 mode: activeMode.key,
+                category: activeCategory,
               })}
               className={[
                 "rounded-full border px-3 py-1 text-xs font-semibold",
@@ -153,6 +165,41 @@ export default async function AdminHallsPage({ searchParams }: Props) {
             </Link>
           ))}
         </div>
+
+        {/* Occasion. Reads from the live catalogue, so a category an admin
+            added ten minutes ago is filterable here without a release. */}
+        {catalogue.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-charcoal-400">
+              Suitable for
+            </span>
+            <Link
+              href={hrefFor({ status: activeFilter.key, mode: activeMode.key, category: "" })}
+              className={[
+                "rounded-full border px-2.5 py-0.5 text-[11px] font-semibold",
+                activeCategory === ""
+                  ? "border-maroon-700 bg-maroon-700 text-white"
+                  : "border-border bg-white text-charcoal-600 hover:border-maroon-300",
+              ].join(" ")}
+            >
+              Any
+            </Link>
+            {catalogue.map((c) => (
+              <Link
+                key={c.slug}
+                href={hrefFor({ status: activeFilter.key, mode: activeMode.key, category: c.slug })}
+                className={[
+                  "rounded-full border px-2.5 py-0.5 text-[11px] font-semibold",
+                  activeCategory === c.slug
+                    ? "border-maroon-700 bg-maroon-700 text-white"
+                    : "border-border bg-white text-charcoal-600 hover:border-maroon-300",
+                ].join(" ")}
+              >
+                {c.name}
+              </Link>
+            ))}
+          </div>
+        )}
 
         {/* Booking mode. An admin needs to know at a glance which venues take
             money through Hallnect and which only take enquiries, because the
@@ -173,6 +220,7 @@ export default async function AdminHallsPage({ searchParams }: Props) {
                 href={hrefFor({
                   status: activeFilter.key,
                   mode: m.key,
+                  category: activeCategory,
                 })}
                 className={[
                   "rounded-full border px-2.5 py-0.5 text-[11px] font-semibold tabular-nums",

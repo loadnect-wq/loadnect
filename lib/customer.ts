@@ -300,7 +300,7 @@ export async function fetchMySavedHalls(): Promise<MySavedHall[]> {
       halls(
         id, slug, name, city, address,
         capacity_max, price_per_day, booking_mode, is_premium, premium_tier,
-        rating_average, rating_count,
+        rating_average, rating_count, venue_types,
         hall_images(url, is_cover)
       )
     `;
@@ -350,6 +350,7 @@ export async function fetchMySavedHalls(): Promise<MySavedHall[]> {
         rating_count:   hall.rating_count,
         cover_url:      coverUrl,
         amenities:      [],
+        venue_types:    Array.isArray(hall.venue_types) ? hall.venue_types : [],
       },
     };
   });

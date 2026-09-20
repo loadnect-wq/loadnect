@@ -2,6 +2,8 @@
 
 import { useMemo, useRef, useState, useTransition } from "react";
 import { SERVICE_AREA_CITIES } from "@/lib/seo/service-areas";
+import type { VenueCategory } from "@/lib/venue-categories";
+import { CategoryPicker } from "@/components/venues/CategoryPicker";
 import { BOOKING_MODES } from "@/lib/validation/schemas";
 import { COMMISSION_PERCENT_LABEL } from "@/lib/commission";
 import { PLATFORM_FEE_RUPEES } from "@/lib/booking-payment";
@@ -28,23 +30,27 @@ const EXT_BY_MIME: Record<string, string> = {
 interface Props {
   ownerId:    string;
   amenities:  OwnerAmenity[];
+  /**
+   * The ACTIVE venue categories, from public.venue_categories (0102).
+   *
+   * Fetched by the page with the STRICT reader and passed down, rather than
+   * read here. This form SAVES: an empty picker caused by a failed read would
+   * offer the owner nothing to tick and then let them submit a hall with no
+   * categories at all — invisible in every typed view, every category page and
+   * every chip, for a reason they were never shown. The strict read means the
+   * page fails visibly instead.
+   */
+  categories: VenueCategory[];
   hall?:      OwnerHallDetail; // present in edit mode
 }
 
-/** Must match the CHECK constraint in migration 0037 and VENUE_TYPE_CATEGORIES. */
-const VENUE_TYPE_OPTIONS = [
-  { value: "wedding",   label: "Wedding"   },
-  { value: "reception", label: "Reception" },
-  { value: "party",     label: "Party"     },
-  { value: "banquet",   label: "Banquet"   },
-] as const;
 
 // The service area comes from lib/seo/cities.ts and nowhere else. A local copy
 // here is how the dropdown came to offer ten cities that had no landing page,
 // so an approved venue in any of them would have put a 404 in the sitemap.
 const CITIES = SERVICE_AREA_CITIES;
 
-export function HallForm({ ownerId, amenities, hall }: Props) {
+export function HallForm({ ownerId, amenities, categories, hall }: Props) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -79,7 +85,9 @@ export function HallForm({ ownerId, amenities, hall }: Props) {
   // Which event types this venue serves. Drives the homepage category tiles
   // and the search chips — a hall with none set appears in no typed view, so
   // the form requires at least one.
-  const [venueTypes,   setVenueTypes]   = useState<Set<string>>(new Set(hall?.venue_types ?? []));
+  // An ARRAY, not a Set: the picker keeps its own ordering and needs to hand
+  // back something stable, and this is what the server action receives.
+  const [venueTypes,   setVenueTypes]   = useState<string[]>(hall?.venue_types ?? []);
   // Custom amenities live in form state and are saved with the hall, so they
   // follow the normal approval flow rather than publishing on their own.
   const [customAms,    setCustomAms]    = useState<string[]>(hall?.custom_amenities ?? []);
@@ -222,7 +230,7 @@ export function HallForm({ ownerId, amenities, hall }: Props) {
       priceEvening: priceEven,
       description,
       amenityIds: [...selectedAms],
-      venueTypes: [...venueTypes],
+      venueTypes,
       customAmenities: customAms,
       bookingMode,
       // Always sent, so clearing the box clears the pin. The server re-parses
@@ -481,46 +489,27 @@ export function HallForm({ ownerId, amenities, hall }: Props) {
         )}
       </FormSection>
 
-      {/* Venue types — what this hall is FOR. Not cosmetic: these are the
-          homepage category tiles and the search chips, and they filter for
-          real, so a hall with none ticked is absent from all of them. */}
-      <FormSection title="What events does this venue host?">
+      {/* What this hall is FOR. Not cosmetic: these are the homepage discovery
+          tiles, the search chips and the /venues/<category> landing pages, and
+          they filter for real — so a hall with none ticked is absent from all
+          of them.
+
+          TICK EVERY ONE THAT APPLIES, and the copy says so plainly, because the
+          expansion only pays off if owners use it: a hall that hosts birthdays
+          and corporate meetings but declares only "Wedding" is invisible to
+          every customer searching for the other two. */}
+      <FormSection title="What is this hall suitable for?">
         <p className="-mt-1 text-xs text-charcoal-500">
-          Pick every type that applies. Couples filter by these, so choosing accurately is
-          how the right customers find your hall.
+          Pick every occasion your venue can host — weddings, parties, meetings, anything else.
+          Customers search by these, so each one you tick is another way to be found.
         </p>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-          {VENUE_TYPE_OPTIONS.map((opt) => {
-            const on = venueTypes.has(opt.value);
-            return (
-              <button
-                key={opt.value}
-                type="button"
-                aria-pressed={on}
-                onClick={() =>
-                  setVenueTypes((prev) => {
-                    const next = new Set(prev);
-                    if (next.has(opt.value)) next.delete(opt.value);
-                    else next.add(opt.value);
-                    return next;
-                  })
-                }
-                className={`min-h-[44px] rounded-xl border px-3 text-sm font-medium transition-colors ${
-                  on
-                    ? "border-maroon-500 bg-maroon-50 text-maroon-800"
-                    : "border-border bg-white text-charcoal-700 hover:border-maroon-300"
-                }`}
-              >
-                {opt.label}
-              </button>
-            );
-          })}
-        </div>
-        {venueTypes.size === 0 && (
-          <p className="text-xs font-medium text-amber-700">
-            Choose at least one — otherwise your hall will not appear under any category.
-          </p>
-        )}
+        <CategoryPicker
+          catalogue={categories}
+          value={venueTypes}
+          onChange={setVenueTypes}
+          disabled={pending}
+          emptyHint="Choose at least one — otherwise your hall will not appear under any category."
+        />
       </FormSection>
 
       {/* Hallnect commission — ONE standard rate for every venue, shown and

@@ -223,7 +223,13 @@ describe("the Add a Hall form", () => {
       expect(form, id).toContain(`"${id}"`);
     }
     expect(form).toContain("How does this venue take business?");
-    expect(form).toContain("Event types");
+    // Renamed from "Event types" in 0102, when the four hard-coded buttons
+    // became the shared CategoryPicker the owner's own form uses. The label
+    // matters less than the field still being there and still writing into
+    // venueTypes, which the claim copies straight into halls.venue_types.
+    expect(form).toContain("Suitable for");
+    expect(form).toContain("<CategoryPicker");
+    expect(form).toContain("venueTypes");
     expect(form).toContain("Amenities");
   });
 

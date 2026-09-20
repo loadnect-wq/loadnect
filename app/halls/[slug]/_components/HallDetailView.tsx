@@ -16,7 +16,9 @@ import {
 import { type HallDetail, type HallListing, type AvailabilityRow } from "@/lib/halls";
 // From lib/venue-types, NOT lib/halls: this is a Client Component, and
 // lib/halls opens a database client.
-import { venueTypesSentence } from "@/lib/venue-types";
+import { venueCategoriesSentence } from "@/lib/venue-types";
+import { categoryVenuePhrase, type VenueCategory } from "@/lib/venue-categories";
+import { CategoryIcon } from "@/components/venues/CategoryIcon";
 import { CARD_GRADIENTS, formatPrice } from "@/lib/mock-data";
 import {
   formatHallPrice, hasPrice, isLeadGeneration,
@@ -142,6 +144,17 @@ interface Props {
   /** Live advance % from platform_settings; falls back to the constant. */
   advancePercent?: number;
   hall:        HallDetail;
+  /**
+   * This venue's occasions, ALREADY resolved against public.venue_categories
+   * and in catalogue order — not the raw hall.venue_types slugs and not the
+   * whole catalogue. The server does the lookup so that a venue page ships
+   * three rows instead of twenty-eight, and so that a slug the catalogue no
+   * longer knows about is absent here rather than being rendered raw.
+   *
+   * Empty is normal: the owner declared none, or the catalogue could not be
+   * read. Both render nothing.
+   */
+  categories:  VenueCategory[];
   similar:     HallListing[];
   isPreview:   boolean;
   sidebarAd?:  React.ReactNode;
@@ -159,7 +172,7 @@ interface Props {
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export function HallDetailView({ hall, similar, isPreview, sidebarAd, advancePercent, citySlug }: Props) {
+export function HallDetailView({ hall, categories, similar, isPreview, sidebarAd, advancePercent, citySlug }: Props) {
   const router = useRouter();
 
   useEffect(() => { recordRecentlyViewed(hall.id); }, [hall.id]);
@@ -187,7 +200,7 @@ export function HallDetailView({ hall, similar, isPreview, sidebarAd, advancePer
   const isLead        = isLeadGeneration(hall.booking_mode);
   const priced        = hasPrice(hall.price_per_day);
   // null when the owner declared no event types, in which case nothing renders.
-  const typesSentence = venueTypesSentence(hall.venue_types, hall);
+  const typesSentence = venueCategoriesSentence(categories, hall);
   const ctaHref       = primaryCtaHref(hall.booking_mode, hall.slug);
   const ctaLabel      = primaryCtaLabel(hall.booking_mode);
   const showAdvance   = priced && !isLead;
@@ -462,6 +475,40 @@ export function HallDetailView({ hall, similar, isPreview, sidebarAd, advancePer
                 <p className="mt-2 text-sm leading-relaxed text-charcoal-600">{typesSentence}</p>
               )}
             </section>
+
+            {/* ── Suitable for ────────────────────────────────────────────
+                The same facts as the sentence above, in the form someone
+                SCANNING uses: a visitor who arrived from "birthday halls in
+                Madurai" wants to see "Birthday Party" without reading a
+                paragraph, and the sentence is what a crawler reads.
+
+                Every chip links to that category's landing page, which is
+                what turns a venue page into an entry point for the other
+                twenty-seven occasions rather than a dead end. Absent entirely
+                when the owner declared nothing — an empty "Suitable for"
+                heading would be a question the page asks and refuses to
+                answer. */}
+            {categories.length > 0 && (
+              <section data-reveal="scale" className="mt-6">
+                <h2 className="font-serif text-base font-semibold text-charcoal-900">Suitable for</h2>
+                <ul className="mt-3 flex flex-wrap gap-2">
+                  {categories.map((c) => (
+                    <li key={c.slug}>
+                      <Link
+                        href={`/venues/${c.slug}`}
+                        className="flex min-h-[40px] items-center gap-2 rounded-full border border-border bg-white px-3.5 py-2 text-xs font-semibold text-charcoal-800 shadow-sm transition-colors hover:border-maroon-300 hover:bg-maroon-50"
+                        title={`Browse ${categoryVenuePhrase(c)}`}
+                      >
+                        <span className="flex h-6 w-6 items-center justify-center rounded-full bg-maroon-50 text-maroon-600">
+                          <CategoryIcon name={c.icon} className="h-3.5 w-3.5" />
+                        </span>
+                        {c.name}
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
 
             {/* Amenities */}
             {hall.amenities.length > 0 && (

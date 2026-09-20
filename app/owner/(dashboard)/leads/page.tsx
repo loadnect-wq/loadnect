@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { CalendarDays, Inbox, MessageSquare, Phone, Users } from "lucide-react";
 import { requireRole } from "@/lib/auth";
+import { fetchVenueCategories } from "@/lib/venue-categories.server";
+import { categoryLabelMap } from "@/lib/venue-categories";
 import { fetchOwnerRow, fetchOwnerHalls } from "@/lib/owner";
 import { fetchLeadsForHalls, fetchLeadCommissions, type LeadStatus } from "@/lib/leads";
 import { formatPrice } from "@/lib/mock-data";
@@ -23,10 +25,6 @@ const STATUS_CFG: Record<LeadStatus, { label: string; variant: BadgeVar }> = {
   rejected:              { label: "Declined",    variant: "destructive" },
   cancelled:             { label: "Withdrawn",   variant: "secondary"   },
   expired:               { label: "Expired",     variant: "secondary"   },
-};
-
-const EVENT_LABELS: Record<string, string> = {
-  wedding: "Wedding", reception: "Reception", party: "Party", banquet: "Banquet",
 };
 
 const TABS = [
@@ -69,7 +67,18 @@ export default async function OwnerLeadsPage({ searchParams }: Props) {
     );
   }
 
-  const halls = await fetchOwnerHalls(ownerRow.id);
+  const [halls, catalogue] = await Promise.all([
+    fetchOwnerHalls(ownerRow.id),
+    fetchVenueCategories(),
+  ]);
+
+  // slug -> name for the occasion on each enquiry. This WAS four hard-coded
+  // values; with the catalogue open (0102) a customer can pick
+  // "birthday-party", and the raw-slug fallback at the render site would have
+  // printed the hyphen. Lenient read — an unnamed occasion falls back to its
+  // slug, which is ugly but true, and never blocks the page.
+  const EVENT_LABELS = categoryLabelMap(catalogue);
+
   const hallIds = halls.map((h) => h.id);
   const leadHalls = halls.filter((h) => h.booking_mode === "LEAD_GENERATION");
 

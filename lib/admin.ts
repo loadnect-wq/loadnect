@@ -81,6 +81,8 @@ export type AdminHallRow = {
   owner_name:     string | null;
   owner_business: string | null;
   custom_amenities: string[];
+  /** Occasion slugs the owner declared (0102), for the admin's category filter. */
+  venue_types:    string[];
   created_at:     string;
 };
 
@@ -604,7 +606,15 @@ export async function fetchPendingOwnerProfiles(): Promise<AdminUserRow[]> {
 
 // ── Halls ─────────────────────────────────────────────────────────────────────
 
-export async function fetchAllHalls(statusFilter?: string): Promise<AdminHallRow[]> {
+export async function fetchAllHalls(
+  statusFilter?: string,
+  /**
+   * A venue-category slug (0102). Filtered in the DATABASE via the GIN-indexed
+   * overlap, not by fetching every hall and filtering in JavaScript — this list
+   * is unpaginated and grows with the platform.
+   */
+  categoryFilter?: string,
+): Promise<AdminHallRow[]> {
   const supabase = await getSupabaseServerClient();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = supabase as any;
@@ -613,10 +623,11 @@ export async function fetchAllHalls(statusFilter?: string): Promise<AdminHallRow
     .from("halls")
     // profiles!profile_id — see fetchAllOwners: the hall_owners→profiles embed
     // is ambiguous (profile_id vs verified_by) and must be disambiguated.
-    .select("id, slug, name, city, state, status, is_premium, capacity_max, price_per_day, booking_mode, rating_average, rating_count, created_at, hall_images(url, is_cover), hall_owners(business_name, profiles!profile_id(full_name)), hall_custom_amenities(name, sort_order)")
+    .select("id, slug, name, city, state, status, is_premium, capacity_max, price_per_day, booking_mode, rating_average, rating_count, created_at, venue_types, hall_images(url, is_cover), hall_owners(business_name, profiles!profile_id(full_name)), hall_custom_amenities(name, sort_order)")
     .order("created_at", { ascending: false });
 
   if (statusFilter) query = query.eq("status", statusFilter);
+  if (categoryFilter) query = query.overlaps("venue_types", [categoryFilter]);
 
   const { data, error } = await query;
   if (error) { handleError("fetchAllHalls", error); return []; }
@@ -648,6 +659,7 @@ export async function fetchAllHalls(statusFilter?: string): Promise<AdminHallRow
         .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
         .map((c) => (c.name as string) ?? "")
         .filter(Boolean),
+      venue_types:    Array.isArray(row.venue_types) ? row.venue_types : [],
       created_at:     row.created_at,
     };
   });
@@ -1814,3 +1826,61 @@ export async function fetchCoupons(): Promise<
   return { unavailable: false, rows };
 }
 
+// ── Demand by occasion (migration 0102) ──────────────────────────────────────
+
+/**
+ * Platform-wide bookings and enquiries grouped by the occasion the customer
+ * chose.
+ *
+ * A SEPARATE FUNCTION, NOT ANOTHER FIELD ON AdminStats. That type carries a
+ * `failed` list so the dashboard can refuse to present an unread query's zeroes
+ * as facts, and every block inside fetchAdminStats participates in it. Threading
+ * one more read through that machinery to power a decorative panel would put
+ * this at the same level of care as the revenue figures, which it does not
+ * warrant — and would risk the mechanism that protects the figures that do.
+ *
+ * So this fails soft and says so: an unreadable query returns [], the panel
+ * disappears, and no money number on the page is touched.
+ *
+ * THE NULL BUCKET IS KEPT. See OwnerEventTypeCount and EventTypeBreakdown —
+ * bookings.event_type is never backfilled, so "not recorded" is a real and
+ * large category, and hiding it would make a handful of recent bookings look
+ * like the whole market.
+ */
+export async function fetchAdminEventTypeDemand(): Promise<
+  { slug: string | null; bookings: number; enquiries: number }[]
+> {
+  const supabase = await getSupabaseServerClient();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const db = supabase as any;
+
+  const [bookings, leads] = await Promise.all([
+    db.from("bookings").select("event_type"),
+    db.from("leads").select("event_type"),
+  ]);
+
+  if (bookings.error && leads.error) {
+    console.error("[fetchAdminEventTypeDemand] both reads failed:", bookings.error.message);
+    return [];
+  }
+
+  const counts = new Map<string | null, { slug: string | null; bookings: number; enquiries: number }>();
+  const bump = (slug: string | null, key: "bookings" | "enquiries") => {
+    const k = slug || null;
+    const row = counts.get(k) ?? { slug: k, bookings: 0, enquiries: 0 };
+    row[key] += 1;
+    counts.set(k, row);
+  };
+  for (const b of (bookings.data ?? []) as { event_type?: string | null }[]) {
+    bump(b.event_type ?? null, "bookings");
+  }
+  for (const l of (leads.data ?? []) as { event_type?: string | null }[]) {
+    bump(l.event_type ?? null, "enquiries");
+  }
+
+  return [...counts.values()].sort(
+    (a, b) =>
+      b.bookings + b.enquiries - (a.bookings + a.enquiries) ||
+      (a.slug === null ? 1 : b.slug === null ? -1 : a.slug.localeCompare(b.slug)),
+  );
+}

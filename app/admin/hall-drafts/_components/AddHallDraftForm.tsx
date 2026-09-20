@@ -7,7 +7,8 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "@/hooks/use-toast";
-import { VENUE_TYPE_VALUES } from "@/lib/validation/schemas";
+import type { VenueCategory } from "@/lib/venue-categories";
+import { CategoryPicker } from "@/components/venues/CategoryPicker";
 import { createAdminHallDraft, checkHallDraftDuplicates } from "../../actions";
 import { HallPhotosField } from "./HallPhotosField";
 import { commitDraftPhotos, revokePreview, type DraftPhoto } from "./draft-photos";
@@ -23,7 +24,15 @@ const BLANK = {
 
 type AmenityOption = { id: string; name: string; slug: string };
 
-export function AddHallDraftForm({ amenities = [] }: { amenities?: AmenityOption[] }) {
+export function AddHallDraftForm({
+  amenities = [],
+  categories = [],
+}: {
+  amenities?: AmenityOption[];
+  /** Active venue categories (0102) — the SAME picker the owner's form uses,
+   *  because 0090's claim copies this array straight into halls.venue_types. */
+  categories?: VenueCategory[];
+}) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [f, setF] = useState({ ...BLANK });
@@ -250,25 +259,20 @@ export function AddHallDraftForm({ amenities = [] }: { amenities?: AmenityOption
           </p>
         </div>
 
+        {/* Suitable for. The admin ticks what the OWNER would tick: this array
+            is copied verbatim into halls.venue_types when the venue is claimed
+            (0090), so anything recorded here is what the listing goes live
+            with, and anything missed is a category the venue is invisible in
+            from day one. */}
         <div>
-          <Label>Event types</Label>
-          <div className="mt-1.5 flex flex-wrap gap-2">
-            {VENUE_TYPE_VALUES.map((t) => {
-              const on = venueTypes.includes(t);
-              return (
-                <button
-                  key={t} type="button"
-                  onClick={() => setVenueTypes((p) => (on ? p.filter((x) => x !== t) : [...p, t]))}
-                  className={[
-                    "rounded-full border px-3 py-1.5 text-xs font-medium capitalize transition-colors",
-                    on ? "border-maroon-400 bg-maroon-50 text-maroon-800"
-                       : "border-border bg-white text-charcoal-600 hover:border-maroon-200",
-                  ].join(" ")}
-                >
-                  {t}
-                </button>
-              );
-            })}
+          <Label>Suitable for</Label>
+          <div className="mt-1.5">
+            <CategoryPicker
+              catalogue={categories}
+              value={venueTypes}
+              onChange={setVenueTypes}
+              emptyHint="Nothing ticked — this venue will not appear under any category once it is claimed."
+            />
           </div>
         </div>
 

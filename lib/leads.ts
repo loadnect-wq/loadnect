@@ -37,7 +37,11 @@ import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import { STANDARD_COMMISSION_PERCENT } from "@/lib/commission";
 import { commissionPaiseOn, toPaise, PAISE_PER_RUPEE } from "@/lib/money";
 import { normalizePhoneE164 } from "@/lib/notifications/phone";
-import type { LeadEventType } from "@/lib/validation/schemas";
+// A lead's event type is a venue-category slug (0102) — any active category,
+// not the four that were hard-coded here until the platform covered more than
+// weddings. `string` rather than a union because the vocabulary is a table
+// now; trg_leads_event_type is what guarantees the value is real.
+type LeadEventType = string;
 
 /** How long a venue has to settle a lead commission, when settings say nothing. */
 const DEFAULT_COMMISSION_DUE_DAYS = 7;
@@ -95,7 +99,7 @@ function toLead(row: Record<string, unknown>): LeadRow {
     contact_phone: String(row.contact_phone ?? ""),
     phone_verified: Boolean(row.phone_verified),
     event_date: String(row.event_date),
-    event_type: (row.event_type as LeadEventType | null) ?? null,
+    event_type: (row.event_type as string | null) ?? null,
     guest_count: row.guest_count == null ? null : Number(row.guest_count),
     requirements: (row.requirements as string | null) ?? null,
     status: row.status as LeadStatus,

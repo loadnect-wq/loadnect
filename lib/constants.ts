@@ -15,8 +15,14 @@ export const APP_NAME = "Hallnect";
 // section 2(28) of the Consumer Protection Act 2019, and it is the first thing
 // a complainant would quote. "Owner-submitted" is what the homepage trust strip
 // already says and it is what actually happens.
+// WIDENED IN 0102, NOT REPLACED. Hallnect is a multi-purpose venue marketplace
+// now — weddings, parties, meetings and twenty-five other occasions — but
+// "wedding halls" stays at the front of this sentence deliberately: it is what
+// the platform's inventory actually is today, and it is the phrase the only
+// pages that currently rank were built on. The breadth is added; nothing is
+// taken away. Do not reverse the order to make the positioning sound bolder.
 export const APP_DESCRIPTION =
-  "Discover and book wedding halls and event venues across Tamil Nadu — owner-submitted listings, secure booking, and a clear answer from the venue.";
+  "Discover and book wedding halls, party halls and meeting venues across Tamil Nadu — owner-submitted listings, secure booking, and a clear answer from the venue.";
 
 // Single source of truth for public business contact details. Update here and
 // every surface (contact page, footer, support copy) stays in sync.
