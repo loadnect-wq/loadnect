@@ -460,6 +460,44 @@ describe("occasionTiles", () => {
     expect(occasionTiles(many, counts, 3)).toHaveLength(3);
   });
 
+  it("is a ticker that stops the moment anyone engages with it", () => {
+    // A MOVING STRIP OF LINKS IS A TRAP UNLESS IT PAUSES. The tile you reach
+    // for must be there when your finger lands, and a keyboard user must not
+    // have to chase a target. Hover, focus-within and active (which is what a
+    // touch is) all halt it.
+    const src = read("components/sections/OccasionDiscovery.tsx");
+    for (const state of ["hover", "focus-within", "active"]) {
+      expect(src, state).toContain(
+        `motion-safe:group-${state}/marquee:[animation-play-state:paused]`,
+      );
+    }
+  });
+
+  it("gives reduced-motion visitors no motion at all", () => {
+    // Not a slower ticker — none. They get an ordinary scrollable row with the
+    // same content and the same reach.
+    const src = read("components/sections/OccasionDiscovery.tsx");
+    expect(src).toContain("motion-reduce:animate-none");
+    expect(src).toContain("overflow-x-auto");
+  });
+
+  it("hides the seamless duplicate from assistive tech AND the tab order", () => {
+    // A seamless loop needs the list rendered twice. Announcing twenty
+    // occasions when there are ten, or letting Tab walk into a decorative
+    // copy, would charge the cost of a visual effect to the people least able
+    // to afford it. aria-hidden alone is not enough: aria-hidden on a
+    // focusable element is the classic keyboard trap.
+    const src = read("components/sections/OccasionDiscovery.tsx");
+    expect(src).toContain('clone ? { "aria-hidden": true } : {}');
+    expect(src).toContain("tabIndex={clone ? -1 : undefined}");
+  });
+
+  it("keeps the edge fades from eating a tap", () => {
+    const src = read("components/sections/OccasionDiscovery.tsx");
+    const fades = src.slice(src.indexOf("Fades that tell the eye"));
+    expect((fades.match(/pointer-events-none/g) ?? []).length).toBeGreaterThanOrEqual(2);
+  });
+
   it("keeps the SEO gate even though the UI gate is gone", () => {
     // The whole reason showing all 28 to PEOPLE is safe. If this ever stops
     // being true, the grid becomes 26 links into a doorway-page farm.

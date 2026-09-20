@@ -169,6 +169,14 @@ const config: Config = {
           from: { opacity: "0", transform: "translateY(12px)" },
           to:   { opacity: "1", transform: "translateY(0)" },
         },
+        // Right-to-left ticker. Travels exactly -50%, which is why the track
+        // must render its children TWICE: at the halfway point the second copy
+        // sits precisely where the first began, so the loop restarts with no
+        // visible jump. Any other distance seams.
+        marquee: {
+          from: { transform: "translateX(0)" },
+          to:   { transform: "translateX(-50%)" },
+        },
       },
 
       animation: {
@@ -177,6 +185,10 @@ const config: Config = {
         shimmer:          "shimmer 1.8s linear infinite",
         "fade-in":        "fade-in 0.4s ease-out",
         "slide-up":       "slide-up 0.4s ease-out",
+        // Linear, or the strip would ease and look like it is struggling.
+        // The duration is set per-instance with an arbitrary value so a
+        // longer list scrolls at the same SPEED rather than the same rate.
+        marquee:          "marquee 40s linear infinite",
       },
     },
   },

@@ -1,53 +1,68 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // components/sections/OccasionDiscovery.tsx — "What are you planning?"
 //
-// Every occasion the catalogue OFFERS, which is ten (migration 0103). Twenty-
-// eight was a directory; ten is a choice, and a choice is what this grid is for.
-// Nothing here caps or filters — the catalogue decides what is offered, and an
-// admin changes that at /admin/venue-categories without a release.
+// A single ticker of occasions that drifts right to left, rather than the
+// two-row grid this replaced. Ten tiles stacked 2x5 filled most of a phone
+// screen and read as a wall; one moving line reads as a shelf.
 //
 // ════════════════════════════════════════════════════════════════════════════
-// WHAT IS SHOWN vs WHAT IS INDEXED — TWO DIFFERENT DECISIONS
+// AN AUTO-SCROLLING STRIP OF LINKS IS A TRAP, AND HERE IS HOW IT IS DEFUSED
 // ════════════════════════════════════════════════════════════════════════════
-// This grid does NOT gate on inventory; the SEO layer still does, and that
-// separation is what makes showing everything safe:
+// Moving tap targets are the reason most marquees are a usability failure: the
+// thing you reached for is not there when your finger lands. Four rules keep
+// this one honest, and none of them is optional —
 //
-//   * a visitor clicking "Baby Shower" gets a real page that says plainly no
-//     venue has listed for it yet, and offers the two things that help —
-//     browse everything, or list your venue;
-//   * Google is told nothing of the sort. /venues/baby-shower stays noindex
-//     and out of the sitemap until a venue declares it.
-//
-// Do not re-gate the grid, and do not index the empty pages.
+//   1. IT PAUSES WHEN ANYONE ENGAGES. Hover, keyboard focus anywhere inside,
+//      and an active press (which is what a touch is) all stop it. So the
+//      tile you are reaching for holds still the moment you touch it, and a
+//      keyboard user tabbing through never chases a moving target.
+//   2. REDUCED MOTION GETS NO MOTION AT ALL. Not a slower ticker — none. The
+//      strip becomes an ordinary horizontally scrollable row, which is the
+//      same content with the same reach.
+//   3. THE DUPLICATE IS INVISIBLE TO ASSISTIVE TECH. A seamless loop needs
+//      the list rendered twice; announcing twenty occasions when there are
+//      ten, or letting Tab walk into a decorative copy, would be the cost of
+//      a visual effect paid by the people least able to afford it. The clone
+//      is aria-hidden and every link inside it is removed from the tab order.
+//   4. IT IS STILL SCROLLABLE BY HAND. The track sits in an overflow-x-auto
+//      container, so a flick works whether or not the animation is running.
 //
 // ════════════════════════════════════════════════════════════════════════════
-// THE COLUMN COUNTS ARE CHOSEN SO ROWS FILL
+// WHAT IS SHOWN vs WHAT IS INDEXED
 // ════════════════════════════════════════════════════════════════════════════
-// 2 / 5 / 5 divide ten exactly, so no breakpoint leaves a widowed tile sitting
-// alone on a final row. Three columns would (3+3+3+1), which is why the old
-// grid-cols-3 is gone. If the offered count ever stops being ten, revisit this
-// — a trailing orphan is the one thing that makes a neat grid look accidental.
+// The strip shows every occasion the catalogue OFFERS (ten, migration 0103),
+// including those no venue has listed for yet. The SEO layer still gates on
+// inventory: /venues/baby-shower is noindex and out of the sitemap until a
+// venue declares it. Do not re-gate the strip, and do not index the empty
+// pages — an empty occasion page says so plainly and offers a way on.
 //
-// NO FABRICATED NUMBERS. A tile shows a venue count only when that count is
-// above zero. It never prints "0 venues", and never invents one.
+// NO FABRICATED NUMBERS. A tile shows a venue count only when it is above
+// zero. It never prints "0 venues", and never invents one.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import Link from "next/link";
 
 import type { VenueCategory } from "@/lib/venue-categories";
 import { CategoryIcon } from "@/components/venues/CategoryIcon";
-import { revealDelay } from "@/lib/motion";
 
 export type OccasionTile = VenueCategory & { venueCount: number };
+
+/**
+ * Seconds per full cycle, derived from the tile count so the strip always
+ * moves at the same READABLE SPEED.
+ *
+ * A fixed duration would make a five-item strip crawl and a twenty-item strip
+ * race past. ~3.6s per tile is slow enough to read a two-word label.
+ */
+function cycleSeconds(tileCount: number): number {
+  return Math.max(24, Math.round(tileCount * 3.6));
+}
 
 /**
  * Every offered occasion, the ones with venues first.
  *
  * ORDERING CARRIES THE HONESTY that hiding empty tiles used to: what Hallnect
  * can actually deliver today leads, and nothing is hidden behind it.
- *
- * `limit` stays available for callers that want a shortlist; the home page
- * passes nothing, because the catalogue is already the curated set.
  */
 export function occasionTiles(
   categories: readonly VenueCategory[],
@@ -70,77 +85,135 @@ export function OccasionDiscovery({
   if (tiles.length === 0) return null;
 
   const mobile = variant === "mobile";
+  const seconds = cycleSeconds(tiles.length);
 
   return (
-    <ul
-      className={
-        mobile
-          ? "container-app grid grid-cols-2 gap-3"
-          : "grid grid-cols-2 gap-4 sm:grid-cols-5"
-      }
-    >
-      {tiles.map((c, i) => (
-        <li
-          key={c.slug}
-          // The house reveal system, not a hand-rolled animationDelay: it
-          // staggers through --reveal-delay-base, which the stylesheet then
-          // SHORTENS on small screens. An inline animation-delay would beat
-          // that media query and leave the last tile waiting on a phone.
-          data-reveal="scale"
-          style={revealDelay(i)}
+    // group/marquee, not group: HallCard and others already use `group` inside
+    // this tree, and an unnamed group would let a tile's own hover state be
+    // driven by a parent that happens to share the name.
+    // No width container here: the mobile strip is deliberately full-bleed so
+    // tiles run to the screen edge, and the desktop call site already sits
+    // inside container-page. Adding one would double-constrain the latter.
+    <div className="group/marquee relative">
+      {/* The track scrolls inside this, and the EDGE INSET LIVES HERE rather
+          than on the track — see the note on the track's width below. */}
+      <div className={`no-scrollbar overflow-x-auto ${mobile ? "px-4" : "px-1"}`}>
+        <ul
+          className={[
+            // NO `gap` AND NO PADDING ON THE TRACK, AND THIS IS ARITHMETIC,
+            // NOT STYLE. The animation travels exactly -50%, so the loop is
+            // seamless only when half the track equals one list.
+            //
+            //   `gap-3` puts a gap BETWEEN items, so twenty tiles have
+            //   nineteen gaps — one short of two complete lists. Add the
+            //   track's own px-4 and half the track came out 10px past where
+            //   the second list starts, which is a visible jolt once every
+            //   cycle. Measured: 1170 vs 1160.
+            //
+            // So each tile carries its own trailing gap (pr-3 on the li) and
+            // the inset moved to the scroll container, whose padding does not
+            // count toward the track's width. Half of 20x116 is exactly 1160.
+            // If you reintroduce `gap` here, re-measure the seam.
+            "flex w-max items-stretch",
+            "motion-safe:animate-marquee",
+            // Rule 1 — anyone engaging stops it.
+            "motion-safe:group-hover/marquee:[animation-play-state:paused]",
+            "motion-safe:group-focus-within/marquee:[animation-play-state:paused]",
+            "motion-safe:group-active/marquee:[animation-play-state:paused]",
+            // Rule 2 — reduced motion gets none of it.
+            "motion-reduce:animate-none",
+          ].join(" ")}
+          style={{ animationDuration: `${seconds}s` }}
         >
-          <Link
-            href={`/venues/${c.slug}`}
-            className={[
-              "group relative flex h-full flex-col items-center justify-center gap-2 overflow-hidden",
-              "rounded-2xl border border-border bg-white text-center",
-              mobile ? "min-h-[104px] px-2 py-4" : "px-3 py-5",
-              // The hover state is the whole "animated" brief on desktop: the
-              // card lifts onto a gold edge while a maroon wash fades up from
-              // the bottom. Transform and colour only — both composited, so a
-              // ten-tile grid animates on the GPU and never reflows.
-              "transition-all duration-300 ease-out",
-              "hover:-translate-y-1 hover:border-gold-300 hover:shadow-card-hover",
-              // A phone has no hover, so the feedback there is the press.
-              "active:scale-95 motion-reduce:active:scale-100",
-              "motion-reduce:transition-none motion-reduce:hover:translate-y-0",
-            ].join(" ")}
-          >
-            {/* The wash. Purely decorative and behind everything, so it can
-                never intercept the tap. */}
-            <span
-              aria-hidden
-              className="pointer-events-none absolute inset-x-0 bottom-0 h-0 bg-gradient-to-t from-maroon-50 to-transparent transition-all duration-300 ease-out group-hover:h-full motion-reduce:transition-none motion-reduce:group-hover:h-0"
-            />
+          {tiles.map((c) => (
+            <OccasionCard key={c.slug} category={c} mobile={mobile} />
+          ))}
 
-            <span
-              className={[
-                "relative flex items-center justify-center rounded-2xl",
-                "bg-maroon-50 text-maroon-600 ring-1 ring-maroon-100",
-                mobile ? "h-11 w-11" : "h-12 w-12",
-                "transition-all duration-300 ease-out",
-                "group-hover:scale-110 group-hover:bg-white group-hover:text-maroon-700 group-hover:ring-gold-300",
-                "motion-reduce:transition-none motion-reduce:group-hover:scale-100",
-              ].join(" ")}
-            >
-              <CategoryIcon name={c.icon} className={mobile ? "h-5 w-5" : "h-5 w-5"} />
-            </span>
+          {/* Rule 3 — the seamless half. Present for the eye only: it is
+              aria-hidden, and every link inside is out of the tab order. */}
+          {tiles.map((c) => (
+            <OccasionCard key={`clone-${c.slug}`} category={c} mobile={mobile} clone />
+          ))}
+        </ul>
+      </div>
 
-            <span className="relative text-xs font-semibold leading-tight text-charcoal-800">
-              {c.name}
-            </span>
+      {/* Fades that tell the eye the strip continues past the edge. Purely
+          decorative and non-interactive, so they can never eat a tap. */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-y-0 left-0 w-8 bg-gradient-to-r from-ivory-100 to-transparent"
+      />
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-ivory-100 to-transparent"
+      />
+    </div>
+  );
+}
 
-            {/* A REAL COUNT OR NOTHING AT ALL. An occasion nobody has listed
-                for yet is an invitation, not a report — so it says nothing
-                rather than "0 venues". */}
-            {c.venueCount > 0 && (
-              <span className="relative text-[10px] font-medium text-maroon-600">
-                {c.venueCount} {c.venueCount === 1 ? "venue" : "venues"}
-              </span>
-            )}
-          </Link>
-        </li>
-      ))}
-    </ul>
+function OccasionCard({
+  category: c,
+  mobile,
+  clone = false,
+}: {
+  category: OccasionTile;
+  mobile: boolean;
+  clone?: boolean;
+}) {
+  return (
+    <li
+      // pr-3 rather than a gap on the track: see the arithmetic there.
+      className="shrink-0 pr-3"
+      // The clone is scenery. Announcing it would double the list for a screen
+      // reader reading a strip that visually contains ten things.
+      {...(clone ? { "aria-hidden": true } : {})}
+    >
+      <Link
+        href={`/venues/${c.slug}`}
+        // Removed from the tab order rather than merely hidden: aria-hidden on
+        // a focusable element is the classic combination that traps a keyboard
+        // user on something their screen reader refuses to describe.
+        tabIndex={clone ? -1 : undefined}
+        className={[
+          "group/tile relative flex flex-col items-center justify-center gap-2 overflow-hidden",
+          "rounded-2xl border border-border bg-white text-center",
+          mobile ? "h-[104px] w-[104px] px-2" : "h-[132px] w-[132px] px-3",
+          "transition-all duration-300 ease-out",
+          "hover:-translate-y-1 hover:border-gold-300 hover:shadow-card-hover",
+          "active:scale-95 motion-reduce:active:scale-100",
+          "motion-reduce:transition-none motion-reduce:hover:translate-y-0",
+        ].join(" ")}
+      >
+        <span
+          aria-hidden
+          className="pointer-events-none absolute inset-x-0 bottom-0 h-0 bg-gradient-to-t from-maroon-50 to-transparent transition-all duration-300 ease-out group-hover/tile:h-full motion-reduce:transition-none motion-reduce:group-hover/tile:h-0"
+        />
+
+        <span
+          className={[
+            "relative flex items-center justify-center rounded-2xl",
+            "bg-maroon-50 text-maroon-600 ring-1 ring-maroon-100",
+            mobile ? "h-10 w-10" : "h-12 w-12",
+            "transition-all duration-300 ease-out",
+            "group-hover/tile:scale-110 group-hover/tile:bg-white group-hover/tile:text-maroon-700 group-hover/tile:ring-gold-300",
+            "motion-reduce:transition-none motion-reduce:group-hover/tile:scale-100",
+          ].join(" ")}
+        >
+          <CategoryIcon name={c.icon} className="h-5 w-5" />
+        </span>
+
+        <span className="relative text-[11px] font-semibold leading-tight text-charcoal-800 sm:text-xs">
+          {c.name}
+        </span>
+
+        {/* A REAL COUNT OR NOTHING AT ALL. An occasion nobody has listed for
+            yet is an invitation, not a report. */}
+        {c.venueCount > 0 && (
+          <span className="relative text-[10px] font-medium text-maroon-600">
+            {c.venueCount} {c.venueCount === 1 ? "venue" : "venues"}
+          </span>
+        )}
+      </Link>
+    </li>
   );
 }
