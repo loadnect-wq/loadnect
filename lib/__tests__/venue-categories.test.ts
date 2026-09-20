@@ -18,6 +18,7 @@ import {
   type VenueCategory,
 } from "@/lib/venue-categories";
 import { occasionTiles } from "@/components/sections/OccasionDiscovery";
+import { CATEGORY_ICON_NAMES } from "@/components/venues/CategoryIcon";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // The multi-purpose venue catalogue (migration 0102).
@@ -211,6 +212,78 @@ describe("migration 0102 — the venue category catalogue", () => {
   it("documents how to undo itself", () => {
     expect(sql).toContain("ROLLBACK:");
     expect(sql).toContain("drop table if exists public.venue_categories;");
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// 1b. THE CURATION (0103)
+// ═════════════════════════════════════════════════════════════════════════════
+
+describe("migration 0103 — the ten offered occasions", () => {
+  const sql = read("supabase/migrations/0103_curate_ten_occasions.sql");
+  const code = sql.split("\n").filter((l) => !l.trim().startsWith("--")).join("\n");
+
+  /** The chosen ten, in the order they are meant to appear. */
+  const TEN = [
+    "wedding", "birthday-party", "party", "reception", "meeting",
+    "conference", "engagement", "baby-shower", "other-event", "photoshoot",
+  ];
+
+  it("offers exactly these ten, in this order", () => {
+    // Pinned as a list and an ORDER, because display_order is the only thing
+    // deciding what a visitor sees first and it is easy to renumber by accident.
+    const orders = TEN.map((slug) => {
+      const m = code.match(new RegExp(`\\('${slug}',[^)]*?(\\d+)\\)`));
+      expect(m, slug).toBeTruthy();
+      return Number(m![1]);
+    });
+    expect(orders).toEqual([...orders].sort((a, b) => a - b));
+    expect(new Set(orders).size).toBe(TEN.length);
+
+    // And the migration asserts the same thing against the live table.
+    expect(code).toContain("the offered list is %, expected %");
+  });
+
+  it("retires the rest by EXCLUSION, not by listing them", () => {
+    // Naming the eighteen would let a category added between 0102 and this
+    // migration survive as a nineteenth nobody chose.
+    expect(code).toMatch(/update public\.venue_categories set is_active = false\s+where slug not in \(/);
+  });
+
+  it("deletes nothing — the retired rows stay for reactivation", () => {
+    expect(code).not.toMatch(/delete\s+from\s+public\.venue_categories/i);
+    expect(code).toContain("the catalogue should still hold all 28 rows");
+  });
+
+  it("renames two WITHOUT touching their slugs", () => {
+    // A slug is stored on every hall, lead and booking and sits in
+    // /venues/<slug>. Renaming one orphans halls and 404s a live URL — 0102
+    // revokes the column grant precisely so this cannot happen by accident.
+    expect(code).toMatch(/\('birthday-party',\s*'Birthday'/);
+    expect(code).toMatch(/\('other-event',\s*'Event'/);
+    expect(code).not.toMatch(/set[^;]*slug\s*=/i);
+    expect(code).toContain("was not renamed (or its slug moved)");
+  });
+
+  it("refuses to strand a hall whose every category was retired", () => {
+    // A listing may keep a retired category, but one left with ONLY retired
+    // categories would vanish from every typed view silently.
+    expect(code).toContain("now declare only retired categories");
+  });
+
+  it("uses only icons the renderer can actually resolve", () => {
+    // An icon name outside CategoryIcon's fixed map renders the fallback, so a
+    // typo here is a silent downgrade to a calendar glyph on the home page.
+    const icons = [...code.matchAll(/'([A-Z][A-Za-z0-9]*)',\s*\d+\)/g)].map((m) => m[1]);
+    expect(icons.length).toBe(TEN.length);
+    for (const name of icons) {
+      expect(CATEGORY_ICON_NAMES, `${name} is not in CategoryIcon's map`).toContain(name);
+    }
+  });
+
+  it("documents how to undo itself", () => {
+    expect(sql).toContain("ROLLBACK");
+    expect(sql).toContain("set is_active = true");
   });
 });
 

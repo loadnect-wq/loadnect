@@ -24,17 +24,17 @@
 
 import {
   Baby, BookOpen, Briefcase, Building2, Cake, CalendarDays, Camera,
-  ClipboardList, Drama, Gem, GraduationCap, Heart, HeartHandshake, Landmark,
-  Lock, Network, PartyPopper, Presentation, Rocket, School, Sparkles, Store,
-  Users, UsersRound, Wrench,
+  ClipboardList, Drama, Flower2, Gem, GraduationCap, Heart, HeartHandshake,
+  Landmark, Lock, Martini, Network, PartyPopper, Presentation, Rocket, School,
+  Sparkles, Store, Tent, Users, UsersRound, Wrench,
   type LucideIcon,
 } from "lucide-react";
 
 const ICONS: Record<string, LucideIcon> = {
   Baby, BookOpen, Briefcase, Building2, Cake, CalendarDays, Camera,
-  ClipboardList, Drama, Gem, GraduationCap, Heart, HeartHandshake, Landmark,
-  Lock, Network, PartyPopper, Presentation, Rocket, School, Sparkles, Store,
-  Users, UsersRound, Wrench,
+  ClipboardList, Drama, Flower2, Gem, GraduationCap, Heart, HeartHandshake,
+  Landmark, Lock, Martini, Network, PartyPopper, Presentation, Rocket, School,
+  Sparkles, Store, Tent, Users, UsersRound, Wrench,
 };
 
 /** The icon names an admin may choose from, for the management form's picker. */

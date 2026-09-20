@@ -1,52 +1,53 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // components/sections/OccasionDiscovery.tsx — "What are you planning?"
 //
-// EVERY occasion in the catalogue, whether or not a venue has declared it yet.
-// Hallnect is a multi-purpose venue marketplace and this grid is where a
-// visitor learns that; showing only the two occasions that currently have
-// inventory made the product look like the wedding-hall site it used to be.
+// Every occasion the catalogue OFFERS, which is ten (migration 0103). Twenty-
+// eight was a directory; ten is a choice, and a choice is what this grid is for.
+// Nothing here caps or filters — the catalogue decides what is offered, and an
+// admin changes that at /admin/venue-categories without a release.
 //
 // ════════════════════════════════════════════════════════════════════════════
 // WHAT IS SHOWN vs WHAT IS INDEXED — TWO DIFFERENT DECISIONS
 // ════════════════════════════════════════════════════════════════════════════
-// This grid deliberately does NOT gate on inventory. The SEO layer still does,
-// and that separation is the whole reason showing everything here is safe:
+// This grid does NOT gate on inventory; the SEO layer still does, and that
+// separation is what makes showing everything safe:
 //
-//   * a visitor clicking "Baby Shower" gets a real page that says, plainly,
-//     that no venue has listed for it yet, and offers the two things that
-//     actually help — browse everything, or list your venue;
-//   * Google is told nothing of the sort. /venues/baby-shower is noindex and
-//     absent from the sitemap until a venue declares it (see
-//     MIN_VENUES_FOR_CATEGORY_INDEX). Twenty-six thin pages in a sitemap is
-//     the doorway-page pattern that earns manual actions; twenty-six honest
-//     pages a human can reach from a grid is a catalogue.
+//   * a visitor clicking "Baby Shower" gets a real page that says plainly no
+//     venue has listed for it yet, and offers the two things that help —
+//     browse everything, or list your venue;
+//   * Google is told nothing of the sort. /venues/baby-shower stays noindex
+//     and out of the sitemap until a venue declares it.
 //
-// So: humans see the full marketplace, crawlers see only what is real. Do not
-// "simplify" this by gating the grid again, and do not "simplify" it by
-// indexing the empty pages.
+// Do not re-gate the grid, and do not index the empty pages.
+//
+// ════════════════════════════════════════════════════════════════════════════
+// THE COLUMN COUNTS ARE CHOSEN SO ROWS FILL
+// ════════════════════════════════════════════════════════════════════════════
+// 2 / 5 / 5 divide ten exactly, so no breakpoint leaves a widowed tile sitting
+// alone on a final row. Three columns would (3+3+3+1), which is why the old
+// grid-cols-3 is gone. If the offered count ever stops being ten, revisit this
+// — a trailing orphan is the one thing that makes a neat grid look accidental.
 //
 // NO FABRICATED NUMBERS. A tile shows a venue count only when that count is
-// above zero. It never prints "0 venues", because a grid of zeroes is worse
-// than a grid without counts — and it never invents one.
+// above zero. It never prints "0 venues", and never invents one.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import Link from "next/link";
 
 import type { VenueCategory } from "@/lib/venue-categories";
 import { CategoryIcon } from "@/components/venues/CategoryIcon";
+import { revealDelay } from "@/lib/motion";
 
 export type OccasionTile = VenueCategory & { venueCount: number };
 
 /**
- * Every active occasion, the ones with venues first.
+ * Every offered occasion, the ones with venues first.
  *
- * ORDERING CARRIES THE HONESTY the filter used to. Nothing is hidden, but what
- * Hallnect can actually deliver today leads — so the grid reads as a real
- * marketplace with depth in some corners rather than a uniform wall that
- * implies inventory everywhere.
+ * ORDERING CARRIES THE HONESTY that hiding empty tiles used to: what Hallnect
+ * can actually deliver today leads, and nothing is hidden behind it.
  *
- * `limit` is optional and unset by default: the caller decides, and the home
- * page shows all of them.
+ * `limit` stays available for callers that want a shortlist; the home page
+ * passes nothing, because the catalogue is already the curated set.
  */
 export function occasionTiles(
   categories: readonly VenueCategory[],
@@ -74,44 +75,66 @@ export function OccasionDiscovery({
     <ul
       className={
         mobile
-          ? "container-app grid grid-cols-3 gap-2.5"
-          : "grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6"
+          ? "container-app grid grid-cols-2 gap-3"
+          : "grid grid-cols-2 gap-4 sm:grid-cols-5"
       }
     >
       {tiles.map((c, i) => (
         <li
           key={c.slug}
+          // The house reveal system, not a hand-rolled animationDelay: it
+          // staggers through --reveal-delay-base, which the stylesheet then
+          // SHORTENS on small screens. An inline animation-delay would beat
+          // that media query and leave the last tile waiting on a phone.
           data-reveal="scale"
-          // Capped, not i * 50: with 28 tiles an uncapped stagger would leave
-          // the last row waiting 1.4s after the first.
-          style={{ animationDelay: `${Math.min(i, 11) * 45}ms` }}
+          style={revealDelay(i)}
         >
           <Link
             href={`/venues/${c.slug}`}
-            className={
-              mobile
-                ? "flex min-h-[92px] flex-col items-center justify-center gap-1.5 rounded-2xl bg-white px-2 py-3 text-center shadow-card transition-transform active:scale-95 motion-reduce:active:scale-100"
-                : "group flex flex-col items-center gap-2 rounded-2xl border border-border bg-white p-4 transition-all hover:-translate-y-1 hover:border-maroon-300 hover:shadow-card-hover"
-            }
+            className={[
+              "group relative flex h-full flex-col items-center justify-center gap-2 overflow-hidden",
+              "rounded-2xl border border-border bg-white text-center",
+              mobile ? "min-h-[104px] px-2 py-4" : "px-3 py-5",
+              // The hover state is the whole "animated" brief on desktop: the
+              // card lifts onto a gold edge while a maroon wash fades up from
+              // the bottom. Transform and colour only — both composited, so a
+              // ten-tile grid animates on the GPU and never reflows.
+              "transition-all duration-300 ease-out",
+              "hover:-translate-y-1 hover:border-gold-300 hover:shadow-card-hover",
+              // A phone has no hover, so the feedback there is the press.
+              "active:scale-95 motion-reduce:active:scale-100",
+              "motion-reduce:transition-none motion-reduce:hover:translate-y-0",
+            ].join(" ")}
           >
+            {/* The wash. Purely decorative and behind everything, so it can
+                never intercept the tap. */}
             <span
-              className={
-                mobile
-                  ? "flex h-9 w-9 items-center justify-center rounded-full bg-maroon-50 text-maroon-600"
-                  : "flex h-12 w-12 items-center justify-center rounded-xl bg-maroon-50 text-maroon-600 transition-colors group-hover:bg-maroon-100"
-              }
+              aria-hidden
+              className="pointer-events-none absolute inset-x-0 bottom-0 h-0 bg-gradient-to-t from-maroon-50 to-transparent transition-all duration-300 ease-out group-hover:h-full motion-reduce:transition-none motion-reduce:group-hover:h-0"
+            />
+
+            <span
+              className={[
+                "relative flex items-center justify-center rounded-2xl",
+                "bg-maroon-50 text-maroon-600 ring-1 ring-maroon-100",
+                mobile ? "h-11 w-11" : "h-12 w-12",
+                "transition-all duration-300 ease-out",
+                "group-hover:scale-110 group-hover:bg-white group-hover:text-maroon-700 group-hover:ring-gold-300",
+                "motion-reduce:transition-none motion-reduce:group-hover:scale-100",
+              ].join(" ")}
             >
-              <CategoryIcon name={c.icon} className={mobile ? "h-4 w-4" : "h-5 w-5"} />
+              <CategoryIcon name={c.icon} className={mobile ? "h-5 w-5" : "h-5 w-5"} />
             </span>
 
-            <span className="text-center text-[11px] font-semibold leading-tight text-charcoal-800 sm:text-xs">
+            <span className="relative text-xs font-semibold leading-tight text-charcoal-800">
               {c.name}
             </span>
 
-            {/* A REAL COUNT OR NOTHING AT ALL. Never "0 venues" — an occasion
-                nobody has listed for yet is an invitation, not a report. */}
+            {/* A REAL COUNT OR NOTHING AT ALL. An occasion nobody has listed
+                for yet is an invitation, not a report — so it says nothing
+                rather than "0 venues". */}
             {c.venueCount > 0 && (
-              <span className="text-[10px] text-charcoal-500">
+              <span className="relative text-[10px] font-medium text-maroon-600">
                 {c.venueCount} {c.venueCount === 1 ? "venue" : "venues"}
               </span>
             )}
