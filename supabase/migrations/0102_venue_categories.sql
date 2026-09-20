@@ -519,9 +519,27 @@ drop policy if exists venue_categories_admin_update on public.venue_categories;
 create policy venue_categories_admin_update on public.venue_categories
   for update using (public.is_admin()) with check (public.is_admin());
 
+-- ── REVOKE FIRST. A NEW TABLE HERE IS NOT BORN EMPTY OF PRIVILEGES ──────────
+--
+-- Supabase ships default privileges on this schema (pg_default_acl, grantor
+-- `postgres`, objtype `r`) that grant anon AND authenticated `arwdxtm` — insert,
+-- select, update, delete, references, trigger, maintain — on EVERY table created
+-- in public. So `create table` alone left anon with table-wide INSERT and UPDATE
+-- on the catalogue, and no amount of careful granting afterwards takes that
+-- away: a grant only ever adds.
+--
+-- RLS was still the real gate (both write policies require is_admin()), so
+-- nothing was exploitable — but a table-level UPDATE is exactly what made the
+-- column list below a no-op, because a table-level privilege covers every
+-- column and a column-level one cannot carve a hole in it. The first apply of
+-- this migration failed on precisely that, at its own self-check.
+--
+-- Hence: revoke everything, then grant exactly what each role needs. 0090 does
+-- the same for anon on admin_hall_drafts.
+revoke all on public.venue_categories from anon, authenticated;
+
 grant select on public.venue_categories to anon, authenticated;
 grant insert on public.venue_categories to authenticated;
-revoke delete, truncate on public.venue_categories from anon, authenticated;
 
 -- ── THE SLUG IS NOT UPDATABLE, AND THIS IS A COLUMN LIST FOR A REASON ───────
 --
@@ -630,6 +648,19 @@ begin
   end if;
   if has_column_privilege('authenticated', 'public.venue_categories', 'slug', 'update') then
     raise exception '0102: venue_categories.slug is updatable by authenticated';
+  end if;
+
+  -- ANON GETS READ AND NOTHING ELSE. Asserted because the schema's default
+  -- privileges hand every new table to anon with insert/update/delete included
+  -- (see the revoke above), so this is the state a `create table` produces by
+  -- itself — not a state anyone has to introduce.
+  if has_table_privilege('anon', 'public.venue_categories', 'insert')
+     or has_table_privilege('anon', 'public.venue_categories', 'update')
+     or has_table_privilege('anon', 'public.venue_categories', 'delete') then
+    raise exception '0102: anon can write to venue_categories';
+  end if;
+  if not has_table_privilege('anon', 'public.venue_categories', 'select') then
+    raise exception '0102: anon cannot read venue_categories — the public pages need it';
   end if;
 end
 $$;

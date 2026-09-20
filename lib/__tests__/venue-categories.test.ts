@@ -142,12 +142,31 @@ describe("migration 0102 — the venue category catalogue", () => {
     expect(code).toContain("venue category is no longer offered");
   });
 
+  it("revokes the schema's inherited grants BEFORE granting anything", () => {
+    // THE DEFECT THE FIRST APPLY FAILED ON. Supabase ships default privileges
+    // that grant anon AND authenticated `arwdxtm` on every table created in
+    // public, so `create table` alone left anon with table-wide INSERT/UPDATE
+    // and made the column list below a no-op — a table-level privilege covers
+    // every column and a column-level grant only ever adds to it.
+    //
+    // Order is the whole assertion: the revoke must precede both grants.
+    const revoke = code.indexOf("revoke all on public.venue_categories from anon, authenticated");
+    const grantSelect = code.indexOf("grant select on public.venue_categories");
+    const grantUpdate = code.indexOf("grant update (");
+    expect(revoke).toBeGreaterThan(0);
+    expect(grantSelect).toBeGreaterThan(revoke);
+    expect(grantUpdate).toBeGreaterThan(revoke);
+  });
+
   it("refuses to let the catalogue be deleted from a session client", () => {
     // Deactivation is the removal mechanism. A deleted row leaves slugs the
     // trigger then rejects, which is the lockout above by another route.
-    expect(code).toContain("revoke delete, truncate on public.venue_categories from anon, authenticated");
+    // DELETE is never re-granted after the revoke above.
+    expect(code).not.toMatch(/grant[^;]*\bdelete\b[^;]*on public\.venue_categories/);
     expect(code).not.toMatch(/create policy [a-z_]+ on public\.venue_categories\s+for delete/);
     expect(code).toMatch(/venue_categories is deletable by authenticated/);
+    // And anon's inherited write access is asserted gone, not merely intended.
+    expect(code).toMatch(/anon can write to venue_categories/);
   });
 
   it("makes the slug immutable through the API", () => {
