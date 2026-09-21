@@ -119,7 +119,7 @@ export default function ContactPage() {
                 <div className="grid gap-5 sm:grid-cols-2">
                   <div className="space-y-1.5">
                     <Label htmlFor="name">Your name</Label>
-                    <Input id="name" placeholder="Priya Sharma" value={name} onChange={(e) => setName(e.target.value)} required />
+                    <Input id="name" placeholder="Your name" value={name} onChange={(e) => setName(e.target.value)} required />
                   </div>
                   <div className="space-y-1.5">
                     <Label htmlFor="email">Email address</Label>
