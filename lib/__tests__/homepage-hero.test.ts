@@ -158,9 +158,38 @@ describe("the mobile hero card", () => {
 });
 
 describe("the rest of the phone homepage", () => {
-  it("lays hall types out as a grid of whole rows", () => {
-    expect(mobile).toContain('className="container-app grid grid-cols-3 gap-2.5"');
-    expect(pageCode).toContain("typeTiles.length % 3 === 0");
+  it("has ONE discovery section, not two competing ones", () => {
+    // THE REDESIGN'S CORE FIX. "What are you planning?" was followed directly
+    // by "Browse halls by type" — two browse rows that looked like the same
+    // kind of control, so a visitor could not tell which to use. Budget,
+    // Premium and Available today are filters, not types, and now render as
+    // pills inside the one discovery section.
+    expect(pageCode).not.toContain("Browse halls by type");
+    expect(pageCode).not.toContain("typeTiles");
+    const discovery = mobile.slice(mobile.indexOf("What are you planning?"));
+    expect(discovery.slice(0, 900)).toContain("<QuickFilters");
+  });
+
+  it("offers \"available today\" once, not twice", () => {
+    // It used to be a tile AND a gold banner directly beneath it, both linking
+    // to /halls?available=today.
+    expect(pageCode).not.toContain("Need a hall today?");
+    // The page no longer hard-codes the link at all; QuickFilters owns the one
+    // instance, rendered once per tree.
+    expect(pageCode.match(/available=today/g) ?? []).toHaveLength(0);
+    const filters = fs.readFileSync(path.join(ROOT, "components/sections/QuickFilters.tsx"), "utf8");
+    expect(filters.match(/available=today/g) ?? []).toHaveLength(1);
+  });
+
+  it("puts the venues straight after discovery, not fourth", () => {
+    // The product is what a visitor came for; nothing sits between the one
+    // discovery section and it any more.
+    const discovery = mobile.indexOf("What are you planning?");
+    const venues = mobile.indexOf("Featured Venues");
+    const cities = mobile.indexOf("Halls by city");
+    expect(discovery).toBeGreaterThan(0);
+    expect(venues).toBeGreaterThan(discovery);
+    expect(cities).toBeGreaterThan(venues);
   });
 
   it("snaps the venue carousel card by card, with the next one peeking in", () => {
@@ -169,8 +198,11 @@ describe("the rest of the phone homepage", () => {
   });
 
   it("repeats the owner card's copy word for word, not new claims", () => {
+    // "List your wedding hall" became "List your venue" when Hallnect stopped
+    // being wedding-only. The invariant is unchanged: both trees say it once,
+    // identically, so the phone never promises something the desktop does not.
     for (const line of [
-      "List your wedding hall on Hallnect",
+      "List your venue on Hallnect",
       "Free to list — pay only on booking",
     ]) {
       expect(mobile.match(new RegExp(line))?.length, line).toBe(1);
@@ -324,15 +356,39 @@ describe("the date calendar", () => {
   });
 });
 
-describe("the category row", () => {
-  it("has as many columns as tiles, so no gap opens on the right", () => {
-    // grid-cols-8 with six categories left 308px empty, measured at 1440px.
-    expect(desktop).toContain("grid-cols-[repeat(var(--cat-cols),minmax(0,1fr))]");
-    expect(desktop).toContain('"--cat-cols": visibleCategories.length');
+describe("the desktop discovery section", () => {
+  // The standalone "category row" of three big tiles is gone — it was the
+  // desktop half of the duplicate "browse" section. Its shortcuts now render as
+  // QuickFilters pills under the occasions, exactly as on the phone.
+  it("is one section with the filters inside it", () => {
+    expect(desktop).not.toContain("visibleCategories");
+    const discovery = desktop.slice(desktop.indexOf("Find a hall for your occasion"));
+    expect(discovery.slice(0, 1200)).toContain("<QuickFilters");
+  });
+});
+
+describe("the footer does not repeat the page", () => {
+  it("drops the link lists that duplicated sections higher up", () => {
+    // "Browse by city" repeated the city photo tiles; "Popular searches"
+    // repeated the occasion ticker. A page listing the same links three times
+    // is what read as messy. No crawlable link was lost: CityGrid and
+    // OccasionDiscovery render real <a> elements in the server HTML.
+    expect(pageCode).not.toContain(">Browse by city<");
+    expect(pageCode).not.toContain(">Popular searches<");
   });
 
-  it("no longer reserves room for a pill that used to overhang it", () => {
-    const cats = desktop.slice(desktop.indexOf("visibleCategories.map") - 400, desktop.indexOf("visibleCategories.map"));
-    expect(cats).toContain('className="container-page py-12"');
+  it("keeps every FAQ answer in the server HTML, as an accordion", () => {
+    // Flat, the five answers were 1,522px on a phone — two screens of solid
+    // text. They are native <details> now: closed until tapped, but still in
+    // the document, so crawlable and still the text the FAQPage JSON-LD
+    // declares. <details> rather than a JS accordion so an answer can never be
+    // stuck closed if hydration fails.
+    expect(pageCode).toContain("FAQ_ITEMS.map((f, i) =>");
+    const faq = pageCode.slice(pageCode.indexOf("FAQ_ITEMS.map((f, i) =>"));
+    expect(faq.slice(0, 1400)).toContain("<details");
+    expect(faq.slice(0, 1400)).toContain("<summary");
+    expect(faq.slice(0, 1400)).toContain("{f.a}");
+    // Never rendered open-by-JS-only: no client state drives it.
+    expect(pageCode).not.toMatch(/useState[^;]*faq/i);
   });
 });

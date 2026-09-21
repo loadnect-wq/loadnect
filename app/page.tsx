@@ -1,7 +1,6 @@
 import Link from "next/link";
 import {
-  ArrowRight, Building2, Check, CheckCircle2, ChevronRight, Crown, Heart, LayoutGrid, MapPin,
-  PartyPopper, Shield, Sparkles, Star, Wallet, Zap,
+  ArrowRight, Building2, Check, CheckCircle2, Crown, Plus, Shield, Sparkles, Star,
 } from "lucide-react";
 import { AppHeader } from "@/components/app/AppHeader";
 import { MobileSearch } from "./_components/MobileSearch";
@@ -28,35 +27,7 @@ import {
 import { fetchCityInventory, type CityInventory } from "@/lib/seo/cities";
 import { fetchVenueCategories, fetchCategoryInventory } from "@/lib/venue-categories.server";
 import { OccasionDiscovery, occasionTiles } from "@/components/sections/OccasionDiscovery";
-import { categoryVenueLabel } from "@/lib/venue-categories";
-
-/**
- * The tiles that are NOT occasions.
- *
- * The four venue types that used to sit at the top of this list moved out in
- * 0102, to <OccasionDiscovery>, which reads the catalogue and — crucially —
- * drops any occasion no approved hall declares. These three are different in
- * kind: a price band and a tier are not occasions, and "Available today" is a
- * date filter. They stay hard-coded because they are properties of the
- * platform rather than rows an admin can add.
- */
-const CATEGORIES = [
-  { key: "budget",    label: "Budget Halls",    icon: "wallet",     href: "/halls?category=budget"    },
-  { key: "premium",   label: "Premium Halls",   icon: "crown",      href: "/halls?category=premium"   },
-  { key: "today",     label: "Available Today", icon: "zap",        href: "/halls?available=today"    },
-] as const;
-
-const CATEGORY_ICONS: Record<string, React.ReactNode> = {
-  heart:    <Heart className="h-5 w-5" />,
-  sparkles: <Sparkles className="h-5 w-5" />,
-  party:    <PartyPopper className="h-5 w-5" />,
-  building: <Building2 className="h-5 w-5" />,
-  wallet:   <Wallet className="h-5 w-5" />,
-  crown:    <Crown className="h-5 w-5" />,
-  pin:      <MapPin className="h-5 w-5" />,
-  zap:      <Zap className="h-5 w-5" />,
-  all:      <LayoutGrid className="h-5 w-5" />,
-};
+import { QuickFilters } from "@/components/sections/QuickFilters";
 
 // The phone hero card's shade: light over the sky at the top, heavy under the
 // copy at the bottom. Measured on the poster cropped to the 343x272 card at
@@ -196,27 +167,12 @@ export default async function HomePage() {
     (h) => h.premium_tier === "premium" || h.premium_tier === "pro",
   );
 
-  // 2. PREMIUM ENTRY POINTS. The quick action and the category tile linked to
-  //    /halls?category=premium, which returns nothing while no hall holds a
-  //    tier. Hidden until there is inventory; they return on their own the
-  //    moment an owner buys a plan.
+  // 2. PREMIUM ENTRY POINT. /halls?category=premium returns nothing while no
+  //    hall holds a paid tier, so the Premium pill stays hidden until there is
+  //    inventory and returns on its own the moment an owner buys a plan. The
+  //    gate now lives in QuickFilters, which is handed premiumCount below.
   //    Fetched with the batch at the top of this function, not here — awaiting
   //    it at its point of use made it a fifth serial round trip to Sydney.
-  const visibleCategories = premiumCount > 0
-    ? [...CATEGORIES]
-    : CATEGORIES.filter((c) => c.key !== "premium");
-  // The phone's quick tiles, three to a row: the commercial ones plus "All
-  // halls", which both fills the row and is the honest destination when no
-  // occasion has inventory yet.
-  const typeTiles = visibleCategories.map((c) => ({
-    key: c.key as string,
-    icon: c.icon as string,
-    href: c.href as string,
-    short: c.label.replace(/ Halls$/, ""),
-  }));
-  const mobileTypes = typeTiles.length % 3 === 0
-    ? typeTiles
-    : [...typeTiles, { key: "all", icon: "all", href: "/halls", short: "All halls" }];
 
   // EVERY occasion in the catalogue, the ones with venues first. No limit: this
   // grid is where a visitor learns Hallnect is not a wedding-only site, and
@@ -339,55 +295,17 @@ export default async function HomePage() {
             has a venue behind it. Absent entirely when none do — see
             OccasionDiscovery for why an ungated version of this is the exact
             defect the premium tile had to be fixed for twice. */}
-        {occasions.length > 0 && (
-          <section className="mt-8">
-            <MobileSectionTitle
-              title="What are you planning?"
-              linkLabel="All venues"
-              linkHref="/halls"
-            />
-            <OccasionDiscovery tiles={occasions} variant="mobile" />
-          </section>
-        )}
-
-        {/* ── Halls by type ─────────────────────────────────────────────
-            A grid, not a sideways strip: all of them are visible at once.
-            Three to a row, so the count is padded to a whole row with "All
-            halls" — never a hole. */}
+        {/* ONE DISCOVERY SECTION. The occasions and the three filter pills
+            under them used to be two separate "browse" sections back to back,
+            and a visitor could not tell which to use. See QuickFilters. */}
         <section className="mt-8">
-          <MobileSectionTitle title="Browse halls by type" />
-          <ul className="container-app grid grid-cols-3 gap-2.5">
-            {mobileTypes.map((c, i) => (
-              <li key={c.key} data-reveal="scale" style={revealDelay(i, 50)}>
-                <Link
-                  href={c.href}
-                  className="flex min-h-[88px] flex-col items-center justify-center gap-2 rounded-2xl bg-white px-2 py-3 text-center shadow-card transition-transform active:scale-95 motion-reduce:active:scale-100"
-                >
-                  <span className="flex h-10 w-10 items-center justify-center rounded-full bg-maroon-50 text-maroon-600">
-                    {CATEGORY_ICONS[c.icon]}
-                  </span>
-                  <span className="text-xs font-semibold leading-tight text-charcoal-800">{c.short}</span>
-                </Link>
-              </li>
-            ))}
-          </ul>
-
-          <div className="container-app mt-3">
-            <Link
-              href="/halls?available=today"
-              data-reveal="up"
-              className="flex min-h-14 items-center gap-3 rounded-2xl border border-gold-300/60 bg-gold-50 px-4 py-3 transition-transform active:scale-[0.99] motion-reduce:active:scale-100"
-            >
-              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gold-100 text-gold-700">
-                <Zap className="h-4 w-4" aria-hidden />
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="block text-sm font-semibold text-charcoal-900">Need a hall today?</span>
-                <span className="block text-xs text-charcoal-700">See halls available today</span>
-              </span>
-              <ChevronRight className="h-5 w-5 shrink-0 text-charcoal-600" aria-hidden />
-            </Link>
-          </div>
+          <MobileSectionTitle
+            title="What are you planning?"
+            linkLabel="All venues"
+            linkHref="/halls"
+          />
+          {occasions.length > 0 && <OccasionDiscovery tiles={occasions} variant="mobile" />}
+          <QuickFilters premiumCount={premiumCount} className="container-app mt-4" />
         </section>
 
         <section className="mt-8">
@@ -465,7 +383,7 @@ export default async function HomePage() {
               <Crown className="h-3 w-3" aria-hidden /> For Venue Owners
             </span>
             <h2 className="mt-3 font-serif text-2xl font-bold leading-tight text-ivory-100">
-              List your wedding hall on Hallnect
+              List your venue on Hallnect
             </h2>
             <p className="mt-2 text-sm text-ivory-100">
               List your hall in minutes. Get bookings backed by gateway-verified payments
@@ -577,34 +495,11 @@ export default async function HomePage() {
             <div className="mt-6">
               <OccasionDiscovery tiles={occasions} variant="desktop" />
             </div>
+            {/* The shortcuts that used to be a whole second row of tiles
+                below this one. See QuickFilters for why they are pills. */}
+            <QuickFilters premiumCount={premiumCount} className="mt-5 justify-center" />
           </section>
         )}
-
-        {/* ── Categories strip ─────────────────────────────────── */}
-        <section className="container-page py-12">
-          {/* COLUMNS FOLLOW THE TILE COUNT. This was grid-cols-8 from when the
-              list was longer; with six or seven categories it left a 308px
-              empty gap at the right of the row, measured at 1440px. */}
-          <div
-            className="grid grid-cols-[repeat(var(--cat-cols),minmax(0,1fr))] gap-4"
-            style={{ "--cat-cols": visibleCategories.length } as React.CSSProperties}
-          >
-            {visibleCategories.map((c, i) => (
-              <Link
-                key={c.key}
-                href={c.href}
-                data-reveal="scale"
-                style={revealDelay(i, 60)}
-                className="group flex flex-col items-center gap-2 rounded-2xl border border-border bg-white p-4 transition-all hover:-translate-y-1 hover:border-maroon-300 hover:shadow-card-hover"
-              >
-                <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-maroon-50 text-maroon-600 transition-colors group-hover:bg-maroon-100">
-                  {CATEGORY_ICONS[c.icon]}
-                </span>
-                <span className="text-center text-xs font-semibold text-charcoal-800">{c.label}</span>
-              </Link>
-            ))}
-          </div>
-        </section>
 
         {/* ── Sponsored banner ─────────────────────────────────── */}
         <section data-reveal="fade" className="container-page pb-4">
@@ -650,7 +545,7 @@ export default async function HomePage() {
         <section className="container-page py-12">
           <DesktopSectionHeader
             eyebrow="By location"
-            title="Wedding halls by city"
+            title="Halls by city"
             blurb="Browse the cities where halls are listed today, and see where Hallnect is launching next."
           />
           {/* Three to a row when the count divides by three (six launch
@@ -751,7 +646,7 @@ export default async function HomePage() {
                   <Crown className="h-3 w-3" /> For Venue Owners
                 </span>
                 <h2 className="mt-4 font-serif text-3xl font-bold text-ivory-100 xl:text-4xl">
-                  List your wedding hall on Hallnect
+                  List your venue on Hallnect
                 </h2>
                 {/* "verified bookings" read as though Hallnect vetted the
                     customer. What is actually verified is the payment: the
@@ -814,7 +709,7 @@ export default async function HomePage() {
           one of them WIDENS, since max-w-lg is 32rem and even xl is 36rem. */}
       <section className="container-app border-t border-border py-10 lg:max-w-3xl">
         <h2 data-reveal="up" className="font-serif text-xl font-bold text-charcoal-900">
-          Wedding halls and marriage halls across Tamil Nadu
+          Wedding, party and event halls across Tamil Nadu
         </h2>
         <div data-reveal="up" style={revealDelay(1, 80)} className="mt-3 space-y-3 text-sm leading-relaxed text-charcoal-600">
           {/* "Every venue is reviewed by our team before it goes live" claimed
@@ -824,77 +719,78 @@ export default async function HomePage() {
               visits the venue. Saying so here is also the sentence that makes
               the "check before you commit" advice on the venue page make sense.
               Do not restore the old wording without changing the Terms first. */}
+          {/* ONE PARAGRAPH. There were two, and the second ("check which dates
+              are free, see the advance…") restated the How it works steps a
+              screen higher. What stays is what nothing else on the page says:
+              what Hallnect is, where the listings come from, and — kept
+              deliberately, per Terms section 5 — that we do not verify every
+              detail, so confirm with the venue before you commit. */}
           <p>
-            Hallnect is a booking platform for wedding halls, marriage halls, reception
-            venues and banquet halls in Tamil Nadu. Listings are written and submitted by
-            the venue owners themselves and checked by our team before they go live, so
-            the photos, seating capacity and pricing you compare are the venue&apos;s own —
-            not a stock listing. We do not independently verify every listing detail, so
-            confirm the specifics with the venue before you commit.
-          </p>
-          <p>
-            Check which dates are free, see the advance payable before you commit, and
-            reserve online. The balance is settled directly with the venue, and every booking
-            update is on your Hallnect bookings page.
+            Hallnect helps you find halls across Tamil Nadu for weddings, receptions, parties,
+            meetings, conferences and more. Every listing is submitted by the venue itself and
+            checked by our team before it goes live, so the photos, capacity and pricing are
+            the venue&apos;s own. We don&apos;t independently verify every detail, so confirm
+            the specifics with the venue before you commit.
           </p>
         </div>
 
-        {citiesWithVenues.length > 0 && (
-          <div data-reveal="up" className="mt-6">
-            <h3 className="text-sm font-semibold text-charcoal-900">Browse by city</h3>
-            <ul className="mt-2 flex flex-wrap gap-2">
-              {citiesWithVenues.map((c) => (
-                <li key={c.slug}>
-                  <Link
-                    href={`/wedding-halls/${c.slug}`}
-                    className="inline-block rounded-full border border-border bg-white px-3 py-1.5 text-xs font-medium text-charcoal-700 transition hover:border-maroon-300 hover:text-maroon-700"
-                  >
-                    Wedding halls in {c.city}
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-
-        {/* Internal links into the occasion landing pages, and the one place
-            on this page where the multi-purpose catalogue is spelled out in
-            words a crawler reads: "Birthday Party Halls in Tamil Nadu".
-
-            BUILT FROM `occasions`, so every link here has inventory behind it.
-            A block of twenty-eight links to empty pages is precisely the
-            programmatic-SEO pattern lib/seo/cities.ts exists to avoid. */}
-        {occasions.length > 0 && (
-          <div data-reveal="up" style={revealDelay(1, 80)} className="mt-6">
-            <h3 className="text-sm font-semibold text-charcoal-900">Popular searches</h3>
-            <ul className="mt-2 flex flex-wrap gap-2 text-xs">
-              {occasions.map((c) => (
-                <li key={c.slug}>
-                  <Link href={`/venues/${c.slug}`} className="text-maroon-700 underline-offset-2 hover:underline">
-                    {categoryVenueLabel(c)} in Tamil Nadu
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
+        {/* "Browse by city" and "Popular searches" USED TO LIVE HERE and were
+            removed as duplicates: the first repeated the city photo tiles, the
+            second the occasion ticker, both higher on the same page. No
+            crawlable link was lost — every /wedding-halls/<city> and
+            /venues/<slug> URL they carried is still a real <a> in the server
+            HTML above, rendered by CityGrid and OccasionDiscovery. Do not add
+            them back to "help SEO"; a page listing the same links three times
+            is what read as messy. */}
 
         {/* The ONLY rendering of FAQ_ITEMS on this page, and the answers the
-            FAQPage JSON-LD above declares. Visible at every viewport, which is
-            what makes the markup eligible — do not move it back inside either
-            the mobile or the desktop tree, and do not add a second copy. */}
+            FAQPage JSON-LD above declares. Rendered at every viewport, in one
+            place — do not move it back inside either the mobile or the desktop
+            tree, and do not add a second copy.
+
+            AN ACCORDION, NOT A WALL. Laid out flat these five answers were
+            1,522px on a phone — nearly two full screens of solid text, 29% of
+            the entire page, and the single biggest reason it read as messy.
+            Each is now a native <details>, closed until tapped.
+
+            WHY THIS STAYS VALID FOR THE FAQPage MARKUP. The answers are still
+            in the server-rendered HTML — <details> hides them from view, not
+            from the document — so they are crawlable and they are the same
+            text the JSON-LD declares. Google treats content in an expandable
+            section as on the page. (Separately: since August 2023 Google shows
+            FAQ rich results only for government and health sites, so Hallnect
+            is not eligible for the rich result either way; the markup is kept
+            because it is accurate and costs nothing.)
+
+            <details>, not a JS accordion: it works before hydration, needs no
+            client component, is keyboard- and screen-reader-accessible by
+            default, and cannot leave an answer stuck closed if JS fails. */}
         <div className="mt-8">
           <h3 data-reveal="up" className="font-serif text-lg font-bold text-charcoal-900">
             Frequently asked questions
           </h3>
-          <dl className="mt-3 space-y-4">
+          <div className="mt-3 divide-y divide-border overflow-hidden rounded-2xl border border-border bg-white">
             {FAQ_ITEMS.map((f, i) => (
-              <div key={f.q} data-reveal="up" style={revealDelay(i, 90)}>
-                <dt className="text-sm font-semibold text-charcoal-900">{f.q}</dt>
-                <dd className="mt-1 text-sm leading-relaxed text-charcoal-600">{f.a}</dd>
-              </div>
+              <details key={f.q} data-reveal="up" style={revealDelay(i, 60)} className="group">
+                <summary
+                  className={[
+                    "flex min-h-[52px] cursor-pointer list-none items-center justify-between gap-3 px-4 py-3",
+                    "text-sm font-semibold text-charcoal-900 transition-colors hover:bg-ivory-50",
+                    // Safari draws its own disclosure triangle on <summary>;
+                    // list-none removes the marker everywhere else.
+                    "[&::-webkit-details-marker]:hidden",
+                  ].join(" ")}
+                >
+                  <span>{f.q}</span>
+                  <Plus
+                    className="h-4 w-4 shrink-0 text-maroon-600 transition-transform duration-200 group-open:rotate-45 motion-reduce:transition-none"
+                    aria-hidden
+                  />
+                </summary>
+                <p className="px-4 pb-4 text-sm leading-relaxed text-charcoal-600">{f.a}</p>
+              </details>
             ))}
-          </dl>
+          </div>
           <p data-reveal="fade" style={revealDelay(5, 90)} className="mt-4 text-sm text-charcoal-600">
             Still have questions?{" "}
             <Link href="/contact" className="text-maroon-600 underline underline-offset-2 hover:text-maroon-800">

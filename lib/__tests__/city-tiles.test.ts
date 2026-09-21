@@ -123,6 +123,10 @@ describe("the cover photos", () => {
 
   it("go through next/image, so a phone gets a tile-sized file", () => {
     expect(pageCode).toContain('sizes="(min-width: 1280px) 400px, 320px"');
-    expect(cityGrid).toContain('sizes="(max-width: 512px) 50vw, 250px"');
+    // The phone tiles became a swipeable strip at 42vw (capped 200px) rather
+    // than a 50vw grid, so `sizes` follows the tile. Advertising 50vw for a
+    // 42vw tile would make the browser fetch a larger file than it draws.
+    expect(cityGrid).toContain('sizes="(max-width: 476px) 42vw, 200px"');
+    expect(cityGrid).toContain("w-[42vw] max-w-[200px]");
   });
 });
