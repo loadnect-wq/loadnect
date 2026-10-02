@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import {
   AlertCircle, Building2, CalendarDays, CheckCircle2, CreditCard,
-  IndianRupee, Plus, Sparkles, Clock, Wallet, Inbox, Phone,
+  IndianRupee, Plus, Sparkles, Clock, Wallet, Inbox, Phone, BookOpen,
 } from "lucide-react";
 import { requireRole } from "@/lib/auth";
 import { fetchOwnerRow, fetchOwnerHalls, fetchOwnerStats, fetchOwnerCommissions } from "@/lib/owner";
@@ -252,6 +252,9 @@ export default async function OwnerDashboardPage() {
         <div className="flex flex-wrap gap-2">
           <Link href="/owner/halls/new" className={buttonVariants({ variant: "gold", size: "sm" })}>
             <Plus className="h-4 w-4" /> Add Hall
+          </Link>
+          <Link href="/owner/diary" className={buttonVariants({ variant: "outline", size: "sm" })}>
+            <BookOpen className="h-4 w-4" /> Booking diary
           </Link>
           <Link href="/owner/bookings" className={buttonVariants({ variant: "outline", size: "sm" })}>
             <CalendarDays className="h-4 w-4" /> View Bookings

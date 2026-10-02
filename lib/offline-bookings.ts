@@ -35,6 +35,10 @@ export type OfflineBookingRow = {
   reference: string | null;
   status: "confirmed" | "cancelled";
   created_at: string;
+  /** Rupees agreed with the customer (0106). null = not recorded, never zero. */
+  total_amount: number | null;
+  /** Rupees paid so far. null = not recorded. */
+  amount_received: number | null;
 };
 
 export type OfflineBookingResult =
@@ -72,6 +76,17 @@ function friendlyError(error: any): string {
   if (raw.includes("more than 31 days")) {
     return "An offline booking cannot span more than 31 days.";
   }
+  if (raw.includes("AMOUNT_INVALID")) {
+    return raw.includes("more than the total")
+      ? "The amount received cannot be more than the total. Raise the total if the customer paid for extras."
+      : "Amounts cannot be negative.";
+  }
+  if (raw.includes("BOOKING_CANCELLED")) {
+    return "That booking was cancelled, so it can no longer be changed.";
+  }
+  if (raw.includes("no longer exists")) {
+    return "That booking no longer exists. Refresh to see the latest diary.";
+  }
 
   console.error("[offline-bookings]", error?.code, raw);
   return "Could not save that booking. Please try again.";
@@ -88,6 +103,8 @@ export async function createOfflineBooking(input: {
   reference?: string | null;
   /** Idempotency key — a retry with the same value returns the original id. */
   clientToken?: string | null;
+  totalAmount?: number | null;
+  amountReceived?: number | null;
 }): Promise<OfflineBookingResult> {
   const supabase = await getSupabaseServerClient();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -103,11 +120,42 @@ export async function createOfflineBooking(input: {
     _notes:          input.notes ?? null,
     _reference:      input.reference ?? null,
     _client_token:   input.clientToken ?? null,
+    _total_amount:    input.totalAmount ?? null,
+    _amount_received: input.amountReceived ?? null,
   });
 
   if (error) return { ok: false, error: friendlyError(error) };
   if (!data)  return { ok: false, error: "Could not save that booking. Please try again." };
   return { ok: true, id: String(data) };
+}
+
+/**
+ * The diary's edit: name, phone, notes and money, as a FULL REPLACEMENT — pass
+ * every field, null to clear one. Dates and slot cannot change here; see
+ * update_offline_booking in migration 0106 for why.
+ */
+export async function updateOfflineBooking(input: {
+  id: string;
+  customerName: string | null;
+  customerPhone: string | null;
+  notes: string | null;
+  totalAmount: number | null;
+  amountReceived: number | null;
+}): Promise<OfflineBookingResult> {
+  const supabase = await getSupabaseServerClient();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const db = supabase as any;
+
+  const { error } = await db.rpc("update_offline_booking", {
+    _id:              input.id,
+    _customer_name:   input.customerName,
+    _customer_phone:  input.customerPhone,
+    _notes:           input.notes,
+    _total_amount:    input.totalAmount,
+    _amount_received: input.amountReceived,
+  });
+  if (error) return { ok: false, error: friendlyError(error) };
+  return { ok: true, id: input.id };
 }
 
 export async function cancelOfflineBooking(id: string): Promise<OfflineBookingResult> {
@@ -127,7 +175,15 @@ export async function cancelOfflineBooking(id: string): Promise<OfflineBookingRe
  */
 export async function fetchOfflineBookings(
   hallId: string,
-  opts?: { includeCancelled?: boolean },
+  opts?: {
+    includeCancelled?: boolean;
+    /**
+     * THROW on a failed read instead of returning []. The diary passes this:
+     * an empty list there reads as "no bookings and nothing to collect", which
+     * is exactly the fail-open defect this codebase keeps having to remove.
+     */
+    strict?: boolean;
+  },
 ): Promise<OfflineBookingRow[]> {
   const supabase = await getSupabaseServerClient();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -135,7 +191,7 @@ export async function fetchOfflineBookings(
 
   let q = db
     .from("offline_bookings")
-    .select("id, hall_id, event_date, end_date, slot, customer_name, customer_phone, notes, reference, status, created_at")
+    .select("id, hall_id, event_date, end_date, slot, customer_name, customer_phone, notes, reference, status, created_at, total_amount, amount_received")
     .eq("hall_id", hallId)
     .order("event_date", { ascending: true });
 
@@ -145,7 +201,14 @@ export async function fetchOfflineBookings(
   if (error) {
     // A missing table (un-migrated environment) must not break the calendar.
     console.error("[offline-bookings] list failed:", error.code, error.message);
+    if (opts?.strict) throw new Error("Could not load your diary.");
     return [];
   }
-  return (data ?? []) as OfflineBookingRow[];
+  // numeric arrives as a string from PostgREST; the diary does arithmetic on it.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (data ?? []).map((r: any): OfflineBookingRow => ({
+    ...r,
+    total_amount:    r.total_amount == null ? null : Number(r.total_amount),
+    amount_received: r.amount_received == null ? null : Number(r.amount_received),
+  }));
 }

@@ -786,6 +786,27 @@ const ALLOWED_SLOTS = ["morning", "evening", "full_day"] as const;
  * whether the inventory is free — see assert_inventory_free. A UI-level "no
  * past dates" rule would only stop someone recording history they already have.
  */
+/**
+ * An amount entered in the owner's diary, in whole or fractional rupees.
+ * Blank means "not recorded" (null). Capped where the database caps it (0106):
+ * ten crore is past any hall booking and catches a mistyped extra zero.
+ */
+export const diaryAmountSchema = optionalMoneySchema.refine(
+  (n) => n == null || n <= 100_000_000,
+  "That amount looks too large — check for an extra zero.",
+);
+
+type DiaryMoney = { totalAmount?: number | null; amountReceived?: number | null };
+
+/** Received may not exceed the total, matching offline_bookings_received_le_total. */
+function receivedWithinTotal(d: DiaryMoney): boolean {
+  return d.totalAmount == null || d.amountReceived == null || d.amountReceived <= d.totalAmount;
+}
+const RECEIVED_WITHIN_TOTAL_ERROR = {
+  message: "The amount received cannot be more than the total. Raise the total if the customer paid for extras.",
+  path: ["amountReceived"],
+};
+
 export const offlineBookingSchema = z
   .object({
     hallId:        uuidSchema,
@@ -802,11 +823,19 @@ export const offlineBookingSchema = z
     // raised by their own first attempt. Optional so a caller that has no
     // opinion still works; the RPC just loses the retry guarantee.
     clientToken:   uuidSchema.optional(),
+    // The diary's money (0106). Optional and nullable: a booking blocked in a
+    // hurry with no amount discussed must stay "not recorded", never Rs.0.
+    // Trailing .optional() because a server action drops undefined keys and a
+    // Zod transform pipe is otherwise a required key — see
+    // lib/__tests__/coupon-schema.test.ts for the same trap.
+    totalAmount:    diaryAmountSchema.optional(),
+    amountReceived: diaryAmountSchema.optional(),
   })
   .refine((d) => d.endDate >= d.eventDate, {
     message: "The end date cannot be before the start date.",
     path: ["endDate"],
   })
+  .refine(receivedWithinTotal, RECEIVED_WITHIN_TOTAL_ERROR)
   // Mirrors the RPC's own ceiling. Checked here too so an owner gets a field
   // error rather than a database exception surfaced as a generic failure.
   .refine(
@@ -815,6 +844,25 @@ export const offlineBookingSchema = z
   );
 
 export type OfflineBookingInput = z.input<typeof offlineBookingSchema>;
+
+/**
+ * Editing a diary booking: the private detail only. Dates and slot are not
+ * here on purpose — moving a booking is a release plus a new claim, because
+ * only the create path holds the inventory lock (see migration 0106).
+ */
+export const diaryBookingUpdateSchema = z
+  .object({
+    id:             uuidSchema,
+    hallId:         uuidSchema,
+    customerName:   optionalTrimmed(120),
+    customerPhone:  optionalTrimmed(20),
+    notes:          optionalTrimmed(1000),
+    totalAmount:    diaryAmountSchema.optional(),
+    amountReceived: diaryAmountSchema.optional(),
+  })
+  .refine(receivedWithinTotal, RECEIVED_WITHIN_TOTAL_ERROR);
+
+export type DiaryBookingUpdateInput = z.input<typeof diaryBookingUpdateSchema>;
 
 // ── Booking ──────────────────────────────────────────────────────────────────
 

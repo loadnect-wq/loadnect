@@ -1,6 +1,8 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { cookies } from "next/headers";
+import { DIARY_LANG_COOKIE, parseDiaryLang } from "@/lib/diary";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { generateSlug } from "@/lib/owner";
 import {
@@ -14,6 +16,7 @@ import {
   claimHallDraftSchema,
   uuidSchema,
   offlineBookingSchema,
+  diaryBookingUpdateSchema,
   parseSafe,
   normalizeAmenityName,
   CUSTOM_AMENITY_LIMITS,
@@ -1533,6 +1536,9 @@ export async function addOfflineBooking(input: {
   notes?: string;
   reference?: string;
   clientToken?: string;
+  /** Rupees. Blank/absent = not recorded. From the diary; the availability screen sends neither. */
+  totalAmount?: number | string | null;
+  amountReceived?: number | string | null;
 }): Promise<{ success: true; id: string } | { error: string }> {
   const { user } = await getAuthUser();
   if (!user) return { error: "Not authenticated" };
@@ -1552,6 +1558,8 @@ export async function addOfflineBooking(input: {
     notes:         v.notes         || null,
     reference:     v.reference     || null,
     clientToken:   v.clientToken    ?? null,
+    totalAmount:    v.totalAmount    ?? null,
+    amountReceived: v.amountReceived ?? null,
   });
 
   if (!result.ok) return { error: result.error };
@@ -1563,8 +1571,64 @@ export async function addOfflineBooking(input: {
   // nothing for the exact role it is meant to watch. See migration 0062.
 
   revalidatePath(`/owner/halls/${v.hallId}/availability`);
+  revalidatePath("/owner/diary");
   revalidatePath(`/halls`);
   return { success: true, id: result.id };
+}
+
+/**
+ * The diary's edit: name, phone, notes and money for one offline booking.
+ * Ownership is decided by update_offline_booking (owns_hall on the booking's
+ * own hall, under SECURITY DEFINER), so a forged id or hallId reaches nothing
+ * the caller does not own. hallId is only used to refresh the right pages.
+ */
+export async function updateDiaryBooking(input: {
+  id: string;
+  hallId: string;
+  customerName: string;
+  customerPhone: string;
+  notes: string;
+  totalAmount?: number | string | null;
+  amountReceived?: number | string | null;
+}): Promise<ActionResult> {
+  const { user } = await getAuthUser();
+  if (!user) return { error: "Not authenticated" };
+
+  const parsed = parseSafe(diaryBookingUpdateSchema, input);
+  if (!parsed.ok) return { error: parsed.error };
+  const v = parsed.data;
+
+  const { updateOfflineBooking } = await import("@/lib/offline-bookings");
+  const result = await updateOfflineBooking({
+    id:             v.id,
+    customerName:   v.customerName  || null,
+    customerPhone:  v.customerPhone || null,
+    notes:          v.notes         || null,
+    totalAmount:    v.totalAmount    ?? null,
+    amountReceived: v.amountReceived ?? null,
+  });
+  if (!result.ok) return { error: result.error };
+
+  revalidatePath("/owner/diary");
+  revalidatePath(`/owner/halls/${v.hallId}/availability`);
+  return { success: true };
+}
+
+/**
+ * English or Tamil for the diary, remembered on this device for a year. A
+ * cookie rather than localStorage so the server renders the right language on
+ * the first paint — owner pages are dynamic anyway.
+ */
+export async function setDiaryLanguage(lang: string): Promise<ActionResult> {
+  const jar = await cookies();
+  jar.set(DIARY_LANG_COOKIE, parseDiaryLang(lang), {
+    path: "/owner",
+    maxAge: 60 * 60 * 24 * 365,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+  });
+  revalidatePath("/owner/diary");
+  return { success: true };
 }
 
 export async function releaseOfflineBooking(
@@ -1584,6 +1648,7 @@ export async function releaseOfflineBooking(
   // Audited inside cancel_offline_booking — see addOfflineBooking above.
 
   revalidatePath(`/owner/halls/${hallId}/availability`);
+  revalidatePath("/owner/diary");
   revalidatePath(`/halls`);
   return { success: true };
 }

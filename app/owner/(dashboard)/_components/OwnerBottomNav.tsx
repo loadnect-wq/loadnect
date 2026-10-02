@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Building2, CalendarDays, LayoutDashboard, IndianRupee, Menu } from "lucide-react";
+import { BookOpen, Building2, CalendarDays, LayoutDashboard, Menu } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -20,7 +20,10 @@ import { cn } from "@/lib/utils";
 // side of it, so that was the single worst usability hole in the product.
 //
 // Four destinations plus More, because five is the most that stays tappable at
-// 360px. Everything else lives behind More, which is a real page rather than a
+// 360px. DIARY TOOK REVENUE'S SLOT (2026-10-02): the diary is the screen a
+// manager opens every day — it replaces their paper notebook — while Revenue
+// is empty until online bookings exist. Revenue moved to More and stays in the
+// desktop sidebar. Everything else lives behind More, which is a real page rather than a
 // menu — a sheet would need client state and would be one more thing to get
 // wrong on a slow device.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -29,7 +32,7 @@ const TABS = [
   { href: "/owner/dashboard", label: "Dashboard", Icon: LayoutDashboard, exact: true },
   { href: "/owner/halls",     label: "My Halls",  Icon: Building2 },
   { href: "/owner/bookings",  label: "Bookings",  Icon: CalendarDays },
-  { href: "/owner/revenue",   label: "Revenue",   Icon: IndianRupee },
+  { href: "/owner/diary",     label: "Diary",     Icon: BookOpen },
   { href: "/owner/more",      label: "More",      Icon: Menu },
 ] as const;
 

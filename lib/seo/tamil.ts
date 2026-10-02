@@ -75,12 +75,12 @@ export function cityLanguageAlternates(slug: string): Record<string, string> {
   };
 }
 
-const MONTHS = [
+export const TAMIL_MONTHS = [
   "ஜனவரி", "பிப்ரவரி", "மார்ச்", "ஏப்ரல்", "மே", "ஜூன்",
   "ஜூலை", "ஆகஸ்ட்", "செப்டம்பர்", "அக்டோபர்", "நவம்பர்", "டிசம்பர்",
 ] as const;
 
-const WEEKDAYS = ["ஞாயிறு", "திங்கள்", "செவ்வாய்", "புதன்", "வியாழன்", "வெள்ளி", "சனி"] as const;
+export const TAMIL_WEEKDAYS = ["ஞாயிறு", "திங்கள்", "செவ்வாய்", "புதன்", "வியாழன்", "வெள்ளி", "சனி"] as const;
 
 /**
  * "25 அக்டோபர், ஞாயிறு" for "2026-10-25".
@@ -92,7 +92,7 @@ const WEEKDAYS = ["ஞாயிறு", "திங்கள்", "செவ்�
 export function formatTamilDate(iso: string): string {
   const [y, m, d] = iso.split("-").map(Number);
   const weekday = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
-  return `${d} ${MONTHS[m - 1]}, ${WEEKDAYS[weekday]}`;
+  return `${d} ${TAMIL_MONTHS[m - 1]}, ${TAMIL_WEEKDAYS[weekday]}`;
 }
 
 /** "₹1,60,000" — Indian digit grouping, no decimals. */

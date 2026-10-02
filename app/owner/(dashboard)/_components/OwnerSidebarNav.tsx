@@ -5,12 +5,13 @@ import { usePathname } from "next/navigation";
 import {
   Building2, CalendarDays, LayoutDashboard,
   IndianRupee, MessageSquare, Sparkles, User, Wallet,
-  Bell, Inbox,
+  Bell, Inbox, BookOpen,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const NAV = [
   { label: "Dashboard",  href: "/owner/dashboard", icon: LayoutDashboard, exact: true },
+  { label: "Diary",      href: "/owner/diary",     icon: BookOpen },
   { label: "My Halls",   href: "/owner/halls",     icon: Building2 },
   { label: "Bookings",   href: "/owner/bookings",  icon: CalendarDays },
   { label: "Enquiries",  href: "/owner/leads",     icon: Inbox },
