@@ -45,6 +45,7 @@ export default function robots(): MetadataRoute.Robots {
     "/saved",
     "/bookings",
     "/api/",           // no public content is served from an API route
+    "/q/",             // QR standee redirects: a crawl would count as a scan
   ];
 
   return {

@@ -109,12 +109,13 @@ export default async function OwnerHallsPage() {
                     )}
 
                   {/* Action row */}
-                  <div className="grid grid-cols-4 border-t border-border text-[11px] font-semibold divide-x divide-border">
+                  <div className="grid grid-cols-5 border-t border-border text-[11px] font-semibold divide-x divide-border">
                     {[
                       { label: "Edit",         href: `/owner/halls/${hall.id}/edit`         },
                       { label: hall.image_count === 1 ? "1 Photo" : `${hall.image_count} Photos`, href: `/owner/halls/${hall.id}/images` },
                       { label: "Availability",  href: `/owner/halls/${hall.id}/availability` },
                       { label: "View",          href: `/halls/${hall.slug}`                  },
+                      { label: "QR code",       href: `/owner/halls/${hall.id}/standee`      },
                     ].map((action) => (
                       <Link
                         key={action.label}

@@ -64,6 +64,11 @@ export default async function EditHallPage({ params }: Props) {
             📅 Availability
           </Link>
           {hall.status === "approved" && (
+            <Link href={`/owner/halls/${id}/standee`} className="rounded-lg border border-border bg-white px-3 py-1.5 text-xs font-semibold text-charcoal-600 hover:bg-ivory-100">
+              ▦ QR standee
+            </Link>
+          )}
+          {hall.status === "approved" && (
             <Link href={`/halls/${hall.slug}`} target="_blank" className="flex items-center gap-1 rounded-lg border border-border bg-white px-3 py-1.5 text-xs font-semibold text-charcoal-600 hover:bg-ivory-100">
               <ExternalLink className="h-3 w-3" /> Public Page
             </Link>
