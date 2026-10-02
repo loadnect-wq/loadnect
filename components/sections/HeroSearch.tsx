@@ -3,16 +3,23 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // components/sections/HeroSearch.tsx — the desktop hero search.
 //
+// DATE FIRST. A Tamil family usually arrives with the date already fixed —
+// the astrologer gives the muhurtham, then the hunt for a free hall begins —
+// so When is the first question, then Where, then Guests. Choosing a date
+// moves on to the city, choosing a city moves on to guests. The calendar marks
+// muhurtham days (lib/muhurtham.ts) and "Next muhurtham" sits beside the
+// weekend shortcuts.
+//
 // THREE QUESTIONS, NOT FOUR FIELDS. It was Location / Available From /
 // Available Till / Guests: two raw browser date boxes ("dd-mm-yyyy") for what
 // is one question, a select, and a number box whose placeholder failed
 // contrast. Now each segment is a button that opens a panel built for its
 // question:
 //
+//   When     one date or a range on a two-month calendar, with Next
+//            muhurtham / This weekend / Next weekend shortcuts
 //   Where    cities that ACTUALLY hold inventory, each with its real hall
 //            count, plus "Any city"
-//   When     one date or a range on a two-month calendar, with This weekend /
-//            Next weekend shortcuts
 //   Guests   capacity presets matching the /halls filter
 //
 // EVERY ANSWER IS STILL A REAL PARAMETER — city, date, dateTo, capacity — built
@@ -39,6 +46,7 @@ import {
   weekendRange,
   type SearchCity,
 } from "@/lib/search-url";
+import { nextMuhurthamDates } from "@/lib/muhurtham";
 
 export type { SearchCity };
 
@@ -49,7 +57,7 @@ type Props = {
   today: string;
 };
 
-type Panel = "where" | "when" | "guests" | null;
+type Panel = "when" | "where" | "guests" | null;
 
 export function HeroSearch({ cities, today }: Props) {
   const router = useRouter();
@@ -62,8 +70,8 @@ export function HeroSearch({ cities, today }: Props) {
 
   const formRef = useRef<HTMLFormElement>(null);
   const triggers = useRef<Record<Exclude<Panel, null>, HTMLButtonElement | null>>({
-    where: null,
     when: null,
+    where: null,
     guests: null,
   });
   const panelRef = useRef<HTMLDivElement>(null);
@@ -116,6 +124,7 @@ export function HeroSearch({ cities, today }: Props) {
   const dateLabel = formatDateChoice(date, dateTo);
   const thisWeekend = weekendRange(today, "this");
   const nextWeekend = weekendRange(today, "next");
+  const [nextMuhurtham] = nextMuhurthamDates(today);
   const cityCount = (n: number) => (n === 1 ? "1 hall" : `${n} halls`);
 
   return (
@@ -135,8 +144,8 @@ export function HeroSearch({ cities, today }: Props) {
           aria-label={open === "where" ? "Choose a city" : open === "when" ? "Choose dates" : "Choose guest count"}
           className={cn(
             "absolute bottom-full z-30 mb-3 rounded-3xl bg-white p-5 shadow-[0_24px_60px_-16px_rgba(26,22,20,0.45)] ring-1 ring-black/5",
-            open === "where" && "left-0 w-80",
-            open === "when" && "left-1/2 w-[640px] -translate-x-1/2",
+            open === "when" && "left-0 w-[640px]",
+            open === "where" && "left-1/2 w-80 -translate-x-1/2",
             open === "guests" && "right-0 w-80",
           )}
         >
@@ -151,7 +160,7 @@ export function HeroSearch({ cities, today }: Props) {
                       data-autofocus={selected ? "" : undefined}
                       onClick={() => {
                         setCity(c.city);
-                        setOpen("when");
+                        setOpen("guests");
                       }}
                       aria-pressed={selected}
                       className={cn(
@@ -190,8 +199,18 @@ export function HeroSearch({ cities, today }: Props) {
                   setDateTo(t);
                 }}
               />
-              <div className="mt-4 flex items-center gap-2 border-t border-charcoal-100 pt-4">
+              {/* Shortcuts wrap inside their own group; Clear and Next stay pinned
+                  right. One flat wrapping row pushed Next onto a second line
+                  the moment "Clear dates" appeared beside the muhurtham chip. */}
+              <div className="mt-4 flex items-start gap-3 border-t border-charcoal-100 pt-4">
+                <div className="flex min-w-0 flex-1 flex-wrap gap-2">
                 {[
+                  ...(nextMuhurtham
+                    ? [{
+                        label: `Next muhurtham · ${formatDateChoice(nextMuhurtham)}`,
+                        range: { date: nextMuhurtham, dateTo: nextMuhurtham },
+                      }]
+                    : []),
                   { label: "This weekend", range: thisWeekend },
                   { label: "Next weekend", range: nextWeekend },
                 ].map(({ label, range }) => {
@@ -217,7 +236,8 @@ export function HeroSearch({ cities, today }: Props) {
                     </button>
                   );
                 })}
-                <span className="flex-1" />
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
                 {date && (
                   <button
                     type="button"
@@ -232,11 +252,12 @@ export function HeroSearch({ cities, today }: Props) {
                 )}
                 <button
                   type="button"
-                  onClick={() => setOpen("guests")}
+                  onClick={() => setOpen("where")}
                   className="rounded-full bg-charcoal-900 px-5 py-2 text-sm font-semibold text-white hover:bg-charcoal-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-maroon-600 focus-visible:ring-offset-2"
                 >
                   Next
                 </button>
+                </div>
               </div>
             </div>
           )}
@@ -287,6 +308,19 @@ export function HeroSearch({ cities, today }: Props) {
         )}
       >
         <Segment
+          label="When"
+          value={dateLabel}
+          placeholder="Add your date"
+          Icon={CalendarDays}
+          active={open === "when"}
+          controls={`${ids}-when`}
+          onClick={() => toggle("when")}
+          buttonRef={(el) => {
+            triggers.current.when = el;
+          }}
+        />
+        <Divider hidden={open === "when" || open === "where"} />
+        <Segment
           label="Where"
           value={city || null}
           placeholder="Any city"
@@ -298,20 +332,7 @@ export function HeroSearch({ cities, today }: Props) {
             triggers.current.where = el;
           }}
         />
-        <Divider hidden={open === "where" || open === "when"} />
-        <Segment
-          label="When"
-          value={dateLabel}
-          placeholder="Add dates"
-          Icon={CalendarDays}
-          active={open === "when"}
-          controls={`${ids}-when`}
-          onClick={() => toggle("when")}
-          buttonRef={(el) => {
-            triggers.current.when = el;
-          }}
-        />
-        <Divider hidden={open === "when" || open === "guests"} />
+        <Divider hidden={open === "where" || open === "guests"} />
         <Segment
           label="Guests"
           value={capacity ? `${capacity}+ guests` : null}

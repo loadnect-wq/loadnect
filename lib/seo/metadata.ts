@@ -45,6 +45,15 @@ export type BuildMetadataInput = {
   type?: "website" | "article";
   /** Set false for pages that exist publicly but should not be indexed. */
   indexable?: boolean;
+  /**
+   * hreflang → root-relative path, e.g. { "en-IN": "/wedding-halls/madurai",
+   * "ta-IN": "/ta/wedding-halls/madurai", "x-default": ... }. Both twins pass
+   * the SAME map. Emitted only on an indexable page, for the same reason the
+   * canonical is: a noindex page nominates nothing.
+   */
+  languages?: Record<string, string>;
+  /** og:locale. Defaults to SITE_LOCALE (en_IN); a Tamil page passes "ta_IN". */
+  locale?: string;
 };
 
 /**
@@ -77,7 +86,20 @@ export function buildMetadata(input: BuildMetadataInput): Metadata {
     //
     // The OG url keeps the absolute URL either way: it is how the page
     // identifies itself when shared, not an indexing instruction.
-    ...(indexable ? { alternates: { canonical } } : {}),
+    ...(indexable
+      ? {
+          alternates: {
+            canonical,
+            ...(input.languages
+              ? {
+                  languages: Object.fromEntries(
+                    Object.entries(input.languages).map(([lang, path]) => [lang, absoluteUrl(path)]),
+                  ),
+                }
+              : {}),
+          },
+        }
+      : {}),
     robots: indexable
       ? { index: true, follow: true,
           googleBot: { index: true, follow: true, "max-image-preview": "large", "max-snippet": -1 } }
@@ -85,7 +107,7 @@ export function buildMetadata(input: BuildMetadataInput): Metadata {
     openGraph: {
       type: input.type ?? "website",
       siteName: SITE_NAME,
-      locale: SITE_LOCALE,
+      locale: input.locale ?? SITE_LOCALE,
       url: canonical,
       title,
       description,

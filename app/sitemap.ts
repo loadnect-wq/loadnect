@@ -18,7 +18,8 @@
 import type { MetadataRoute } from "next";
 import { absoluteUrl, isPublishableUrl } from "@/lib/seo/config";
 import { fetchIndexableVenues } from "@/lib/seo/sitemap-data";
-import { fetchIndexableCities, citySlug } from "@/lib/seo/cities";
+import { fetchIndexableCities, citySlug, cityFromSlug } from "@/lib/seo/cities";
+import { cityLanguageAlternates, tamilCityName, tamilCityPath } from "@/lib/seo/tamil";
 import {
   fetchVenueCategoriesStrict,
   fetchCategoryInventoryStrict,
@@ -127,14 +128,30 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   }
 
   // City pages appear ONLY when they hold real inventory (lib/seo/cities.ts).
-  const cityEntries: MetadataRoute.Sitemap = cities.map((c) => {
+  //
+  // EACH IN TWO LANGUAGES. The Tamil twin (/ta/wedding-halls/<slug>) passes
+  // the same gate, so it is listed exactly when the English page is, and both
+  // entries carry the same hreflang map the pages themselves declare.
+  const cityEntries: MetadataRoute.Sitemap = cities.flatMap((c) => {
     const t = newestByCitySlug.get(c.slug);
-    return {
-      url: absoluteUrl(`/wedding-halls/${c.slug}`),
+    const shared = {
       ...(t !== undefined ? { lastModified: new Date(t) } : {}),
       changeFrequency: "daily" as const,
       priority: 0.8,
     };
+    const name = cityFromSlug(c.slug);
+    if (!name || !tamilCityName(name)) {
+      return [{ url: absoluteUrl(`/wedding-halls/${c.slug}`), ...shared }];
+    }
+    const alternates = {
+      languages: Object.fromEntries(
+        Object.entries(cityLanguageAlternates(c.slug)).map(([lang, path]) => [lang, absoluteUrl(path)]),
+      ),
+    };
+    return [
+      { url: absoluteUrl(`/wedding-halls/${c.slug}`), ...shared, alternates },
+      { url: absoluteUrl(tamilCityPath(c.slug)), ...shared, alternates },
+    ];
   });
 
   // ── Occasion landing pages (0102) ─────────────────────────────────────────

@@ -23,6 +23,13 @@
 // ONE MONTH ON A PHONE. `months={1}` shows a single month with 44px days, for
 // the mobile search sheet, where two months side by side cannot fit.
 //
+// MUHURTHAM DAYS carry a small gold dot and say so to a screen reader. A
+// Tamil family usually arrives with the date already fixed by their
+// astrologer, and halls fill on these days first. The list is lib/muhurtham.ts
+// — only dates two published Tamil calendars agree on — and the legend says
+// plainly that the family's astrologer decides, because a missing dot means
+// "not on both lists", never "inauspicious".
+//
 // All dates are YYYY-MM-DD strings handled in UTC — see lib/search-url.ts.
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -30,6 +37,7 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { addDays, formatFull, formatMonth, monthGrid, shiftMonth } from "@/lib/search-url";
+import { MUHURTHAM_COVERAGE_END, isMuhurtham } from "@/lib/muhurtham";
 
 type Props = {
   /** Business-timezone today, from the server. Earlier days are disabled. */
@@ -144,6 +152,7 @@ export function DateRangeCalendar({ today, from, to, onChange, months = 2 }: Pro
           const inRange = !!from && !!rangeEnd && day > from && day < rangeEnd;
           const isPreviewEnd = !to && day === rangeEnd && day !== from;
           const state = isStart ? ", start date" : isEnd ? ", end date" : inRange ? ", in your dates" : "";
+          const muhurtham = !past && isMuhurtham(day);
           return (
             <div
               key={day}
@@ -161,7 +170,7 @@ export function DateRangeCalendar({ today, from, to, onChange, months = 2 }: Pro
                 tabIndex={day === tabDay ? 0 : -1}
                 data-autofocus={day === tabDay ? "" : undefined}
                 aria-pressed={isStart || isEnd}
-                aria-label={`${formatFull(day)}${state}${day === today ? ", today" : ""}`}
+                aria-label={`${formatFull(day)}${state}${muhurtham ? ", muhurtham day" : ""}${day === today ? ", today" : ""}`}
                 onClick={() => pick(day)}
                 onMouseEnter={() => setHover(day)}
                 onKeyDown={(e) => onKey(e, day)}
@@ -177,6 +186,16 @@ export function DateRangeCalendar({ today, from, to, onChange, months = 2 }: Pro
                 )}
               >
                 {Number(day.slice(8))}
+                {muhurtham && (
+                  <span
+                    aria-hidden
+                    data-muhurtham=""
+                    className={cn(
+                      "absolute bottom-1 left-1/2 h-1 w-1 -translate-x-1/2 rounded-full",
+                      isStart || isEnd ? "bg-white" : "bg-gold-500",
+                    )}
+                  />
+                )}
               </button>
             </div>
           );
@@ -210,6 +229,14 @@ export function DateRangeCalendar({ today, from, to, onChange, months = 2 }: Pro
           {months === 2 && renderMonth(second[0], second[1])}
         </div>
       </div>
+      {/* Only while the view is inside the list's years: past its end an
+          unmarked month would read as "no muhurtham days", which is not known. */}
+      {firstOfView <= MUHURTHAM_COVERAGE_END && (
+      <p className="mt-3 flex items-start gap-2 text-xs leading-snug text-charcoal-600">
+        <span aria-hidden className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-gold-500" />
+        <span>Muhurtham day in the Tamil calendar. Your family astrologer has the final word on your date.</span>
+      </p>
+      )}
     </div>
   );
 }

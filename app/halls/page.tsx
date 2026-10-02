@@ -16,6 +16,8 @@ import { jsonLdGraph, breadcrumbJsonLd } from "@/lib/seo/jsonld";
 import { fetchCityInventory } from "@/lib/seo/cities";
 import { fetchVenueCategories, fetchCategoryInventory } from "@/lib/venue-categories.server";
 import { categoryLabelMap } from "@/lib/venue-categories";
+import { formatDateChoice } from "@/lib/search-url";
+import { isMuhurtham } from "@/lib/muhurtham";
 
 /**
  * CRAWL-TRAP CONTROL. This route accepts TEN independent query parameters
@@ -172,6 +174,15 @@ export default async function HallsPage({
   // read as a filter that found nothing, not as "no halls are listed yet".
   const hasFilters = !!(city || area || capacity || priceMin || priceMax || q || category || amenity || effectiveDate);
 
+  // A date search says which date it answered. The homepage now asks for the
+  // date first, so the result page has to make that answer visible — and say
+  // exactly what it means: no booking RECORDED ON HALLNECT for that day. A
+  // hall's own phone bookings only appear once it keeps its diary here, which
+  // is why "each hall confirms your date" is part of the sentence, not a
+  // footnote. A range is a muhurtham search only when its start is one.
+  const dateChoice = effectiveDate ? formatDateChoice(effectiveDate, dateTo) : null;
+  const muhurthamSearch = Boolean(effectiveDate) && isMuhurtham(effectiveDate);
+
   return (
     <div className="min-h-screen bg-ivory-100">
       <JsonLd
@@ -231,6 +242,19 @@ export default async function HallsPage({
             ? `${halls.length} ${halls.length === 1 ? "venue" : "venues"} with photos, capacity and pricing.`
             : "Venues with photos, capacity and pricing."}
         </p>
+        {dateChoice && halls.length > 0 && (
+          <p className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-charcoal-700">
+            <span>
+              No booking on Hallnect for <strong className="font-semibold text-charcoal-900">{dateChoice}</strong>.
+              {" "}Each hall confirms your date.
+            </span>
+            {muhurthamSearch && (
+              <span className="rounded-full bg-gold-50 px-2.5 py-0.5 text-xs font-semibold text-gold-800 ring-1 ring-gold-300/70">
+                Muhurtham day
+              </span>
+            )}
+          </p>
+        )}
       </section>
 
       {/* ── Sponsored banner ─────────────────────────────────────── */}

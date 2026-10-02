@@ -291,13 +291,18 @@ export function cityCollectionJsonLd(input: {
   path: string;
   description: string;
   venues: { name: string; slug: string }[];
+  /** The page's own heading when it is not English, e.g. the Tamil twin. */
+  name?: string;
+  /** BCP 47, e.g. "ta-IN". Omitted on the English pages, which the WebSite node already covers. */
+  inLanguage?: string;
 }) {
   return compact({
     "@type": "CollectionPage",
     "@id": `${absoluteUrl(input.path)}#collection`,
     url: absoluteUrl(input.path),
-    name: `Wedding halls in ${input.city}`,
+    name: input.name ?? `Wedding halls in ${input.city}`,
     description: input.description,
+    inLanguage: input.inLanguage,
     isPartOf: { "@id": WEBSITE_ID },
     about: compact({
       "@type": "City",

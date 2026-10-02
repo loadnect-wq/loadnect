@@ -294,6 +294,34 @@ describe("every field in both searches is real", () => {
     expect(pageCode).toContain("todayInBusinessTz()");
   });
 
+  it("asks the date first — When, then Where, then Guests — on both searches", () => {
+    // A Tamil family arrives with the muhurtham already fixed by the
+    // astrologer; the hall comes second. Order of the pill segments and of the
+    // phone card's rows, plus the order of the phone sheet's sections.
+    for (const src of [heroSearch, mobileSearch]) {
+      const when = src.indexOf('label="When"');
+      const where = src.indexOf('label="Where"');
+      const guests = src.indexOf('label="Guests"');
+      expect(when).toBeGreaterThan(0);
+      expect(when).toBeLessThan(where);
+      expect(where).toBeLessThan(guests);
+    }
+    const sheetWhen = mobileSearch.indexOf("${ids}-when`} aria-labelledby");
+    const sheetWhere = mobileSearch.indexOf("${ids}-where`} aria-labelledby");
+    expect(sheetWhen).toBeGreaterThan(0);
+    expect(sheetWhen).toBeLessThan(sheetWhere);
+    // Choosing a date moves on to the city; choosing a city moves on to guests.
+    expect(heroSearch).toContain('onClick={() => setOpen("where")}');
+    expect(heroSearch).toMatch(/setCity\(c\.city\);\s*setOpen\("guests"\)/);
+  });
+
+  it("offers the next muhurtham as a one-tap date on both searches", () => {
+    for (const src of [heroSearch, mobileSearch]) {
+      expect(src).toContain("nextMuhurthamDates(today)");
+      expect(src).toContain("Next muhurtham");
+    }
+  });
+
   it("asks three questions — Where, When, Guests — and says Search in words", () => {
     for (const label of ['label="Where"', 'label="When"', 'label="Guests"']) {
       expect(heroSearch).toContain(label);
@@ -348,6 +376,14 @@ describe("the date calendar", () => {
 
   it("names every day in full, with its place in the range", () => {
     expect(calendar).toContain("aria-label={`${formatFull(day)}${state}");
+  });
+
+  it("marks muhurtham days, says so to a screen reader, and defers to the astrologer", () => {
+    expect(calendar).toContain("isMuhurtham(day)");
+    expect(calendar).toContain('", muhurtham day"');
+    expect(calendar).toContain("Your family astrologer has the final word");
+    // Past the list's last year an unmarked month would read as "no muhurtham".
+    expect(calendar).toContain("firstOfView <= MUHURTHAM_COVERAGE_END");
   });
 
   it("gives a phone one month with 44px days", () => {

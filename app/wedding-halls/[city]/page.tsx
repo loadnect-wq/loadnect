@@ -14,7 +14,7 @@
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Building2, MapPin, Users, Wallet } from "lucide-react";
+import { Building2, Languages, MapPin, Users, Wallet } from "lucide-react";
 import { fetchHalls } from "@/lib/halls";
 import { hasPrice, isLeadGeneration } from "@/lib/booking-mode";
 import { getAdvancePercent } from "@/lib/platform-settings";
@@ -25,6 +25,7 @@ import { buildMetadata } from "@/lib/seo/metadata";
 import { JsonLd } from "@/components/seo/JsonLd";
 import { jsonLdGraph, breadcrumbJsonLd, cityCollectionJsonLd, faqJsonLd } from "@/lib/seo/jsonld";
 import { cityFromSlug, fetchCityInventoryBySlug, citySlug, SERVICE_AREA_CITIES } from "@/lib/seo/cities";
+import { cityLanguageAlternates, tamilCityName, tamilCityPath } from "@/lib/seo/tamil";
 
 type Props = { params: Promise<{ city: string }> };
 
@@ -100,6 +101,9 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     path: `/wedding-halls/${citySlug(city)}`,
     // The gate: no inventory, no index.
     indexable: Boolean(inventory?.indexable),
+    // Paired with the Tamil twin (app/ta/wedding-halls/[city]), which passes
+    // the same gate, so the pair is always indexable together or not at all.
+    ...(tamilCityName(city) ? { languages: cityLanguageAlternates(citySlug(city)) } : {}),
   });
 }
 
@@ -235,15 +239,30 @@ export default async function CityPage({ params }: Props) {
       <AppHeader title={city} />
 
       {/* Visible breadcrumb — mirrors the BreadcrumbList above exactly. */}
-      <nav aria-label="Breadcrumb" className="container-app pt-3 lg:max-w-7xl">
-        <ol className="flex flex-wrap items-center gap-1 text-[11px] text-charcoal-500">
-          <li><Link href="/" className="hover:text-maroon-700">Home</Link></li>
-          <li aria-hidden="true">/</li>
-          <li><Link href="/halls" className="hover:text-maroon-700">Tamil Nadu</Link></li>
-          <li aria-hidden="true">/</li>
-          <li className="font-medium text-charcoal-700" aria-current="page">{city}</li>
-        </ol>
-      </nav>
+      <div className="container-app flex flex-wrap items-center justify-between gap-2 pt-3 lg:max-w-7xl">
+        <nav aria-label="Breadcrumb">
+          <ol className="flex flex-wrap items-center gap-1 text-[11px] text-charcoal-500">
+            <li><Link href="/" className="hover:text-maroon-700">Home</Link></li>
+            <li aria-hidden="true">/</li>
+            <li><Link href="/halls" className="hover:text-maroon-700">Tamil Nadu</Link></li>
+            <li aria-hidden="true">/</li>
+            <li className="font-medium text-charcoal-700" aria-current="page">{city}</li>
+          </ol>
+        </nav>
+        {/* The visible half of the hreflang pair: a reader who prefers Tamil
+            gets there in one tap, and a crawler gets a plain link to follow. */}
+        {tamilCityName(city) && (
+          <Link
+            href={tamilCityPath(citySlug(city))}
+            hrefLang="ta-IN"
+            lang="ta"
+            className="inline-flex min-h-[44px] items-center gap-1.5 text-xs font-semibold text-maroon-700 hover:underline"
+          >
+            <Languages className="h-3.5 w-3.5" aria-hidden />
+            தமிழில் படிக்க
+          </Link>
+        )}
+      </div>
 
       <header className="container-app pt-3 lg:max-w-7xl">
         <h1 className="font-serif text-xl font-bold text-charcoal-900 lg:text-3xl">

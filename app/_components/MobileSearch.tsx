@@ -9,13 +9,15 @@
 // could ask for a date or a guest count, which are the two questions that
 // decide whether a hall is any use at all.
 //
-// THE SAME THREE QUESTIONS AS THE DESKTOP PILL — Where, When, Guests — and the
-// same URL, built by lib/search-url.ts. The card shows the answers; tapping any
+// THE SAME THREE QUESTIONS AS THE DESKTOP PILL — When, Where, Guests, date
+// first, because a Tamil family usually arrives with the muhurtham already
+// fixed — and the same URL, built by lib/search-url.ts. The card shows the answers; tapping any
 // row opens one sheet holding all three, scrolled to the row that was tapped,
 // so a visitor can answer one question or all of them without a wizard.
 //
+// When is a one-month calendar with Next muhurtham / Today / This weekend /
+// Next weekend, muhurtham days marked (lib/muhurtham.ts).
 // Where lists only cities with live inventory, with the real hall count.
-// When is a one-month calendar with Today / This weekend / Next weekend.
 // Guests uses the /halls capacity steps.
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -31,9 +33,10 @@ import {
   weekendRange,
   type SearchCity,
 } from "@/lib/search-url";
+import { nextMuhurthamDates } from "@/lib/muhurtham";
 import { cn } from "@/lib/utils";
 
-type Section = "where" | "when" | "guests";
+type Section = "when" | "where" | "guests";
 
 export function MobileSearch({ cities, today }: { cities: readonly SearchCity[]; today: string }) {
   const router = useRouter();
@@ -47,7 +50,7 @@ export function MobileSearch({ cities, today }: { cities: readonly SearchCity[];
 
   // Bring the tapped question into view once the sheet has laid out.
   useEffect(() => {
-    if (!sheet || sheet === "where") return;
+    if (!sheet || sheet === "when") return;
     const timer = window.setTimeout(() => {
       document.getElementById(`${ids}-${sheet}`)?.scrollIntoView({ block: "start" });
     }, 60);
@@ -68,7 +71,11 @@ export function MobileSearch({ cities, today }: { cities: readonly SearchCity[];
   };
 
   const dateLabel = formatDateChoice(date, dateTo);
+  const [nextMuhurtham] = nextMuhurthamDates(today);
   const quickDates = [
+    ...(nextMuhurtham
+      ? [{ label: `Next muhurtham · ${formatDateChoice(nextMuhurtham)}`, range: { date: nextMuhurtham, dateTo: "" } }]
+      : []),
     { label: "Today", range: { date: today, dateTo: "" } },
     { label: "This weekend", range: weekendRange(today, "this") },
     { label: "Next weekend", range: weekendRange(today, "next") },
@@ -79,20 +86,20 @@ export function MobileSearch({ cities, today }: { cities: readonly SearchCity[];
     <>
       <div className="rounded-3xl bg-white p-2 shadow-elevated ring-1 ring-black/5">
         <Row
-          Icon={MapPin}
-          label="Where"
-          value={city || null}
-          placeholder="Any city in Tamil Nadu"
-          onClick={() => setSheet("where")}
+          Icon={CalendarDays}
+          label="When"
+          value={dateLabel}
+          placeholder="Your function date"
+          onClick={() => setSheet("when")}
         />
         <div aria-hidden className="mx-3 h-px bg-charcoal-100" />
         <div className="grid grid-cols-[minmax(0,1fr)_1px_minmax(0,1fr)] items-center">
           <Row
-            Icon={CalendarDays}
-            label="When"
-            value={dateLabel}
-            placeholder="Add dates"
-            onClick={() => setSheet("when")}
+            Icon={MapPin}
+            label="Where"
+            value={city || null}
+            placeholder="Any city"
+            onClick={() => setSheet("where")}
           />
           <span aria-hidden className="h-8 bg-charcoal-100" />
           <Row
@@ -148,25 +155,6 @@ export function MobileSearch({ cities, today }: { cities: readonly SearchCity[];
         }
       >
         <div className="space-y-7 pb-2">
-          <section id={`${ids}-where`} aria-labelledby={`${ids}-where-h`} className="scroll-mt-2">
-            <SheetHeading id={`${ids}-where-h`} Icon={MapPin}>Where</SheetHeading>
-            <ul className="mt-3 flex flex-wrap gap-2">
-              {[{ city: "", venueCount: 0 }, ...cities].map((c) => (
-                <li key={c.city || "any"}>
-                  <Chip selected={city === c.city} onClick={() => setCity(c.city)}>
-                    {c.city || "Any city"}
-                    {c.city && " "}
-                    {c.city && (
-                      <span className={cn("ml-1.5 text-xs font-normal", city === c.city ? "text-white/90" : "text-charcoal-600")}>
-                        {c.venueCount === 1 ? "1 hall" : `${c.venueCount} halls`}
-                      </span>
-                    )}
-                  </Chip>
-                </li>
-              ))}
-            </ul>
-          </section>
-
           <section id={`${ids}-when`} aria-labelledby={`${ids}-when-h`} className="scroll-mt-2">
             <div className="flex items-baseline justify-between gap-3">
               <SheetHeading id={`${ids}-when-h`} Icon={CalendarDays}>When</SheetHeading>
@@ -223,6 +211,25 @@ export function MobileSearch({ cities, today }: { cities: readonly SearchCity[];
                 }}
               />
             </div>
+          </section>
+
+          <section id={`${ids}-where`} aria-labelledby={`${ids}-where-h`} className="scroll-mt-2">
+            <SheetHeading id={`${ids}-where-h`} Icon={MapPin}>Where</SheetHeading>
+            <ul className="mt-3 flex flex-wrap gap-2">
+              {[{ city: "", venueCount: 0 }, ...cities].map((c) => (
+                <li key={c.city || "any"}>
+                  <Chip selected={city === c.city} onClick={() => setCity(c.city)}>
+                    {c.city || "Any city"}
+                    {c.city && " "}
+                    {c.city && (
+                      <span className={cn("ml-1.5 text-xs font-normal", city === c.city ? "text-white/90" : "text-charcoal-600")}>
+                        {c.venueCount === 1 ? "1 hall" : `${c.venueCount} halls`}
+                      </span>
+                    )}
+                  </Chip>
+                </li>
+              ))}
+            </ul>
           </section>
 
           <section id={`${ids}-guests`} aria-labelledby={`${ids}-guests-h`} className="scroll-mt-2">
