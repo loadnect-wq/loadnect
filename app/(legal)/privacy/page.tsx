@@ -57,8 +57,15 @@ export default function PrivacyPage() {
           seen from the other side. Whatever this list says must equal the set of
           third parties any code path can reach — if a vendor is added anywhere,
           it belongs here in the same commit. */}
-      <Section title="5. Data Sharing">
-        We share your information only with: (a) venue owners to fulfil your confirmed booking — your name and contact details are shared so the owner can prepare for your event; (b) Cashfree Payments for transaction processing, and for venue owners the payout and identity details listed in section 4 so that settlements can be made; (b-i) MSG91, our SMS provider, to deliver booking notifications and one-time verification codes to the phone number you gave us; (b-ii) <strong>only if you accept analytics</strong>, Google, which receives the usage data described in section 2 — we deliberately do not send it your booking reference or payment order id, and page addresses that identify a specific booking are stripped before they are sent; (c) cloud infrastructure and email delivery service providers under strict confidentiality agreements; and (d) law enforcement when required by a valid legal order. Venue owners may not use customer contact details for any purpose other than fulfilling the specific booking.
+      {/* ENQUIRIES WERE MISSING from (a) until 2026-10-02. Lead-generation
+          venues (0073, live since 2026-09-10) receive the customer's name,
+          event details and verified phone number when an enquiry is sent —
+          before any booking exists — and this list only covered a "confirmed
+          booking". The enquiry and booking forms now promise "only the hall you
+          choose gets your number" and link here (#sharing), so this clause has
+          to say exactly that. */}
+      <Section title="5. Data Sharing" id="sharing">
+        We share your information only with: (a) the venue you choose, and no other venue — when you send an enquiry, your name, event details and verified phone number are shared with that venue so it can reply to you, and when you book, your name and contact details are shared so the owner can prepare for your event; (b) Cashfree Payments for transaction processing, and for venue owners the payout and identity details listed in section 4 so that settlements can be made; (b-i) MSG91, our SMS provider, to deliver booking notifications and one-time verification codes to the phone number you gave us; (b-ii) <strong>only if you accept analytics</strong>, Google, which receives the usage data described in section 2 — we deliberately do not send it your booking reference or payment order id, and page addresses that identify a specific booking are stripped before they are sent; (c) cloud infrastructure and email delivery service providers under strict confidentiality agreements; and (d) law enforcement when required by a valid legal order. Venue owners may not use customer contact details for any purpose other than replying to your enquiry or fulfilling your booking.
       </Section>
 
       {/* THE CONDITION THIS SECTION SET HAS NOW BEEN MET. It previously said
@@ -137,9 +144,10 @@ function LegalHeader({ title, updated }: { title: string; updated: string }) {
   );
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({ title, id, children }: { title: string; id?: string; children: React.ReactNode }) {
   return (
-    <section className="mb-8">
+    // scroll-mt clears the sticky header when a form links straight to #sharing.
+    <section id={id} className="mb-8 scroll-mt-24">
       <h2 className="font-serif text-lg font-semibold text-charcoal-900">{title}</h2>
       {/* Must stay a <div>. Section 4 passes two <p> elements, which a <p> cannot legally
           contain: the browser closes the outer paragraph before them and reparents them,

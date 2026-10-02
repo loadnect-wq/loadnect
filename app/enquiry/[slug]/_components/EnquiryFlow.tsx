@@ -27,6 +27,7 @@ import {
   ArrowLeft, CalendarDays, CheckCircle2, Loader2, MessageSquare,
   Phone, PhoneCall, ShieldCheck, Users,
 } from "lucide-react";
+import { NumberPromise } from "@/components/trust/NumberPromise";
 import { Button } from "@/components/ui/Button";
 
 import { formatHallPrice, hasPrice } from "@/lib/booking-mode";
@@ -345,6 +346,8 @@ export function EnquiryFlow({ hall, minDate, initialName, initialPhone, otpConfi
               />
             </div>
           </Field>
+          {/* After the field, so the "we send a code" hint stays under the box it describes. */}
+          <NumberPromise hallName={hall.name} flow="enquiry" className="-mt-1" />
 
           <Field label="Event date" htmlFor="enq-date">
             <div className="relative">

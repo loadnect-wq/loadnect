@@ -8,6 +8,7 @@ import {
   AlertTriangle, ArrowLeft, CalendarDays, Check, Clock,
   CreditCard, Receipt, Sparkles, Users,
 } from "lucide-react";
+import { NumberPromise } from "@/components/trust/NumberPromise";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -773,6 +774,7 @@ export function BookingFlow({ hall, availability, windowDays, onlinePaymentEnabl
                         Enter a valid mobile number — booking updates are texted to it.
                       </p>
                     )}
+                    <NumberPromise hallName={hall.name} flow="booking" className="mt-2" />
                   </div>
                 </div>
               </StepWrap>
