@@ -119,6 +119,7 @@ const EN = {
   wa_balance: "Balance",
   wa_reminderLine: "A balance of ₹{amount} is due for your booking on {dates}.",
   wa_thanks: "Thank you.",
+  wa_footer: "Sent with Hallnect · hallnect.com",
 } as const;
 
 type DiaryKey = keyof typeof EN;
@@ -210,6 +211,7 @@ const TA: Record<DiaryKey, string> = {
   wa_balance: "மீதம்",
   wa_reminderLine: "{dates} அன்று உள்ள உங்கள் முன்பதிவுக்கு மீதத் தொகை ₹{amount} செலுத்த வேண்டும்.",
   wa_thanks: "நன்றி.",
+  wa_footer: "Hallnect வழியாக அனுப்பப்பட்டது · hallnect.com",
 };
 
 export const DIARY_STRINGS: Record<DiaryLang, Record<DiaryKey, string>> = { en: EN, ta: TA };
@@ -344,7 +346,11 @@ export function receiptMessage(lang: DiaryLang, b: DiaryMessageInput): string {
       `${dt(lang, "wa_balance")}: ₹${formatAmount(balanceDue(b.totalAmount, received) ?? 0)}`,
     );
   }
-  lines.push("", dt(lang, "wa_thanks"));
+  // The last line is Hallnect's, on the owner's decision (2026-10-02): every
+  // family that gets a receipt sees where the hall keeps its bookings, and
+  // WhatsApp turns the domain into a link. Receipt only — the reminder is a
+  // request for money and stays the venue's own message.
+  lines.push("", dt(lang, "wa_thanks"), "", dt(lang, "wa_footer"));
   return lines.join("\n");
 }
 

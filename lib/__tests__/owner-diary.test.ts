@@ -147,6 +147,13 @@ describe("WhatsApp", () => {
     expect(noMoney).not.toContain("Balance");
   });
 
+  it("ends every receipt with hallnect.com, but keeps reminders the venue's own", () => {
+    expect(receiptMessage("en", booking).split("\n").at(-1)).toBe("Sent with Hallnect · hallnect.com");
+    expect(receiptMessage("ta", booking).split("\n").at(-1)).toBe("Hallnect வழியாக அனுப்பப்பட்டது · hallnect.com");
+    expect(reminderMessage("en", booking)).not.toContain("hallnect.com");
+    expect(reminderMessage("ta", booking)).not.toContain("hallnect.com");
+  });
+
   it("writes the receipt and reminder in Tamil", () => {
     expect(receiptMessage("ta", booking)).toContain("மீதம்: ₹1,20,000");
     const reminder = reminderMessage("ta", booking);
