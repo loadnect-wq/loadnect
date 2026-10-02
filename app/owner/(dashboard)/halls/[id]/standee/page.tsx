@@ -18,7 +18,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Noto_Sans_Tamil } from "next/font/google";
+import { notoSansTamil } from "@/app/fonts/noto-sans-tamil/font";
 import { ArrowLeft, ScanLine } from "lucide-react";
 import { requireRole } from "@/lib/auth";
 import { fetchOwnerHall } from "@/lib/owner";
@@ -32,7 +32,8 @@ import { STANDEE_PRINT_CSS, StandeeCard } from "./_components/StandeeCard";
 
 export const metadata: Metadata = { title: "QR standee" };
 
-const tamilFont = Noto_Sans_Tamil({ subsets: ["tamil"], weight: ["400", "700"], variable: "--font-tamil", display: "swap" });
+// Self-hosted — see app/fonts/noto-sans-tamil/font.ts for why never next/font/google.
+const tamilFont = notoSansTamil;
 
 
 type Props = { params: Promise<{ id: string }> };

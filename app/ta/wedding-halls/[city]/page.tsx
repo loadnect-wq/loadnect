@@ -28,7 +28,7 @@ import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
-import { Noto_Sans_Tamil } from "next/font/google";
+import { notoSansTamil } from "@/app/fonts/noto-sans-tamil/font";
 import { Building2, CalendarDays, Languages, MapPin, PhoneOff, Search, Star, Tag, UserCheck, Users, Wallet } from "lucide-react";
 import { fetchHalls, type HallListing } from "@/lib/halls";
 import { hasPrice, isLeadGeneration } from "@/lib/booking-mode";
@@ -54,12 +54,9 @@ import {
   tamilCityPath,
 } from "@/lib/seo/tamil";
 
-const tamilFont = Noto_Sans_Tamil({
-  subsets: ["tamil"],
-  weight: ["400", "600", "700"],
-  variable: "--font-tamil",
-  display: "swap",
-});
+// Self-hosted, never next/font/google — app/fonts/noto-sans-tamil/font.ts says
+// why (a Google Fonts URL format broke a production build).
+const tamilFont = notoSansTamil;
 
 const FONT_STACK = "var(--font-inter), var(--font-tamil), system-ui, sans-serif";
 

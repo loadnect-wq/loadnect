@@ -94,6 +94,19 @@ describe("the Tamil city page", () => {
   });
 });
 
+describe("the Tamil font", () => {
+  it("is self-hosted everywhere — next/font/google's Noto_Sans_Tamil broke a production build", () => {
+    // Google sometimes answers the build-time CSS fetch with /l/font?kit=…&skey=…
+    // URLs that Turbopack cannot parse; the deploy of 59d7b23 failed on it.
+    for (const f of ["app/ta/wedding-halls/[city]/page.tsx", "app/owner/(dashboard)/halls/[id]/standee/page.tsx"]) {
+      const src = read(f);
+      expect(src, f).not.toContain("Noto_Sans_Tamil");
+      expect(src, f).toContain('from "@/app/fonts/noto-sans-tamil/font"');
+    }
+    expect(read("app/fonts/noto-sans-tamil/font.ts")).toContain('src: "./NotoSansTamil-wght-tamil.woff2"');
+  });
+});
+
 describe("the pair, from the outside", () => {
   it("links the English page to its Tamil twin", () => {
     expect(englishPage).toContain("tamilCityPath(citySlug(city))");
