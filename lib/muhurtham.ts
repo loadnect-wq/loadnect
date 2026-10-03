@@ -63,3 +63,35 @@ export function isMuhurtham(iso: string): boolean {
 export function nextMuhurthamDates(fromIso: string, count = 1): string[] {
   return MUHURTHAM_DATES.filter((d) => d >= fromIso).slice(0, count);
 }
+
+/** When the list above was last cross-checked. The page shows it; the sitemap dates the page by it. */
+export const MUHURTHAM_CHECKED = "2026-10-02";
+
+/** Every listed muhurtham day on or after `fromIso`, in order. */
+export function upcomingMuhurthamDates(fromIso: string): string[] {
+  return MUHURTHAM_DATES.filter((d) => d >= fromIso);
+}
+
+/** "2026-11" → its dates, in calendar order. */
+export function groupByMonth(dates: readonly string[]): Map<string, string[]> {
+  const out = new Map<string, string[]>();
+  for (const d of dates) {
+    const key = d.slice(0, 7);
+    out.set(key, [...(out.get(key) ?? []), d]);
+  }
+  return out;
+}
+
+/** The month of a year with the most listed muhurtham days, and how many. */
+export function busiestMonth(year: number): { month: string; count: number } | null {
+  let best: { month: string; count: number } | null = null;
+  for (const [month, ds] of groupByMonth(MUHURTHAM_DATES.filter((d) => d.startsWith(`${year}-`)))) {
+    if (!best || ds.length > best.count) best = { month, count: ds.length };
+  }
+  return best;
+}
+
+/** How many listed muhurtham days fall in a year. */
+export function countInYear(year: number): number {
+  return MUHURTHAM_DATES.filter((d) => d.startsWith(`${year}-`)).length;
+}

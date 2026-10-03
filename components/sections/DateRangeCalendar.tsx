@@ -33,6 +33,7 @@
 // All dates are YYYY-MM-DD strings handled in UTC — see lib/search-url.ts.
 // ─────────────────────────────────────────────────────────────────────────────
 
+import Link from "next/link";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
@@ -234,7 +235,10 @@ export function DateRangeCalendar({ today, from, to, onChange, months = 2 }: Pro
       {firstOfView <= MUHURTHAM_COVERAGE_END && (
       <p className="mt-3 flex items-start gap-2 text-xs leading-snug text-charcoal-600">
         <span aria-hidden className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-gold-500" />
-        <span>Muhurtham day in the Tamil calendar. Your family astrologer has the final word on your date.</span>
+        <span>
+          Muhurtham day in the Tamil calendar. Your family astrologer has the final word on your date.{" "}
+          <Link href="/muhurtham-dates" className="font-semibold text-maroon-700 underline-offset-2 hover:underline">All dates</Link>
+        </span>
       </p>
       )}
     </div>

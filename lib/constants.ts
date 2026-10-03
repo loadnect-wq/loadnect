@@ -104,6 +104,7 @@ export const NAV_LINKS = [
 export const FOOTER_LINKS = {
   explore: [
     { label: "Browse Halls",   href: "/halls" },
+    { label: "Muhurtham Dates", href: "/muhurtham-dates" },
     { label: "About Us",       href: "/about" },
     { label: "Pricing",        href: "/premium" },
     { label: "List Your Hall", href: "/owner/register" },

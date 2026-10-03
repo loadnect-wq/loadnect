@@ -20,6 +20,8 @@ import { absoluteUrl, isPublishableUrl } from "@/lib/seo/config";
 import { fetchIndexableVenues } from "@/lib/seo/sitemap-data";
 import { fetchIndexableCities, citySlug, cityFromSlug } from "@/lib/seo/cities";
 import { cityLanguageAlternates, tamilCityName, tamilCityPath } from "@/lib/seo/tamil";
+import { MUHURTHAM_PATH, muhurthamLanguageAlternates } from "@/components/muhurtham/MuhurthamPage";
+import { MUHURTHAM_CHECKED } from "@/lib/muhurtham";
 import {
   fetchVenueCategoriesStrict,
   fetchCategoryInventoryStrict,
@@ -95,6 +97,20 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     // marketplace.
     { url: absoluteUrl("/owner/register"), changeFrequency: "monthly", priority: 0.8 },
     { url: absoluteUrl("/about"), changeFrequency: "monthly", priority: 0.4 },
+    // The muhurtham pages, in both languages, paired by hreflang. Content pages,
+    // not inventory pages: they list dates whether or not a hall exists. Dated
+    // by when the list was last cross-checked, not by `now`.
+    ...(["en", "ta"] as const).map((lang) => ({
+      url: absoluteUrl(MUHURTHAM_PATH[lang]),
+      lastModified: new Date(`${MUHURTHAM_CHECKED}T00:00:00Z`),
+      changeFrequency: "weekly" as const,
+      priority: 0.7,
+      alternates: {
+        languages: Object.fromEntries(
+          Object.entries(muhurthamLanguageAlternates()).map(([l, p]) => [l, absoluteUrl(p)]),
+        ),
+      },
+    })),
     { url: absoluteUrl("/contact"), changeFrequency: "yearly", priority: 0.3 },
     // Legal pages: low priority, but genuine, unique, indexable content that
     // Google likes to see on a marketplace handling payments.

@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
@@ -98,10 +98,23 @@ describe("the Tamil font", () => {
   it("is self-hosted everywhere — next/font/google's Noto_Sans_Tamil broke a production build", () => {
     // Google sometimes answers the build-time CSS fetch with /l/font?kit=…&skey=…
     // URLs that Turbopack cannot parse; the deploy of 59d7b23 failed on it.
-    for (const f of ["app/ta/wedding-halls/[city]/page.tsx", "app/owner/(dashboard)/halls/[id]/standee/page.tsx"]) {
-      const src = read(f);
-      expect(src, f).not.toContain("Noto_Sans_Tamil");
-      expect(src, f).toContain('from "@/app/fonts/noto-sans-tamil/font"');
+    // Every Tamil surface, and no file anywhere still on the Google loader.
+    for (const f of [
+      "app/ta/wedding-halls/[city]/page.tsx",
+      "app/ta/muhurtham-dates/page.tsx",
+      "app/owner/(dashboard)/halls/[id]/standee/page.tsx",
+    ]) {
+      expect(read(f), f).toContain('from "@/app/fonts/noto-sans-tamil/font"');
+    }
+    const walk = (dir: string): string[] =>
+      readdirSync(join(root, dir)).flatMap((f) => {
+        const p = `${dir}/${f}`;
+        if (statSync(join(root, p)).isDirectory()) return walk(p);
+        return /\.(ts|tsx)$/.test(f) ? [p] : [];
+      });
+    for (const f of [...walk("app"), ...walk("components")]) {
+      const code = read(f).replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
+      expect(code, f).not.toMatch(/import\s*\{[^}]*Noto_Sans_Tamil[^}]*\}\s*from\s*"next\/font\/google"/);
     }
     expect(read("app/fonts/noto-sans-tamil/font.ts")).toContain('src: "./NotoSansTamil-wght-tamil.woff2"');
   });

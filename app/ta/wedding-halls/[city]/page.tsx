@@ -321,6 +321,9 @@ export default async function TamilCityPage({ params }: Props) {
                 <p className="mt-2 text-xs text-charcoal-600">
                   தமிழ் நாட்காட்டியின்படி முகூர்த்த நாட்கள். உங்கள் தேதியைக் குடும்ப ஜோதிடரிடம் உறுதி செய்யுங்கள்.
                 </p>
+                <Link href="/ta/muhurtham-dates" className="mt-2 inline-flex min-h-[40px] items-center text-sm font-semibold text-maroon-700 hover:underline">
+                  எல்லா முகூர்த்த நாட்களும் →
+                </Link>
               </div>
             )}
           </div>
