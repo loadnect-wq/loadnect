@@ -18,6 +18,9 @@ import { fetchVenueCategories, fetchCategoryInventory } from "@/lib/venue-catego
 import { categoryLabelMap } from "@/lib/venue-categories";
 import { formatDateChoice } from "@/lib/search-url";
 import { isMuhurtham } from "@/lib/muhurtham";
+import { countBookedHalls, pushConfig } from "@/lib/date-alerts.server";
+import { bookedSentence } from "@/lib/date-alerts";
+import { DateAlertCard } from "./_components/DateAlertCard";
 
 /**
  * CRAWL-TRAP CONTROL. This route accepts TEN independent query parameters
@@ -116,6 +119,17 @@ export default async function HallsPage({
   // for a given day. An explicit ?date= always wins.
   const effectiveDate = date || (sp.available === "today" ? todayInBusinessTz() : "");
 
+  // DATE ALERTS (0108): a single-date search that hides booked halls offers to
+  // say when one frees up. Not for a range — "one day of five came free" is
+  // not an answer to a five-day search. Not without VAPID keys, so the button
+  // never appears where it cannot work.
+  const push = pushConfig();
+  // Nor for a date already past, which a hand-edited URL can carry.
+  const alertDate =
+    push && effectiveDate && !(dateTo && dateTo > effectiveDate) && effectiveDate >= todayInBusinessTz()
+      ? effectiveDate
+      : "";
+
   // One round of queries. These three are independent, and the premium count
   // used to be awaited inline in the JSX below, which serialised it behind the
   // whole search.
@@ -123,7 +137,7 @@ export default async function HallsPage({
   // empty array from a genuine no-match are the same value, and this page's
   // whole job is to say which. Especially now, when zero venues is the expected
   // state and a failure would hide inside the ordinary empty screen.
-  const [advancePercent, hallsResult, premiumCount, cityInventory, catalogue, categoryInventory] =
+  const [advancePercent, hallsResult, premiumCount, cityInventory, catalogue, categoryInventory, bookedOnDate] =
     await Promise.all([
     getAdvancePercent(),
     fetchHallsResult({
@@ -139,6 +153,8 @@ export default async function HallsPage({
     // a broken search.
     fetchVenueCategories(),
     fetchCategoryInventory(),
+    // Null on a failed read, and then no offer: a wrong count is worse than none.
+    alertDate ? countBookedHalls(alertDate, city || null) : Promise.resolve(null),
   ]);
   const { halls, failed: hallsFailed } = hallsResult;
   // Only cities that actually hold inventory get a link — the same gate that
@@ -254,6 +270,15 @@ export default async function HallsPage({
               </span>
             )}
           </p>
+        )}
+        {push && alertDate && dateChoice && bookedOnDate !== null && bookedOnDate > 0 && (
+          <DateAlertCard
+            date={alertDate}
+            city={city || null}
+            sentence={bookedSentence(bookedOnDate, dateChoice, city || null)}
+            dateLabel={dateChoice}
+            publicKey={push.publicKey}
+          />
         )}
       </section>
 

@@ -28,6 +28,7 @@ import { VENUE_CATEGORY_GROUPS, VENUE_CATEGORY_SLUG_PATTERN } from "@/lib/venue-
 // phone.ts is deliberately pure — no "server-only", no env — so importing it
 // here keeps this module client-safe.
 import { normalizePhoneE164 } from "@/lib/notifications/phone";
+import { isAllowedPushEndpoint } from "@/lib/date-alerts";
 
 export function sanitizeText(input: unknown, maxLen = 4000): string {
   if (typeof input !== "string") return "";
@@ -863,6 +864,42 @@ export const diaryBookingUpdateSchema = z
   .refine(receivedWithinTotal, RECEIVED_WITHIN_TOTAL_ERROR);
 
 export type DiaryBookingUpdateInput = z.input<typeof diaryBookingUpdateSchema>;
+
+// ── Date alerts (0108) ───────────────────────────────────────────────────────
+//
+// What a browser's PushSubscription.toJSON() carries, plus the date and city
+// it is watching. The endpoint must belong to a real push service
+// (isAllowedPushEndpoint) — the cron POSTs to it, so an arbitrary URL here
+// would turn Hallnect into a request relay. The date window (today and up to
+// ALERT_HORIZON_DAYS ahead) is checked in the action, against India's today.
+
+const base64UrlKey = (min: number, max: number) =>
+  z.string().trim().min(min, "Invalid alert key.").max(max, "Invalid alert key.")
+    .regex(/^[A-Za-z0-9_-]+={0,2}$/, "Invalid alert key.");
+
+const alertCitySchema = z
+  .string()
+  .trim()
+  .max(80, "City is too long.")
+  .regex(/^[\p{L} .'-]*$/u, "Invalid city.")
+  .transform((v) => v || null)
+  .nullable()
+  .optional();
+
+export const dateAlertSubscribeSchema = z.object({
+  endpoint: z.string().trim().max(1000, "Invalid alert address.")
+    .refine(isAllowedPushEndpoint, "This browser's alert service isn't supported."),
+  p256dh:   base64UrlKey(40, 200),
+  auth:     base64UrlKey(10, 100),
+  date:     dateStringSchema,
+  city:     alertCitySchema,
+});
+
+export const dateAlertUnsubscribeSchema = z.object({
+  endpoint: z.string().trim().max(1000, "Invalid alert address.").refine(isAllowedPushEndpoint, "Invalid alert address."),
+  date:     dateStringSchema,
+  city:     alertCitySchema,
+});
 
 // ── Booking ──────────────────────────────────────────────────────────────────
 

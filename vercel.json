@@ -17,6 +17,10 @@
     {
       "path": "/api/admin/leads/expire-stale",
       "schedule": "40 2 * * *"
+    },
+    {
+      "path": "/api/admin/date-alerts/send",
+      "schedule": "2,12,22,32,42,52 * * * *"
     }
   ]
 }
