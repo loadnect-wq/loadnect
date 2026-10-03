@@ -11,6 +11,7 @@ import { buttonVariants } from "@/components/ui/Button";
 import { fetchSavedHalls } from "../actions";
 import { ShareShortlist } from "@/components/shortlist/ShareShortlist";
 import { MAX_SHORTLIST, encodeShortlist } from "@/lib/shortlist";
+import { ComparePicker } from "@/components/compare/ComparePicker";
 
 type Fetched = { halls: HallListing[]; advancePercent: number | undefined };
 
@@ -85,6 +86,13 @@ export function SavedView() {
               <div className="mt-3">
                 <ShareShortlist code={shareCode} count={Math.min(shareIds.length, MAX_SHORTLIST)} />
               </div>
+            </div>
+          )}
+          {shareIds.length > 1 && (
+            <div className="mb-5">
+              <ComparePicker
+                halls={shareIds.map((id) => halls.find((h) => h.id === id)!).map((h) => ({ id: h.id, name: h.name }))}
+              />
             </div>
           )}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">

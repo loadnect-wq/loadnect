@@ -111,9 +111,14 @@ export function shortlistTitle(count: number): string {
  * it is sent from their WhatsApp, not by Hallnect.
  */
 export function shareMessage(url: string, count: number): string {
+  return `${shortlistShareText(count)}\n${url}`;
+}
+
+/** The same message without the link, for components that append it themselves. */
+export function shortlistShareText(count: number): string {
   return count === 1
-    ? `Here's the hall I've shortlisted on Hallnect. What do you think?\n${url}`
-    : `Here are the ${count} halls I've shortlisted on Hallnect. Which one do you like?\n${url}`;
+    ? "Here's the hall I've shortlisted on Hallnect. What do you think?"
+    : `Here are the ${count} halls I've shortlisted on Hallnect. Which one do you like?`;
 }
 
 /** A wa.me link with no number: WhatsApp asks which chat to send it to. */

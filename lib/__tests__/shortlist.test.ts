@@ -119,6 +119,8 @@ describe("guard rails", () => {
   });
 
   it("links to the canonical host, so a share never points at a preview deploy", () => {
-    expect(read("components/shortlist/ShareShortlist.tsx")).toContain("absoluteUrl(shortlistPath(code))");
+    // The shared buttons build every share link; the shortlist passes its path.
+    expect(read("components/share/ShareButtons.tsx")).toContain("const url = absoluteUrl(path);");
+    expect(read("components/shortlist/ShareShortlist.tsx")).toContain("path={shortlistPath(code)}");
   });
 });

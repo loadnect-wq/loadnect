@@ -18,7 +18,7 @@ import { isVenueCategorySlug } from "@/lib/venue-categories";
  * wrong one is the exact fail-open shape this codebase keeps finding. A price
  * that is absent stays absent all the way to formatHallPrice, which says so.
  */
-function nullablePrice(raw: unknown): number | null {
+export function nullablePrice(raw: unknown): number | null {
   if (raw == null) return null;
   const n = Number(raw);
   return Number.isFinite(n) ? n : null;

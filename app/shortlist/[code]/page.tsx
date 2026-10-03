@@ -26,6 +26,7 @@ import { categoryLabelMap } from "@/lib/venue-categories";
 import { citiesSummary, hallNamesSummary, shortlistPath, shortlistTitle } from "@/lib/shortlist";
 import { loadShortlist } from "./load";
 import { ShortlistActions } from "./_components/ShortlistActions";
+import { ComparePicker } from "@/components/compare/ComparePicker";
 
 // The halls' prices and listings can change; five minutes is fresh enough for
 // a family comparing options, and spares the database a read per relative.
@@ -115,6 +116,11 @@ export default async function ShortlistPage({ params }: Props) {
             )}
 
             <ShortlistActions code={code} hallIds={halls.map((h) => h.id)} />
+            {halls.length > 1 && (
+              <div className="mt-4">
+                <ComparePicker halls={halls.map((h) => ({ id: h.id, name: h.name }))} />
+              </div>
+            )}
 
             <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {halls.map((h, i) => (
