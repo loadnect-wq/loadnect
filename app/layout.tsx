@@ -1,6 +1,6 @@
 import type { Metadata, Viewport } from "next";
-import { Inter, Playfair_Display } from "next/font/google";
 import "./globals.css";
+import { inter, playfair } from "./fonts/site-fonts";
 import { Navbar }     from "@/components/layout/Navbar";
 import { Footer }     from "@/components/layout/Footer";
 import { AnalyticsConsent } from "@/components/analytics/AnalyticsConsent";
@@ -13,19 +13,7 @@ import { REVEAL_BOOT_SCRIPT } from "@/lib/motion";
 import { SITE_LANG } from "@/lib/seo/config";
 import { RevealObserver } from "@/components/motion/RevealObserver";
 
-const inter = Inter({
-  subsets:  ["latin"],
-  variable: "--font-inter",
-  display:  "swap",
-});
-
-const playfair = Playfair_Display({
-  subsets:  ["latin"],
-  variable: "--font-playfair",
-  display:  "swap",
-  weight:   ["400", "500", "600", "700", "800"],
-  style:    ["normal", "italic"],
-});
+// Inter and Playfair Display are self-hosted: app/fonts/site-fonts.ts says why.
 
 export const metadata: Metadata = {
   title: { default: APP_NAME, template: `%s | ${APP_NAME}` },

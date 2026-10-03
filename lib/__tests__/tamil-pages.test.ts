@@ -114,9 +114,16 @@ describe("the Tamil font", () => {
       });
     for (const f of [...walk("app"), ...walk("components")]) {
       const code = read(f).replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
-      expect(code, f).not.toMatch(/import\s*\{[^}]*Noto_Sans_Tamil[^}]*\}\s*from\s*"next\/font\/google"/);
+      // Not just the Tamil face: on 2026-10-03 a build died on Inter and
+      // Playfair the same way. No font may come from the Google loader.
+      expect(code, f).not.toMatch(/from\s*["']next\/font\/google["']/);
     }
     expect(read("app/fonts/noto-sans-tamil/font.ts")).toContain('src: "./NotoSansTamil-wght-tamil.woff2"');
+    const site = read("app/fonts/site-fonts.ts");
+    expect(site).toContain('variable: "--font-inter"');
+    expect(site).toContain('variable: "--font-playfair"');
+    expect(site).toContain('style: "italic"');
+    expect(read("app/layout.tsx")).toContain('from "./fonts/site-fonts"');
   });
 });
 
