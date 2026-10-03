@@ -9,6 +9,8 @@ import { HallCard } from "@/app/halls/_components/HallCard";
 import { EmptyState } from "@/components/ui/empty-state";
 import { buttonVariants } from "@/components/ui/Button";
 import { fetchSavedHalls } from "../actions";
+import { ShareShortlist } from "@/components/shortlist/ShareShortlist";
+import { MAX_SHORTLIST, encodeShortlist } from "@/lib/shortlist";
 
 type Fetched = { halls: HallListing[]; advancePercent: number | undefined };
 
@@ -46,6 +48,12 @@ export function SavedView() {
     : fetched.halls.filter((h) => ids.includes(h.id));
   const advancePercent = fetched?.advancePercent;
 
+  // The share link carries the halls on screen — still listed — in the order
+  // they were saved. A hall since delisted would only show up on a relative's
+  // phone as "no longer listed".
+  const shareIds = halls ? ids.filter((id) => halls.some((h) => h.id === id)) : [];
+  const shareCode = encodeShortlist(shareIds);
+
   return (
     <section className="container-app py-5 lg:max-w-7xl">
       {halls === null ? (
@@ -66,11 +74,25 @@ export function SavedView() {
           }
         />
       ) : (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {halls.map((h, i) => (
-            <HallCard key={h.id} hall={h} advancePercent={advancePercent} revealIndex={i} revealNow={i < 3} />
-          ))}
-        </div>
+        <>
+          {shareCode && (
+            <div className="mb-5 rounded-2xl bg-white p-4 shadow-card ring-1 ring-border">
+              <h2 className="text-base font-bold text-charcoal-900">Deciding with family?</h2>
+              <p className="mt-1 text-sm text-charcoal-700">
+                Send this list to the family group. It opens on any phone, no app or sign-up needed.
+                {shareIds.length > MAX_SHORTLIST && ` The link carries your first ${MAX_SHORTLIST} halls.`}
+              </p>
+              <div className="mt-3">
+                <ShareShortlist code={shareCode} count={Math.min(shareIds.length, MAX_SHORTLIST)} />
+              </div>
+            </div>
+          )}
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {halls.map((h, i) => (
+              <HallCard key={h.id} hall={h} advancePercent={advancePercent} revealIndex={i} revealNow={i < 3} />
+            ))}
+          </div>
+        </>
       )}
     </section>
   );

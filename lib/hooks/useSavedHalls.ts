@@ -100,5 +100,17 @@ export function useSavedHalls() {
     return next.includes(id);
   }, []);
 
-  return { ids, isSaved, toggle };
+  /**
+   * Adds every id not already saved, keeping the existing order and appending
+   * the rest — a shared shortlist opened on a relative's phone. Returns how
+   * many were added, or null when storage refused the write.
+   */
+  const addMany = useCallback((add: readonly string[]): number | null => {
+    const current = getSnapshot();
+    const fresh = [...new Set(add)].filter((id) => !current.includes(id));
+    if (fresh.length === 0) return 0;
+    return write([...current, ...fresh]) ? fresh.length : null;
+  }, []);
+
+  return { ids, isSaved, toggle, addMany };
 }
