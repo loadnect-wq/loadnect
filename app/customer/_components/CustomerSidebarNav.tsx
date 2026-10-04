@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   CalendarDays, Heart, Inbox, LayoutDashboard, Star, User,
-  Bell,
+  Bell, CalendarCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -12,6 +12,7 @@ const NAV = [
   { label: "Dashboard",   href: "/customer",              icon: LayoutDashboard, exact: true },
   { label: "My Bookings", href: "/customer/bookings",     icon: CalendarDays },
   { label: "My Enquiries", href: "/customer/enquiries",  icon: Inbox },
+  { label: "My Visits",   href: "/customer/visits",       icon: CalendarCheck },
   { label: "Saved Halls", href: "/customer/saved-halls",  icon: Heart },
   { label: "My Reviews",  href: "/customer/reviews",      icon: Star },
   { label: "Notifications", href: "/customer/notifications", icon: Bell },

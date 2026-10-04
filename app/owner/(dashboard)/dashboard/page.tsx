@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import {
   AlertCircle, Building2, CalendarDays, CheckCircle2, CreditCard,
-  IndianRupee, Plus, Sparkles, Clock, Wallet, Inbox, Phone, BookOpen,
+  IndianRupee, Plus, Sparkles, Clock, Wallet, Inbox, Phone, BookOpen, CalendarCheck,
 } from "lucide-react";
 import { requireRole } from "@/lib/auth";
 import { fetchOwnerRow, fetchOwnerHalls, fetchOwnerStats, fetchOwnerCommissions } from "@/lib/owner";
@@ -13,6 +13,7 @@ import { formatPrice } from "@/lib/mock-data";
 import { advanceFromTotal } from "@/lib/booking-payment";
 import { fetchPremiumPlans, PLAN_FEATURES } from "@/lib/premium-plans";
 import { countPendingLeads } from "@/lib/leads";
+import { countPendingVisits } from "@/lib/site-visits.server";
 import { SETTLED_COMMISSION_STATUSES } from "@/lib/commission-payments";
 import { Badge } from "@/components/ui/Badge";
 import { buttonVariants } from "@/components/ui/Button";
@@ -67,7 +68,7 @@ export default async function OwnerDashboardPage() {
 
   const halls   = await fetchOwnerHalls(ownerRow.id);
   const hallIds = halls.map((h) => h.id);
-  const [catalogue, stats, commissions, plans, pendingLeads, claimable] = await Promise.all([
+  const [catalogue, stats, commissions, plans, pendingLeads, claimable, pendingVisits] = await Promise.all([
     // Lenient: without it the breakdown below names occasions by slug rather
     // than not rendering — a dashboard panel is not worth failing a dashboard.
     fetchVenueCategories(),
@@ -86,6 +87,11 @@ export default async function OwnerDashboardPage() {
     // see their venue today, and the cost of getting it wrong is offering a
     // claim we could not verify.
     fetchClaimableDraft(),
+    // Site visit requests waiting for an answer (0109). The dashboard is the
+    // channel: there is no SMS template for a visit, by design (see the
+    // enquiry note above). Null on a failed read, and then no banner rather
+    // than a wrong one.
+    countPendingVisits(hallIds),
   ]);
   const paidPlans = plans.filter((p) => p.monthly_price > 0 && p.is_purchasable);
 
@@ -178,6 +184,30 @@ export default async function OwnerDashboardPage() {
             end of it. It disappears entirely at zero rather than sitting there
             as a permanent "0 enquiries" — a banner that is always present
             stops being read by the time it matters. */}
+        {pendingVisits !== null && pendingVisits > 0 && (
+          <Link
+            href="/owner/visits"
+            className="flex items-start gap-3 rounded-2xl border-2 border-gold-300 bg-gold-50 p-4 shadow-card transition active:scale-[0.99] motion-reduce:active:scale-100"
+          >
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gold-600">
+              <CalendarCheck className="h-5 w-5 text-white" aria-hidden />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block font-serif text-base font-bold text-gold-900">
+                {pendingVisits === 1
+                  ? "1 family wants to visit your hall"
+                  : `${pendingVisits} families want to visit your hall`}
+              </span>
+              <span className="mt-0.5 block text-xs leading-relaxed text-gold-900/80">
+                Confirm or decline, and call them to fix the time. Their number is verified.
+              </span>
+              <span className="mt-1.5 inline-flex items-center gap-1 text-xs font-semibold text-gold-800">
+                <CalendarCheck className="h-3.5 w-3.5" aria-hidden /> View site visits
+              </span>
+            </span>
+          </Link>
+        )}
+
         {pendingLeads > 0 && (
           <Link
             href="/owner/leads"

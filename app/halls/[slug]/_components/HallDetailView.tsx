@@ -11,7 +11,7 @@ import {
   AlertTriangle, ArrowLeft, Accessibility, Calendar, Car,
   ChefHat, ExternalLink, MapPin, MonitorPlay, Music,
   Share2, Snowflake, Sparkles, Star, TreePine, Users,
-  Waves, Zap, Info,
+  Waves, Zap, Info, CalendarCheck,
 } from "lucide-react";
 import { type HallDetail, type HallListing, type AvailabilityRow } from "@/lib/halls";
 // From lib/venue-types, NOT lib/halls: this is a Client Component, and
@@ -203,6 +203,9 @@ export function HallDetailView({ hall, categories, similar, isPreview, sidebarAd
   const typesSentence = venueCategoriesSentence(categories, hall);
   const ctaHref       = primaryCtaHref(hall.booking_mode, hall.slug);
   const ctaLabel      = primaryCtaLabel(hall.booking_mode);
+  // Site visits (0109): any approved hall, either booking mode. Not in the
+  // owner's preview of an unapproved listing, where /visit would 404.
+  const visitHref     = !isPreview && hall.status === "approved" ? `/visit/${hall.slug}` : null;
   const showAdvance   = priced && !isLead;
   const advanceAmount = showAdvance
     ? advanceFromTotal(hall.price_per_day as number, advancePct)
@@ -1029,6 +1032,14 @@ export function HallDetailView({ hall, categories, similar, isPreview, sidebarAd
                   {isLead ? "Send Enquiry" : "Book This Hall"}
                 </Button>
               </Link>
+              {visitHref && (
+                <Link
+                  href={visitHref}
+                  className="mt-2 flex min-h-[44px] w-full items-center justify-center gap-2 rounded-xl border border-maroon-200 text-sm font-semibold text-maroon-700 hover:bg-maroon-50"
+                >
+                  <CalendarCheck className="h-4 w-4" aria-hidden /> Visit the hall first
+                </Link>
+              )}
 
               <div className="mt-3 flex items-start gap-1.5">
                 <Info className="h-3.5 w-3.5 shrink-0 mt-0.5 text-charcoal-400" />
@@ -1065,6 +1076,14 @@ export function HallDetailView({ hall, categories, similar, isPreview, sidebarAd
               {formatHallPrice(hall.price_per_day)}
             </p>
           </div>
+          {visitHref && (
+            <Link
+              href={visitHref}
+              className="flex min-h-[48px] shrink-0 items-center justify-center rounded-xl border border-maroon-200 px-3 text-sm font-semibold text-maroon-700"
+            >
+              Visit
+            </Link>
+          )}
           <Link href={ctaHref} className="flex-1">
             <Button variant="gold" size="lg" className="w-full">{ctaLabel}</Button>
           </Link>

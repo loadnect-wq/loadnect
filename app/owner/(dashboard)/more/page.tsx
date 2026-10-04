@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import {
-  Wallet, Sparkles, Bell, MessageSquare, User, ChevronRight, Building2, Inbox, IndianRupee,
+  Wallet, Sparkles, Bell, MessageSquare, User, ChevronRight, Building2, Inbox, IndianRupee, CalendarCheck,
 } from "lucide-react";
 import { requireRole } from "@/lib/auth";
 import { AppHeader } from "@/components/app/AppHeader";
@@ -13,6 +13,7 @@ export const metadata: Metadata = { title: "More" };
 // they were before this page existed.
 const ITEMS = [
   { href: "/owner/leads",         label: "Enquiries",     desc: "Lead Generation requests waiting on you", Icon: Inbox },
+  { href: "/owner/visits",        label: "Site visits",   desc: "Families asking to see your hall",      Icon: CalendarCheck },
   // Moved here from the tab bar when Diary took its slot.
   { href: "/owner/revenue",       label: "Revenue",       desc: "What your Hallnect bookings have earned", Icon: IndianRupee },
   { href: "/owner/commissions",   label: "Commissions",   desc: "What Hallnect kept from each booking", Icon: Wallet },

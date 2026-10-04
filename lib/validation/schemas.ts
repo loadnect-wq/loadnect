@@ -895,6 +895,30 @@ export const dateAlertSubscribeSchema = z.object({
   city:     alertCitySchema,
 });
 
+// ── Site visits (0109) ───────────────────────────────────────────────────────
+//
+// The family's request and the owner's answer. The date window (today up to
+// VISIT_HORIZON_DAYS ahead) is checked in lib/site-visits.server.ts against
+// India's today; who is asking and who owns the hall come from the session,
+// never from these inputs.
+
+export const siteVisitRequestSchema = z.object({
+  hallId:    uuidSchema,
+  date:      dateStringSchema,
+  window:    z.enum(["morning", "afternoon", "evening"], { message: "Choose a time of day." }),
+  partySize: z.coerce.number().int("Enter a whole number.").min(1, "At least 1 person.").max(20, "At most 20 people."),
+  // The name the hall will ask for at the gate. The PHONE is not an input: it
+  // is the profile's verified number, read server-side.
+  contactName: z.string().trim().min(2, "Enter your name.").max(120, "Name is too long."),
+  note:      z.string().trim().max(300, "Keep the note under 300 characters.").optional(),
+});
+
+export const siteVisitAnswerSchema = z.object({
+  visitId:  uuidSchema,
+  decision: z.enum(["confirmed", "declined"]),
+  message:  z.string().trim().max(300, "Keep the message under 300 characters.").optional(),
+});
+
 export const dateAlertUnsubscribeSchema = z.object({
   endpoint: z.string().trim().max(1000, "Invalid alert address.").refine(isAllowedPushEndpoint, "Invalid alert address."),
   date:     dateStringSchema,

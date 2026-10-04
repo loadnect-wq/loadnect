@@ -15,7 +15,7 @@ const TABS = [
   // is the same thing to a customer as a booking request: something they sent a
   // venue and are waiting on. The tab highlights for both, and the bookings
   // page links across.
-  { href: "/customer/bookings", label: "Bookings", Icon: CalendarCheck, match: (p: string) => p.startsWith("/bookings") || p.startsWith("/customer/bookings") || p.startsWith("/customer/enquiries") },
+  { href: "/customer/bookings", label: "Bookings", Icon: CalendarCheck, match: (p: string) => p.startsWith("/bookings") || p.startsWith("/customer/bookings") || p.startsWith("/customer/enquiries") || p.startsWith("/customer/visits") },
   { href: "/saved",    label: "Saved",    Icon: Heart,         match: (p: string) => p.startsWith("/saved") },
   { href: "/profile",  label: "Profile",  Icon: User,          match: (p: string) => p.startsWith("/profile") },
 ] as const;
