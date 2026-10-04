@@ -80,7 +80,12 @@ import { startPhoneSignIn, verifyPhoneSignIn } from "./phone-actions";
 // refused the value, and they were dropped on /customer having lost the venue
 // they came for. It is exactly as safe as "/book/": slug-only, auth-gated,
 // notFound on an unknown slug, no privileged side effect.
-const ALLOWED_NEXT_PREFIXES = ["/auth/redirect", "/book/", "/enquiry/", "/customer", "/owner/", "/halls"];
+// /visit/ (site visits, 0109), /plan (event plans, 0110) and /booking/ (the
+// payment return page, when the session expired during checkout) send
+// signed-out visitors here and expect to get them back. Keep in step with
+// ALLOWED_REDIRECT_PREFIXES in app/auth/callback/route.ts;
+// lib/__tests__/plan.test.ts fails if a /login?next= path is missing from either.
+const ALLOWED_NEXT_PREFIXES = ["/auth/redirect", "/book/", "/booking/", "/enquiry/", "/visit/", "/plan", "/verify-phone", "/customer", "/owner/", "/halls"];
 
 function safeNextPath(raw: string | null): string {
   const fallback = "/auth/redirect";

@@ -95,6 +95,17 @@ export function SavedView() {
               />
             </div>
           )}
+          {/* The planner (0110) is where a chosen hall goes next. */}
+          <Link
+            href="/plan"
+            className="mb-5 flex items-center justify-between gap-3 rounded-2xl bg-white p-4 text-sm shadow-card ring-1 ring-border hover:ring-maroon-200"
+          >
+            <span>
+              <span className="block font-semibold text-charcoal-900">Planning the whole function?</span>
+              <span className="block text-charcoal-700">Put the hall, food, decoration and budget on one board.</span>
+            </span>
+            <span className="shrink-0 font-semibold text-maroon-700">My plans</span>
+          </Link>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {halls.map((h, i) => (
               <HallCard key={h.id} hall={h} advancePercent={advancePercent} revealIndex={i} revealNow={i < 3} />

@@ -29,6 +29,7 @@ import { VENUE_CATEGORY_GROUPS, VENUE_CATEGORY_SLUG_PATTERN } from "@/lib/venue-
 // here keeps this module client-safe.
 import { normalizePhoneE164 } from "@/lib/notifications/phone";
 import { isAllowedPushEndpoint } from "@/lib/date-alerts";
+import { ITEM_STATUSES, PLAN_CATEGORY_KEYS, type PlanCategory } from "@/lib/plan";
 
 export function sanitizeText(input: unknown, maxLen = 4000): string {
   if (typeof input !== "string") return "";
@@ -917,6 +918,72 @@ export const siteVisitAnswerSchema = z.object({
   visitId:  uuidSchema,
   decision: z.enum(["confirmed", "declined"]),
   message:  z.string().trim().max(300, "Keep the message under 300 characters.").optional(),
+});
+
+// ── Event plans (0110) ───────────────────────────────────────────────────────
+//
+// The family's own numbers, typed the way Indians type them: "1,60,000",
+// "₹ 50000". A blank box means "no figure" and arrives as undefined, which the
+// update turns into null — the item form always sends every field, so a box
+// the family cleared really is cleared. Who owns the plan is never an input:
+// RLS checks the session against event_plans.owner_id.
+
+const planAmountSchema = z.preprocess(
+  (v) => {
+    if (v === "" || v == null) return undefined;
+    if (typeof v === "number") return v;
+    const s = String(v).replace(/[₹,\s]/g, "");
+    return /^\d+$/.test(s) ? Number(s) : Number.NaN;
+  },
+  z.number({ message: "Enter an amount in rupees, digits only." })
+    .int("Enter a whole rupee amount.")
+    .min(0, "Enter an amount in rupees, digits only.")
+    .max(10_000_000_000, "That amount is too large.")
+    .optional(),
+);
+
+const planDateSchema = z.preprocess(
+  (v) => (v === "" || v == null ? undefined : v),
+  dateStringSchema.optional(),
+);
+
+export const planDetailsSchema = z.object({
+  title:     z.string().trim().min(1, "Give the plan a name.").max(80, "Keep the name under 80 characters."),
+  occasion:  z.string().trim().regex(VENUE_CATEGORY_SLUG_PATTERN, "Choose an occasion."),
+  eventDate: planDateSchema,
+  city:      optionalTrimmed(80),
+  guests:    z.preprocess(
+    (v) => (v === "" || v == null ? undefined : Number(String(v).replace(/[,\s]/g, ""))),
+    z.number({ message: "Enter the number of guests." }).int("Enter a whole number of guests.")
+      .min(1, "Enter at least 1 guest.").max(10_000, "Enter at most 10,000 guests.").optional(),
+  ),
+  budget:    planAmountSchema,
+});
+
+export const planItemSchema = z.object({
+  planId:        uuidSchema,
+  category:      z.enum(PLAN_CATEGORY_KEYS as [PlanCategory, ...PlanCategory[]]),
+  status:        z.enum(ITEM_STATUSES),
+  hallId:        z.preprocess((v) => (v === "" || v == null ? undefined : v), uuidSchema.optional()),
+  vendorName:    optionalTrimmed(120),
+  vendorPhone:   z.string().trim().max(20, "That phone number is too long.")
+                   .regex(/^[+0-9 ()-]*$/, "Enter the phone number with digits only.").optional(),
+  notes:         optionalMultiline(1000),
+  plannedAmount: planAmountSchema,
+  quotedAmount:  planAmountSchema,
+  paidAmount:    planAmountSchema,
+  nextDueDate:   planDateSchema,
+  nextDueAmount: planAmountSchema,
+});
+
+export const planTaskSchema = z.object({
+  planId:   uuidSchema,
+  title:    z.string().trim().min(1, "Write the task.").max(140, "Keep the task under 140 characters."),
+  dueDate:  planDateSchema,
+  category: z.preprocess(
+    (v) => (v === "" || v == null ? undefined : v),
+    z.enum(PLAN_CATEGORY_KEYS as [PlanCategory, ...PlanCategory[]]).optional(),
+  ),
 });
 
 export const dateAlertUnsubscribeSchema = z.object({

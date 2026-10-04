@@ -22,6 +22,12 @@ const ALLOWED_REDIRECT_PREFIXES = [
   // login page: that list decides what goes INTO the cookie, this one decides
   // what may come out of it, and a path missing from either is discarded.
   "/enquiry/",
+  // Site visits (0109), event plans (0110) and the payment return page, for
+  // the same reason.
+  "/visit/",
+  "/plan",
+  "/booking/",
+  "/verify-phone",
   "/customer",
   "/owner",
   "/halls",

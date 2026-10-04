@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Bell, ChevronRight, FileText, HelpCircle,
-  LayoutDashboard, LogIn, LogOut, Mail, Phone, Settings, ShieldCheck, } from "lucide-react";
+  LayoutDashboard, LogIn, LogOut, Mail, Phone, Settings, ShieldCheck, ClipboardList, } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { getDashboardPath } from "@/lib/constants";
@@ -153,6 +153,10 @@ export function ProfileView({
       {/* Quick links */}
       <SettingsGroup title="Account">
         {/* Notifications is a real page — it was labelled "Soon" while working. */}
+        {/* The event planner (0110) is for customer accounts. */}
+        {profile?.role === "customer" && (
+          <SettingsRow icon={<ClipboardList className="h-4 w-4" />} label="My plans" href="/plan" />
+        )}
         {profile && (
           <SettingsRow icon={<Bell className="h-4 w-4" />} label="Notifications" href="/customer/notifications" />
         )}

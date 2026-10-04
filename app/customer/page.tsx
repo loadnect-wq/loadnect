@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { CalendarCheck, CalendarDays, Heart, Search, Star } from "lucide-react";
+import { CalendarCheck, CalendarDays, ClipboardList, Heart, Search, Star } from "lucide-react";
 import { requireRole } from "@/lib/auth";
 import { fetchCustomerStats } from "@/lib/customer";
 import { AppHeader } from "@/components/app/AppHeader";
@@ -68,8 +68,17 @@ export default async function CustomerDashboard() {
           Quick Actions
         </h2>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {/* The event planner (0110): the whole function on one board. */}
           <ActionCard
             revealIndex={0}
+            icon={<ClipboardList className="h-6 w-6 text-maroon-600" />}
+            title="Plan your function"
+            description="Hall, food, decoration, photos and the budget, on one board."
+            href="/plan"
+            cta="Open my plans"
+          />
+          <ActionCard
+            revealIndex={1}
             icon={<Search className="h-6 w-6 text-maroon-600" />}
             title="Browse Halls"
             description="Explore venues for your next event."
@@ -77,7 +86,7 @@ export default async function CustomerDashboard() {
             cta="Find Venues"
           />
           <ActionCard
-            revealIndex={1}
+            revealIndex={2}
             icon={<CalendarDays className="h-6 w-6 text-maroon-600" />}
             title="My Bookings"
             description="View upcoming and past bookings."
@@ -85,7 +94,7 @@ export default async function CustomerDashboard() {
             cta="View Bookings"
           />
           <ActionCard
-            revealIndex={2}
+            revealIndex={3}
             icon={<Heart className="h-6 w-6 text-maroon-600" />}
             title="Saved Halls"
             description="Halls you've saved for later."

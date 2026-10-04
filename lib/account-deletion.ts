@@ -142,8 +142,18 @@ export async function deleteCustomerAccount(userId: string): Promise<DeleteAccou
   // Best-effort and AFTER the scrub: the identity is already gone at this point,
   // so a failure here leaves residue rather than an identifiable account. Logged
   // so it is not silent.
-  for (const table of ["saved_halls", "otp_attempts"] as const) {
-    const col = table === "saved_halls" ? "customer_id" : "user_id";
+  // event_plans (0110) is a family's private planning — budgets, dates and the
+  // names and numbers of their own vendors — and its board and checklist go
+  // with it by cascade. site_visits (0109) carries the family's name and phone
+  // and no money, so it is not a transaction record either; it was missing
+  // from this list when visits shipped.
+  const PURGE = [
+    ["saved_halls", "customer_id"],
+    ["otp_attempts", "user_id"],
+    ["event_plans", "owner_id"],
+    ["site_visits", "customer_id"],
+  ] as const;
+  for (const [table, col] of PURGE) {
     const { error } = await db.from(table).delete().eq(col, userId);
     if (error) console.error(`[account-deletion] ${table} purge failed:`, error.message);
   }

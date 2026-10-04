@@ -37,6 +37,8 @@ export default function PrivacyPage() {
         <strong>Only if you accept analytics</strong>, Google Analytics also collects usage data on our behalf — which pages you visit, the page you arrived from, your device and browser type, and an approximate location derived from your IP address, which we ask Google to anonymise. That data is held by Google, not in our database; we store no page-view, search or IP log of our own. If you decline, or before you answer, none of it is collected at all.
         {" "}
         <strong>Date alerts.</strong> If you ask to be told when a hall frees up on your date, we store your browser&apos;s push address (an address issued by your browser&apos;s maker so that it can deliver notifications), its encryption keys, and the date and city you chose. No name, phone number or account is attached. We delete it when the date passes, or straight away when you turn the alert off.
+        {" "}
+        <strong>Event plans.</strong> If you use the planner, we store what you put in your plan: the occasion, date, city, guest count and budget, the status and amounts for each part of the function, your checklist, and the names and phone numbers of any vendors you add yourself. A plan is visible only to you. We do not share it with venues or vendors, and Hallnect staff do not view it.
       </Section>
 
       <Section title="3. How We Use Your Information">
@@ -100,7 +102,7 @@ export default function PrivacyPage() {
       <Section title="7. Data Retention and Deletion">
         We retain your personal data for as long as your account is active. You can close
         your account yourself from <strong>Profile &rarr; Close my account</strong>: your name,
-        email, phone number and saved venues are permanently removed, you can no longer
+        email, phone number, saved venues, event plans and site visit requests are permanently removed, you can no longer
         sign in, and the account cannot be restored. If you would rather we did it, email{" "}
         <a href={`mailto:${CONTACT.email}`} className="text-maroon-600 hover:underline">{CONTACT.email}</a>{" "}
         from the address registered on the account and we will verify the request and act
