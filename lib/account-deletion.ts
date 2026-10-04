@@ -143,14 +143,20 @@ export async function deleteCustomerAccount(userId: string): Promise<DeleteAccou
   // so a failure here leaves residue rather than an identifiable account. Logged
   // so it is not silent.
   // event_plans (0110) is a family's private planning — budgets, dates and the
-  // names and numbers of their own vendors — and its board and checklist go
-  // with it by cascade. site_visits (0109) carries the family's name and phone
-  // and no money, so it is not a transaction record either; it was missing
-  // from this list when visits shipped.
+  // names and numbers of their own vendors — and its board, checklist, options,
+  // votes, members and invite link go with it by cascade. Plans other people
+  // shared with this account stay theirs; only this account's place in them
+  // (event_plan_members) and its votes go (0111). The anonymised profile row
+  // survives, so its ON DELETE CASCADE never fires — hence listed here.
+  // site_visits (0109) carries the family's name and phone and no money, so it
+  // is not a transaction record either; it was missing from this list when
+  // visits shipped.
   const PURGE = [
     ["saved_halls", "customer_id"],
     ["otp_attempts", "user_id"],
     ["event_plans", "owner_id"],
+    ["event_plan_votes", "user_id"],
+    ["event_plan_members", "user_id"],
     ["site_visits", "customer_id"],
   ] as const;
   for (const [table, col] of PURGE) {

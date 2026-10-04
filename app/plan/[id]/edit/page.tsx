@@ -1,4 +1,5 @@
-// /plan/<id>/edit — change the plan's details, or delete it.
+// /plan/<id>/edit — change the plan's details, or delete it. Editors change
+// the details; only the owner deletes. A viewer is sent back to the plan.
 
 import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
@@ -11,6 +12,7 @@ import { noindexMetadata } from "@/lib/seo/metadata";
 import { fetchVenueCategories } from "@/lib/venue-categories.server";
 import { uuidSchema } from "@/lib/validation/schemas";
 import { fetchPlan } from "@/lib/plan.server";
+import { fetchPeople } from "@/lib/plan-family.server";
 
 export const metadata: Metadata = noindexMetadata("Edit plan");
 
@@ -20,10 +22,16 @@ export default async function EditPlanPage({ params }: Props) {
   const { id } = await params;
   if (!uuidSchema.safeParse(id).success) notFound();
   if (!(await getSession())) redirect(`/login?next=/plan/${id}/edit`);
-  await requireRole(["customer"]);
+  const profile = await requireRole(["customer"]);
 
   const [loaded, catalogue] = await Promise.all([fetchPlan(id), fetchVenueCategories()]);
   if (!loaded.ok && loaded.reason === "not_found") notFound();
+  const isOwner = loaded.ok && loaded.plan.ownerId === profile.id;
+  if (loaded.ok && !isOwner) {
+    const people = await fetchPeople(id);
+    const role = people.ok ? people.people.find((p) => p.userId === profile.id)?.role : undefined;
+    if (role !== "editor") redirect(`/plan/${id}`);
+  }
 
   return (
     <div className="min-h-screen bg-ivory-100">
@@ -46,7 +54,7 @@ export default async function EditPlanPage({ params }: Props) {
                 budget: loaded.plan.budget == null ? "" : String(loaded.plan.budget),
               }}
             />
-            <DeletePlan planId={loaded.plan.id} />
+            {isOwner && <DeletePlan planId={loaded.plan.id} />}
           </>
         )}
       </section>

@@ -18,11 +18,14 @@ export function Checklist({
   tasks,
   eventDate,
   today,
+  readOnly = false,
 }: {
   planId: string;
   tasks: PlanTask[];
   eventDate: string | null;
   today: string;
+  /** A member who can only view: the list, without ticks, adding or removing. */
+  readOnly?: boolean;
 }) {
   // Local overrides for instant ticks; the server's answer replaces them on refresh.
   const [done, setDone] = useState<Record<string, boolean>>({});
@@ -98,7 +101,8 @@ export function Checklist({
           type="button"
           role="checkbox"
           aria-checked={t.isDone}
-          aria-label={t.isDone ? `Mark "${t.title}" as not done` : `Mark "${t.title}" as done`}
+          aria-label={readOnly ? t.title : t.isDone ? `Mark "${t.title}" as not done` : `Mark "${t.title}" as done`}
+          disabled={readOnly}
           onClick={() => toggle(t.id, !t.isDone)}
           className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md border ${
             t.isDone ? "border-green-700 bg-green-700 text-white" : "border-charcoal-400 bg-white"
@@ -112,14 +116,16 @@ export function Checklist({
             {[text, t.category ? categoryLabel(t.category) : null].filter(Boolean).join(" · ")}
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => remove(t.id)}
-          aria-label={`Remove "${t.title}"`}
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-charcoal-400 hover:bg-ivory-100 hover:text-charcoal-700"
-        >
-          <X className="h-4 w-4" aria-hidden />
-        </button>
+        {!readOnly && (
+          <button
+            type="button"
+            onClick={() => remove(t.id)}
+            aria-label={`Remove "${t.title}"`}
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-charcoal-400 hover:bg-ivory-100 hover:text-charcoal-700"
+          >
+            <X className="h-4 w-4" aria-hidden />
+          </button>
+        )}
       </li>
     );
   };
@@ -147,7 +153,7 @@ export function Checklist({
         </button>
       )}
 
-      <form onSubmit={add} className="mt-3 flex flex-wrap gap-2 border-t border-border pt-3">
+      {!readOnly && <form onSubmit={add} className="mt-3 flex flex-wrap gap-2 border-t border-border pt-3">
         <label htmlFor="new-task" className="sr-only">New task</label>
         <input
           id="new-task"
@@ -166,7 +172,7 @@ export function Checklist({
         >
           <Plus className="h-4 w-4" aria-hidden /> Add
         </button>
-      </form>
+      </form>}
       {error && <p role="alert" className="mt-2 text-xs text-red-700">{error}</p>}
 
       {rows.closed.length > 0 && (

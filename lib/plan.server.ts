@@ -3,9 +3,10 @@
 // SERVER-ONLY.
 //
 // EVERYTHING GOES THROUGH THE SESSION CLIENT. The plan is the family's own data
-// and nobody else is party to it, so RLS (0110) is the authority: a plan id
-// from the URL or a form is safe to pass through, because a plan the caller
-// does not own reads as absent and updates nothing. No service role here.
+// and nobody else is party to it, so RLS (0110, 0111) is the authority: a plan
+// id from the URL or a form is safe to pass through, because a plan the caller
+// is not in reads as absent, and one they may only view updates nothing. No
+// service role here.
 //
 // THREE-STATE READS. A failed read is reported as failed, so a page can say
 // "couldn't load your plan" instead of showing an empty board — an empty
@@ -28,6 +29,8 @@ import {
 
 export type Plan = {
   id: string;
+  /** Who started it. Everyone else who can read it is a member (0111). */
+  ownerId: string;
   title: string;
   occasion: string;
   eventDate: string | null;
@@ -95,6 +98,7 @@ const num = (v: unknown) => (v == null ? null : Number(v));
 function toPlan(r: Record<string, unknown>): Plan {
   return {
     id: String(r.id),
+    ownerId: String(r.owner_id),
     title: String(r.title),
     occasion: String(r.occasion),
     eventDate: (r.event_date as string | null) ?? null,
@@ -135,7 +139,7 @@ function toTask(r: Record<string, unknown>): PlanTask {
   };
 }
 
-const PLAN_COLUMNS = "id, title, occasion, event_date, city, guests, budget, created_at";
+const PLAN_COLUMNS = "id, owner_id, title, occasion, event_date, city, guests, budget, created_at";
 const ITEM_COLUMNS =
   "id, plan_id, category, status, hall_id, vendor_name, vendor_phone, notes, planned_amount, quoted_amount, " +
   "paid_amount, next_due_date, next_due_amount";
@@ -145,10 +149,15 @@ const TASK_COLUMNS = "id, title, category, offset_days, due_date, done_at, templ
 
 export type PlanListEntry = Plan & { activeCount: number; bookedCount: number };
 
+// Own plans stop at MAX_PLANS; plans shared with the account have no cap of
+// their own, so the list does.
+const LIST_LIMIT = 50;
+
+/** The caller's own plans and the plans shared with them (RLS returns both). */
 export async function fetchMyPlans(): Promise<{ ok: true; plans: PlanListEntry[] } | { ok: false }> {
   const client = await db();
   const { data: plans, error } = await client
-    .from("event_plans").select(PLAN_COLUMNS).order("created_at", { ascending: false }).limit(MAX_PLANS + 5);
+    .from("event_plans").select(PLAN_COLUMNS).order("created_at", { ascending: false }).limit(LIST_LIMIT);
   if (error) {
     console.error("[plan] list failed", error.code, error.message);
     return { ok: false };
@@ -203,6 +212,9 @@ export async function fetchPlan(planId: string): Promise<LoadedPlan> {
 type Result<T = object> = ({ ok: true } & T) | { ok: false; error: string };
 
 const TRY_AGAIN = "Could not save. Please try again.";
+// Zero rows changed: the plan is gone, or the caller can only view it. RLS
+// makes the two look the same, so the message covers both.
+export const NOT_SAVED = "Not saved. The plan may have been deleted, or you can only view it.";
 
 function planRow(d: PlanDetailsInput) {
   return { title: d.title, occasion: d.occasion, event_date: d.eventDate, city: d.city, guests: d.guests, budget: d.budget };
@@ -269,7 +281,7 @@ export async function updatePlan(planId: string, d: PlanDetailsInput): Promise<R
     console.error("[plan] update failed", error.code, error.message);
     return { ok: false, error: TRY_AGAIN };
   }
-  return data?.length ? { ok: true } : { ok: false, error: "Plan not found." };
+  return data?.length ? { ok: true } : { ok: false, error: NOT_SAVED };
 }
 
 export async function deletePlan(planId: string): Promise<Result> {
@@ -303,7 +315,7 @@ export async function updateItem(planId: string, category: PlanCategory, f: Plan
     console.error("[plan] item update failed", error.code, error.message);
     return { ok: false, error: TRY_AGAIN };
   }
-  return data?.length ? { ok: true } : { ok: false, error: "Plan not found." };
+  return data?.length ? { ok: true } : { ok: false, error: NOT_SAVED };
 }
 
 /** Switches one category on or off from the board, leaving its details as they are. */
@@ -340,7 +352,7 @@ export async function addTask(
   if (error) {
     console.error("[plan] task add failed", error.code, error.message);
     // RLS refuses a plan the caller cannot write, which is "not found" to them.
-    return { ok: false, error: error.code === "42501" ? "Plan not found." : TRY_AGAIN };
+    return { ok: false, error: error.code === "42501" ? NOT_SAVED : TRY_AGAIN };
   }
   return { ok: true };
 }

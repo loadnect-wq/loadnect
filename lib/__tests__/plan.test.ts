@@ -75,7 +75,7 @@ class Q {
 
 vi.mock("@/lib/supabase/server", () => ({ getSupabaseServerClient: async () => ({ from: (t: string) => new Q(t) }) }));
 
-const { createPlan, updateItem, setItemNeeded } = await import("../plan.server");
+const { createPlan, updateItem, setItemNeeded, NOT_SAVED } = await import("../plan.server");
 
 const OWNER = "11111111-1111-4111-8111-111111111111";
 const details = { title: "Priya's wedding", occasion: "wedding", eventDate: "2027-02-10", city: "Madurai", guests: 400, budget: 1500000 };
@@ -215,7 +215,7 @@ describe("creating and editing a plan", () => {
     const byCat = Object.fromEntries(tables.event_plan_items.map((i) => [i.category, i]));
     expect(byCat.catering.hall_id).toBeNull();
     expect(byCat.hall.hall_id).toBe(f.hallId);
-    expect(await updateItem("no-such-plan", "hall", f)).toEqual({ ok: false, error: "Plan not found." });
+    expect(await updateItem("no-such-plan", "hall", f)).toEqual({ ok: false, error: NOT_SAVED });
   });
 
   it("switching a category on revives it, never resets one in progress", async () => {
@@ -254,7 +254,8 @@ describe("guard rails", () => {
     const del = read("lib/account-deletion.ts");
     expect(del).toContain('["event_plans", "owner_id"]');
     expect(del).toContain('["site_visits", "customer_id"]');
-    expect(read("app/(legal)/privacy/page.tsx")).toContain("event plans and site visit requests are permanently removed");
+    const privacy = read("app/(legal)/privacy/page.tsx");
+    expect(privacy).toMatch(/event plans \(and your place and votes in plans others shared with you\)\s+and site visit requests are permanently removed/);
   });
 
   it("every sign-in return path the app uses is allowed by both allow-lists", () => {

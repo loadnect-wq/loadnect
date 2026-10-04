@@ -217,6 +217,10 @@ export function AnalyticsConsent() {
     typeof window === "undefined"
       ? { page_location: "", page_path: "/" }
       : redactUrl(window.location.href);
+  // The referrer gets the same treatment. GA sends document.referrer by
+  // default, and a page opened in a new tab from an event plan's invite page
+  // would carry the invite token in it (see lib/analytics/redact-url.ts).
+  const initialReferrer = typeof window === "undefined" ? "" : redactUrl(document.referrer).page_location;
 
   return (
     <>
@@ -249,7 +253,8 @@ export function AnalyticsConsent() {
               gtag('config', '${MEASUREMENT_ID}', {
                 anonymize_ip: true,
                 page_location: ${JSON.stringify(initialPage.page_location)},
-                page_path: ${JSON.stringify(initialPage.page_path)}
+                page_path: ${JSON.stringify(initialPage.page_path)},
+                page_referrer: ${JSON.stringify(initialReferrer)}
               });
             `}
           </Script>

@@ -29,7 +29,7 @@ import { VENUE_CATEGORY_GROUPS, VENUE_CATEGORY_SLUG_PATTERN } from "@/lib/venue-
 // here keeps this module client-safe.
 import { normalizePhoneE164 } from "@/lib/notifications/phone";
 import { isAllowedPushEndpoint } from "@/lib/date-alerts";
-import { ITEM_STATUSES, PLAN_CATEGORY_KEYS, type PlanCategory } from "@/lib/plan";
+import { INVITE_TOKEN_PATTERN, ITEM_STATUSES, PLAN_CATEGORY_KEYS, type PlanCategory } from "@/lib/plan";
 
 export function sanitizeText(input: unknown, maxLen = 4000): string {
   if (typeof input !== "string") return "";
@@ -984,6 +984,36 @@ export const planTaskSchema = z.object({
     (v) => (v === "" || v == null ? undefined : v),
     z.enum(PLAN_CATEGORY_KEYS as [PlanCategory, ...PlanCategory[]]).optional(),
   ),
+});
+
+// ── Event plan sharing and votes (0111) ──────────────────────────────────────
+//
+// Who may invite, vote or edit is never an input either: RLS answers it from
+// the session. A vote's voter is the session's user, set by the server.
+
+export const planInviteTokenSchema = z.string().regex(INVITE_TOKEN_PATTERN, "This invite link is not valid.");
+
+export const planMemberRoleSchema = z.enum(["editor", "viewer"]);
+
+export const planOptionSchema = z
+  .object({
+    planId:   uuidSchema,
+    category: z.enum(PLAN_CATEGORY_KEYS as [PlanCategory, ...PlanCategory[]]),
+    // A hall on Hallnect; its name is then read from the listing, not taken
+    // from the form.
+    hallId:   z.preprocess((v) => (v === "" || v == null ? undefined : v), uuidSchema.optional()),
+    name:     optionalTrimmed(120),
+    price:    planAmountSchema,
+    note:     optionalTrimmed(300),
+  })
+  .refine((o) => !o.hallId || o.category === "hall", { message: "Only the hall can be a hall on Hallnect.", path: ["hallId"] })
+  .refine((o) => Boolean(o.hallId) || o.name.length > 0, { message: "Write the name.", path: ["name"] });
+
+export const planVoteSchema = z.object({
+  planId:   uuidSchema,
+  category: z.enum(PLAN_CATEGORY_KEYS as [PlanCategory, ...PlanCategory[]]),
+  // Absent: take the vote back.
+  optionId: z.preprocess((v) => (v === "" || v == null ? undefined : v), uuidSchema.optional()),
 });
 
 export const dateAlertUnsubscribeSchema = z.object({

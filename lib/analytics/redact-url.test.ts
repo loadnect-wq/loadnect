@@ -52,6 +52,17 @@ describe("redactUrl", () => {
     expect(r.page_path).toBe("/");
   });
 
+  it("never reports an event plan's invite token", () => {
+    // Not a UUID, so rule 1 alone would send it: and it is a key to a family's plan.
+    const r = redactUrl("https://hallnect.com/plan/join/Q2xvc2VkLWJ5LWRlc2lnbg_x-Y");
+    expect(r.page_path).toBe("/plan/join/:token");
+    expect(r.page_location).not.toContain("Q2xvc2Vk");
+    expect(redactUrl("https://hallnect.com/login?next=/plan/join/Q2xvc2VkLWJ5LWRlc2lnbg_x-Y").page_path).toBe("/login");
+    // The plan pages themselves keep their shape.
+    expect(redactUrl("https://hallnect.com/plan/3f1a2b4c-55d6-4e7f-8a9b-0c1d2e3f4a5b/catering").page_path).toBe("/plan/:id/catering");
+    expect(redactUrl("https://hallnect.com/plan/new").page_path).toBe("/plan/new");
+  });
+
   it("drops the fragment as well", () => {
     const r = redactUrl("https://hallnect.com/premium#pricing?order_id=x");
     expect(r.page_location).toBe("https://hallnect.com/premium");

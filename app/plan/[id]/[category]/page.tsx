@@ -1,8 +1,9 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// /plan/<id>/<category> — one category of a plan. For the hall it also shows
-// what the family has done with the chosen hall on Hallnect (enquiries, site
-// visits, bookings) and the hall's own buttons, so the plan is the hub rather
-// than a copy of things that live elsewhere.
+// /plan/<id>/<category> — one category of a plan: the family vote on the
+// options, then the category itself. People who can edit get the form; a
+// member who can only view gets the same facts without it. For the hall it
+// also shows what the viewer has done with the chosen hall on Hallnect
+// (enquiries, site visits, bookings) and the hall's own buttons.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { Metadata } from "next";
@@ -12,14 +13,17 @@ import { ClipboardList } from "lucide-react";
 import { AppHeader } from "@/components/app/AppHeader";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ItemForm } from "@/components/plan/ItemForm";
+import { ItemSummary } from "@/components/plan/ItemSummary";
+import { PlanOptions } from "@/components/plan/PlanOptions";
 import { getSession, requireRole } from "@/lib/auth";
 import { noindexMetadata } from "@/lib/seo/metadata";
 import { fetchHallsResult } from "@/lib/halls";
 import { primaryCtaHref, primaryCtaLabel } from "@/lib/booking-mode";
 import { uuidSchema } from "@/lib/validation/schemas";
 import { fetchPlan } from "@/lib/plan.server";
+import { fetchOptions, fetchPeople } from "@/lib/plan-family.server";
 import { fetchHallActivity } from "@/lib/plan-hall.server";
-import { PLAN_CATEGORIES, PLAN_CATEGORY_KEYS, type PlanCategory } from "@/lib/plan";
+import { PLAN_CATEGORIES, PLAN_CATEGORY_KEYS, canEdit, personName, type PlanCategory, type PlanRole } from "@/lib/plan";
 
 export const metadata: Metadata = noindexMetadata("My plan");
 
@@ -50,14 +54,28 @@ export default async function PlanItemPage({ params }: Props) {
   const item = items.find((i) => i.category === category);
   if (!item) notFound();
 
+  const isOwner = plan.ownerId === profile.id;
+  const [optionRead, peopleRead] = await Promise.all([fetchOptions(plan.id, category as PlanCategory), fetchPeople(plan.id)]);
+  const people = peopleRead.ok ? peopleRead.people : [];
+  const role: PlanRole = isOwner ? "owner" : (people.find((p) => p.userId === profile.id)?.role ?? "viewer");
+  const editable = canEdit(role);
+
+  // One read for the chosen hall and every hall offered as an option.
   const isHall = category === "hall";
-  const hallRead = isHall && item.hallId ? await fetchHallsResult({ ids: [item.hallId] }) : null;
-  const hall = hallRead && !hallRead.failed ? (hallRead.halls[0] ?? null) : null;
+  const optionHallIds = optionRead.ok ? optionRead.options.map((o) => o.hallId).filter((h): h is string => Boolean(h)) : [];
+  const hallIds = [...new Set([...(item.hallId ? [item.hallId] : []), ...optionHallIds])];
+  const hallRead = hallIds.length ? await fetchHallsResult({ ids: hallIds }) : null;
+  const listed = new Map((hallRead && !hallRead.failed ? hallRead.halls : []).map((h) => [h.id, h]));
+  const hall = item.hallId ? (listed.get(item.hallId) ?? null) : null;
   const activity = isHall && item.hallId ? await fetchHallActivity(profile.id, item.hallId) : [];
 
   const findHalls = new URLSearchParams();
   if (plan.eventDate) findHalls.set("date", plan.eventDate);
   if (plan.city) findHalls.set("city", plan.city);
+
+  const names: Record<string, string> = Object.fromEntries(
+    people.map((p) => [p.userId, p.userId === profile.id ? "You" : personName(p.name)]),
+  );
 
   return (
     <div className="min-h-screen bg-ivory-100">
@@ -71,7 +89,7 @@ export default async function PlanItemPage({ params }: Props) {
 
         {hall && (
           <div className="rounded-2xl bg-white p-4 shadow-card ring-1 ring-border">
-            <p className="text-xs font-semibold uppercase tracking-wide text-gold-700">Your chosen hall</p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-gold-700">The chosen hall</p>
             <Link href={`/halls/${hall.slug}`} className="mt-0.5 block font-semibold text-charcoal-900 hover:text-maroon-700">{hall.name}</Link>
             <p className="text-sm text-charcoal-700">{hall.city}</p>
             {activity.length > 0 && (
@@ -95,25 +113,63 @@ export default async function PlanItemPage({ params }: Props) {
           </div>
         )}
 
-        <ItemForm
-          planId={plan.id}
-          category={category}
-          chosenHall={hall ? { id: hall.id, name: hall.name, city: hall.city, price: hall.price_per_day } : null}
-          guests={plan.guests}
-          findHallsHref={`/halls${findHalls.size ? `?${findHalls}` : ""}`}
-          initial={{
-            status: item.status,
-            hallId: item.hallId ?? "",
-            vendorName: item.vendorName ?? "",
-            vendorPhone: item.vendorPhone ?? "",
-            notes: item.notes ?? "",
-            plannedAmount: asText(item.plannedAmount),
-            quotedAmount: asText(item.quotedAmount),
-            paidAmount: asText(item.paidAmount),
-            nextDueDate: item.nextDueDate ?? "",
-            nextDueAmount: asText(item.nextDueAmount),
-          }}
-        />
+        {optionRead.ok ? (
+          <PlanOptions
+            planId={plan.id}
+            category={category}
+            me={profile.id}
+            canEdit={editable}
+            names={names}
+            chosen={{ hallId: item.hallId, vendorName: item.vendorName }}
+            votes={optionRead.votes.map((v) => ({ optionId: v.optionId, userId: v.userId }))}
+            options={optionRead.options.map((o) => {
+              const h = o.hallId ? listed.get(o.hallId) : undefined;
+              return {
+                id: o.id,
+                // A listed hall shows its current name; anything else, the name it was added with.
+                name: h?.name ?? o.name,
+                hallId: o.hallId,
+                hallSlug: h?.slug ?? null,
+                // A failed hall read must not call a hall delisted: only a
+                // successful read that lacks it says so.
+                hallGone: Boolean(o.hallId) && Boolean(hallRead) && !hallRead!.failed && !h,
+                price: o.price,
+                note: o.note,
+              };
+            })}
+          />
+        ) : (
+          <p className="rounded-2xl bg-white p-4 text-sm text-charcoal-700 shadow-card ring-1 ring-border">
+            We couldn&apos;t load the family vote. Please try again in a minute.
+          </p>
+        )}
+
+        {editable ? (
+          <ItemForm
+            planId={plan.id}
+            category={category}
+            chosenHall={hall ? { id: hall.id, name: hall.name, city: hall.city, price: hall.price_per_day } : null}
+            guests={plan.guests}
+            findHallsHref={`/halls${findHalls.size ? `?${findHalls}` : ""}`}
+            initial={{
+              status: item.status,
+              hallId: item.hallId ?? "",
+              vendorName: item.vendorName ?? "",
+              vendorPhone: item.vendorPhone ?? "",
+              notes: item.notes ?? "",
+              plannedAmount: asText(item.plannedAmount),
+              quotedAmount: asText(item.quotedAmount),
+              paidAmount: asText(item.paidAmount),
+              nextDueDate: item.nextDueDate ?? "",
+              nextDueAmount: asText(item.nextDueAmount),
+            }}
+          />
+        ) : (
+          <ItemSummary
+            item={item}
+            chosenName={item.hallId ? (hall?.name ?? (hallRead?.failed ? "The chosen hall" : "A hall no longer on Hallnect")) : item.vendorName}
+          />
+        )}
       </section>
     </div>
   );

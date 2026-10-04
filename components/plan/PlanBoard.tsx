@@ -30,17 +30,25 @@ function moneyLine(i: PlanItem): string | null {
   return null;
 }
 
+export type OptionSummary = { count: number; leader: { name: string; votes: number } | null };
+
 export function PlanBoard({
   planId,
   items,
   hallNames,
   today,
+  canEdit = true,
+  options = {},
 }: {
   planId: string;
   items: PlanItem[];
   /** hall id → name, for the chosen hall. A hall no longer listed is absent. */
   hallNames: Record<string, string>;
   today: string;
+  /** False for a member who can only view: no switching categories back on. */
+  canEdit?: boolean;
+  /** category → how its family vote stands. */
+  options?: Partial<Record<string, OptionSummary>>;
 }) {
   const active = items.filter((i) => i.status !== "not_needed");
   const off = items.filter((i) => i.status === "not_needed");
@@ -55,6 +63,7 @@ export function PlanBoard({
           const chosen = i.hallId ? (hallNames[i.hallId] ?? "A hall no longer on Hallnect") : i.vendorName;
           const money = moneyLine(i);
           const dueIn = i.nextDueDate ? daysUntil(i.nextDueDate, today) : null;
+          const vote = i.status === "booked" ? undefined : options[i.category];
           return (
             <li key={i.category}>
               <Link
@@ -80,6 +89,14 @@ export function PlanBoard({
                       {dueIn != null && dueIn < 0 ? " · overdue" : ""}
                     </p>
                   )}
+                  {vote && vote.count > 0 && (
+                    <p className="text-xs font-semibold text-maroon-800">
+                      {vote.count} {vote.count === 1 ? "option" : "options"}
+                      {vote.leader
+                        ? ` · ${vote.leader.name} leads with ${vote.leader.votes} ${vote.leader.votes === 1 ? "vote" : "votes"}`
+                        : " to vote on"}
+                    </p>
+                  )}
                 </div>
                 <ChevronRight className="h-4 w-4 shrink-0 text-charcoal-400" aria-hidden />
               </Link>
@@ -88,7 +105,7 @@ export function PlanBoard({
         })}
       </ul>
 
-      {off.length > 0 && (
+      {off.length > 0 && canEdit && (
         <div className="mt-4">
           <p className="text-xs font-semibold text-charcoal-600">Not needed for this function. Tap one to add it back:</p>
           <div className="mt-2 flex flex-wrap gap-2">
@@ -97,6 +114,11 @@ export function PlanBoard({
             ))}
           </div>
         </div>
+      )}
+      {off.length > 0 && !canEdit && (
+        <p className="mt-4 text-xs text-charcoal-600">
+          Not needed for this function: {off.map((i) => meta(i.category).label).join(", ")}.
+        </p>
       )}
     </section>
   );

@@ -213,3 +213,125 @@ export function paidInFull(i: PlanItemAmounts): boolean {
 /** Limits that keep one account's plans a family's, not a database. */
 export const MAX_PLANS = 10;
 export const MAX_TASKS = 120;
+
+// ── Sharing and votes (0111) ─────────────────────────────────────────────────
+//
+// The owner shares a plan through a link. Everyone who joins can see it and
+// vote; the owner makes some of them editors. Each category can hold a few
+// options (three halls, two caterers), and each person has one vote per
+// category, so the family's favourite is a count, not a guess.
+
+export type PlanRole = "owner" | "editor" | "viewer";
+
+/** People besides the owner. join_event_plan() refuses the twenty-first. */
+export const MAX_MEMBERS = 20;
+/** Options per category: enough to compare, few enough to decide. */
+export const MAX_OPTIONS = 8;
+
+export function canEdit(role: PlanRole | null | undefined): boolean {
+  return role === "owner" || role === "editor";
+}
+
+export const ROLE_LABEL: Record<PlanRole, string> = {
+  owner: "Started the plan",
+  editor: "Can edit",
+  viewer: "Can view and vote",
+};
+
+/** The token in an invite link: 16 random bytes, base64url. Matches 0111's check. */
+export const INVITE_TOKEN_PATTERN = /^[A-Za-z0-9_-]{22,64}$/;
+
+export function invitePath(token: string): string {
+  return `/plan/join/${token}`;
+}
+
+/** A name as the plan shows it; a profile without one is still somebody. */
+export function personName(name: string | null | undefined): string {
+  return name?.trim() || "A family member";
+}
+
+export type VoteRow = { optionId: string; userId: string };
+
+/** Who voted for each option. */
+export function votersByOption(votes: readonly VoteRow[]): Map<string, string[]> {
+  const out = new Map<string, string[]>();
+  for (const v of votes) out.set(v.optionId, [...(out.get(v.optionId) ?? []), v.userId]);
+  return out;
+}
+
+/** The option with the most votes, or null when nobody has voted or the top is a tie. */
+export function leadingOption<T extends { id: string }>(
+  options: readonly T[],
+  votes: readonly VoteRow[],
+): { option: T; votes: number } | null {
+  const voters = votersByOption(votes);
+  const ranked = options
+    .map((option) => ({ option, votes: voters.get(option.id)?.length ?? 0 }))
+    .sort((a, b) => b.votes - a.votes);
+  if (!ranked[0] || ranked[0].votes === 0) return null;
+  if (ranked[1] && ranked[1].votes === ranked[0].votes) return null;
+  return ranked[0];
+}
+
+export type PlanSummaryInput = {
+  title: string;
+  occasionName: string;
+  eventDate: string | null;
+  today: string;
+  city: string | null;
+  guests: number | null;
+  items: readonly { category: PlanCategory; status: ItemStatus; chosen: string | null }[];
+  totals: PlanTotals;
+  budget: number | null;
+  tasksDone: number;
+  tasksTotal: number;
+  /** Categories where the family vote has a clear leader. */
+  leaders: readonly { category: PlanCategory; name: string; votes: number }[];
+};
+
+const rupees = (n: number) => `₹${Math.round(n).toLocaleString("en-IN")}`;
+const EN_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/**
+ * The plan as a WhatsApp message for the family group: what is booked, what
+ * is left, how the votes stand and where the money is. The sender sees it in
+ * WhatsApp before it goes, and it carries no link that grants access.
+ */
+export function planSummaryText(s: PlanSummaryInput): string {
+  const lines: string[] = [`*${s.title}*`];
+  const when = s.eventDate
+    ? (() => {
+        const [y, m, d] = s.eventDate.split("-").map(Number);
+        return `${d} ${EN_MONTHS[m - 1]} ${y} (${countdownLabel(s.eventDate, s.today)})`;
+      })()
+    : "Date not fixed yet";
+  lines.push(`${s.occasionName} · ${when}`);
+  const where = [s.city, s.guests ? `${s.guests.toLocaleString("en-IN")} guests` : null].filter(Boolean).join(" · ");
+  if (where) lines.push(where);
+
+  const active = s.items.filter((i) => i.status !== "not_needed");
+  const booked = active.filter((i) => i.status === "booked");
+  const open = active.filter((i) => i.status !== "booked");
+  lines.push("");
+  if (booked.length) {
+    lines.push(`Booked: ${booked.map((i) => (i.chosen ? `${categoryLabel(i.category)} (${i.chosen})` : categoryLabel(i.category))).join(", ")}`);
+  }
+  if (open.length) lines.push(`Still to arrange: ${open.map((i) => categoryLabel(i.category)).join(", ")}`);
+  if (!booked.length && !open.length) lines.push("Nothing on the board yet.");
+  for (const l of s.leaders) {
+    lines.push(`Family vote, ${categoryLabel(l.category).toLowerCase()}: ${l.name} leads with ${l.votes} ${l.votes === 1 ? "vote" : "votes"}`);
+  }
+
+  const money: string[] = [];
+  if (s.budget != null) money.push(`Budget ${rupees(s.budget)}`);
+  if (s.totals.expected > 0) money.push(`expected ${rupees(s.totals.expected)}`);
+  if (s.totals.paid > 0) money.push(`paid ${rupees(s.totals.paid)}`);
+  if (money.length) {
+    lines.push("");
+    lines.push(`${money.join(", ").replace(/^./, (c) => c.toUpperCase())}.`);
+  }
+  if (s.tasksTotal > 0) lines.push(`Checklist: ${s.tasksDone} of ${s.tasksTotal} done.`);
+  lines.push("");
+  lines.push("The plan on Hallnect:");
+  return lines.join("\n");
+}
