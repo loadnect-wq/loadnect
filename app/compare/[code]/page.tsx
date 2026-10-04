@@ -35,6 +35,7 @@ import {
   versusLine,
 } from "@/lib/compare";
 import { CompareTable } from "@/components/compare/CompareTable";
+import { CompareBudget } from "@/components/compare/CompareBudget";
 import { loadCompare } from "./load";
 
 export const revalidate = 300;
@@ -105,6 +106,7 @@ export default async function ComparePage({ params }: Props) {
             )}
 
             <CompareTable halls={halls} rows={rows} amenities={amenities} />
+            <CompareBudget halls={halls.map((h) => ({ id: h.id, name: h.name, pricePerDay: h.pricePerDay }))} />
 
             <p className="mt-4 text-xs leading-relaxed text-charcoal-600">
               Not compared here: dining hall size, rooms and parking space. Halls don&apos;t list these on Hallnect yet, so ask each one when you call.

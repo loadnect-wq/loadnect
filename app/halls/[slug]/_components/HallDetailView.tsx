@@ -37,6 +37,7 @@ import { Button } from "@/components/ui/Button";
 import { SaveHeart } from "@/app/_components/SaveHeart";
 import { recordRecentlyViewed } from "@/app/_components/RecentlyViewed";
 import { ImageGallery } from "./ImageGallery";
+import { BudgetEstimate } from "@/components/budget/BudgetEstimate";
 
 // ── Amenity icon map (keyed by DB slug) ──────────────────────────────────────
 
@@ -700,6 +701,17 @@ export function HallDetailView({ hall, categories, similar, isPreview, sidebarAd
                 </div>
               </div>
             </section>
+
+            {/* The whole function, not just the hall: the listed price plus the
+                family's own guests, per-plate rate and other costs. Nothing in
+                it is a quote — see lib/budget.ts. */}
+            <BudgetEstimate
+              hallName={hall.name}
+              hallSlug={hall.slug}
+              prices={{ full_day: hall.price_per_day, morning: hall.price_morning, evening: hall.price_evening }}
+              capacityMax={hall.capacity_max}
+              inHouseCatering={hall.amenities.some((a) => a.slug === "in-house-catering")}
+            />
 
             {/* Availability calendar.
 
