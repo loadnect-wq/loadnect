@@ -1,9 +1,17 @@
 "use client";
 
-import { AnimatePresence, motion } from "framer-motion";
+// CSS ANIMATIONS, NOT framer-motion (2026-10-05). This sheet sits on the
+// homepage and /halls, and it was the reason those pages shipped framer-motion
+// (about 46 KB compressed) to every visitor on a phone. The slide and fade are
+// keyframes in app/globals.css (.sheet-*, .sheet-backdrop-*); the only state
+// here is keeping the sheet mounted for the length of its exit.
+
 import { X } from "lucide-react";
-import { useEffect, useRef, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
+
+/** How long the exit runs before the sheet unmounts — matches .sheet-out. */
+const EXIT_MS = 240;
 
 interface BottomSheetProps {
   open: boolean;
@@ -45,6 +53,17 @@ export function BottomSheet({ open, onClose, title, children, footer }: BottomSh
   // explicit server snapshot, so there is no hydration mismatch and no
   // setState inside an effect (which this repo's lint forbids).
   const onClient = useSyncExternalStore(subscribeToNothing, () => true, () => false);
+
+  // Mounted while open and for the exit animation after. Opening is derived
+  // during render (React's pattern for state that follows a prop); closing
+  // waits for the exit to finish before unmounting.
+  const [rendered, setRendered] = useState(open);
+  if (open && !rendered) setRendered(true);
+  useEffect(() => {
+    if (open || !rendered) return;
+    const t = window.setTimeout(() => setRendered(false), EXIT_MS);
+    return () => window.clearTimeout(t);
+  }, [open, rendered]);
 
   useEffect(() => {
     if (!open) return;
@@ -102,25 +121,20 @@ export function BottomSheet({ open, onClose, title, children, footer }: BottomSh
   }, [open, onClose]);
 
   // Nothing is rendered on the server: the sheet only ever opens from a click.
-  if (!onClient) return null;
+  if (!onClient || !rendered) return null;
 
   return createPortal(
-    <AnimatePresence>
-      {open && (
         <>
-          <motion.div
-            className="fixed inset-0 z-50 bg-black/50"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
+          <div
+            className={`fixed inset-0 z-50 bg-black/50 ${open ? "sheet-backdrop-in" : "sheet-backdrop-out pointer-events-none"}`}
             onClick={onClose}
             aria-hidden
           />
           {/* POSITIONING LIVES ON THIS WRAPPER, NOT ON THE ANIMATED PANEL.
               The panel used to carry `sm:left-1/2 sm:-translate-x-1/2` itself.
               Tailwind implements -translate-x-1/2 by writing a `transform`
-              declaration — and framer-motion animates `y` by setting an INLINE
-              `transform` on the same element, which beats a class every time.
+              declaration — and the slide animation (framer-motion then, CSS
+              keyframes now) sets `transform` on the same element, which wins.
               So on any viewport ≥640px the -50% X shift was silently discarded
               while `left: 50%` survived, and the sheet opened with its LEFT EDGE
               at the middle of the screen instead of straddling it. Measured at
@@ -136,17 +150,16 @@ export function BottomSheet({ open, onClose, title, children, footer }: BottomSh
               animation changes. pointer-events are handed back on the panel so
               the full-width strip cannot swallow clicks meant for the backdrop. */}
           <div className="pointer-events-none fixed inset-x-0 bottom-0 z-50 flex justify-center">
-          <motion.div
+          <div
             ref={panelRef}
             tabIndex={-1}
             role="dialog"
             aria-modal
             aria-label={title}
-            className="pointer-events-auto flex max-h-[90vh] w-full flex-col rounded-t-3xl bg-white shadow-elevated outline-none sm:max-w-lg"
-            initial={{ y: "100%" }}
-            animate={{ y: 0 }}
-            exit={{ y: "100%" }}
-            transition={{ type: "spring", damping: 30, stiffness: 320 }}
+            inert={!open}
+            className={`flex max-h-[90vh] w-full flex-col rounded-t-3xl bg-white shadow-elevated outline-none sm:max-w-lg ${
+              open ? "sheet-in pointer-events-auto" : "sheet-out"
+            }`}
           >
             <div className="flex flex-col items-center pt-2">
               <span className="h-1.5 w-10 rounded-full bg-ivory-300" aria-hidden />
@@ -168,11 +181,9 @@ export function BottomSheet({ open, onClose, title, children, footer }: BottomSh
                 {footer}
               </div>
             )}
-          </motion.div>
           </div>
-        </>
-      )}
-    </AnimatePresence>,
+          </div>
+        </>,
     document.body,
   );
 }

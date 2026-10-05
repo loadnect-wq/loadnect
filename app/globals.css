@@ -469,6 +469,20 @@ html:not(.is-scrolled) .hallnect-header--over-hero .hallnect-nav-outline:hover {
   .hallnect-header::after { transition: none; }
 }
 
+/* BottomSheet (components/app/BottomSheet.tsx): slide up, fade the backdrop.
+   Replaces framer-motion. .sheet-out must last EXIT_MS (240ms) there. */
+@keyframes sheet-up   { from { transform: translate3d(0, 100%, 0); } to { transform: none; } }
+@keyframes sheet-down { from { transform: none; } to { transform: translate3d(0, 100%, 0); } }
+@keyframes sheet-fade-in  { from { opacity: 0; } to { opacity: 1; } }
+@keyframes sheet-fade-out { from { opacity: 1; } to { opacity: 0; } }
+.sheet-in  { animation: sheet-up 320ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+.sheet-out { animation: sheet-down 240ms cubic-bezier(0.4, 0, 1, 1) both; }
+.sheet-backdrop-in  { animation: sheet-fade-in 200ms ease-out both; }
+.sheet-backdrop-out { animation: sheet-fade-out 240ms ease-in both; }
+@media (prefers-reduced-motion: reduce) {
+  .sheet-in, .sheet-out, .sheet-backdrop-in, .sheet-backdrop-out { animation-duration: 1ms; }
+}
+
 /* ── Hero load sequence ────────────────────────────────────────────────────
    A CSS ANIMATION, NOT A REVEAL, and that distinction is what makes it safe
    above the fold: a keyframe animation needs no JavaScript to finish, so the

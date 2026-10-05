@@ -19,8 +19,9 @@ import path from "node:path";
 //
 //   2. TRANSFORM COLLISION. The panel carried `sm:-translate-x-1/2`, which
 //      Tailwind implements as a `transform` declaration — and framer-motion
-//      animates `y` by writing an INLINE transform on the same element, which
-//      beats a class. The -50% X shift was silently discarded while `left: 50%`
+//      animated `y` by writing an INLINE transform on the same element, which
+//      beats a class (the CSS keyframes that replaced it, 2026-10-05, also set
+//      `transform`). The -50% X shift was silently discarded while `left: 50%`
 //      survived. Centring moved to a flex wrapper so position and motion no
 //      longer share a property.
 //
@@ -50,7 +51,7 @@ describe("the sheet escapes whatever it is rendered inside", () => {
     // A mounted flag set in useEffect would trip react-hooks/set-state-in-effect,
     // which this repo lints as an error-shaped warning at a zero baseline.
     expect(sheet).toContain("useSyncExternalStore");
-    expect(sheet).toContain("if (!onClient) return null;");
+    expect(sheet).toContain("if (!onClient || !rendered) return null;");
   });
 });
 
@@ -58,12 +59,14 @@ describe("position and motion no longer fight over `transform`", () => {
   const body = renderBody();
 
   it("the animated panel carries no Tailwind translate class", () => {
-    // This is the whole of reason 2. framer-motion's inline transform wins, so
+    // This is the whole of reason 2. The slide animation's transform wins, so
     // any translate utility on this element is dead code that silently changes
     // where the sheet lands.
     const panelStart = body.indexOf('role="dialog"');
-    const panelEnd = body.indexOf(">", body.indexOf("transition={{", panelStart));
+    const panelEnd = body.indexOf("}`}", panelStart);
+    expect(panelEnd, "could not find the end of the panel's className").toBeGreaterThan(panelStart);
     const panel = body.slice(panelStart, panelEnd);
+    expect(panel).toContain("sheet-in");
     expect(panel).not.toMatch(/-?translate-x-/);
     expect(panel).not.toMatch(/-?translate-y-/);
     expect(panel).not.toContain("left-1/2");
@@ -81,9 +84,20 @@ describe("position and motion no longer fight over `transform`", () => {
     expect(body).toContain("pointer-events-auto");
   });
 
-  it("the panel still animates on the axis it is supposed to", () => {
-    expect(body).toContain('initial={{ y: "100%" }}');
-    expect(body).toContain("animate={{ y: 0 }}");
+  it("the panel still animates on the axis it is supposed to, without framer-motion", () => {
+    // framer-motion was ~46 KB compressed on the homepage and /halls for this
+    // one slide; it is CSS now.
+    expect(sheet).not.toMatch(/from ["']framer-motion["']/);
+    expect(body).toContain('open ? "sheet-in pointer-events-auto" : "sheet-out"');
+    const css = fs.readFileSync(path.join(ROOT, "app/globals.css"), "utf8");
+    expect(css).toContain("@keyframes sheet-up   { from { transform: translate3d(0, 100%, 0); } to { transform: none; } }");
+    expect(css).toContain(".sheet-out { animation: sheet-down 240ms");
+    expect(sheet).toContain("const EXIT_MS = 240;");
+  });
+
+  it("stays mounted for its exit, and cannot be used while it leaves", () => {
+    expect(sheet).toContain("window.setTimeout(() => setRendered(false), EXIT_MS)");
+    expect(body).toContain("inert={!open}");
   });
 });
 
