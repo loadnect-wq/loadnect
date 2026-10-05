@@ -14,9 +14,11 @@
 import { useEffect, useState } from "react";
 import { Bell, BellRing } from "lucide-react";
 import { subscribeDateAlert, unsubscribeDateAlert } from "../date-alert-actions";
-import { ALERTS_STORAGE_KEY, alertKey } from "@/lib/date-alerts";
+import { ALERTS_STORAGE_KEY, alertKey, isIosDevice, pushSupportFor, type PushSupport } from "@/lib/date-alerts";
 
-type State = "checking" | "unsupported" | "blocked" | "idle" | "working" | "on" | "error";
+type State =
+  | "checking" | "unsupported" | "ios-add-to-home-screen" | "ios-update"
+  | "blocked" | "idle" | "working" | "on" | "error";
 
 function base64UrlToBytes(base64: string): Uint8Array<ArrayBuffer> {
   const padded = base64 + "=".repeat((4 - (base64.length % 4)) % 4);
@@ -44,8 +46,14 @@ function writeStored(list: string[]) {
   }
 }
 
-function pushSupported(): boolean {
-  return "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+function pushSupport(): PushSupport {
+  return pushSupportFor({
+    hasPush: "serviceWorker" in navigator && "PushManager" in window && "Notification" in window,
+    ios: isIosDevice(navigator.userAgent, navigator.platform ?? "", navigator.maxTouchPoints ?? 0),
+    standalone:
+      window.matchMedia?.("(display-mode: standalone)").matches === true ||
+      (navigator as Navigator & { standalone?: boolean }).standalone === true,
+  });
 }
 
 async function currentSubscription(): Promise<PushSubscription | null> {
@@ -74,7 +82,8 @@ export function DateAlertCard({
   useEffect(() => {
     let cancelled = false;
     const settle = (s: State) => { if (!cancelled) setState(s); };
-    if (!pushSupported()) settle("unsupported");
+    const support = pushSupport();
+    if (support !== "supported") settle(support);
     else if (Notification.permission === "denied") settle("blocked");
     else if (!readStored().includes(key)) settle("idle");
     else currentSubscription().then((sub) => settle(sub ? "on" : "idle")).catch(() => settle("idle"));
@@ -162,6 +171,19 @@ export function DateAlertCard({
             Turn off
           </button>
         </div>
+      ) : state === "ios-add-to-home-screen" ? (
+        <div className="mt-2 text-xs text-charcoal-700">
+          <p className="font-semibold text-charcoal-900">On iPhone, alerts work from your Home Screen:</p>
+          <ol className="mt-1 list-decimal space-y-0.5 pl-4">
+            <li>Open this page in Safari.</li>
+            <li>Tap Share, then Add to Home Screen.</li>
+            <li>Open Hallnect from your Home Screen, search this date again and tap the alert button.</li>
+          </ol>
+        </div>
+      ) : state === "ios-update" ? (
+        <p className="mt-2 text-xs text-charcoal-600">
+          Alerts on iPhone need iOS 16.4 or later. Update your iPhone in Settings, then try again.
+        </p>
       ) : state === "unsupported" ? (
         <p className="mt-2 text-xs text-charcoal-600">
           This browser can&apos;t receive Hallnect alerts. Chrome on Android or on a computer can.

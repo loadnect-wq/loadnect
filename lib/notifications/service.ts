@@ -71,6 +71,8 @@ export type NotificationRequest = {
   critical?: boolean;
   /** From profiles.notifications_enabled, resolved by the event layer. */
   optedIn?: boolean;
+  /** Send before returning instead of after the response. */
+  immediate?: boolean;
 };
 
 // Anti-abuse ceilings (automatic sends; manual admin retries are exempt —
@@ -318,7 +320,10 @@ export async function dispatchNotification(req: NotificationRequest): Promise<vo
       await attemptSend(db, row.id, /* isRetry */ false);
     };
 
-    if (!runAfterResponse(work)) {
+    // `immediate` callers run outside an ordinary response (the error hook in
+    // instrumentation.ts fires while a request is failing), where a deferred
+    // send has nothing reliable to run after — so they send inline.
+    if (req.immediate || !runAfterResponse(work)) {
       // No request scope to defer into (a script, a test, a non-route caller).
       // Await it, which is precisely the old behaviour.
       await work();

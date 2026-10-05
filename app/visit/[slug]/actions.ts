@@ -8,6 +8,7 @@ import { revalidatePath } from "next/cache";
 import { getSession } from "@/lib/auth";
 import { parseSafe, siteVisitRequestSchema, uuidSchema } from "@/lib/validation/schemas";
 import { cancelSiteVisit, requestSiteVisit, type RequestVisitResult } from "@/lib/site-visits.server";
+import { notifyVisitRequested } from "@/lib/notifications/events";
 
 export async function requestVisit(input: unknown): Promise<RequestVisitResult> {
   const user = await getSession();
@@ -24,7 +25,11 @@ export async function requestVisit(input: unknown): Promise<RequestVisitResult> 
     contactName: v.contactName,
     note: v.note || null,
   });
-  if (result.ok) revalidatePath("/customer/visits");
+  if (result.ok) {
+    revalidatePath("/customer/visits");
+    // A repeat of an existing request has already been announced.
+    if (!result.already) await notifyVisitRequested(result.visitId);
+  }
   return result;
 }
 

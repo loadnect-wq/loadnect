@@ -73,3 +73,26 @@ export const ALERTS_STORAGE_KEY = "hallnect:date-alerts";
 export function alertKey(date: string, city: string | null): string {
   return `${date}|${city ?? ""}`;
 }
+
+/**
+ * What this browser can do about an alert.
+ *
+ * iPHONE IS NOT "UNSUPPORTED". Safari on iPhone and iPad (iOS 16.4 and later)
+ * delivers web push, but only to a site opened from the Home Screen — in a
+ * browser tab PushManager simply does not exist. So an iPhone visitor is told
+ * how to get there instead of being told it cannot work; /halls carries the
+ * manifest that makes "Add to Home Screen" open as an app.
+ */
+export type PushSupport = "supported" | "ios-add-to-home-screen" | "ios-update" | "unsupported";
+
+export function pushSupportFor(env: { hasPush: boolean; ios: boolean; standalone: boolean }): PushSupport {
+  if (env.hasPush) return "supported";
+  if (!env.ios) return "unsupported";
+  // Already on the Home Screen and still no push: an iOS older than 16.4.
+  return env.standalone ? "ios-update" : "ios-add-to-home-screen";
+}
+
+/** iPhone, iPod, or an iPad (which reports itself as a Mac with a touch screen). */
+export function isIosDevice(userAgent: string, platform: string, maxTouchPoints: number): boolean {
+  return /iPad|iPhone|iPod/.test(userAgent) || (platform === "MacIntel" && maxTouchPoints > 1);
+}

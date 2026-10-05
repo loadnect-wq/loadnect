@@ -28,9 +28,10 @@
 // which, and why, next to the production set.
 //
 // NO SDK, NO DEPENDENCY. There is still no Sentry and no error-tracking
-// service; onRequestError below writes structured lines to stdout, which is all
-// that can be done without a paid service and an owner's decision. It is a
-// floor, not error monitoring — see docs and the launch audit.
+// service. onRequestError below writes a structured line to stdout for every
+// error, and since 2026-10-05 also ALERTS the admin through the existing admin
+// alert path (lib/error-alerts.ts: outbox, webhook, SMS) — one alert per
+// distinct error per day, ten a day at most.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { Instrumentation } from "next";
@@ -52,11 +53,9 @@ export async function register(): Promise<void> {
 }
 
 /**
- * Every uncaught server error, in one greppable line.
+ * Every uncaught server error, in one greppable line — and an alert.
  *
- * This is not a replacement for error monitoring — nothing here alerts anyone,
- * and Vercel's Hobby plan keeps runtime logs briefly. What it buys is that an
- * error that reaches a user is at least ATTRIBUTED while the log survives:
+ * The line makes an error that reaches a user ATTRIBUTED while the log survives:
  * which route, which kind of work (a render, a route handler, a server action),
  * and the digest that the user's error page shows them. Without it, a support
  * message quoting a digest could not be matched to anything at all.
@@ -64,10 +63,14 @@ export async function register(): Promise<void> {
  * NEVER THROWS, and never logs the request headers. Headers carry the session
  * cookie and the cron bearer token, and a log line is the last place either
  * should end up — the whole point of this hook is that it is safe to leave on.
+ *
+ * THE ALERT IS AWAITED, as Next asks of async work here, so a serverless
+ * instance is not frozen mid-send. Node runtime only: it reads the database
+ * through the service role, which an Edge instance does not carry.
  */
-export const onRequestError: Instrumentation.onRequestError = (err, request, context) => {
+export const onRequestError: Instrumentation.onRequestError = async (err, request, context) => {
+  const error = err instanceof Error ? err : null;
   try {
-    const error = err instanceof Error ? err : null;
     console.error(
       "[error]",
       JSON.stringify({
@@ -93,5 +96,18 @@ export const onRequestError: Instrumentation.onRequestError = (err, request, con
   } catch {
     // A logger that can throw would turn one failed request into a failed
     // server. Nothing in this hook is worth that.
+  }
+
+  if (process.env.NEXT_RUNTIME !== "nodejs") return;
+  try {
+    const { alertServerError } = await import("@/lib/error-alerts");
+    await alertServerError({
+      routePath: context.routePath,
+      routeType: context.routeType,
+      name: error?.name ?? "Error",
+      message: error ? error.message : String(err),
+    });
+  } catch {
+    // Same rule: the alert must never become the failure.
   }
 };

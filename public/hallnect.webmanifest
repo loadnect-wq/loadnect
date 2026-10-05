@@ -1,0 +1,18 @@
+{
+  "id": "/halls",
+  "name": "Hallnect",
+  "short_name": "Hallnect",
+  "description": "Find a hall for your function, and get an alert when a booked date frees up.",
+  "start_url": "/halls",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#FAF6EF",
+  "theme_color": "#9B2038",
+  "lang": "en-IN",
+  "icons": [
+    { "src": "/diary-icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/diary-icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/diary-icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

@@ -83,14 +83,22 @@ export async function generateMetadata({
   // pair (one says "index that instead", the other "index nothing"), and the
   // combination risks carrying the noindex over to /halls itself. noindex
   // alone does the job; buildMetadata self-canonicalises to path otherwise.
-  return buildMetadata({
-    title: filtered ? "Venue Search Results" : "Browse Halls & Venues for Every Occasion",
-    description:
-      "Browse every wedding hall, party hall, banquet and meeting venue listed on Hallnect. " +
-      "Filter by occasion, city, guest capacity, budget, date and amenities.",
-    path: "/halls",
-    indexable: !filtered,
-  });
+  return {
+    ...buildMetadata({
+      title: filtered ? "Venue Search Results" : "Browse Halls & Venues for Every Occasion",
+      description:
+        "Browse every wedding hall, party hall, banquet and meeting venue listed on Hallnect. " +
+        "Filter by occasion, city, guest capacity, budget, date and amenities.",
+      path: "/halls",
+      indexable: !filtered,
+    }),
+    // INSTALLABLE FROM HERE, for one reason: an iPhone only delivers web push
+    // to a site added to its Home Screen, and this is the page that offers
+    // "Alert me if one frees up". The apple-mobile-web-app tags come from the
+    // root layout and the Home Screen icon from app/apple-icon.png — setting
+    // `icons` here would replace the site's icon links on this page.
+    manifest: "/hallnect.webmanifest",
+  };
 }
 
 export default async function HallsPage({

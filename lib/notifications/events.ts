@@ -642,6 +642,78 @@ export async function notifyLeadEvent(
 }
 
 /**
+ * What a new site-visit request says to the venue, over the approved generic
+ * owner template. Pure and exported so the 30-character cut is tested.
+ *
+ * THE SAME SUBSTITUTION AS ownerLeadNotification, for the same reasons: there
+ * is no visit template on DLT, OWNER_ACCOUNT_STATUS is approved and its
+ * registered body is generic ("…Item: {#var#}. New status: {#var#}. Detail:
+ * {#var#}. Sign in to your owner dashboard to review it."), and the owner
+ * dashboard already carries a standing "visits waiting" alert with the
+ * family's name and number. No phone number in a variable (carriers refused
+ * exactly that on the first live enquiry), and every value cut to 30.
+ *
+ * The family's side is NOT substituted: every approved customer template says
+ * "hall booking", and a visit is not a booking. They see the answer on
+ * /customer/visits.
+ */
+export function ownerVisitNotification(input: { hallName: string; contactName: string; dateLabel: string }): {
+  templateKey: SmsTemplateKey;
+  templateVariables: string[];
+} {
+  const cut = (v: string) => (v.length <= 30 ? v : `${v.slice(0, 27).trimEnd()}...`);
+  return {
+    templateKey: "OWNER_ACCOUNT_STATUS",
+    templateVariables: [cut(input.hallName), "New site visit request", cut(`${input.contactName}, ${input.dateLabel}`)],
+  };
+}
+
+/**
+ * Texts the venue that a family asked to visit. Called once, after the request
+ * row exists; idempotent through the outbox key `visit.requested:<id>` anyway.
+ * Fire-safe: a notification failure never fails the request.
+ */
+export async function notifyVisitRequested(visitId: string): Promise<void> {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const db = getSupabaseAdminClient() as any;
+    const { data, error } = await db
+      .from("site_visits")
+      .select(`id, hall_id, visit_date, contact_name, status, halls!hall_id(name, owner_id, hall_owners!owner_id(${OWNER_EMBED}))`)
+      .eq("id", visitId)
+      .maybeSingle();
+    if (error || !data) {
+      console.error("[notifications] visit context load failed:", error?.message ?? "not found");
+      return;
+    }
+    // Withdrawn before we got here: nothing to tell.
+    if (data.status !== "requested") return;
+
+    const hall = data.halls ?? {};
+    const owner = ownerRecipient(hall.hall_owners ?? null);
+    await dispatchAll([
+      {
+        eventKey: `visit.requested:${visitId}`,
+        eventType: "visit.requested",
+        recipientType: "owner",
+        recipientUserId: owner.userId,
+        phone: owner.phone,
+        ...ownerVisitNotification({
+          hallName: sanitizeName(hall.name, "your venue"),
+          contactName: sanitizeName(data.contact_name, "A family"),
+          dateLabel: formatBookingDates(data.visit_date, null),
+        }),
+        hallId: data.hall_id,
+        critical: true,
+        optedIn: owner.optedIn,
+      },
+    ]);
+  } catch (e) {
+    console.error("[notifications] visit event failed:", e instanceof Error ? e.message : e);
+  }
+}
+
+/**
  * Tells the admin a venue settled a lead commission.
  *
  * Its own function rather than a LeadEventKind because it is about a
@@ -1187,20 +1259,25 @@ export async function notifyAdminOperational(input: {
   reference: string;
   hallId?: string | null;
   bookingId?: string | null;
+  /** Send inline rather than after the response (see NotificationRequest). */
+  immediate?: boolean;
 }): Promise<void> {
   try {
     const adminPhone = await getAdminNotificationPhone();
     await dispatchAll([
-      adminAlert({
-        adminPhone,
-        eventKey: input.key,
-        eventType: input.eventType,
-        event: input.event,
-        details: input.details,
-        reference: input.reference,
-        hallId: input.hallId ?? null,
-        bookingId: input.bookingId ?? null,
-      }),
+      {
+        ...adminAlert({
+          adminPhone,
+          eventKey: input.key,
+          eventType: input.eventType,
+          event: input.event,
+          details: input.details,
+          reference: input.reference,
+          hallId: input.hallId ?? null,
+          bookingId: input.bookingId ?? null,
+        }),
+        immediate: input.immediate ?? false,
+      },
     ]);
   } catch (e) {
     console.error("[notifications] notifyAdminOperational failed:", e instanceof Error ? e.message : e);
