@@ -140,6 +140,15 @@ the gap named.
       original review — a claim about a control was taken from the module that
       looked like the upload path rather than from the path the app actually
       takes.
+      **UPDATE (5 October 2026):** all three live paths (`ImagesManager`,
+      `HallForm`, the admin `HallPhotosField`) now go through
+      `prepareHallPhoto` in `lib/prepare-hall-photo.ts`, which sniffs the bytes
+      with `sniffPhotoBytes`, compresses the photo, and returns the type that is
+      stored. A declared-type mismatch is no longer refused there, because the
+      declared type is no longer used for anything: the object is either a
+      browser-encoded JPEG or the original stored under its sniffed type.
+      `lib/__tests__/photo-compression.test.ts` pins that every live path
+      uploads the prepared blob with the prepared type.
 - [x] Storage path bound to the hall id; storage RLS enforces the same
 - [x] Per-hall image cap
 - [x] `next.config.ts` image `remotePatterns` scoped to this project's Supabase host — it was `**`, matching every host on the internet

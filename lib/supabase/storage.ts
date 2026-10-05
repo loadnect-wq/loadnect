@@ -138,7 +138,9 @@ export async function sniffImageType(file: File): Promise<"image/jpeg" | "image/
  * `contentType: file.type`, the browser's declared type, and neither sniffed
  * anything. The security checklist claimed otherwise.
  *
- * The sniff now runs in both live paths. This function is kept because its
+ * The sniff now runs in both live paths — since 2026-10-05 through
+ * prepareHallPhoto (lib/prepare-hall-photo.ts), which also compresses the
+ * photo and decides the stored type. This function is kept because its
  * tests pin sniffImageType's behaviour, but it is a second implementation of
  * something that lives elsewhere — if you change the rules, change them THERE
  * first, and do not read this function as evidence of what production does.

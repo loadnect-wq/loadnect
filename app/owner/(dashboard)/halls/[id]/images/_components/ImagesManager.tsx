@@ -5,9 +5,11 @@ import { useRouter } from "next/navigation";
 import { AlertCircle, CheckCircle2, ImagePlus, Loader2, Star, Trash2 } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { type HallImage } from "@/lib/owner";
-import { validateImageFile, IMAGE_LIMITS, ALT_TEXT_MAX } from "@/lib/validation/schemas";
+import { ALT_TEXT_MAX } from "@/lib/validation/schemas";
 import { ConfirmationDialog } from "@/components/ui/ConfirmationDialog";
-import { IMAGE_CACHE_CONTROL, sniffImageType } from "@/lib/supabase/storage";
+import { IMAGE_CACHE_CONTROL } from "@/lib/supabase/storage";
+import { EXT_BY_MIME, MAX_SOURCE_PHOTO_BYTES } from "@/lib/hall-draft-photos";
+import { PhotoRejected, formatPhotoBytes, prepareHallPhoto, type PreparedPhoto } from "@/lib/prepare-hall-photo";
 import {
   addHallImage,
   setCoverImage,
@@ -19,14 +21,6 @@ interface Props {
   hallId: string;
   initial: HallImage[];
 }
-
-// Storage extension is derived from the validated MIME type, never from the
-// user-supplied filename (a filename is untrusted input).
-const EXT_BY_MIME: Record<string, string> = {
-  "image/jpeg": "jpg",
-  "image/png":  "png",
-  "image/webp": "webp",
-};
 
 /**
  * Turn a Supabase Storage failure into something the owner can act on.
@@ -71,8 +65,10 @@ type QueueItem = {
   key:     string;
   name:    string;
   preview: string;                                   // object URL, local only
-  status:  "uploading" | "done" | "error";
+  status:  "preparing" | "uploading" | "done" | "error";
   error?:  string;
+  /** "6.2 MB → 840 KB" once compressed; absent when the photo went up as picked. */
+  saved?:  string;
 };
 
 export function ImagesManager({ hallId, initial }: Props) {
@@ -93,74 +89,68 @@ export function ImagesManager({ hallId, initial }: Props) {
   const [pending, startTransition] = useTransition();
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const busy = queue.some((q) => q.status === "uploading");
+  // What compression saved across the last batch, for one line under the
+  // uploader: owners should see why their 8 MB photo went up in seconds.
+  const [savedNote, setSavedNote] = useState<string | null>(null);
+
+  const busy = queue.some((q) => q.status === "preparing" || q.status === "uploading");
 
   async function handleFiles(e: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files ?? []);
     if (files.length === 0) return;
     setError(null);
+    setSavedNote(null);
 
-    // Validate everything up front so one bad file doesn't half-upload a batch.
-    //
-    // TWO CHECKS, AND THE SECOND IS THE REAL ONE. validateImageFile reads the
-    // browser's DECLARED type (file.type) and the size — both attacker-supplied
-    // and both trivially wrong. sniffImageType reads the first twelve bytes.
-    // A mismatch is rejected rather than corrected: a .png whose bytes are a
-    // JPEG is at best a confused client and at worst a deliberate one, and
-    // neither is worth guessing for. The SNIFFED type is what gets stored as
-    // the object's content type below, so Supabase can never be talked into
-    // serving something as an image type it is not.
-    const accepted: { file: File; type: string }[] = [];
-    for (const file of files) {
-      const check = validateImageFile(file);
-      if (!check.ok) {
-        setError(`${file.name}: ${check.error}`);
-        continue;
-      }
-      const actual = await sniffImageType(file);
-      if (!actual) {
-        setError(`${file.name}: that file is not a JPG, PNG or WebP image.`);
-        continue;
-      }
-      if (actual !== file.type) {
-        setError(`${file.name}: it says it is ${file.type} but its contents are ${actual}. Re-save it and try again.`);
-        continue;
-      }
-      accepted.push({ file, type: actual });
-    }
-    if (accepted.length === 0) {
-      if (fileRef.current) fileRef.current.value = "";
-      return;
-    }
-
-    const items: QueueItem[] = accepted.map(({ file: f }, i) => ({
+    // EVERY PHOTO IS COMPRESSED BEFORE IT IS UPLOADED (lib/prepare-hall-photo.ts):
+    // scaled to at most 2560px and re-encoded at a quality where the change is
+    // not visible, or kept exactly as picked when it is already small. Its
+    // BYTES decide what it is — the browser's declared type and the filename
+    // are the uploader's to choose — and the stored type is the one that comes
+    // out, so Supabase serves each object as what it actually is.
+    const items: QueueItem[] = files.map((f, i) => ({
       key:     `${Date.now()}-${i}-${f.name}`,
       name:    f.name,
       preview: URL.createObjectURL(f),               // local preview, not "uploaded"
-      status:  "uploading",
+      status:  "preparing",
     }));
     setQueue((q) => [...q, ...items]);
+    const update = (key: string, patch: Partial<QueueItem>) =>
+      setQueue((q) => q.map((x) => (x.key === key ? { ...x, ...patch } : x)));
 
     const supabase = getSupabaseClient();
     let coverTaken = images.length > 0;
+    let before = 0;
+    let after = 0;
 
-    // Sequential: keeps ordering deterministic and avoids hammering storage.
-    for (let i = 0; i < accepted.length; i++) {
-      const { file, type } = accepted[i];
+    // Sequential: keeps ordering deterministic, avoids hammering storage, and
+    // keeps one decoded photo in memory at a time on a phone.
+    for (let i = 0; i < files.length; i++) {
       const item = items[i];
-      // Extension from the SNIFFED type, so the stored name agrees with the
+      let prepared: PreparedPhoto;
+      try {
+        prepared = await prepareHallPhoto(files[i]);
+      } catch (err) {
+        const message = err instanceof PhotoRejected ? err.message : "This photo could not be read.";
+        update(item.key, { status: "error", error: message });
+        continue;
+      }
+      const saved = prepared.compressed
+        ? `${formatPhotoBytes(prepared.originalBytes)} → ${formatPhotoBytes(prepared.blob.size)}`
+        : undefined;
+      update(item.key, { status: "uploading", saved });
+
+      // Extension from the PREPARED type, so the stored name agrees with the
       // bytes and with the content type sent below.
-      const ext  = EXT_BY_MIME[type] ?? "jpg";
-      const path = `${hallId}/${crypto.randomUUID()}.${ext}`;
+      const path = `${hallId}/${crypto.randomUUID()}.${EXT_BY_MIME[prepared.type]}`;
 
       try {
         const { error: storageErr } = await supabase.storage
           .from("hall-images")
-          .upload(path, file, {
+          .upload(path, prepared.blob, {
             upsert: false,
-            // THE SNIFFED TYPE, never the declared one — this is the header
+            // THE PREPARED TYPE, never the declared one — this is the header
             // Supabase serves the object with.
-            contentType: type,
+            contentType: prepared.type,
             // A year, not the one-hour default: these objects are immutable (uuid
             // filename, upsert:false) and Supabase egress is the meter that fills
             // first here. See IMAGE_CACHE_CONTROL in lib/supabase/storage.ts.
@@ -186,11 +176,20 @@ export function ImagesManager({ hallId, initial }: Props) {
         }
 
         coverTaken = true;
-        setQueue((q) => q.map((x) => (x.key === item.key ? { ...x, status: "done" } : x)));
+        before += prepared.originalBytes;
+        after  += prepared.blob.size;
+        update(item.key, { status: "done" });
       } catch (err) {
         const message = err instanceof Error ? err.message : "Upload failed";
-        setQueue((q) => q.map((x) => (x.key === item.key ? { ...x, status: "error", error: message } : x)));
+        update(item.key, { status: "error", error: message });
       }
+    }
+
+    if (after > 0 && after < before) {
+      setSavedNote(
+        `Photos compressed from ${formatPhotoBytes(before)} to ${formatPhotoBytes(after)} — ` +
+        "they open faster for families and look the same.",
+      );
     }
 
     if (fileRef.current) fileRef.current.value = "";
@@ -229,7 +228,7 @@ export function ImagesManager({ hallId, initial }: Props) {
     router.refresh();
   }
 
-  const maxMb = Math.round(IMAGE_LIMITS.maxBytes / (1024 * 1024));
+  const maxMb = Math.round(MAX_SOURCE_PHOTO_BYTES / (1024 * 1024));
 
   return (
     <div className="space-y-4">
@@ -237,6 +236,12 @@ export function ImagesManager({ hallId, initial }: Props) {
         <div className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
           <span>{error}</span>
+        </div>
+      )}
+      {savedNote && !busy && (
+        <div role="status" className="flex items-start gap-2 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
+          <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
+          <span>{savedNote}</span>
         </div>
       )}
 
@@ -250,7 +255,9 @@ export function ImagesManager({ hallId, initial }: Props) {
         {busy ? (
           <>
             <Loader2 className="h-8 w-8 animate-spin text-maroon-500" />
-            <p className="text-sm font-medium text-charcoal-600">Uploading…</p>
+            <p className="text-sm font-medium text-charcoal-600">
+              {queue.some((q) => q.status === "preparing") ? "Compressing photos…" : "Uploading…"}
+            </p>
           </>
         ) : (
           <>
@@ -259,6 +266,9 @@ export function ImagesManager({ hallId, initial }: Props) {
               <p className="text-sm font-medium text-charcoal-700">Upload photos</p>
               <p className="mt-0.5 text-xs text-charcoal-500">
                 JPEG, PNG, WebP · up to {maxMb} MB each · select multiple
+              </p>
+              <p className="mt-0.5 text-xs text-charcoal-500">
+                Large photos are compressed automatically, without losing quality
               </p>
             </div>
           </>
@@ -288,10 +298,13 @@ export function ImagesManager({ hallId, initial }: Props) {
                   "text-[11px]",
                   q.status === "error" ? "text-red-600" : "text-charcoal-500",
                 ].join(" ")}>
-                  {q.status === "uploading" ? "Uploading…" : q.status === "done" ? "Uploaded" : q.error}
+                  {q.status === "preparing" ? "Compressing…"
+                    : q.status === "uploading" ? `Uploading…${q.saved ? ` (compressed ${q.saved})` : ""}`
+                    : q.status === "done" ? `Uploaded${q.saved ? ` · ${q.saved}` : ""}`
+                    : q.error}
                 </p>
               </div>
-              {q.status === "uploading" && <Loader2 className="h-4 w-4 animate-spin text-maroon-500" />}
+              {(q.status === "preparing" || q.status === "uploading") && <Loader2 className="h-4 w-4 animate-spin text-maroon-500" />}
               {q.status === "done"      && <CheckCircle2 className="h-4 w-4 text-green-600" />}
               {q.status === "error"     && <AlertCircle className="h-4 w-4 text-red-600" />}
             </li>

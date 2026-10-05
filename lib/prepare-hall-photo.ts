@@ -2,25 +2,35 @@
 // lib/prepare-hall-photo.ts — make a picked photo ready to upload, in the
 // browser. Client-only (createImageBitmap, canvas, XMLHttpRequest).
 //
-// There was no image pipeline to reuse: the owner uploaders send the file as
-// picked, and the bucket refuses anything over 5 MB — which is most photos
-// straight off a modern phone. So an admin adding a normal hall photograph
-// would simply be told no. Here a large photo is scaled to 2560px on its long
-// edge and re-encoded as a high-quality JPEG; a photo that already fits is
-// uploaded byte-for-byte untouched, because re-encoding it would only lose
-// quality.
+// AUTOMATIC COMPRESSION, FOR EVERY HALL PHOTO (2026-10-05). The owner's photo
+// manager, the new-hall wizard and the admin's draft form all call
+// prepareHallPhoto before uploading. Until then only the admin form did: owners
+// sent the file exactly as picked, and the bucket's 5 MB limit refused most
+// photos straight off a modern phone.
 //
-// The TYPE is decided by the file's bytes, never its name or the type the
-// browser reports (both are the uploader's to choose). The server checks the
-// bytes again once the file is in Storage — this check is for a fast, specific
-// message, not for security.
+// What happens to a photo (the rules live in lib/hall-draft-photos.ts):
+//   1. its BYTES decide whether it is a JPEG, PNG or WebP — never its name or
+//      the type the browser reports, both of which the uploader chooses;
+//   2. it is scaled down so its long edge is at most 2560px (never enlarged),
+//      in halving steps so fine detail does not shimmer;
+//   3. it is re-encoded as a JPEG at quality 0.88;
+//   4. if the original already fitted and the copy is not at least 15%
+//      smaller, the ORIGINAL is uploaded byte-for-byte instead — re-encoding a
+//      photo that is already well compressed only costs quality.
+//
+// The server and the bucket still enforce their own limits; this is what makes
+// an ordinary phone photo fit them, not a security check.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import {
   MAX_SOURCE_PHOTO_BYTES,
   MAX_STORED_PHOTO_BYTES,
+  PHOTO_FALLBACK_QUALITIES,
+  PHOTO_JPEG_QUALITY,
   PHOTO_MIN_EDGE,
-  planPhotoResize,
+  keepOriginalPhoto,
+  photoFitsAsPicked,
+  photoTargetSize,
   sniffPhotoBytes,
   type PhotoMime,
 } from "@/lib/hall-draft-photos";
@@ -30,14 +40,37 @@ export type PreparedPhoto = {
   type: PhotoMime;
   width: number;
   height: number;
-  resized: boolean;
+  /** True when `blob` is a new, smaller JPEG; false when it is the picked file, untouched. */
+  compressed: boolean;
+  /** The picked file's size, for "6.2 MB → 840 KB". */
+  originalBytes: number;
 };
 
 export class PhotoRejected extends Error {}
 
 const MB = 1024 * 1024;
 
-export async function prepareHallPhoto(file: File): Promise<PreparedPhoto> {
+/** "6.2 MB", "840 KB" — for telling an owner what compression saved. */
+export function formatPhotoBytes(bytes: number): string {
+  return bytes >= MB ? `${(bytes / MB).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
+}
+
+// ONE PHOTO THROUGH THE CANVAS AT A TIME. A decoded 12-MP photo is ~48 MB of
+// pixels; an owner selecting ten at once would ask a phone for half a gigabyte
+// and the tab would be killed. Callers may fire these in parallel (the admin
+// form does) — they queue here.
+let queue: Promise<unknown> = Promise.resolve();
+function oneAtATime<T>(task: () => Promise<T>): Promise<T> {
+  const run = queue.then(task);
+  queue = run.catch(() => undefined);
+  return run;
+}
+
+export function prepareHallPhoto(file: File): Promise<PreparedPhoto> {
+  return oneAtATime(() => prepare(file));
+}
+
+async function prepare(file: File): Promise<PreparedPhoto> {
   if (file.size === 0) throw new PhotoRejected("This file is empty.");
   if (file.size > MAX_SOURCE_PHOTO_BYTES) {
     throw new PhotoRejected(
@@ -52,49 +85,142 @@ export async function prepareHallPhoto(file: File): Promise<PreparedPhoto> {
     throw new PhotoRejected("This is not a JPG, PNG or WebP image. HEIC and other formats need converting first.");
   }
 
-  let bitmap: ImageBitmap;
+  const image = await decode(file);
   try {
-    bitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
-  } catch {
-    throw new PhotoRejected("This image could not be opened. It may be damaged.");
-  }
-
-  try {
-    const { width, height } = bitmap;
+    const { width, height } = image;
     if (Math.min(width, height) < PHOTO_MIN_EDGE) {
       throw new PhotoRejected(
         `This image is only ${width}×${height}px. Use a photo at least ${PHOTO_MIN_EDGE}px on its shorter side.`,
       );
     }
 
-    const plan = planPhotoResize(width, height, file.size);
-    if (!plan.resize) {
-      return { blob: file, type, width, height, resized: false };
+    const original: PreparedPhoto = { blob: file, type, width, height, compressed: false, originalBytes: file.size };
+    const target = photoTargetSize(width, height);
+
+    let canvas: HTMLCanvasElement;
+    try {
+      canvas = drawScaled(image.source, width, height, target.width, target.height);
+    } catch {
+      // No 2D canvas (a locked-down or very old browser). A photo that fits can
+      // still go up as picked, exactly as it always did.
+      if (photoFitsAsPicked(width, height, file.size)) return original;
+      throw new PhotoRejected("This browser could not resize the photo. Try a smaller copy.");
     }
 
-    const canvas = document.createElement("canvas");
-    canvas.width = plan.width;
-    canvas.height = plan.height;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) throw new PhotoRejected("This browser could not resize the photo.");
-    // A transparent PNG would turn black as JPEG; hall photos are opaque, but
-    // paint white underneath so a logo-style image cannot come out black.
-    ctx.fillStyle = "#ffffff";
-    ctx.fillRect(0, 0, plan.width, plan.height);
-    ctx.imageSmoothingQuality = "high";
-    ctx.drawImage(bitmap, 0, 0, plan.width, plan.height);
-
-    // Step quality down only if a very detailed photo is still too large.
-    for (const quality of [0.88, 0.8, 0.7]) {
-      const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", quality));
-      if (blob && blob.size <= MAX_STORED_PHOTO_BYTES) {
-        return { blob, type: "image/jpeg", width: plan.width, height: plan.height, resized: true };
+    try {
+      const compressed = await encodeJpeg(canvas, PHOTO_JPEG_QUALITY);
+      if (keepOriginalPhoto({ width, height, bytes: file.size, compressedBytes: compressed?.size ?? null })) {
+        return original;
       }
+      const done = (blob: Blob): PreparedPhoto => ({
+        blob, type: "image/jpeg", width: target.width, height: target.height, compressed: true, originalBytes: file.size,
+      });
+      if (compressed && compressed.size <= MAX_STORED_PHOTO_BYTES) return done(compressed);
+
+      // Only an extraordinarily detailed photo gets here: 2560px at 0.88 is
+      // normally well under 5 MB.
+      for (const quality of PHOTO_FALLBACK_QUALITIES) {
+        const blob = await encodeJpeg(canvas, quality);
+        if (blob && blob.size <= MAX_STORED_PHOTO_BYTES) return done(blob);
+      }
+      throw new PhotoRejected("This photo is still larger than 5 MB after compressing. Try a smaller copy.");
+    } finally {
+      release(canvas);
     }
-    throw new PhotoRejected("This photo is still larger than 5 MB after resizing. Try a smaller copy.");
   } finally {
-    bitmap.close();
+    image.close();
   }
+}
+
+type Decoded = { source: CanvasImageSource; width: number; height: number; close: () => void };
+
+/**
+ * Decodes with createImageBitmap, upright (a phone's EXIF rotation applied);
+ * falls back to an <img> element, which browsers also draw upright, where
+ * createImageBitmap is missing or refuses the file.
+ */
+async function decode(file: File): Promise<Decoded> {
+  if (typeof createImageBitmap === "function") {
+    try {
+      const bitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
+      return { source: bitmap, width: bitmap.width, height: bitmap.height, close: () => bitmap.close() };
+    } catch {
+      // fall through to <img>
+    }
+  }
+  const url = URL.createObjectURL(file);
+  try {
+    const img = new Image();
+    img.decoding = "async";
+    img.src = url;
+    await img.decode();
+    return { source: img, width: img.naturalWidth, height: img.naturalHeight, close: () => URL.revokeObjectURL(url) };
+  } catch {
+    URL.revokeObjectURL(url);
+    throw new PhotoRejected("This image could not be opened. It may be damaged.");
+  }
+}
+
+function newCanvas(width: number, height: number) {
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("no 2d context");
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+  return { canvas, ctx };
+}
+
+/**
+ * Scales `source` to width×height on a white background.
+ *
+ * IN HALVING STEPS while the source is more than twice the target. A single
+ * smoothed draw across a large ratio (a 48-MP photo is ~3× the target) samples
+ * too few source pixels and leaves fine patterns — tiles, carved pillars, a
+ * chandelier — shimmering with moiré. Halving first keeps every step under 2×.
+ * It also means no canvas is ever the full size of a 48-MP original, which iOS
+ * would refuse outright.
+ *
+ * White underneath because JPEG has no transparency: a logo-style PNG would
+ * otherwise come out on black.
+ */
+function drawScaled(source: CanvasImageSource, sw: number, sh: number, width: number, height: number) {
+  let current: CanvasImageSource = source;
+  let cw = sw;
+  let ch = sh;
+  const steps: HTMLCanvasElement[] = [];
+  try {
+    while (cw > width * 2) {
+      const nw = Math.max(width, Math.round(cw / 2));
+      const nh = Math.max(height, Math.round(ch / 2));
+      const step = newCanvas(nw, nh);
+      step.ctx.drawImage(current, 0, 0, nw, nh);
+      steps.push(step.canvas);
+      current = step.canvas;
+      cw = nw;
+      ch = nh;
+    }
+    const out = newCanvas(width, height);
+    out.ctx.fillStyle = "#ffffff";
+    out.ctx.fillRect(0, 0, width, height);
+    out.ctx.drawImage(current, 0, 0, width, height);
+    return out.canvas;
+  } finally {
+    steps.forEach(release);
+  }
+}
+
+function encodeJpeg(canvas: HTMLCanvasElement, quality: number): Promise<Blob | null> {
+  return new Promise((resolve) =>
+    canvas.toBlob((blob) => resolve(blob && blob.type === "image/jpeg" ? blob : null), "image/jpeg", quality),
+  );
+}
+
+/** Safari keeps a canvas's pixels alive until it is resized to nothing. */
+function release(canvas: HTMLCanvasElement) {
+  canvas.width = 0;
+  canvas.height = 0;
 }
 
 /**

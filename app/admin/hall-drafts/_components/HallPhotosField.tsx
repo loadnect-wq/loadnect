@@ -198,7 +198,7 @@ export function HallPhotosField({
             <p className="text-sm font-medium text-charcoal-700">No photos added yet</p>
             <AddButton inputId={inputId} disabled={busy} onPick={() => inputRef.current?.click()} />
             <p className="text-[11px] text-charcoal-500">
-              Or drag photos here · JPG, PNG or WebP · large photos are resized automatically
+              Or drag photos here · JPG, PNG or WebP · large photos are compressed automatically
             </p>
           </div>
         ) : (

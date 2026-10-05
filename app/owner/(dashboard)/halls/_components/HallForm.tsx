@@ -10,23 +10,18 @@ import { PLATFORM_FEE_RUPEES } from "@/lib/booking-payment";
 import { toBookingMode, type BookingMode } from "@/lib/booking-mode";
 import { DIRECT_BOOKING_ENABLED } from "@/lib/booking-switch";
 import { useRouter } from "next/navigation";
-import { ImagePlus, Plus, Sparkles, Star, X } from "lucide-react";
+import { ImagePlus, Loader2, Plus, Sparkles, Star, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/Button";
 import { type OwnerAmenity, type OwnerHallDetail } from "@/lib/owner";
 import { createHall, updateHall } from "@/app/owner/(dashboard)/actions";
-import { normalizeAmenityName, CUSTOM_AMENITY_LIMITS, validateImageFile } from "@/lib/validation/schemas";
+import { normalizeAmenityName, CUSTOM_AMENITY_LIMITS } from "@/lib/validation/schemas";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { addHallImage } from "@/app/owner/(dashboard)/actions";
-import { IMAGE_CACHE_CONTROL, sniffImageType } from "@/lib/supabase/storage";
+import { IMAGE_CACHE_CONTROL } from "@/lib/supabase/storage";
+import { EXT_BY_MIME, MAX_SOURCE_PHOTO_BYTES, type PhotoMime } from "@/lib/hall-draft-photos";
+import { PhotoRejected, formatPhotoBytes, prepareHallPhoto } from "@/lib/prepare-hall-photo";
 import { parseMapInput, mapsLinkFor } from "@/lib/geo";
-
-// Extension comes from the validated MIME type, never the untrusted filename.
-const EXT_BY_MIME: Record<string, string> = {
-  "image/jpeg": "jpg",
-  "image/png":  "png",
-  "image/webp": "webp",
-};
 
 interface Props {
   ownerId:    string;
@@ -98,10 +93,14 @@ export function HallForm({ ownerId, amenities, categories, hall }: Props) {
   // Photos chosen in THIS form. They are local previews until the hall exists —
   // a hall id is required before an image can be permanently associated, so the
   // upload happens immediately after createHall returns (see handleSubmit).
-  // `type` is the SNIFFED content type, decided when the photo was picked and
-  // carried to the upload — never file.type, which the browser takes from the
-  // client and which a crafted upload controls.
-  const [photos, setPhotos] = useState<{ key: string; file: File; type: string; preview: string }[]>([]);
+  // Each is COMPRESSED the moment it is picked (lib/prepare-hall-photo.ts):
+  // `blob` is what will be uploaded and `type` is what its bytes are — never
+  // file.type, which the browser takes from the client and a crafted upload
+  // controls.
+  const [photos, setPhotos] = useState<{ key: string; blob: Blob; type: PhotoMime; preview: string; originalBytes: number }[]>([]);
+  // Photos still being compressed; submitting waits for them.
+  const [preparing, setPreparing] = useState(0);
+  const photoBytes = photos.reduce((t, p) => ({ before: t.before + p.originalBytes, after: t.after + p.blob.size }), { before: 0, after: 0 });
   const [photoError, setPhotoError] = useState<string | null>(null);
   const [uploadNote, setUploadNote] = useState<string | null>(null);
   const photoRef = useRef<HTMLInputElement>(null);
@@ -140,27 +139,32 @@ export function HallForm({ ownerId, amenities, categories, hall }: Props) {
 
   async function handlePhotoPick(e: React.ChangeEvent<HTMLInputElement>) {
     const picked = Array.from(e.target.files ?? []);
-    setPhotoError(null);
-    const accepted: typeof photos = [];
-    for (const file of picked) {
-      const check = validateImageFile(file);
-      if (!check.ok) { setPhotoError(`${file.name}: ${check.error}`); continue; }
-      // MAGIC BYTES, not the declared MIME type. See the same pair of checks in
-      // ImagesManager for why a mismatch is refused rather than corrected; the
-      // sniffed type is carried through to the upload's contentType.
-      const actual = await sniffImageType(file);
-      if (!actual) {
-        setPhotoError(`${file.name}: that file is not a JPG, PNG or WebP image.`);
-        continue;
-      }
-      if (actual !== file.type) {
-        setPhotoError(`${file.name}: it says it is ${file.type} but its contents are ${actual}. Re-save it and try again.`);
-        continue;
-      }
-      accepted.push({ key: `${Date.now()}-${file.name}-${accepted.length}`, file, type: actual, preview: URL.createObjectURL(file) });
-    }
-    setPhotos((prev) => [...prev, ...accepted]);
     if (photoRef.current) photoRef.current.value = "";
+    setPhotoError(null);
+    setPreparing((n) => n + picked.length);
+    const problems: string[] = [];
+    // One at a time (prepareHallPhoto queues anyway); each photo appears as soon
+    // as it is ready rather than after the whole batch.
+    for (const file of picked) {
+      try {
+        const prepared = await prepareHallPhoto(file);
+        // Outside the updater: React may call an updater twice, and each call
+        // would mint an object URL nothing ever revokes.
+        const photo = {
+          key: crypto.randomUUID(),
+          blob: prepared.blob,
+          type: prepared.type,
+          preview: URL.createObjectURL(prepared.blob),
+          originalBytes: prepared.originalBytes,
+        };
+        setPhotos((prev) => [...prev, photo]);
+      } catch (err) {
+        problems.push(`${file.name}: ${err instanceof PhotoRejected ? err.message : "this photo could not be read."}`);
+      } finally {
+        setPreparing((n) => n - 1);
+      }
+    }
+    if (problems.length > 0) setPhotoError(problems.join(" "));
   }
 
   function removePhoto(key: string) {
@@ -178,15 +182,14 @@ export function HallForm({ ownerId, amenities, categories, hall }: Props) {
     let failed = 0;
 
     for (let i = 0; i < photos.length; i++) {
-      const { file, type } = photos[i];
+      const { blob, type } = photos[i];
       setUploadNote(`Uploading photo ${i + 1} of ${photos.length}…`);
-      const ext  = EXT_BY_MIME[type] ?? "jpg";
-      const path = `${hallId}/${crypto.randomUUID()}.${ext}`;
+      const path = `${hallId}/${crypto.randomUUID()}.${EXT_BY_MIME[type]}`;
       try {
         const { error: sErr } = await supabase.storage
-          .from("hall-images").upload(path, file, {
+          .from("hall-images").upload(path, blob, {
             upsert: false,
-            // The SNIFFED type, set when the photo was picked.
+            // The PREPARED type, decided by the photo's bytes when it was picked.
             contentType: type,
             // See IMAGE_CACHE_CONTROL in lib/supabase/storage.ts — immutable
             // objects, and egress is the first meter to fill on this project.
@@ -220,6 +223,8 @@ export function HallForm({ ownerId, amenities, categories, hall }: Props) {
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    // The button is disabled meanwhile; Enter in a text field still submits.
+    if (preparing > 0) return;
     setError(null);
     const data = {
       ownerId,
@@ -644,7 +649,8 @@ export function HallForm({ ownerId, amenities, categories, hall }: Props) {
         <FormSection title="Hall Photos">
           <p className="text-xs text-charcoal-500">
             Add photos of your venue. The first photo becomes the cover customers see.
-            JPEG, PNG or WebP, up to 5 MB each.
+            JPEG, PNG or WebP, up to {MAX_SOURCE_PHOTO_BYTES / (1024 * 1024)} MB each. Large photos are
+            compressed automatically, without losing quality.
           </p>
 
           <button
@@ -666,6 +672,17 @@ export function HallForm({ ownerId, amenities, categories, hall }: Props) {
           />
 
           {photoError && <p className="mt-2 text-xs text-red-600">{photoError}</p>}
+          {preparing > 0 && (
+            <p role="status" className="mt-2 flex items-center gap-1.5 text-xs text-charcoal-600">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+              Compressing {preparing === 1 ? "1 photo" : `${preparing} photos`}…
+            </p>
+          )}
+          {preparing === 0 && photos.length > 0 && photoBytes.after < photoBytes.before && (
+            <p className="mt-2 text-xs text-green-700">
+              Compressed from {formatPhotoBytes(photoBytes.before)} to {formatPhotoBytes(photoBytes.after)}, same look.
+            </p>
+          )}
 
           {photos.length > 0 && (
             <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
@@ -725,9 +742,12 @@ export function HallForm({ ownerId, amenities, categories, hall }: Props) {
       {/* Submit */}
       <div className="flex items-center gap-3">
         {/* disabled while pending — blocks double-submit creating duplicate halls */}
-        <Button type="submit" variant="gold" isLoading={pending} disabled={pending}>
+        {/* ...and while photos are still compressing, or the hall would be
+            submitted without the ones that were not ready yet. */}
+        <Button type="submit" variant="gold" isLoading={pending} disabled={pending || preparing > 0}>
           {pending
             ? (uploadNote ?? (isEdit ? "Saving…" : "Submitting…"))
+            : preparing > 0 ? "Compressing photos…"
             : isEdit ? "Save Changes" : "Submit Hall for Verification"}
         </Button>
         <button

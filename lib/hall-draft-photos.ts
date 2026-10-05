@@ -25,10 +25,10 @@ export const MAX_DRAFT_PHOTOS = 10;
 export const MAX_STORED_PHOTO_BYTES = 5 * 1024 * 1024;
 
 /**
- * What the admin may PICK. Larger than what is stored, because a phone or
- * camera photo is routinely 6–15 MB and is resized in the browser before it is
- * uploaded (lib/prepare-hall-photo.ts). Refusing those would reject ordinary
- * hall photographs.
+ * What an owner or admin may PICK. Larger than what is stored, because a phone
+ * or camera photo is routinely 6–15 MB and is compressed in the browser before
+ * it is uploaded (lib/prepare-hall-photo.ts). Refusing those would reject
+ * ordinary hall photographs — which the owner uploaders did until 2026-10-05.
  */
 export const MAX_SOURCE_PHOTO_BYTES = 25 * 1024 * 1024;
 
@@ -144,24 +144,63 @@ export const PHOTO_MAX_EDGE = 2560;
 /** Below this on the SHORT edge a photo looks broken on a hall card. */
 export const PHOTO_MIN_EDGE = 320;
 
+// ─── Automatic compression (2026-10-05) ──────────────────────────────────────
+// Every hall photo — owner, new-hall wizard and admin — goes through
+// lib/prepare-hall-photo.ts before upload, which applies the rules below. The
+// promise is "smaller, and looks the same": a photo is only ever scaled DOWN to
+// PHOTO_MAX_EDGE, re-encoded at a quality where the difference is not visible,
+// and a photo that is already small is stored exactly as picked.
+
 /**
- * Whether a picked photo is re-encoded before upload, and to what size.
- *
- * Kept untouched when it already fits: at most PHOTO_MAX_EDGE on its long edge
- * and small enough to store. Re-encoding a photo that is already fine only
- * loses quality. Otherwise it is scaled so the long edge is at most
- * PHOTO_MAX_EDGE, never enlarged.
+ * JPEG quality for a re-encoded photo. At 0.88 a hall photo is visually
+ * indistinguishable from its source at 100% zoom, yet a 12-MP phone photo
+ * (typically 4–9 MB) comes out around 0.6–1.5 MB at 2560px. Going lower saves
+ * little more — visitors are served AVIF/WebP resized by the image optimizer
+ * anyway (next.config.ts) — and it is where banding in a ceiling or a sky
+ * starts to show.
  */
-export function planPhotoResize(width: number, height: number, bytes: number):
-  | { resize: false }
-  | { resize: true; width: number; height: number } {
-  const longEdge = Math.max(width, height);
-  const fits = longEdge <= PHOTO_MAX_EDGE && bytes <= MAX_STORED_PHOTO_BYTES;
-  if (fits) return { resize: false };
-  const scale = Math.min(1, PHOTO_MAX_EDGE / longEdge);
+export const PHOTO_JPEG_QUALITY = 0.88;
+
+/** Tried only when a photo is STILL over the bucket limit at PHOTO_JPEG_QUALITY. */
+export const PHOTO_FALLBACK_QUALITIES = [0.8, 0.7] as const;
+
+/**
+ * A photo that already fits is replaced by its re-encoded copy only when the
+ * copy is at least this much smaller. Re-encoding a file that is already well
+ * compressed (a WhatsApp forward, an export from an editor) saves a few
+ * percent at the cost of a second generation of compression artefacts, so the
+ * original is kept instead.
+ */
+export const PHOTO_MIN_SAVING = 0.15;
+
+/** The stored size: the long edge at most PHOTO_MAX_EDGE, the shape kept, never enlarged. */
+export function photoTargetSize(width: number, height: number): { width: number; height: number } {
+  const scale = Math.min(1, PHOTO_MAX_EDGE / Math.max(width, height));
   return {
-    resize: true,
     width:  Math.max(1, Math.round(width * scale)),
     height: Math.max(1, Math.round(height * scale)),
   };
+}
+
+/** Whether the picked file could be stored as it is: small enough on both counts. */
+export function photoFitsAsPicked(width: number, height: number, bytes: number): boolean {
+  return Math.max(width, height) <= PHOTO_MAX_EDGE && bytes <= MAX_STORED_PHOTO_BYTES;
+}
+
+/**
+ * Store the picked file byte-for-byte rather than the compressed copy?
+ *
+ * Only when the original could be stored as it is AND compressing would not
+ * save at least PHOTO_MIN_SAVING (or the browser could not encode a copy at
+ * all). A photo that is too big or too heavy is never kept: its copy is used.
+ */
+export function keepOriginalPhoto(p: {
+  width: number;
+  height: number;
+  bytes: number;
+  compressedBytes: number | null;
+}): boolean {
+  if (!photoFitsAsPicked(p.width, p.height, p.bytes)) return false;
+  if (p.compressedBytes === null) return true;
+  return p.compressedBytes > p.bytes * (1 - PHOTO_MIN_SAVING);
 }

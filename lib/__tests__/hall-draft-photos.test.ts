@@ -9,7 +9,8 @@ import {
   draftPhotoPath,
   isDraftPhotoPath,
   mimeForDraftPhotoPath,
-  planPhotoResize,
+  photoFitsAsPicked,
+  photoTargetSize,
   sniffPhotoBytes,
   storagePathFromPublicUrl,
 } from "../hall-draft-photos";
@@ -95,19 +96,22 @@ describe("the file is what its bytes say", () => {
   });
 });
 
+// The full compression rules are in photo-compression.test.ts; these are the
+// size cases the admin form was built against.
 describe("resizing", () => {
-  it("leaves a photo that already fits untouched", () => {
-    expect(planPhotoResize(2000, 1500, 2 * 1024 * 1024)).toEqual({ resize: false });
-    expect(planPhotoResize(PHOTO_MAX_EDGE, 1440, MAX_STORED_PHOTO_BYTES)).toEqual({ resize: false });
+  it("can store a photo that already fits as it is", () => {
+    expect(photoFitsAsPicked(2000, 1500, 2 * 1024 * 1024)).toBe(true);
+    expect(photoFitsAsPicked(PHOTO_MAX_EDGE, 1440, MAX_STORED_PHOTO_BYTES)).toBe(true);
   });
 
   it("scales a large camera photo to the long-edge limit, keeping its shape", () => {
-    expect(planPhotoResize(4032, 3024, 9 * 1024 * 1024)).toEqual({ resize: true, width: 2560, height: 1920 });
-    expect(planPhotoResize(3024, 4032, 9 * 1024 * 1024)).toEqual({ resize: true, width: 1920, height: 2560 });
+    expect(photoTargetSize(4032, 3024)).toEqual({ width: 2560, height: 1920 });
+    expect(photoTargetSize(3024, 4032)).toEqual({ width: 1920, height: 2560 });
   });
 
   it("re-encodes a small-but-heavy file without enlarging it", () => {
-    expect(planPhotoResize(1600, 1200, 7 * 1024 * 1024)).toEqual({ resize: true, width: 1600, height: 1200 });
+    expect(photoFitsAsPicked(1600, 1200, 7 * 1024 * 1024)).toBe(false);
+    expect(photoTargetSize(1600, 1200)).toEqual({ width: 1600, height: 1200 });
   });
 });
 
@@ -287,7 +291,8 @@ describe("the uploader", () => {
 
   it("checks bytes before trusting a pick, and keeps a fitting photo untouched", () => {
     expect(prep).toContain("sniffPhotoBytes(head)");
-    expect(prep).toContain("return { blob: file, type, width, height, resized: false }");
+    expect(prep).toContain("const original: PreparedPhoto = { blob: file, type, width, height, compressed: false");
+    expect(prep).toContain("return original;");
   });
 });
 
