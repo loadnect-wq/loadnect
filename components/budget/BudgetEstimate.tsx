@@ -4,16 +4,21 @@
 // "Plan your budget" on the venue page: the hall's listed price plus the
 // family's own numbers. See lib/budget.ts for what is and is not claimed.
 // Guests, per-plate rate, meals and the other costs are remembered in this
-// browser (useBudgetInputs), so the next hall starts from the same numbers.
+// browser (useBudgetInputs), so the next hall — and the standalone calculator
+// at /budget — start from the same numbers. The fields and the breakdown are
+// shared with that calculator (./budget-parts).
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useState } from "react";
+import Link from "next/link";
 import { Calculator, MessageCircle } from "lucide-react";
 import { useBudgetInputs } from "@/lib/hooks/useBudgetInputs";
 import { HALL_GST_PERCENT, MAX_GUESTS, SLOT_LABEL, budget, budgetSummary, toAmount, type HallSlot } from "@/lib/budget";
+import { BUDGET_PATH } from "@/lib/family-tools";
 import { formatPrice } from "@/lib/mock-data";
 import { absoluteUrl } from "@/lib/seo/config";
 import { whatsappShareUrl } from "@/lib/shortlist";
+import { BUDGET_INPUT_CLASS, BudgetBreakdown, ExtraFields, FoodFields, HALL_ESTIMATE_DISCLAIMER } from "./budget-parts";
 
 export function BudgetEstimate({
   hallName,
@@ -47,8 +52,6 @@ export function BudgetEstimate({
     addGst,
   });
   const share = whatsappShareUrl(budgetSummary(hallName, slot, result, absoluteUrl(`/halls/${hallSlug}`)));
-
-  const input = "mt-1 block min-h-[44px] w-full rounded-xl border border-border bg-white px-3 text-sm";
 
   return (
     <section className="mt-6" aria-labelledby="budget-title">
@@ -87,70 +90,26 @@ export function BudgetEstimate({
               value={quote}
               onChange={(e) => setQuote(e.target.value)}
               placeholder="This hall gives its price on request"
-              className={input}
+              className={BUDGET_INPUT_CLASS}
             />
           </label>
         )}
 
-        <div className="mt-3 grid grid-cols-2 gap-3">
-          <label className="block text-sm font-semibold text-charcoal-900">
-            Guests
-            <input
-              inputMode="numeric"
-              value={fields.guests}
-              onChange={(e) => set({ guests: e.target.value })}
-              placeholder="e.g. 400"
-              className={input}
-            />
-          </label>
-          <label className="block text-sm font-semibold text-charcoal-900">
-            Food per plate (₹)
-            <input
-              inputMode="numeric"
-              value={fields.perPlate}
-              onChange={(e) => set({ perPlate: e.target.value })}
-              placeholder="Ask for a rate"
-              className={input}
-            />
-          </label>
+        <div className="mt-3">
+          <FoodFields
+            fields={fields}
+            set={set}
+            capacityMax={capacityMax}
+            cateringHint={
+              inHouseCatering
+                ? "This hall lists in-house catering. Ask it for its per-plate rate."
+                : "Ask the hall or your caterer for a per-plate rate."
+            }
+          />
         </div>
-        {guests != null && guests > capacityMax && (
-          <p className="mt-1 text-xs font-medium text-amber-800">
-            More than this hall&apos;s {capacityMax.toLocaleString("en-IN")} guests.
-          </p>
-        )}
-        <p className="mt-1 text-xs text-charcoal-600">
-          {inHouseCatering
-            ? "This hall lists in-house catering. Ask it for its per-plate rate."
-            : "Ask the hall or your caterer for a per-plate rate."}
-        </p>
 
-        <fieldset className="mt-3">
-          <legend className="text-sm font-semibold text-charcoal-900">Meals per guest</legend>
-          <div className="mt-1 flex gap-2">
-            {["1", "2", "3"].map((m) => (
-              <label
-                key={m}
-                className={`flex min-h-[40px] min-w-[52px] cursor-pointer items-center justify-center rounded-xl border px-3 text-sm font-semibold ${
-                  fields.meals === m ? "border-maroon-700 bg-maroon-50 text-maroon-800" : "border-border text-charcoal-700"
-                }`}
-              >
-                <input type="radio" name="meals" value={m} checked={fields.meals === m} onChange={() => set({ meals: m })} className="sr-only" />
-                {m}
-              </label>
-            ))}
-          </div>
-        </fieldset>
-
-        <div className="mt-3 grid grid-cols-2 gap-3">
-          <label className="block text-sm font-semibold text-charcoal-900">
-            Decoration (₹)
-            <input inputMode="numeric" value={fields.decoration} onChange={(e) => set({ decoration: e.target.value })} placeholder="Optional" className={input} />
-          </label>
-          <label className="block text-sm font-semibold text-charcoal-900">
-            Other costs (₹)
-            <input inputMode="numeric" value={fields.other} onChange={(e) => set({ other: e.target.value })} placeholder="Photos, music…" className={input} />
-          </label>
+        <div className="mt-3">
+          <ExtraFields fields={fields} set={set} />
         </div>
 
         {hallRent != null && (
@@ -160,41 +119,15 @@ export function BudgetEstimate({
           </label>
         )}
 
-        <div className="mt-4 rounded-xl bg-ivory-100 p-3" aria-live="polite">
-          {result.lines.length === 0 ? (
-            <p className="text-sm text-charcoal-600">Add guests and a per-plate rate to see the full picture.</p>
-          ) : (
-            <>
-              <dl className="space-y-1.5 text-sm">
-                {result.lines.map((l) => (
-                  <div key={l.key} className="flex items-start justify-between gap-3">
-                    <dt className="text-charcoal-700">
-                      {l.key === "hall" ? `Hall (${SLOT_LABEL[slot].toLowerCase()})` : l.label}
-                      {l.detail && <span className="block text-xs text-charcoal-500">{l.detail}</span>}
-                    </dt>
-                    <dd className="shrink-0 font-medium text-charcoal-900">{formatPrice(l.amount)}</dd>
-                  </div>
-                ))}
-              </dl>
-              <div className="mt-2 flex items-baseline justify-between border-t border-border pt-2">
-                <span className="text-sm font-semibold text-charcoal-900">{result.complete ? "Estimated total" : "Total so far"}</span>
-                <span className="font-serif text-lg font-bold text-maroon-700">{formatPrice(result.total)}</span>
-              </div>
-              {result.perGuest != null && (
-                <p className="text-right text-xs text-charcoal-600">About {formatPrice(result.perGuest)} a guest</p>
-              )}
-              {!result.complete && (
-                <p className="mt-1 text-xs text-charcoal-600">
-                  {hallRent == null ? "Add the hall's quote" : "Add guests and a per-plate rate"} for the full picture.
-                </p>
-              )}
-            </>
-          )}
+        <div className="mt-4">
+          <BudgetBreakdown
+            result={result}
+            hallLabel={`Hall (${SLOT_LABEL[slot].toLowerCase()})`}
+            missingHall={hallRent == null ? "Add the hall's quote" : null}
+          />
         </div>
 
-        <p className="mt-2 text-[11px] leading-relaxed text-charcoal-500">
-          An estimate from the hall&apos;s listed price and your numbers, not a quote. The hall and your caterer give you the real figures.
-        </p>
+        <p className="mt-2 text-[11px] leading-relaxed text-charcoal-500">{HALL_ESTIMATE_DISCLAIMER}</p>
 
         {/* Only a real budget is worth sending: the hall's price alone is
             already on the page the family would share. */}
@@ -208,6 +141,15 @@ export function BudgetEstimate({
             <MessageCircle className="h-4 w-4" aria-hidden /> Send this estimate to the family
           </a>
         )}
+
+        {/* The same numbers, without a hall: for the family still deciding. */}
+        <p className="mt-3 text-xs text-charcoal-600">
+          Still choosing a hall?{" "}
+          <Link href={BUDGET_PATH} className="font-semibold text-maroon-700 hover:underline">
+            Open the budget calculator
+          </Link>
+          . Your numbers come with you.
+        </p>
       </div>
     </section>
   );

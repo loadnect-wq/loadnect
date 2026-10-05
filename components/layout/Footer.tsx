@@ -23,7 +23,7 @@ export function Footer() {
             The footer is the last thing on the page and is usually already in
             view by the time a user reaches it, so a stagger here would just
             delay the site-wide link graph for no perceptible gain. */}
-        <div data-reveal="fade" className="grid grid-cols-1 gap-10 sm:grid-cols-2 lg:grid-cols-4">
+        <div data-reveal="fade" className="grid grid-cols-1 gap-10 sm:grid-cols-2 lg:grid-cols-5">
 
           {/* Brand column */}
           <div className="space-y-5 lg:col-span-1">
@@ -71,6 +71,25 @@ export function Footer() {
                 </a>
               ))}
             </div>
+          </div>
+
+          {/* Plan your function — the family tools (lib/family-tools.ts). */}
+          <div>
+            <h3 className="mb-4 font-serif text-xs font-semibold uppercase tracking-widest text-gold-400">
+              Plan Your Function
+            </h3>
+            <ul className="space-y-2.5">
+              {FOOTER_LINKS.plan.map((link) => (
+                <li key={link.href}>
+                  <Link
+                    href={link.href}
+                    className="text-sm text-ivory-500 transition-colors hover:text-ivory-100"
+                  >
+                    {link.label}
+                  </Link>
+                </li>
+              ))}
+            </ul>
           </div>
 
           {/* Explore */}

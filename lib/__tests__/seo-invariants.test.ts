@@ -31,6 +31,8 @@ const INDEXABLE_PAGES: { route: string; file: string }[] = [
   { route: "/",                     file: "app/page.tsx" },
   { route: "/halls",                file: "app/halls/page.tsx" },
   { route: "/about",                file: "app/about/page.tsx" },
+  { route: "/tools",                file: "app/tools/page.tsx" },
+  { route: "/budget",               file: "app/budget/page.tsx" },
   { route: "/premium",              file: "app/premium/page.tsx" },
   { route: "/contact",              file: "app/contact/layout.tsx" },
   { route: "/owner/register",       file: "app/owner/register/layout.tsx" },
@@ -107,6 +109,24 @@ describe("meta descriptions are never truncated by the clamp", () => {
     const d = literalField(read(file), "description");
     if (d === null) return; // dynamic (template literal) — covered below
     expect(d.length, `${route} is ${d.length} chars and will ship cut off: …${d.slice(-45)}`).toBeLessThanOrEqual(LIMIT);
+  });
+
+  it("the homepage description fits in 158 characters with the booking switch either way", () => {
+    // Chosen by lib/booking-switch.ts, so it is not a literal at the
+    // buildMetadata call and the per-page check above cannot see it.
+    const src = read("app/page.tsx");
+    const start = src.indexOf("const HOME_DESCRIPTION = DIRECT_BOOKING_ENABLED");
+    expect(start).toBeGreaterThan(-1);
+    expect(src).toContain("description: HOME_DESCRIPTION,");
+    const block = src.slice(src.indexOf("?", start) + 1, src.indexOf(";\n", start));
+    const [on, off] = block.split(/\n\s*:\s/);
+    const text = (b: string) => (b.match(/"(?:[^"\\]|\\.)*"/g) ?? []).map((p) => JSON.parse(p) as string).join("");
+    for (const d of [text(on), text(off)]) {
+      expect(d.length, d).toBeGreaterThan(100);
+      expect(d.length, `${d.length} chars: ${d}`).toBeLessThanOrEqual(158);
+    }
+    expect(text(on)).toContain("then book online.");
+    expect(text(off)).not.toContain("book online");
   });
 
   it("the homepage title carries the brand", () => {

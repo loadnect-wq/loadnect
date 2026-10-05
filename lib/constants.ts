@@ -94,21 +94,45 @@ export const SUPPORT_HOURS = {
 // (/about, /how-it-works, /careers, /blog, /press, /help, /safety) were removed
 // because no page files exist for them — they were a source of footer/navbar
 // 404s on every page. Re-add a link only when its page actually exists.
-export const NAV_LINKS = [
-  { label: "Browse Halls",   href: "/halls" },
-  { label: "Pricing",        href: "/premium" },
-  { label: "List Your Hall", href: "/owner/register" },
-  { label: "Contact",        href: "/contact" },
-] as const;
+//
+// FAMILIES FIRST (2026-10-05). The header was Browse Halls, Pricing, List Your
+// Hall and Contact: one link for a family and two for venue owners, while the
+// family's planning tools were linked from nowhere a visitor would look. The
+// tools now lead (see lib/family-tools.ts). "List Your Hall" left this list
+// because the header already shows it as a button to every signed-out visitor,
+// so it appeared twice side by side. "Contact" left it for room: it is in the
+// footer twice, and the assistant answers on every page.
+//
+// MEASURED, NOT GUESSED. The page container stops growing at 1280px (1216px
+// inside), so a wider screen never adds room. Signed in, the header's right
+// side is Saved + Dashboard + the name (truncated) + Sign Out, about 480px; at
+// 1024px only three links fit beside that, at 1280px five. `wide` links show
+// from 1280px (xl).
+export type NavLink = { label: string; href: string; wide?: boolean };
+
+export const NAV_LINKS: readonly NavLink[] = [
+  { label: "Browse Halls",       href: "/halls" },
+  { label: "Muhurtham Dates",    href: "/muhurtham-dates" },
+  { label: "Budget Calculator",  href: "/budget", wide: true },
+  { label: "Plan Your Function", href: "/tools" },
+  { label: "Pricing",            href: "/premium", wide: true },
+];
 
 export const FOOTER_LINKS = {
   explore: [
     { label: "Browse Halls",   href: "/halls" },
-    { label: "Muhurtham Dates", href: "/muhurtham-dates" },
     { label: "About Us",       href: "/about" },
     { label: "Pricing",        href: "/premium" },
     { label: "List Your Hall", href: "/owner/register" },
     { label: "Contact Us",     href: "/contact" },
+  ],
+  // The family planning tools, in a family's order (lib/family-tools.ts).
+  plan: [
+    { label: "Muhurtham Dates",     href: "/muhurtham-dates" },
+    { label: "Budget Calculator",   href: "/budget" },
+    { label: "Shortlist & Compare", href: "/saved" },
+    { label: "Function Planner",    href: "/plan" },
+    { label: "All Planning Tools",  href: "/tools" },
   ],
   support: [
     { label: "Contact Us",          href: "/contact" },

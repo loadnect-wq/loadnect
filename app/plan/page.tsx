@@ -17,7 +17,7 @@ import { fetchVenueCategories } from "@/lib/venue-categories.server";
 import { fetchMyPlans, type PlanListEntry } from "@/lib/plan.server";
 import { MAX_PLANS, countdownLabel } from "@/lib/plan";
 
-export const metadata: Metadata = noindexMetadata("Plan your function");
+export const metadata: Metadata = noindexMetadata("Function planner");
 
 const PITCH = [
   { Icon: ClipboardList, title: "Everything on one board", text: "Hall, catering, decoration, photos, music, invitations and the rest, each from to do to booked." },
@@ -33,7 +33,7 @@ export default async function PlansPage() {
   if (!user) {
     return (
       <div className="min-h-screen bg-ivory-100">
-        <AppHeader title="Plan your function" />
+        <AppHeader title="Function planner" />
         <section className="container-app max-w-2xl py-6">
           <p className="text-xs font-semibold uppercase tracking-wide text-gold-700">Free planner</p>
           <h1 className="mt-1 font-serif text-3xl font-bold leading-tight text-charcoal-900">Plan the whole function in one place</h1>

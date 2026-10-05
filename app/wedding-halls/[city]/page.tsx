@@ -189,13 +189,13 @@ export default async function CityPage({ params }: Props) {
         ? `Wedding halls listed in ${city} on Hallnect start from ₹${Math.round(priceFrom).toLocaleString("en-IN")} per day. ` +
           `The exact price depends on the date, the slot you choose and the venue's own tariff, and is shown on each listing.`
         : everyVenueIsEnquiryOnly
-          ? `Pricing varies by venue, date and slot, and these venues quote on request. Send a free enquiry and the venue replies with its rate for your date.`
+          ? `Pricing varies by venue, date and slot, and these venues quote on request. Ask a venue for a free quote and it replies with its price for your date.`
           : `Pricing varies by venue, date and slot. Each Hallnect listing shows the venue's day rate and the advance payable before you book.`,
     },
     {
       q: `How do I check whether a ${city} hall is free on my date?`,
       a: everyVenueIsEnquiryOnly
-        ? `Hallnect does not hold these venues' calendars. Send a free enquiry with your date and guest count, verify your mobile number, and the venue contacts you directly to confirm whether the date is open and on what terms.`
+        ? `Ask the venue for a quote with your date and guest count. It replies on Hallnect with its price for that date, and if you accept, it calls you to confirm the date and agree the booking. Hallnect does not hold these venues' full calendars, so no date is held until the venue confirms it with you.`
         : `Open any venue and its availability calendar shows the next 30 days, marked by morning, evening and full-day slots. Availability is re-checked on the server when you book, so two people cannot hold the same date.`,
     },
     {
@@ -206,7 +206,7 @@ export default async function CityPage({ params }: Props) {
       // would not actually be asked for the moment an admin changed it, on the
       // one page Google shows for "book wedding hall in <city>".
       a: everyVenueIsEnquiryOnly
-        ? `Not yet for the venues currently listed in ${city} — these take enquiries rather than online payment. You send a free enquiry, verify your mobile number with a one-time password, and the venue contacts you to agree the date, the price and the advance directly. Hallnect never takes a payment from you for these venues.`
+        ? `Not online — the venues currently listed in ${city} work on quotes. Ask a venue for a quote and verify your mobile number with a one-time password; the venue replies on Hallnect with its price, what is included and the advance it asks for, and gets your number only if you accept, to agree the booking with you. Hallnect never takes a payment from you for these venues.`
         : `Yes. Choose your date and slot, then pay the ${advancePercent}% advance plus a ${platformFeeDisclosure()} through Cashfree — or ₹0 with a promotional code. On a small booking the fee is capped at a quarter of the advance. The booking is confirmed once the venue owner accepts it, and the balance is paid directly to the venue.`,
     },
     ...(largest

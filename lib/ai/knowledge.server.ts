@@ -34,6 +34,7 @@ import { getPublicPaymentSettings } from "@/lib/platform-settings";
 import { fetchPremiumPlans, PLAN_FEATURES } from "@/lib/premium-plans";
 import { formatPrice } from "@/lib/mock-data";
 import { DIRECT_BOOKING_ENABLED } from "@/lib/booking-switch";
+import { HALL_GST_PERCENT } from "@/lib/budget";
 
 export type ChatRole = "guest" | "customer" | "owner" | "admin";
 
@@ -120,6 +121,15 @@ export async function buildKnowledge(role: ChatRole): Promise<string> {
 - If the venue declines, cancels, or does not respond within 48 hours, the customer is refunded the full advance AND the platform fee.
 - Full details: Refund Policy (/refund-policy) and Cancellation Policy (/cancellation-policy).`);
   }
+
+  // The family tools (lib/family-tools.ts). The assistant knew nothing about
+  // them, so "when are the muhurtham dates?" or "how much will 500 guests
+  // cost?" got no pointer to the tool built for exactly that question.
+  sections.push(`## Free planning tools for families (all listed at /tools)
+- Muhurtham dates (/muhurtham-dates; in Tamil at /ta/muhurtham-dates): Tamil wedding muhurtham days, listed only where two published Tamil calendars agree, with how many halls on Hallnect already have each date booked and a button to find halls for that date. The family's own astrologer decides their date: never call a date auspicious or inauspicious yourself, and never add a date that is not on the page.
+- Budget calculator (/budget): the hall's price plus the family's own guests × food per plate × meals, decoration and other costs, with optional ${HALL_GST_PERCENT}% GST on the hall, giving an estimated total and a cost per guest. Hallnect supplies no food rates: never suggest a per-plate figure. The same numbers fill in "Plan your budget" on every hall's page.
+- Shortlist & compare (/saved): the heart on a hall saves it; the list compares up to three halls side by side and can be sent to the family on WhatsApp. No sign-in needed; the list is kept on that phone or computer.
+- Function planner (/plan): after signing in, one board for the hall and every vendor (catering, decoration, photos and the rest), a budget of what was planned, quoted and paid, a checklist worked out from the function's date, and a link to share the plan with the family so they can vote on the options.`);
 
   sections.push(`## Accounts and sign-in
 - Customers sign in with Google or with their mobile number and a one-time password (OTP) at /login. New users can register at /signup.

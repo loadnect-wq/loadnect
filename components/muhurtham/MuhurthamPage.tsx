@@ -31,6 +31,7 @@ import type { MuhurthamBookings } from "@/lib/muhurtham.server";
 import { formatDiaryDay, formatMonthTitle, type DiaryLang } from "@/lib/diary";
 import { JsonLd } from "@/components/seo/JsonLd";
 import { breadcrumbJsonLd, faqJsonLd, jsonLdGraph } from "@/lib/seo/jsonld";
+import { MoreFamilyTools } from "@/components/tools/FamilyTools";
 
 export const MUHURTHAM_PATH = { en: "/muhurtham-dates", ta: "/ta/muhurtham-dates" } as const;
 
@@ -100,6 +101,7 @@ const T = {
     method: (checked: string) =>
       `We list a date only when two independently published Tamil calendars agree on it. Panchangam traditions differ, so some calendars carry a few more days. Your family astrologer has the final word on your date. Last checked ${checked}.`,
     faqTitle: "Questions about muhurtham dates",
+    jumpLabel: "Jump to a month",
     switchLabel: "தமிழில் படிக்க",
     switchLang: "ta" as const,
     empty: "New muhurtham dates are added as each year's calendars are published. Please check back soon.",
@@ -125,6 +127,7 @@ const T = {
     method: (checked: string) =>
       `வெளியிடப்பட்ட இரண்டு தமிழ் நாட்காட்டிகளும் ஒப்புக்கொள்ளும் நாட்களை மட்டுமே இங்கு பட்டியலிடுகிறோம். பஞ்சாங்க மரபுகள் வேறுபடுவதால், சில நாட்காட்டிகளில் இன்னும் சில நாட்கள் இருக்கலாம். உங்கள் தேதியைக் குடும்ப ஜோதிடரிடம் உறுதி செய்யுங்கள். கடைசியாகச் சரிபார்த்தது: ${checked}.`,
     faqTitle: "முகூர்த்த நாட்கள் பற்றிய கேள்விகள்",
+    jumpLabel: "மாதத்திற்குச் செல்ல",
     switchLabel: "Read in English",
     switchLang: "en" as const,
     empty: "ஒவ்வொரு ஆண்டின் நாட்காட்டிகளும் வெளியானதும் புதிய முகூர்த்த நாட்கள் சேர்க்கப்படும்.",
@@ -278,10 +281,31 @@ export function MuhurthamPage({
             <p className="mt-3 text-xs leading-relaxed text-charcoal-600">{t.countsNote}</p>
           )}
 
+          {/* ── Jump to a month ──────────────────────────────────────────
+              Seventy dates in one column is a long scroll on a phone to reach
+              next May. One chip per month, with how many dates it has. */}
+          {months.size > 1 && (
+            <nav aria-label={t.jumpLabel} className="no-scrollbar -mx-4 mt-5 overflow-x-auto px-4 sm:-mx-6 sm:px-6">
+              <ul className="flex w-max gap-2 pb-1">
+                {[...months.entries()].map(([key, ds]) => (
+                  <li key={key}>
+                    <a
+                      href={`#month-${key}`}
+                      className="inline-flex min-h-[40px] items-center gap-1.5 rounded-full bg-white px-3.5 text-xs font-semibold text-charcoal-800 shadow-card ring-1 ring-border hover:ring-maroon-300"
+                    >
+                      {formatMonthTitle(lang, key)}
+                      <span className="rounded-full bg-maroon-50 px-1.5 text-[11px] text-maroon-700">{ds.length}</span>
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </nav>
+          )}
+
           {/* ── Every date, by month ─────────────────────────────────── */}
           <div className="mt-6 space-y-5">
             {[...months.entries()].map(([key, ds]) => (
-              <section key={key} aria-labelledby={`m-${key}`} className="rounded-2xl bg-white p-4 shadow-card">
+              <section key={key} id={`month-${key}`} aria-labelledby={`m-${key}`} className="scroll-mt-20 rounded-2xl bg-white p-4 shadow-card lg:scroll-mt-24">
                 <div className="flex items-baseline justify-between gap-3">
                   <h2 id={`m-${key}`} className="text-base font-bold text-charcoal-900">{formatMonthTitle(lang, key)}</h2>
                   <span className="text-xs text-charcoal-600">{t.dateCount(ds.length)}</span>
@@ -330,6 +354,11 @@ export function MuhurthamPage({
           </section>
         </>
       )}
+
+      {/* The next steps once the date is fixed. English only: the cards are
+          written in English, and the Tamil page should not switch language
+          at its foot. */}
+      {lang === "en" && <MoreFamilyTools current="muhurtham" />}
     </div>
   );
 }

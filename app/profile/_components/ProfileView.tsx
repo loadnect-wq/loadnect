@@ -5,10 +5,12 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Bell, ChevronRight, FileText, HelpCircle,
-  LayoutDashboard, LogIn, LogOut, Mail, Phone, Settings, ShieldCheck, ClipboardList, } from "lucide-react";
+  LayoutDashboard, LogIn, LogOut, Mail, Phone, Settings, ShieldCheck, } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { getDashboardPath } from "@/lib/constants";
+import { FAMILY_TOOLS } from "@/lib/family-tools";
+import { TOOL_ICONS } from "@/components/tools/tool-icons";
 
 type ProfileState = {
   fullName: string | null;
@@ -150,22 +152,40 @@ export function ProfileView({
         </SettingsGroup>
       )}
 
-      {/* Quick links */}
+      {/* ── Plan your function ───────────────────────────────────────────────
+          The family tools (lib/family-tools.ts), for everyone, signed in or
+          not: the phone's bottom bar has no room for them, and this tab is
+          the one a family opens looking for "everything else". The planner
+          (0110) is for customer accounts, so an owner or admin does not see
+          it; a signed-out visitor does, and /plan explains it and asks them
+          to sign in. */}
+      <SettingsGroup title="Plan your function">
+        {FAMILY_TOOLS.filter((t) => t.key !== "planner" || !profile || profile.role === "customer").map((t) => {
+          const Icon = TOOL_ICONS[t.key];
+          return (
+            <SettingsRow
+              key={t.key}
+              icon={<Icon className="h-4 w-4" />}
+              label={t.key === "planner" && profile ? "My plans" : t.title}
+              href={t.href}
+            />
+          );
+        })}
+      </SettingsGroup>
+
+      {/* Quick links. Signed in only: with "My plans" moved up, nothing in this
+          group applies to a visitor, and an empty card read as broken. */}
+      {profile && (
       <SettingsGroup title="Account">
         {/* Notifications is a real page — it was labelled "Soon" while working. */}
-        {/* The event planner (0110) is for customer accounts. */}
-        {profile?.role === "customer" && (
-          <SettingsRow icon={<ClipboardList className="h-4 w-4" />} label="My plans" href="/plan" />
-        )}
-        {profile && (
-          <SettingsRow icon={<Bell className="h-4 w-4" />} label="Notifications" href="/customer/notifications" />
-        )}
+        <SettingsRow icon={<Bell className="h-4 w-4" />} label="Notifications" href="/customer/notifications" />
         {/* "Edit profile" was marked Soon while /profile/edit was already
             built and shipped. "Saved addresses" and "Payment methods" do not
             exist at all — three permanently greyed rows advertising nothing.
             Removed rather than left as furniture; they come back when they are
             real. */}
       </SettingsGroup>
+      )}
 
       <SettingsGroup title="Support">
         <SettingsRow icon={<HelpCircle className="h-4 w-4" />} label="Help Center" href="/contact" />

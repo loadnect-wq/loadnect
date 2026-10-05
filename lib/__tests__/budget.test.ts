@@ -91,6 +91,7 @@ describe("the card", () => {
     expect(html).toContain("Total so far");
     expect(html).not.toContain("wa.me");
     expect(html).toMatch(/value=""[^>]*placeholder="Ask for a rate"|placeholder="Ask for a rate"[^>]*value=""/);
+    expect(html).toContain("not a quote");
   });
 
   it("asks for the quote when the hall publishes no price", () => {
@@ -108,7 +109,9 @@ describe("the card", () => {
     expect(venue.indexOf("<BudgetEstimate")).toBeGreaterThan(venue.indexOf(">Pricing</h2>"));
     expect(venue).toContain('inHouseCatering={hall.amenities.some((a) => a.slug === "in-house-catering")}');
     expect(read("app/compare/[code]/page.tsx")).toContain("<CompareBudget");
-    expect(read("components/budget/BudgetEstimate.tsx")).toContain("not a quote");
+    // The wording lives with the fields both budget surfaces share (2026-10-05).
+    expect(read("components/budget/BudgetEstimate.tsx")).toContain("{HALL_ESTIMATE_DISCLAIMER}");
+    expect(read("components/budget/budget-parts.tsx")).toContain("not a quote");
     expect(read("components/compare/CompareBudget.tsx")).toContain("not a quote");
   });
 });

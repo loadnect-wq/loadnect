@@ -111,6 +111,10 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
         ),
       },
     })),
+    // The family planning tools: the hub and the budget calculator. Content
+    // pages with no honest date of their own, so no lastmod (see above).
+    { url: absoluteUrl("/tools"), changeFrequency: "monthly", priority: 0.6 },
+    { url: absoluteUrl("/budget"), changeFrequency: "monthly", priority: 0.6 },
     { url: absoluteUrl("/contact"), changeFrequency: "yearly", priority: 0.3 },
     // Legal pages: low priority, but genuine, unique, indexable content that
     // Google likes to see on a marketplace handling payments.

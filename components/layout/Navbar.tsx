@@ -4,11 +4,12 @@ import Link from "next/link";
 import Image from "next/image";
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { Menu, X, LogOut, LayoutDashboard } from "lucide-react";
+import { Heart, Menu, X, LogOut, LayoutDashboard } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { buttonVariants } from "@/components/ui/Button";
 import { APP_NAME, NAV_LINKS, getDashboardPath } from "@/lib/constants";
 import { getSupabaseClient } from "@/lib/supabase/client";
+import { useSavedHalls } from "@/lib/hooks/useSavedHalls";
 
 type NavUser = { fullName: string | null; role: string } | null;
 
@@ -160,7 +161,7 @@ export function Navbar() {
           </Link>
 
           {/* Desktop nav links */}
-          <ul className="hidden items-center gap-7 lg:flex" role="list">
+          <ul className="hidden items-center gap-6 lg:flex" role="list">
             {NAV_LINKS.map((link) => {
               // A prefix match so /halls/ns-khalyaana-mahal still marks
               // "Browse Halls", and an exact match for "/" so the home link
@@ -173,12 +174,12 @@ export function Navbar() {
               const href: string = link.href;
               const active = href === "/" ? pathname === "/" : pathname.startsWith(href);
               return (
-                <li key={link.href}>
+                <li key={link.href} className={link.wide ? "hidden xl:block" : undefined}>
                   <Link
                     href={link.href}
                     aria-current={active ? "page" : undefined}
                     className={cn(
-                      "relative text-sm font-medium",
+                      "relative whitespace-nowrap text-sm font-medium",
                       "transition-colors duration-150 hover:text-maroon-700",
                       "after:absolute after:-bottom-0.5 after:left-0 after:h-px",
                       "after:bg-maroon-500 after:transition-[width] after:duration-200",
@@ -197,6 +198,12 @@ export function Navbar() {
 
           {/* Desktop CTAs */}
           <div className="hidden items-center gap-2 lg:flex">
+            {/* THE SAVED LIST, REACHABLE ON A COMPUTER. Saving a hall works on
+                every screen, but the list itself was only a tab in the phone's
+                bottom bar — on a desktop a family could heart a hall and never
+                find it again. Everyone gets it: the list lives in the browser,
+                signed in or not. */}
+            <SavedLink active={pathname.startsWith("/saved")} />
             {/* THE CACHED HTML MUST ASSERT NOTHING. Every public page is now
                 prerendered and served to everyone identically, so the markup
                 cannot claim either state. While `user` is undefined this
@@ -214,7 +221,12 @@ export function Navbar() {
                   <LayoutDashboard className="mr-1.5 h-4 w-4" />
                   Dashboard
                 </Link>
-                <span className="hallnect-nav-ink text-sm font-medium text-charcoal-600">
+                {/* Truncated: the header is measured for it (see NAV_LINKS). A
+                    long name would otherwise push the links onto two lines. */}
+                <span
+                  title={authView.fullName ?? undefined}
+                  className="hallnect-nav-ink max-w-[6rem] truncate text-sm font-medium text-charcoal-600"
+                >
                   {authView.fullName ?? "Account"}
                 </span>
                 <button
@@ -329,5 +341,35 @@ export function Navbar() {
         </div>
       )}
     </header>
+  );
+}
+
+/** "Saved" with how many halls are on the list. The count is this browser's own list. */
+function SavedLink({ active }: { active: boolean }) {
+  const { ids } = useSavedHalls();
+  const n = ids.length;
+  return (
+    <Link
+      href="/saved"
+      aria-current={active ? "page" : undefined}
+      aria-label={n > 0 ? `Saved halls (${n})` : "Saved halls"}
+      className={cn(
+        "hallnect-nav-ink relative mr-1 inline-flex h-9 items-center gap-1.5 rounded-lg px-2.5 text-sm font-medium transition-colors hover:text-maroon-700",
+        active ? "text-maroon-700" : "text-charcoal-600",
+      )}
+    >
+      {/* Filled in the link's own ink, so it turns white with the rest of the
+          header over the homepage video instead of sinking into it. */}
+      <Heart className={cn("h-4 w-4", n > 0 && "fill-current")} aria-hidden />
+      {/* The word from 1280px: at 1024 a signed-in header with a long name
+          measured 11px too wide with it. The heart and the count still say
+          it, and the link's aria-label names it. */}
+      <span className="hidden xl:inline">Saved</span>
+      {n > 0 && (
+        <span className="ml-0.5 min-w-[1.25rem] rounded-full bg-maroon-600 px-1.5 text-center text-[11px] font-bold leading-5 text-white" aria-hidden>
+          {n}
+        </span>
+      )}
+    </Link>
   );
 }

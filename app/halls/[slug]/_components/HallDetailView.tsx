@@ -685,11 +685,13 @@ export function HallDetailView({ hall, categories, similar, isPreview, sidebarAd
                     // Hallnect collects no advance, charges this customer no
                     // platform fee and no GST on one, and holds no date — so the
                     // sentence has to be replaced rather than reworded.
+                    // QUOTES, NOT "THE VENUE CONTACTS YOU" (0112): the venue
+                    // replies on Hallnect and gets the number only on acceptance.
                     <p className="text-[11px] text-charcoal-500">
-                      This venue takes enquiries rather than online bookings. Send one and the
-                      venue contacts you directly to agree the price and the date. Hallnect
-                      does not collect any payment for this listing, and no date is held until
-                      the venue confirms it with you.
+                      This venue works on quotes. Ask for one and it replies on Hallnect with
+                      its price for your date; it gets your phone number only if you accept.
+                      Hallnect does not collect any payment for this listing, and no date is
+                      held until the venue confirms it with you.
                     </p>
                   ) : (
                     <p className="text-[11px] text-charcoal-500">

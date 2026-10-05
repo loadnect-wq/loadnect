@@ -191,6 +191,45 @@ describe("guard rails", () => {
     expect(read("lib/booking-switch.ts")).toContain("export const DIRECT_BOOKING_ENABLED = false;");
   });
 
+  it("tells families about quotes, not the flow before 0112", () => {
+    // The homepage keeps both versions, chosen by the switch; the quotes one
+    // must not promise an online advance, a platform fee or a venue that
+    // "contacts you" on verification.
+    const home = read("app/page.tsx");
+    const branch = (name: string) => {
+      const start = home.indexOf(`const ${name} = DIRECT_BOOKING_ENABLED ? [`);
+      const split = home.indexOf("] : [", start);
+      return { on: home.slice(start, split), off: home.slice(split, home.indexOf("];", split)) };
+    };
+    const steps = branch("HOW_IT_WORKS");
+    const faq = branch("FAQ_ITEMS");
+    expect(steps.off).toContain('title: "Get quotes"');
+    expect(steps.on).toContain('title: "Book or enquire"');
+    expect(faq.off).toContain("Every venue on Hallnect works on quotes.");
+    expect(faq.off).toContain("gets your number to call you and agree the booking");
+    for (const stale of ["Cashfree", "platform fee", "platformFeeDisclosure", "contacts you", "book online"]) {
+      expect(steps.off, stale).not.toContain(stale);
+      expect(faq.off, stale).not.toContain(stale);
+    }
+    // The FAQPage markup is built from the same array as the visible answers.
+    expect(home).toContain("faqJsonLd(FAQ_ITEMS.map((f) => ({ q: f.q, a: f.a })))");
+    // The owner card no longer promises customer payments through the gateway.
+    expect(home).toContain('"List your hall in minutes. Families ask you for quotes with their date and guest count, and you reply from a dedicated owner dashboard."');
+
+    // A hall's page and the city pages say the same.
+    const hall = read("app/halls/[slug]/_components/HallDetailView.tsx");
+    expect(hall).toContain("This venue works on quotes.");
+    expect(hall).not.toContain("venue contacts you directly");
+    for (const city of ["app/wedding-halls/[city]/page.tsx", "app/ta/wedding-halls/[city]/page.tsx"]) {
+      const src = read(city);
+      expect(src, city).not.toContain("contacts you");
+      expect(src, city).not.toContain("நேரடியாகப் பேசும்");
+      expect(src, city).not.toContain("நேரடியாக உங்களிடம் தெரிவிக்கும்");
+    }
+    expect(read("app/wedding-halls/[city]/page.tsx")).toContain("gets your number only if you accept");
+    expect(read("app/ta/wedding-halls/[city]/page.tsx")).toContain("நீங்கள் ஏற்றுக்கொண்டால் மட்டுமே உங்கள் கைபேசி எண் அந்த மண்டபத்துக்குக் கிடைக்கும்");
+  });
+
   it("reads the family's own enquiry with the service role, scoped to them", () => {
     const actions = read("app/enquiry/[slug]/actions.ts");
     const fn = actions.slice(actions.indexOf("async function loadOwnEnquiry"));

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import {
-  ArrowRight, Building2, Check, CheckCircle2, Crown, Plus, Shield, Sparkles, Star,
+  ArrowRight, Building2, Check, CheckCircle2, Crown, Inbox, Plus, Shield, Sparkles, Star,
 } from "lucide-react";
 import { AppHeader } from "@/components/app/AppHeader";
 import { MobileSearch } from "./_components/MobileSearch";
@@ -10,6 +10,7 @@ import { CITY_COVERS, LAUNCH_CITIES, POPULAR_CITIES } from "@/lib/content";
 import { getAdvancePercent } from "@/lib/platform-settings";
 import { todayInBusinessTz } from "@/lib/dates";
 import { platformFeeDisclosure } from "@/lib/booking-payment";
+import { DIRECT_BOOKING_ENABLED } from "@/lib/booking-switch";
 import { AdSlot } from "@/components/ads/AdSlot";
 import { heroDelay, revealDelay } from "@/lib/motion";
 import { HeroSearch } from "@/components/sections/HeroSearch";
@@ -28,6 +29,9 @@ import { fetchCityInventory, type CityInventory } from "@/lib/seo/cities";
 import { fetchVenueCategories, fetchCategoryInventory } from "@/lib/venue-categories.server";
 import { OccasionDiscovery, occasionTiles } from "@/components/sections/OccasionDiscovery";
 import { QuickFilters } from "@/components/sections/QuickFilters";
+import { FamilyToolCards, FamilyToolTiles } from "@/components/tools/FamilyTools";
+import { TOOLS_PATH } from "@/lib/family-tools";
+import { nextMuhurthamDates } from "@/lib/muhurtham";
 
 // The phone hero card's shade: light over the sky at the top, heavy under the
 // copy at the bottom. Measured on the poster cropped to the 343x272 card at
@@ -44,13 +48,27 @@ const MOBILE_HERO_SHADE =
 // POPULAR_CITIES — a tile still has to look like the others.
 const CITY_GRADIENT_FALLBACK = "linear-gradient(135deg,#6B1525 0%,#9B2038 100%)";
 
-const HOW_IT_WORKS = [
+// TWO VERSIONS OF THIS COPY, CHOSEN BY THE BOOKING SWITCH (lib/booking-switch.ts).
+// With direct booking switched off (migration 0112) every venue works on
+// quotes, and the online-booking version told families they could pay an
+// advance through Cashfree, that venues "publish a calendar" of open dates, and
+// that a venue "contacts you" once you verify your number. None of that is true
+// of the quotes flow: the venue replies on Hallnect with a quote and gets the
+// family's number only if they accept it. The FAQ below is also the page's
+// FAQPage structured data, so the visible answers and the markup change
+// together. The quotes wording follows the About page and Terms section 4; the
+// online-booking wording is kept, unchanged, for the day the switch comes back.
+const HOW_IT_WORKS = DIRECT_BOOKING_ENABLED ? [
   { step: "01", title: "Discover", body: "Browse halls across Tamil Nadu for weddings, parties, meetings and more — photos, capacity, pricing and amenities, as listed by each venue." },
   { step: "02", title: "Compare",  body: "Filter by city, capacity, budget, and amenities. Venues that publish a calendar show their open dates." },
   { step: "03", title: "Book or enquire", body: "Some venues take an online advance to hold your date. Others take a free enquiry and confirm the details with you directly." },
+] : [
+  { step: "01", title: "Discover", body: "Browse halls across Tamil Nadu for weddings, parties, meetings and more — photos, capacity, pricing and amenities, as listed by each venue." },
+  { step: "02", title: "Compare",  body: "Filter by city, guests, budget and amenities, or search by your date to leave out halls already booked on Hallnect. Compare up to three side by side." },
+  { step: "03", title: "Get quotes", body: "Ask the halls you like for a quote. A hall replies on Hallnect with its price for your date, and gets your phone number only if you accept its quote." },
 ];
 
-const FAQ_ITEMS = [
+const FAQ_ITEMS = DIRECT_BOOKING_ENABLED ? [
   { q: "How do I book a venue?",
     a: `It depends on the venue, and each listing says which it is. Where a venue books online, you pick your date and slot and pay the advance plus a ${platformFeeDisclosure()} through Cashfree — capped at a quarter of the advance on a small booking, and waivable with a promotional code — and the booking is confirmed once the owner accepts it. Where a venue takes enquiries instead, you send a free enquiry, verify your mobile number, and the venue contacts you to agree the date and price directly.` },
   { q: "Is the advance payment refundable?",
@@ -61,7 +79,38 @@ const FAQ_ITEMS = [
     a: `On an online booking you pay the venue advance plus a ${platformFeeDisclosure()} at checkout, shown clearly before you pay; on a small booking the fee is capped at a quarter of the advance, and a promotional code can reduce it to zero. On an enquiry you pay Hallnect nothing at all. There are no other charges from Hallnect.` },
   { q: "I'm a venue owner — how do I list?",
     a: "Register as an owner, complete your business profile, and submit your venue for approval. Listings are reviewed within 48 hours." },
+] : [
+  { q: "How do I book a venue?",
+    a: "Every venue on Hallnect works on quotes. On a hall's page, tap \"Get a quote\" and tell the venue your date, the occasion and how many guests, then verify your mobile number with a one-time password — the venue does not see it. The venue replies on Hallnect with its price for your date, what is included, the advance it asks for and how long the offer stands. If you accept, that venue gets your number to call you and agree the booking." },
+  { q: "Who do I pay, and is the advance refundable?",
+    a: "You pay the venue directly; Hallnect takes no payment from you. The venue's quote says what advance it asks for, if any. Whether an advance is refundable is agreed between you and the venue, so ask before you accept the quote." },
+  { q: "Can I see the venue before booking?",
+    a: "Yes, and we strongly recommend visiting in person. Tap \"Visit\" on a hall's page to ask to see it, and the hall calls you to confirm a time." },
+  { q: "How much does Hallnect charge?",
+    a: "Families pay Hallnect nothing: asking for quotes is free, and you pay the venue directly. A venue pays Hallnect a small commission only on a booking it confirms through Hallnect." },
+  { q: "I'm a venue owner — how do I list?",
+    a: "Register as an owner, complete your business profile, and submit your venue for approval. Listings are reviewed within 48 hours." },
 ];
+
+// The owner card, in the same two versions. "Bookings backed by
+// gateway-verified payments" described the customer's online advance, which
+// does not exist while every venue works on quotes: what an owner gets is the
+// request itself, and a dashboard to answer it from.
+const OWNER_PITCH = DIRECT_BOOKING_ENABLED
+  ? "List your hall in minutes. Get bookings backed by gateway-verified payments and a dedicated owner dashboard."
+  : "List your hall in minutes. Families ask you for quotes with their date and guest count, and you reply from a dedicated owner dashboard.";
+const OWNER_REQUESTS_PERK = DIRECT_BOOKING_ENABLED
+  ? { Icon: Shield, text: "Verified payments via Cashfree" }
+  : { Icon: Inbox, text: "Quote requests with date and guests" };
+
+// The snippet Google shows, in the same two versions: "then book online" is
+// false while direct booking is switched off. Both are kept under the 158-char
+// clamp — lib/__tests__/seo-invariants.test.ts measures each one.
+const HOME_DESCRIPTION = DIRECT_BOOKING_ENABLED
+  ? "Find and book wedding, marriage, party and meeting halls across Tamil Nadu. " +
+    "Compare owner-submitted photos, capacity and pricing, then book online."
+  : "Find and book wedding, marriage, party and meeting halls across Tamil Nadu. " +
+    "Compare owner-submitted photos, capacity and pricing, then get free quotes.";
 
 // "verified" was removed here for the same reason it was removed from
 // APP_DESCRIPTION: Terms section 5 says Hallnect does not independently verify
@@ -83,13 +132,12 @@ export const metadata: Metadata = buildMetadata({
   // searcher types. The breadth is added in the second half and in the
   // description; see APP_DESCRIPTION for the same rule.
   title: "Wedding, Party & Event Halls in Tamil Nadu | Hallnect",
-  // 147 characters. buildMetadata's clamp cuts at 158 and the first draft of
-  // this widening ran to 166 — count before you lengthen it, as the note above
-  // says. "marriage" is kept as a bare adjective rather than "marriage halls"
-  // for exactly those characters; it is still the phrase people search.
-  description:
-    "Find and book wedding, marriage, party and meeting halls across Tamil Nadu. " +
-    "Compare owner-submitted photos, capacity and pricing, then book online.",
+  // 147 and 151 characters (HOME_DESCRIPTION, above). buildMetadata's clamp
+  // cuts at 158 and the first draft of this widening ran to 166 — count before
+  // you lengthen it, as the note above says. "marriage" is kept as a bare
+  // adjective rather than "marriage halls" for exactly those characters; it is
+  // still the phrase people search.
+  description: HOME_DESCRIPTION,
   path: "/",
 });
 
@@ -150,6 +198,10 @@ export default async function HomePage() {
   // timezone would otherwise let someone pick a date that is already yesterday
   // here — the drift lib/dates.ts exists to eliminate.
   const today = todayInBusinessTz();
+  // The muhurtham tile names the actual next date. Pure data, no query; the
+  // five-minute revalidate keeps it current.
+  const [nextMuhurthamDate] = nextMuhurthamDates(today, 1);
+  const nextMuhurtham = nextMuhurthamDate ? { date: nextMuhurthamDate, today } : null;
 
   // ── Truth gates ───────────────────────────────────────────────────────────
   // Three things on this page used to assert facts the database did not back.
@@ -308,6 +360,16 @@ export default async function HomePage() {
           <QuickFilters premiumCount={premiumCount} className="container-app mt-4" />
         </section>
 
+        {/* ── Plan your function ───────────────────────────────────────
+            The free tools for families (lib/family-tools.ts): muhurtham
+            dates, the budget calculator, the shortlist and the planner. Each
+            was built and then linked only from somewhere a family would have
+            to know about already; second on the page is where they are seen. */}
+        <section className="mt-8">
+          <MobileSectionTitle title="Plan your function" linkLabel="All tools" linkHref={TOOLS_PATH} />
+          <FamilyToolTiles next={nextMuhurtham} />
+        </section>
+
         <section className="mt-8">
           <MobileSectionTitle
             title={hasPromoted ? "Featured Venues" : "Venues on Hallnect"}
@@ -385,10 +447,7 @@ export default async function HomePage() {
             <h2 className="mt-3 font-serif text-2xl font-bold leading-tight text-ivory-100">
               List your venue on Hallnect
             </h2>
-            <p className="mt-2 text-sm text-ivory-100">
-              List your hall in minutes. Get bookings backed by gateway-verified payments
-              and a dedicated owner dashboard.
-            </p>
+            <p className="mt-2 text-sm text-ivory-100">{OWNER_PITCH}</p>
             <p className="mt-3 flex items-center gap-2 text-sm font-medium text-ivory-100">
               <CheckCircle2 className="h-4 w-4 shrink-0 text-gold-200" aria-hidden />
               Free to list — pay only on booking
@@ -500,6 +559,21 @@ export default async function HomePage() {
             <QuickFilters premiumCount={premiumCount} className="mt-5 justify-center" />
           </section>
         )}
+
+        {/* ── Plan your function ───────────────────────────────── */}
+        {/* The same four tools as the phone tiles above. See lib/family-tools.ts. */}
+        <section className="container-page pt-14">
+          <DesktopSectionHeader
+            eyebrow="Free for families"
+            title="Plan your function"
+            blurb="From fixing the muhurtham to the last payment: four free tools, and the first three need no sign-up."
+            linkLabel="All planning tools →"
+            linkHref={TOOLS_PATH}
+          />
+          <div className="mt-8">
+            <FamilyToolCards next={nextMuhurtham} />
+          </div>
+        </section>
 
         {/* ── Sponsored banner ─────────────────────────────────── */}
         <section data-reveal="fade" className="container-page pb-4">
@@ -652,10 +726,7 @@ export default async function HomePage() {
                     customer. What is actually verified is the payment: the
                     Cashfree webhook signature is checked before a booking moves
                     to payment_success. Say that instead. */}
-                <p className="mt-3 max-w-lg text-sm text-ivory-300/90">
-                  List your hall in minutes. Get bookings backed by gateway-verified payments
-                  and a dedicated owner dashboard.
-                </p>
+                <p className="mt-3 max-w-lg text-sm text-ivory-300/90">{OWNER_PITCH}</p>
                 <div className="mt-6 flex flex-wrap items-center gap-3">
                   <Link
                     href="/owner/register"
@@ -672,7 +743,7 @@ export default async function HomePage() {
                 </div>
               </div>
               <div className="col-span-2 space-y-3">
-                <OwnerPerk revealIndex={1} Icon={Shield} text="Verified payments via Cashfree" />
+                <OwnerPerk revealIndex={1} Icon={OWNER_REQUESTS_PERK.Icon} text={OWNER_REQUESTS_PERK.text} />
                 <OwnerPerk revealIndex={2} Icon={Star}   text="Premium placement at the top" />
                 <OwnerPerk revealIndex={3} Icon={CheckCircle2} text="Free to list — pay only on booking" />
               </div>

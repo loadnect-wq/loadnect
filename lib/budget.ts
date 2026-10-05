@@ -106,14 +106,27 @@ export function budget(input: BudgetInput): Budget {
  * voice and with the hall's page at the end.
  */
 export function budgetSummary(hallName: string, slot: HallSlot, b: Budget, url: string): string {
+  return [`My budget estimate for ${hallName}:`, ...summaryRows(b, `Hall (${SLOT_LABEL[slot].toLowerCase()})`), url].join("\n");
+}
+
+/**
+ * The same summary from the standalone calculator (/budget), where there is no
+ * one hall yet: the family's own hall price, and a link for the relatives to
+ * work out theirs.
+ */
+export function functionBudgetSummary(b: Budget, url: string): string {
+  return ["Our function budget estimate:", ...summaryRows(b, "Hall"), `Work it out on Hallnect: ${url}`].join("\n");
+}
+
+function summaryRows(b: Budget, hallLabel: string): string[] {
   const rows = b.lines.map((l) => {
-    const label = l.key === "hall" ? `Hall (${SLOT_LABEL[slot].toLowerCase()})` : l.label;
+    const label = l.key === "hall" ? hallLabel : l.label;
     return `${label}: ${formatPrice(l.amount)}${l.detail ? ` (${l.detail})` : ""}`;
   });
   const total = `${b.complete ? "Estimated total" : "Total so far"}: ${formatPrice(b.total)}${
     b.perGuest ? ` (about ${formatPrice(b.perGuest)} a guest)` : ""
   }`;
-  return [`My budget estimate for ${hallName}:`, ...rows, total, url].join("\n");
+  return [...rows, total];
 }
 
 /**

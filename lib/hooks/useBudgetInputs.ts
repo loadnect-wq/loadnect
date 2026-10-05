@@ -1,8 +1,8 @@
 "use client";
 
 // The family's budget numbers — guests, per-plate rate, meals, decoration,
-// other costs — remembered in this browser, so every venue page and the
-// compare page start from the same assumptions. Per-viewer convenience only:
+// other costs — remembered in this browser, so every venue page, the compare
+// page and the budget calculator (/budget) start from the same assumptions. Per-viewer convenience only:
 // nothing is sent anywhere, and a blocked localStorage just means the fields
 // start empty. Same external-store shape as useSavedHalls, for the same
 // reasons (one snapshot identity per value, no setState in an effect).
@@ -15,11 +15,18 @@ export type BudgetFields = {
   meals: string;
   decoration: string;
   other: string;
+  /**
+   * The standalone calculator's hall price (/budget), typed by the family, and
+   * whether to add GST to it ("1"). A hall's own page never reads these: it
+   * uses that hall's listed price.
+   */
+  hallRent: string;
+  hallGst: string;
 };
 
 const KEY = "hallnect:budget";
 const EVENT = "hallnect:budget:change";
-const EMPTY: BudgetFields = { guests: "", perPlate: "", meals: "1", decoration: "", other: "" };
+const EMPTY: BudgetFields = { guests: "", perPlate: "", meals: "1", decoration: "", other: "", hallRent: "", hallGst: "" };
 
 let cachedRaw: string | null = null;
 let cached: BudgetFields = EMPTY;
@@ -48,6 +55,8 @@ function getSnapshot(): BudgetFields {
             meals: typeof v.meals === "string" ? v.meals : "1",
             decoration: typeof v.decoration === "string" ? v.decoration : "",
             other: typeof v.other === "string" ? v.other : "",
+            hallRent: typeof v.hallRent === "string" ? v.hallRent : "",
+            hallGst: v.hallGst === "1" ? "1" : "",
           }
         : EMPTY;
     } catch {
