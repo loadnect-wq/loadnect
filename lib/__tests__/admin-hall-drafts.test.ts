@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { DIRECT_BOOKING_ENABLED } from "@/lib/booking-switch";
 import fs from "node:fs";
 import path from "node:path";
 import { adminHallDraftSchema, cancelHallDraftSchema, claimHallDraftSchema } from "@/lib/validation/schemas";
@@ -62,7 +63,7 @@ describe("adminHallDraftSchema", () => {
     }
   });
 
-  it("refuses direct booking without a day rate", () => {
+  it.runIf(DIRECT_BOOKING_ENABLED)("refuses direct booking without a day rate", () => {
     // Mirrors halls_direct_booking_needs_price. Without this the CHECK fires
     // later, on the halls INSERT inside the claim — i.e. the OWNER gets a
     // database error for the ADMIN's omission, weeks after the fact.
@@ -73,6 +74,8 @@ describe("adminHallDraftSchema", () => {
   it("accepts direct booking when a day rate is present", () => {
     const r = adminHallDraftSchema.safeParse({ ...VALID, bookingMode: "DIRECT_BOOKING", pricePerDay: 50000 });
     expect(r.success).toBe(true);
+    // While direct booking is switched off, the draft is saved as taking enquiries.
+    if (r.success && !DIRECT_BOOKING_ENABLED) expect(r.data.bookingMode).toBe("LEAD_GENERATION");
   });
 
   it("refuses a minimum capacity above the maximum", () => {

@@ -146,7 +146,7 @@ export function compareRows(halls: readonly CompareHall[], categoryLabels: Recor
     key: "booking",
     label: "How to book",
     // Short: a third of a phone screen each. The venue page says the rest.
-    cells: halls.map((h) => (isLeadGeneration(h.bookingMode) ? "Send an enquiry" : "Book online with an advance")),
+    cells: halls.map((h) => (isLeadGeneration(h.bookingMode) ? "Get a quote" : "Book online with an advance")),
     best: [],
   });
 

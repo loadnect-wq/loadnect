@@ -264,7 +264,7 @@ export function HallCard({ hall, advancePercent, revealIndex, revealNow, eager, 
               <span className="block">
                 <span className="text-sm font-bold text-maroon-700">{PRICE_ON_REQUEST}</span>
                 <span className="mt-0.5 block text-[10px] font-semibold text-gold-600">
-                  Send an enquiry
+                  Get a quote
                 </span>
               </span>
             )}

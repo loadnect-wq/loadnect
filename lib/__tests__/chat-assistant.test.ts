@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { DIRECT_BOOKING_ENABLED } from "@/lib/booking-switch";
 import fs from "node:fs";
 import path from "node:path";
 
@@ -164,7 +165,10 @@ describe("roles and the commission rate", () => {
   it("uses live plan prices and settings, not literals", async () => {
     const k = await buildKnowledge("guest");
     expect(k).toContain("Pro (₹4,999 per month, per hall)");
-    expect(k).toContain("An advance of 25% of the hall price");
+    // The advance figure is part of the online-booking knowledge, which is
+    // only given while direct booking is on; otherwise the quote flow is.
+    if (DIRECT_BOOKING_ENABLED) expect(k).toContain("An advance of 25% of the hall price");
+    else expect(k).toContain("Only when they accept does that venue get their number");
     expect(read("lib/ai/knowledge.server.ts")).not.toMatch(/4,?999|9,?999|₹100\b/);
   });
 
@@ -277,7 +281,7 @@ describe("tools", () => {
     const out = await exec(tools, "searchHalls", { city: "madurai", minGuests: 400 });
     expect(out.status).toBe("ok");
     expect(out.halls[0].rating).toBeNull();
-    expect(out.halls[0].primaryHref).toBe("/book/a-hall");
+    expect(out.halls[0].primaryHref).toBe(DIRECT_BOOKING_ENABLED ? "/book/a-hall" : "/enquiry/a-hall");
     expect(out.halls[1].price).toBe("Price on enquiry");
     expect(out.halls[1].primaryHref).toBe("/enquiry/b-hall");
     expect(out.halls[1].rating).toEqual({ average: 4.5, count: 3 });

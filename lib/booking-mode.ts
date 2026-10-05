@@ -14,6 +14,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { formatPrice } from "@/lib/mock-data";
+import { DIRECT_BOOKING_ENABLED } from "@/lib/booking-switch";
 import type { BookingMode } from "@/lib/validation/schemas";
 
 export type { BookingMode };
@@ -28,15 +29,26 @@ export const BOOKING_MODE_LABEL: Record<BookingMode, string> = {
 };
 
 /**
+ * DIRECT BOOKING IS SWITCHED OFF (2026-10-05). Every venue takes enquiries,
+ * answered with a quote (migration 0112). The online-booking code stays —
+ * premium plans and commission settlement still use the payment path — but no
+ * hall can be in DIRECT_BOOKING mode: the database refuses it
+ * (halls_direct_booking_switched_off), and while this is false every mode
+ * read here and every mode written through the forms is LEAD_GENERATION.
+ * Switching back means the flag (lib/booking-switch.ts) AND dropping the 0112
+ * constraints.
+ */
+export { DIRECT_BOOKING_ENABLED };
+
+/**
  * Normalises whatever came back from the database.
  *
- * Defaults to DIRECT_BOOKING for null, undefined and anything unrecognised.
- * That is the safe direction in both senses: it is what every hall listed
- * before this feature is, and it is the mode with the STRICTER rules — a hall
- * mistakenly treated as direct-booking shows a price and a Book button, which
- * is visibly wrong; the reverse silently hides a working checkout.
+ * While direct booking was on, null and anything unrecognised meant
+ * DIRECT_BOOKING — the mode with the stricter rules. With it switched off
+ * there is one mode, and every hall is read as taking enquiries.
  */
 export function toBookingMode(raw: unknown): BookingMode {
+  if (!DIRECT_BOOKING_ENABLED) return "LEAD_GENERATION";
   return raw === "LEAD_GENERATION" ? "LEAD_GENERATION" : "DIRECT_BOOKING";
 }
 
@@ -76,5 +88,5 @@ export function primaryCtaHref(mode: unknown, slug: string): string {
 
 /** The label on that call to action. */
 export function primaryCtaLabel(mode: unknown): string {
-  return isLeadGeneration(mode) ? "Send Enquiry" : "Book Now";
+  return isLeadGeneration(mode) ? "Get a quote" : "Book Now";
 }

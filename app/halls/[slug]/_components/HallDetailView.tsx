@@ -1041,7 +1041,7 @@ export function HallDetailView({ hall, categories, similar, isPreview, sidebarAd
 
               <Link href={ctaHref} className="mt-4 block">
                 <Button variant="gold" size="lg" className="w-full">
-                  {isLead ? "Send Enquiry" : "Book This Hall"}
+                  {isLead ? "Get a quote" : "Book This Hall"}
                 </Button>
               </Link>
               {visitHref && (

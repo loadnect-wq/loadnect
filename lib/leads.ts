@@ -6,17 +6,29 @@
 // `payments` row and never calls the payout path. Direct Booking is not
 // reachable from anything in this file.
 //
-// THE LIFECYCLE
+// THE LIFECYCLE (quotes before the number, migration 0112)
 //   awaiting_verification  the customer submitted the form; MSG91 has been
 //                          asked for a code. The venue CANNOT SEE THIS ROW —
 //                          leads_select requires phone_verified, so RULE 2 is
 //                          a permission rather than a convention.
-//   pending                the code checked out. The venue can see it and has
-//                          been texted.
-//   confirmed              the venue ticked Confirm and stated what was agreed.
-//                          THIS is the commission-bearing moment.
-//   rejected / cancelled   the venue declined / the customer withdrew.
-//   expired                the event date passed without an answer.
+//   pending                the code checked out. The venue sees the
+//                          requirement — never the phone number — and has been
+//                          texted.
+//   quoted                 the venue answered with a quote: price, what is
+//                          included, advance, valid until. It can revise it.
+//   accepted               the family accepted the quote. ONLY NOW does the
+//                          venue get the number (phoneVisibleToVenue).
+//   confirmed              the venue marked it booked at the agreed amount.
+//                          THIS is the commission-bearing moment, and the
+//                          database refuses it unless the family accepted
+//                          first (leads_booked_after_acceptance).
+//   rejected / cancelled   the venue declined / the family withdrew or turned
+//                          the quote down.
+//   expired                the event date passed with nothing booked.
+//
+// THE NUMBER. contact_phone has no read grant for any session (0112). This
+// file is the only reader, and it releases the number to the venue only for an
+// accepted or confirmed enquiry.
 //
 // EVERY WRITE USES THE SERVICE ROLE, because migration 0073 grants clients no
 // INSERT or UPDATE on `leads` at all. That is not a shortcut around RLS — it is
@@ -37,6 +49,7 @@ import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import { STANDARD_COMMISSION_PERCENT } from "@/lib/commission";
 import { commissionPaiseOn, toPaise, PAISE_PER_RUPEE } from "@/lib/money";
 import { normalizePhoneE164 } from "@/lib/notifications/phone";
+import { todayInBusinessTz } from "@/lib/dates";
 // A lead's event type is a venue-category slug (0102) — any active category,
 // not the four that were hard-coded here until the platform covered more than
 // weddings. `string` rather than a union because the vocabulary is a table
@@ -49,13 +62,23 @@ const DEFAULT_COMMISSION_DUE_DAYS = 7;
 export type LeadStatus =
   | "awaiting_verification"
   | "pending"
+  | "quoted"
+  | "accepted"
   | "confirmed"
   | "rejected"
   | "cancelled"
   | "expired";
 
-/** The statuses a venue is being asked to act on. */
-export const OPEN_LEAD_STATUSES: readonly LeadStatus[] = ["pending"];
+/** The statuses a venue is being asked to act on: send a quote, or mark it booked. */
+export const OPEN_LEAD_STATUSES: readonly LeadStatus[] = ["pending", "accepted"];
+
+/** Live enquiries — the ones uq_lead_active counts. */
+const LIVE_LEAD_STATUSES: readonly LeadStatus[] = ["awaiting_verification", "pending", "quoted", "accepted", "confirmed"];
+
+/** The family chose this venue, so the venue may have their number. */
+export function phoneVisibleToVenue(status: LeadStatus): boolean {
+  return status === "accepted" || status === "confirmed";
+}
 
 export type LeadRow = {
   id: string;
@@ -76,12 +99,20 @@ export type LeadRow = {
   owner_notes: string | null;
   cancel_reason: string | null;
   created_at: string;
+  quote_amount: number | null;
+  quote_advance: number | null;
+  quote_includes: string | null;
+  quote_note: string | null;
+  quote_valid_until: string | null;
+  quoted_at: string | null;
+  accepted_at: string | null;
 };
 
 const LEAD_COLUMNS =
   "id, hall_id, owner_id, customer_id, contact_name, contact_phone, phone_verified, " +
   "event_date, event_type, guest_count, requirements, status, agreed_amount, " +
-  "confirmed_at, responded_at, owner_notes, cancel_reason, created_at";
+  "confirmed_at, responded_at, owner_notes, cancel_reason, created_at, " +
+  "quote_amount, quote_advance, quote_includes, quote_note, quote_valid_until, quoted_at, accepted_at";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function admin(): any {
@@ -109,7 +140,19 @@ function toLead(row: Record<string, unknown>): LeadRow {
     owner_notes: (row.owner_notes as string | null) ?? null,
     cancel_reason: (row.cancel_reason as string | null) ?? null,
     created_at: String(row.created_at),
+    quote_amount: row.quote_amount == null ? null : Number(row.quote_amount),
+    quote_advance: row.quote_advance == null ? null : Number(row.quote_advance),
+    quote_includes: (row.quote_includes as string | null) ?? null,
+    quote_note: (row.quote_note as string | null) ?? null,
+    quote_valid_until: (row.quote_valid_until as string | null) ?? null,
+    quoted_at: (row.quoted_at as string | null) ?? null,
+    accepted_at: (row.accepted_at as string | null) ?? null,
   };
+}
+
+/** The lead as a venue may see it: no phone number until the family accepts. */
+export function forVenue<T extends LeadRow>(lead: T): T {
+  return phoneVisibleToVenue(lead.status) ? lead : { ...lead, contact_phone: "" };
 }
 
 // ── Commission arithmetic ────────────────────────────────────────────────────
@@ -259,7 +302,7 @@ export async function createLeadEnquiry(input: {
       .eq("hall_id", hall.id)
       .eq("customer_id", input.customerId)
       .eq("event_date", input.eventDate)
-      .in("status", ["awaiting_verification", "pending", "confirmed"])
+      .in("status", [...LIVE_LEAD_STATUSES])
       .maybeSingle();
 
     if (existing) {
@@ -413,8 +456,11 @@ export async function confirmLead(input: {
       lead,
     };
   }
-  if (lead.status !== "pending") {
-    return { ok: false, error: "Only a pending enquiry can be confirmed." };
+  // Booked only after the family accepted a quote — the database says the same
+  // (leads_booked_after_acceptance). Confirming an un-accepted enquiry would
+  // otherwise be a way to unlock a family's number for a token commission.
+  if (lead.status !== "accepted") {
+    return { ok: false, error: "You can mark it booked once the family accepts your quote." };
   }
 
   // THE STANDARD RATE (lib/commission.ts), applied server-side. The request
@@ -443,7 +489,7 @@ export async function confirmLead(input: {
     // routed to the already-confirmed branch below rather than raising a second
     // commission.
     .eq("id", lead.id)
-    .eq("status", "pending")
+    .eq("status", "accepted")
     .select(LEAD_COLUMNS)
     .maybeSingle();
 
@@ -490,8 +536,11 @@ export async function rejectLead(input: {
   const owned = await loadOwnedLead(input.leadId, input.ownerProfileId);
   if (!owned.ok) return { ok: false, error: owned.error };
   if (owned.lead.status === "rejected") return { ok: true, changed: false };
-  if (owned.lead.status !== "pending") {
-    return { ok: false, error: "Only a pending enquiry can be declined." };
+  // Before anything is booked, a venue can always say it cannot take the date —
+  // including after quoting, or after the family accepted.
+  const declinable: LeadStatus[] = ["pending", "quoted", "accepted"];
+  if (!declinable.includes(owned.lead.status)) {
+    return { ok: false, error: "This enquiry can no longer be declined." };
   }
 
   const now = new Date().toISOString();
@@ -502,7 +551,7 @@ export async function rejectLead(input: {
       { count: "exact" },
     )
     .eq("id", input.leadId)
-    .eq("status", "pending");
+    .in("status", declinable);
 
   if (error) {
     console.error("[leads] reject failed", error.code, error.message);
@@ -516,10 +565,9 @@ export type CancelLeadResult = { ok: true; changed: boolean } | { ok: false; err
 /**
  * The customer withdraws.
  *
- * Allowed while awaiting verification or pending, and NOT after the venue has
- * confirmed: at that point a commission exists, and letting the party who does
- * not owe it delete the record would be a way to make somebody else's debt
- * disappear.
+ * Allowed at every step before the venue marks it booked, and NOT after: at
+ * that point a commission exists, and letting the party who does not owe it
+ * delete the record would be a way to make somebody else's debt disappear.
  */
 export async function cancelLead(input: {
   leadId: string;
@@ -531,13 +579,170 @@ export async function cancelLead(input: {
     .update({ status: "cancelled", responded_at: new Date().toISOString() }, { count: "exact" })
     .eq("id", input.leadId)
     .eq("customer_id", input.customerId)
-    .in("status", ["awaiting_verification", "pending"]);
+    .in("status", ["awaiting_verification", "pending", "quoted", "accepted"]);
 
   if (error) {
     console.error("[leads] cancel failed", error.code, error.message);
     return { ok: false, error: "Could not withdraw this enquiry. Please try again." };
   }
   return { ok: true, changed: (count ?? 0) > 0 };
+}
+
+// ── Quotes (0112) ────────────────────────────────────────────────────────────
+
+export type LeadQuoteInput = {
+  amount: number;
+  advance: number | null;
+  includes: string | null;
+  note: string | null;
+  /** YYYY-MM-DD, India. */
+  validUntil: string;
+};
+
+export type SendQuoteResult = { ok: true; revised: boolean; lead: LeadRow } | { ok: false; error: string };
+
+/**
+ * The venue answers an enquiry with a quote, or revises the one it sent.
+ *
+ * Ownership is proved the same way as confirmation. The quote is the venue's
+ * own offer, so every figure is the owner's; the rules are only that it is
+ * whole, that the advance is not more than the price, and that it stays open
+ * no longer than the function is away.
+ */
+export async function sendLeadQuote(input: {
+  leadId: string;
+  ownerProfileId: string;
+  quote: LeadQuoteInput;
+}): Promise<SendQuoteResult> {
+  const owned = await loadOwnedLead(input.leadId, input.ownerProfileId);
+  if (!owned.ok) return { ok: false, error: owned.error };
+  const lead = owned.lead;
+  if (lead.status === "accepted") return { ok: false, error: "The family has already accepted your quote." };
+  if (lead.status !== "pending" && lead.status !== "quoted") {
+    return { ok: false, error: "This enquiry is closed, so it cannot be quoted." };
+  }
+
+  const q = input.quote;
+  const today = todayInBusinessTz();
+  if (q.validUntil < today) return { ok: false, error: "Keep the quote open until today at least." };
+  if (q.validUntil > lead.event_date) return { ok: false, error: "The quote cannot stay open past the function date." };
+  if (q.advance != null && q.advance > q.amount) return { ok: false, error: "The advance cannot be more than the price." };
+
+  const now = new Date().toISOString();
+  const { data, error } = await admin()
+    .from("leads")
+    .update({
+      status: "quoted",
+      quote_amount: q.amount,
+      quote_advance: q.advance,
+      quote_includes: q.includes,
+      quote_note: q.note,
+      quote_valid_until: q.validUntil,
+      quoted_at: now,
+      responded_at: now,
+    })
+    .eq("id", lead.id)
+    .in("status", ["pending", "quoted"])
+    .select(LEAD_COLUMNS)
+    .maybeSingle();
+  if (error) {
+    console.error("[leads] quote failed", error.code, error.message);
+    return { ok: false, error: "Could not send your quote. Please try again." };
+  }
+  if (!data) return { ok: false, error: "This enquiry changed just now. Refresh the page and try again." };
+  return { ok: true, revised: lead.status === "quoted", lead: toLead(data) };
+}
+
+export type QuoteDecisionResult = { ok: true; changed: boolean; lead: LeadRow | null } | { ok: false; error: string };
+
+/**
+ * The family accepts a quote, which is the moment the venue gets their number.
+ * Their own enquiry only (customer_id in the WHERE), only while the quote is
+ * open, and at most once (status guard).
+ */
+export async function acceptLeadQuote(input: { leadId: string; customerId: string }): Promise<QuoteDecisionResult> {
+  const today = todayInBusinessTz();
+  const { data, error } = await admin()
+    .from("leads")
+    .update({ status: "accepted", accepted_at: new Date().toISOString() })
+    .eq("id", input.leadId)
+    .eq("customer_id", input.customerId)
+    .eq("status", "quoted")
+    .gte("quote_valid_until", today)
+    .select(LEAD_COLUMNS)
+    .maybeSingle();
+  if (error) {
+    console.error("[leads] accept failed", error.code, error.message);
+    return { ok: false, error: "Could not accept the quote. Please try again." };
+  }
+  if (data) return { ok: true, changed: true, lead: toLead(data) };
+
+  // Nothing moved: already accepted, expired, or changed. Say which.
+  const current = await loadOwnLead(input.leadId, input.customerId);
+  if (!current) return { ok: false, error: "That enquiry could not be found." };
+  if (current.status === "accepted" || current.status === "confirmed") return { ok: true, changed: false, lead: current };
+  if (current.status === "quoted" && (current.quote_valid_until ?? "") < today) {
+    return { ok: false, error: "This quote has expired. Ask the hall for a new one." };
+  }
+  return { ok: false, error: "This quote is no longer open." };
+}
+
+/** The family turns a quote down. The enquiry ends; the venue never gets the number. */
+export async function declineLeadQuote(input: {
+  leadId: string;
+  customerId: string;
+  reason: string | null;
+}): Promise<QuoteDecisionResult> {
+  const { data, error } = await admin()
+    .from("leads")
+    .update({
+      status: "cancelled",
+      responded_at: new Date().toISOString(),
+      cancel_reason: input.reason ? `Quote declined: ${input.reason}` : "Quote declined",
+    })
+    .eq("id", input.leadId)
+    .eq("customer_id", input.customerId)
+    .eq("status", "quoted")
+    .select(LEAD_COLUMNS)
+    .maybeSingle();
+  if (error) {
+    console.error("[leads] decline quote failed", error.code, error.message);
+    return { ok: false, error: "Could not decline the quote. Please try again." };
+  }
+  return data ? { ok: true, changed: true, lead: toLead(data) } : { ok: false, error: "This quote is no longer open." };
+}
+
+/**
+ * The family asks for a fresh quote once the last one ran out. The enquiry
+ * goes back to the venue's "to answer" list; the old quote stays on the row
+ * so the venue can see what it offered.
+ */
+export async function requestNewQuote(input: { leadId: string; customerId: string }): Promise<QuoteDecisionResult> {
+  const { data, error } = await admin()
+    .from("leads")
+    .update({ status: "pending" })
+    .eq("id", input.leadId)
+    .eq("customer_id", input.customerId)
+    .eq("status", "quoted")
+    .lt("quote_valid_until", todayInBusinessTz())
+    .select(LEAD_COLUMNS)
+    .maybeSingle();
+  if (error) {
+    console.error("[leads] requote failed", error.code, error.message);
+    return { ok: false, error: "Could not ask for a new quote. Please try again." };
+  }
+  return data ? { ok: true, changed: true, lead: toLead(data) } : { ok: false, error: "This quote is still open — accept it or turn it down." };
+}
+
+/** The family's own enquiry, by id. Service role, scoped by customer_id. */
+async function loadOwnLead(leadId: string, customerId: string): Promise<LeadRow | null> {
+  const { data, error } = await admin()
+    .from("leads").select(LEAD_COLUMNS).eq("id", leadId).eq("customer_id", customerId).maybeSingle();
+  if (error) {
+    console.error("[leads] own read failed", error.code, error.message);
+    return null;
+  }
+  return data ? toLead(data) : null;
 }
 
 // ── Ownership ────────────────────────────────────────────────────────────────
@@ -702,12 +907,15 @@ async function commissionDueDays(): Promise<number> {
 export type LeadWithHall = LeadRow & { hall_name: string; hall_slug: string };
 
 /**
- * Every lead for a set of halls, newest first.
+ * Every lead for a set of halls, newest first — THE VENUE'S VIEW.
  *
  * Callers pass hall ids they have ALREADY established the caller may see — the
  * same contract readHallCommissionRates works to. Unverified leads are excluded
  * here as well as by RLS: this reads with the service role, which bypasses
  * policies, so the rule has to be restated rather than inherited.
+ *
+ * The family's number is blanked (forVenue) until they accept a quote. This
+ * read is the venue's; the admin ledger is the only full one.
  */
 export async function fetchLeadsForHalls(
   hallIds: readonly string[],
@@ -726,7 +934,7 @@ export async function fetchLeadsForHalls(
       console.error("[leads] list failed", error.code, error.message);
       return [];
     }
-    return (data ?? []).map((row: Record<string, unknown>) => ({
+    return (data ?? []).map((row: Record<string, unknown>) => forVenue({
       ...toLead(row),
       hall_name: String((row.halls as { name?: string } | null)?.name ?? "Venue"),
       hall_slug: String((row.halls as { slug?: string } | null)?.slug ?? ""),
@@ -786,7 +994,7 @@ export type VenueContact = { businessName: string; phone: string | null };
  *
  * ═══ THE GATE ══════════════════════════════════════════════════════════════
  *   • the lead must belong to THIS customer (customer_id in the WHERE)
- *   • it must have reached the venue — 'pending' or 'confirmed'. An enquiry
+ *   • it must have reached the venue — any state from 'pending' on. An enquiry
  *     still awaiting OTP has proved nothing and releases nothing, so this
  *     cannot become a way to harvest venue numbers by starting enquiries.
  *
@@ -803,7 +1011,7 @@ export async function fetchVenueContactForLead(input: {
       .select("id, status, hall_owners!owner_id(business_name, business_phone, profiles!profile_id(phone))")
       .eq("id", input.leadId)
       .eq("customer_id", input.customerId)
-      .in("status", ["pending", "confirmed"])
+      .in("status", ["pending", "quoted", "accepted", "confirmed"])
       .maybeSingle();
 
     if (error) {
@@ -842,7 +1050,7 @@ export async function fetchVenueContactsForCustomer(
       .from("leads")
       .select("id, hall_owners!owner_id(business_name, business_phone, profiles!profile_id(phone))")
       .eq("customer_id", customerId)
-      .in("status", ["pending", "confirmed"])
+      .in("status", ["pending", "quoted", "accepted", "confirmed"])
       .limit(200);
     if (error) {
       console.error("[leads] venue contacts failed", error.code, error.message);
@@ -867,7 +1075,7 @@ export async function fetchVenueContactsForCustomer(
   }
 }
 
-/** How many enquiries across these halls are still waiting on the venue. */
+/** How many enquiries across these halls are waiting on the venue: to quote, or to mark booked. */
 export async function countPendingLeads(hallIds: readonly string[]): Promise<number> {
   if (hallIds.length === 0) return 0;
   try {
@@ -875,7 +1083,7 @@ export async function countPendingLeads(hallIds: readonly string[]): Promise<num
       .from("leads")
       .select("id", { count: "exact", head: true })
       .in("hall_id", [...hallIds])
-      .eq("status", "pending")
+      .in("status", [...OPEN_LEAD_STATUSES])
       .eq("phone_verified", true);
     if (error) {
       console.error("[leads] pending count failed", error.code, error.message);

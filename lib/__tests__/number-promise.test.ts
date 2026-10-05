@@ -22,8 +22,8 @@ describe("the promise", () => {
     expect(booking).toContain('<NumberPromise hallName={hall.name} flow="booking"');
   });
 
-  it("says 'only after you verify it' for enquiries alone", () => {
-    expect(promise).toContain('flow === "enquiry" ? ", and only after you verify it" : ""');
+  it("tells an enquiry the hall sees the request, not the number, until they accept its quote", () => {
+    expect(promise).toContain("sees your request, not your number. It gets your number only if you accept its quote.");
   });
 
   it("links to the clause it is based on", () => {
@@ -32,8 +32,17 @@ describe("the promise", () => {
 });
 
 describe("what makes each clause true", () => {
-  it("'only after you verify it': a venue cannot read an unverified enquiry", () => {
+  it("a venue cannot read an unverified enquiry at all", () => {
     expect(leadPolicy).toMatch(/owns_hall\(hall_id\) and phone_verified/);
+  });
+
+  it("'not your number': no session can read the number, and booking needs the family's yes (0112)", () => {
+    const sql = read("supabase/migrations/0112_quotes_before_number.sql");
+    expect(sql).toContain("revoke select on public.leads from authenticated;");
+    const grant = sql.slice(sql.indexOf("grant select ("), sql.indexOf(") on public.leads to authenticated;"));
+    expect(grant).not.toContain("contact_phone");
+    expect(sql).toContain("check (status <> 'confirmed' or accepted_at is not null)");
+    expect(read("lib/leads.ts")).toContain('return status === "accepted" || status === "confirmed";');
   });
 
   it("'we never sell it': the privacy policy says so", () => {
@@ -43,7 +52,7 @@ describe("what makes each clause true", () => {
   it("'or share it with other halls': section 5(a) names one venue, and covers enquiries", () => {
     expect(privacy).toContain('<Section title="5. Data Sharing" id="sharing">');
     expect(privacy).toContain("(a) the venue you choose, and no other venue");
-    expect(privacy).toContain("when you send an enquiry, your name, event details and verified phone number are shared with that venue");
+    expect(privacy).toContain("when you ask a venue for a quote, your name and event details are shared with that venue so it can quote, and your verified phone number is shared with it only if you accept its quote");
     expect(privacy).toContain("other than replying to your enquiry or fulfilling your booking");
   });
 

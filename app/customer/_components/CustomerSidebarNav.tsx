@@ -7,11 +7,13 @@ import {
   Bell, CalendarCheck, ClipboardList,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { DIRECT_BOOKING_ENABLED } from "@/lib/booking-switch";
 
 const NAV = [
   { label: "Dashboard",   href: "/customer",              icon: LayoutDashboard, exact: true },
   { label: "My Plans",    href: "/plan",                  icon: ClipboardList },
-  { label: "My Bookings", href: "/customer/bookings",     icon: CalendarDays },
+  // Online booking is switched off (lib/booking-switch.ts): nothing to list.
+  ...(DIRECT_BOOKING_ENABLED ? [{ label: "My Bookings", href: "/customer/bookings", icon: CalendarDays }] : []),
   { label: "My Enquiries", href: "/customer/enquiries",  icon: Inbox },
   { label: "My Visits",   href: "/customer/visits",       icon: CalendarCheck },
   { label: "Saved Halls", href: "/customer/saved-halls",  icon: Heart },

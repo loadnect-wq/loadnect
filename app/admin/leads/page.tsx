@@ -20,7 +20,9 @@ type BadgeVar = "success" | "warning" | "secondary" | "destructive" | "default";
 const LEAD_STATUS: Record<LeadStatus, { label: string; variant: BadgeVar }> = {
   awaiting_verification: { label: "Unverified", variant: "secondary" },
   pending:               { label: "Pending",    variant: "warning" },
-  confirmed:             { label: "Confirmed",  variant: "success" },
+  quoted:                { label: "Quoted",     variant: "default" },
+  accepted:              { label: "Accepted",   variant: "success" },
+  confirmed:             { label: "Booked",     variant: "success" },
   rejected:              { label: "Declined",   variant: "destructive" },
   cancelled:             { label: "Withdrawn",  variant: "secondary" },
   expired:               { label: "Expired",    variant: "secondary" },
@@ -35,7 +37,7 @@ const FILTERS = [
   { key: "all",       label: "All" },
   { key: "due",       label: "Commission due" },
   { key: "paid",      label: "Commission paid" },
-  { key: "pending",   label: "Awaiting venue" },
+  { key: "pending",   label: "In progress" },
   { key: "unverified",label: "Unverified" },
 ] as const;
 
@@ -81,7 +83,7 @@ export default async function AdminLeadsPage({ searchParams }: Props) {
   const rows =
     active.key === "due"        ? due
     : active.key === "paid"     ? paid
-    : active.key === "pending"  ? ledger.filter((r) => r.lead.status === "pending")
+    : active.key === "pending"  ? ledger.filter((r) => ["pending", "quoted", "accepted"].includes(r.lead.status))
     : active.key === "unverified" ? ledger.filter((r) => r.lead.status === "awaiting_verification")
     : ledger;
 

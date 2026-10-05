@@ -8,6 +8,7 @@ import { BOOKING_MODES } from "@/lib/validation/schemas";
 import { COMMISSION_PERCENT_LABEL } from "@/lib/commission";
 import { PLATFORM_FEE_RUPEES } from "@/lib/booking-payment";
 import { toBookingMode, type BookingMode } from "@/lib/booking-mode";
+import { DIRECT_BOOKING_ENABLED } from "@/lib/booking-switch";
 import { useRouter } from "next/navigation";
 import { ImagePlus, Plus, Sparkles, Star, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
@@ -387,54 +388,65 @@ export function HallForm({ ownerId, amenities, categories, hall }: Props) {
       {/* Booking mode — placed immediately BEFORE pricing because it decides
           whether pricing is required, and a control that changes the rules of
           the field below it has to be read first. */}
-      <FormSection title="How do you want to take bookings?">
-        <div className="grid gap-2 sm:grid-cols-2">
-          {BOOKING_MODES.map((mode) => {
-            const on = bookingMode === mode;
-            const isLead = mode === "LEAD_GENERATION";
-            return (
-              <button
-                key={mode}
-                type="button"
-                role="radio"
-                aria-checked={on}
-                onClick={() => setBookingMode(mode)}
-                className={`rounded-xl border p-3 text-left transition-colors ${
-                  on
-                    ? "border-maroon-500 bg-maroon-50"
-                    : "border-border bg-white hover:border-maroon-300"
-                }`}
-              >
-                <span className="flex items-center gap-2">
-                  <span
-                    aria-hidden
-                    className={`inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2 ${
-                      on ? "border-maroon-600" : "border-charcoal-300"
-                    }`}
-                  >
-                    {on && <span className="h-2 w-2 rounded-full bg-maroon-600" />}
+      {DIRECT_BOOKING_ENABLED ? (
+        <FormSection title="How do you want to take bookings?">
+          <div className="grid gap-2 sm:grid-cols-2">
+            {BOOKING_MODES.map((mode) => {
+              const on = bookingMode === mode;
+              const isLead = mode === "LEAD_GENERATION";
+              return (
+                <button
+                  key={mode}
+                  type="button"
+                  role="radio"
+                  aria-checked={on}
+                  onClick={() => setBookingMode(mode)}
+                  className={`rounded-xl border p-3 text-left transition-colors ${
+                    on
+                      ? "border-maroon-500 bg-maroon-50"
+                      : "border-border bg-white hover:border-maroon-300"
+                  }`}
+                >
+                  <span className="flex items-center gap-2">
+                    <span
+                      aria-hidden
+                      className={`inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2 ${
+                        on ? "border-maroon-600" : "border-charcoal-300"
+                      }`}
+                    >
+                      {on && <span className="h-2 w-2 rounded-full bg-maroon-600" />}
+                    </span>
+                    <span className="text-sm font-semibold text-charcoal-900">
+                      {isLead ? "Lead Generation" : "Direct Booking"}
+                    </span>
                   </span>
-                  <span className="text-sm font-semibold text-charcoal-900">
-                    {isLead ? "Lead Generation" : "Direct Booking"}
+                  <span className="mt-1.5 block text-[11px] leading-relaxed text-charcoal-600">
+                    {isLead
+                      ? "Customers send you an enquiry. You agree the price and take payment yourself, then confirm the enquiry here and settle Hallnect's commission."
+                      : "Customers book and pay an advance online. Hallnect's commission is kept from that advance automatically — you are never billed for it."}
                   </span>
-                </span>
-                <span className="mt-1.5 block text-[11px] leading-relaxed text-charcoal-600">
-                  {isLead
-                    ? "Customers send you an enquiry. You agree the price and take payment yourself, then confirm the enquiry here and settle Hallnect's commission."
-                    : "Customers book and pay an advance online. Hallnect's commission is kept from that advance automatically — you are never billed for it."}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-        {bookingMode === "LEAD_GENERATION" && (
-          <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-[11px] leading-relaxed text-amber-900">
-            <strong>Enquiries do not hold a date.</strong> Confirming one records what you
-            agreed and raises Hallnect&apos;s commission — it does not block the calendar.
-            Block the date yourself under Availability once the customer has paid you.
+                </button>
+              );
+            })}
+          </div>
+          {bookingMode === "LEAD_GENERATION" && (
+            <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-[11px] leading-relaxed text-amber-900">
+              <strong>Enquiries do not hold a date.</strong> Confirming one records what you
+              agreed and raises Hallnect&apos;s commission — it does not block the calendar.
+              Block the date yourself under Availability once the customer has paid you.
+            </p>
+          )}
+        </FormSection>
+      ) : (
+        <FormSection title="How families book">
+          <p className="rounded-xl border border-maroon-100 bg-maroon-50/50 p-3 text-[11px] leading-relaxed text-charcoal-700">
+            Families ask you for a quote. You reply with your price, what is included and the advance; if they
+            accept, you get their number and agree the booking with them directly. Mark it booked here when it is
+            done — that is when Hallnect&apos;s commission is billed. A quote does not hold a date: block it yourself
+            under Availability once the family has paid you.
           </p>
-        )}
-      </FormSection>
+        </FormSection>
+      )}
 
       {/* Pricing */}
       <FormSection title={bookingMode === "LEAD_GENERATION" ? "Pricing (₹, optional)" : "Pricing (₹)"}>

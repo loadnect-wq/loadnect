@@ -81,51 +81,35 @@ export default async function AboutPage() {
 
         {/* ── How it works ─────────────────────────────────────────────── */}
         <h2 className="mt-10 font-serif text-xl font-semibold text-charcoal-900">
-          How a booking works
+          How booking a venue works
         </h2>
         <p className="mt-3 text-sm leading-relaxed text-charcoal-700">
-          Venues choose one of two ways to take business, and every listing says
-          which one it uses.
+          Every venue on Hallnect works on quotes, and your phone number stays
+          with us until you choose a venue.
         </p>
-        <div className="mt-4 space-y-4">
-          <div className="rounded-2xl border border-border bg-white p-5">
-            <h3 className="font-serif text-base font-semibold text-charcoal-900">
-              Book online
-            </h3>
-            <p className="mt-1.5 text-sm leading-relaxed text-charcoal-600">
-              The venue publishes a day rate and an availability calendar. You
-              pick a date and slot and pay an advance plus a platform fee through
-              Cashfree; the balance is settled directly with the venue. The
-              booking is confirmed once the owner accepts it. Refund rules are in
-              our{" "}
-              <Link href="/refund-policy" className="font-medium text-maroon-600 hover:underline">
-                refund policy
-              </Link>
-              .
-            </p>
-          </div>
-          <div className="rounded-2xl border border-border bg-white p-5">
-            <h3 className="font-serif text-base font-semibold text-charcoal-900">
-              Send an enquiry
-            </h3>
-            <p className="mt-1.5 text-sm leading-relaxed text-charcoal-600">
-              The venue prefers to agree terms directly. You send a free enquiry
-              and verify your mobile number with a one-time password, and the
-              venue contacts you to confirm the date and the price. Hallnect
-              takes no payment from you for these venues.
-            </p>
-          </div>
-        </div>
+        <ol className="mt-4 space-y-4">
+          {[
+            ["Ask for a quote", "Tell the venue your date, the occasion and how many guests. You verify your mobile number with a one-time password, but the venue does not see it."],
+            ["Compare the replies", "The venue answers on Hallnect with its price for your date, what is included, the advance it asks for and how long the offer stands."],
+            ["Accept the one you want", "Only then does that venue get your number, to call you and agree the booking. You pay the venue directly — Hallnect takes no payment from you."],
+          ].map(([title, text], i) => (
+            <li key={title} className="rounded-2xl border border-border bg-white p-5">
+              <h3 className="font-serif text-base font-semibold text-charcoal-900">
+                {i + 1}. {title}
+              </h3>
+              <p className="mt-1.5 text-sm leading-relaxed text-charcoal-600">{text}</p>
+            </li>
+          ))}
+        </ol>
 
         {/* ── Charges ──────────────────────────────────────────────────── */}
         <h2 className="mt-10 font-serif text-xl font-semibold text-charcoal-900">
           What Hallnect charges
         </h2>
         <p className="mt-3 text-sm leading-relaxed text-charcoal-700">
-          On an online booking you pay the venue&apos;s advance plus a platform
-          fee, shown in full before you pay and capped at a quarter of the
-          advance on a small booking. On an enquiry you pay us nothing. Listing
-          a venue is free — the paid{" "}
+          Families pay Hallnect nothing. A venue pays a small commission only on
+          a booking it confirms through Hallnect. Listing a venue is free — the
+          paid{" "}
           <Link href="/premium" className="font-medium text-maroon-600 hover:underline">
             premium plans
           </Link>{" "}

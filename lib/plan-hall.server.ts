@@ -18,8 +18,10 @@ export type HallActivityRow = { key: string; kind: "enquiry" | "visit" | "bookin
 
 const LEAD_LABEL: Record<LeadStatus, string> = {
   awaiting_verification: "Not sent yet",
-  pending: "Sent to the hall",
-  confirmed: "Hall confirmed",
+  pending: "Waiting for a quote",
+  quoted: "Quote received",
+  accepted: "Quote accepted",
+  confirmed: "Booked",
   rejected: "Declined",
   cancelled: "Withdrawn",
   expired: "Expired",

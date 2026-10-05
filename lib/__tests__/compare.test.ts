@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
+import { DIRECT_BOOKING_ENABLED } from "@/lib/booking-switch";
 import {
   type CompareHall,
   amenityRows,
@@ -72,7 +73,11 @@ describe("the rows", () => {
   });
 
   it("says how each hall is booked, briefly", () => {
-    expect(row("booking").cells).toEqual(["Send an enquiry", "Book online with an advance", "Send an enquiry"]);
+    expect(row("booking").cells).toEqual(
+      DIRECT_BOOKING_ENABLED
+        ? ["Get a quote", "Book online with an advance", "Get a quote"]
+        : ["Get a quote", "Get a quote", "Get a quote"],
+    );
   });
 
   it("drops rows nobody filled, and keeps the ones somebody did", () => {

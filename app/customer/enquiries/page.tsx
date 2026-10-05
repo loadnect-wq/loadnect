@@ -6,7 +6,9 @@ import { fetchVenueCategories } from "@/lib/venue-categories.server";
 import { categoryLabelMap } from "@/lib/venue-categories";
 import { getSession } from "@/lib/auth";
 import { fetchLeadsForCustomer, fetchVenueContactsForCustomer, type LeadStatus } from "@/lib/leads";
-import { formatBookingDates } from "@/lib/dates";
+import { formatBookingDates, todayInBusinessTz } from "@/lib/dates";
+import { formatPrice } from "@/lib/mock-data";
+import { QuoteDecision } from "./_components/QuoteDecision";
 import { Badge } from "@/components/ui/Badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { buttonVariants } from "@/components/ui/Button";
@@ -17,29 +19,38 @@ export const metadata: Metadata = { title: "My enquiries" };
 
 type BadgeVar = "success" | "warning" | "secondary" | "destructive" | "default";
 
-// WHAT THE CUSTOMER IS TOLD, in their words rather than the schema's. The two
-// halves that matter: an unverified enquiry has NOT reached the venue, and a
-// confirmed one is still not a paid booking.
+// WHAT THE CUSTOMER IS TOLD, in their words rather than the schema's. The
+// halves that matter: an unverified enquiry has NOT reached the venue; the
+// venue gets their number only when they accept its quote (0112); and a
+// booked one is paid to the venue, not to Hallnect.
 const STATUS_CFG: Record<LeadStatus, { label: string; variant: BadgeVar; note: string }> = {
   awaiting_verification: {
     label: "Not sent yet", variant: "warning",
     note: "We could not verify your number, so this has not reached the venue. Send it again to finish.",
   },
   pending: {
-    label: "Sent to venue", variant: "default",
-    note: "The venue has your enquiry and will contact you on the number you verified.",
+    label: "Waiting for a quote", variant: "default",
+    note: "The hall has your request and will reply here with a quote. Your number has not been shared with it.",
+  },
+  quoted: {
+    label: "Quote received", variant: "warning",
+    note: "Accept it and the hall gets your number to call you and book. Your number has not been shared yet.",
+  },
+  accepted: {
+    label: "Quote accepted", variant: "success",
+    note: "The hall now has your number and will call you to book.",
   },
   confirmed: {
-    label: "Venue confirmed", variant: "success",
-    note: "The venue has confirmed your enquiry. Any payment is arranged directly with them — Hallnect does not collect it.",
+    label: "Booked", variant: "success",
+    note: "The hall has marked this booked. Pay the hall directly — Hallnect does not collect it.",
   },
   rejected: {
     label: "Declined", variant: "destructive",
     note: "The venue could not take this date.",
   },
   cancelled: {
-    label: "Withdrawn", variant: "secondary",
-    note: "You withdrew this enquiry.",
+    label: "Closed", variant: "secondary",
+    note: "You withdrew this enquiry or turned the quote down. The hall never got your number.",
   },
   expired: {
     label: "Expired", variant: "secondary",
@@ -70,6 +81,7 @@ export default async function CustomerEnquiriesPage() {
   // printed the hyphen. Lenient read — an unnamed occasion falls back to its
   // slug, which is ugly but true, and never blocks the page.
   const EVENT_LABELS = categoryLabelMap(catalogue);
+  const today = todayInBusinessTz();
 
   return (
     <div className="min-h-screen bg-ivory-100 pb-20">
@@ -80,7 +92,7 @@ export default async function CustomerEnquiriesPage() {
           <EmptyState
             icon={<Inbox className="h-8 w-8" />}
             title="No enquiries yet"
-            description="Some venues take enquiries instead of online bookings. Send one and it appears here."
+            description="Ask a hall for a quote and it appears here. The hall gets your number only if you accept its quote."
             action={
               <Link href="/halls" className={buttonVariants({ variant: "gold", size: "sm" })}>
                 Browse venues
@@ -121,6 +133,31 @@ export default async function CustomerEnquiriesPage() {
                   </div>
 
                   <p className="mt-2 text-[11px] leading-relaxed text-charcoal-600">{cfg.note}</p>
+
+                  {/* The quote, as the hall sent it. */}
+                  {lead.quote_amount != null && (lead.status === "quoted" || lead.status === "accepted" || lead.status === "confirmed") && (
+                    <div className="mt-2.5 rounded-xl border border-maroon-100 bg-maroon-50/40 p-3">
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-maroon-800">Quote from {lead.hall_name}</p>
+                      <p className="mt-0.5 font-serif text-xl font-bold text-charcoal-900">{formatPrice(lead.quote_amount)}</p>
+                      <p className="text-[11px] text-charcoal-700">
+                        {lead.quote_advance ? `Advance to book: ${formatPrice(lead.quote_advance)}` : "No advance mentioned"}
+                        {lead.quote_valid_until && lead.status === "quoted"
+                          ? ` · ${lead.quote_valid_until < today ? "ran out on" : "open until"} ${formatBookingDates(lead.quote_valid_until, null)}`
+                          : ""}
+                      </p>
+                      {lead.quote_includes && (
+                        <p className="mt-1.5 whitespace-pre-line text-xs text-charcoal-800">{lead.quote_includes}</p>
+                      )}
+                      {lead.quote_note && <p className="mt-1 text-[11px] text-charcoal-600">Note: {lead.quote_note}</p>}
+                      {lead.status === "quoted" && (
+                        <QuoteDecision
+                          leadId={lead.id}
+                          hallName={lead.hall_name}
+                          expired={(lead.quote_valid_until ?? "") < today}
+                        />
+                      )}
+                    </div>
+                  )}
 
                   {/* Call the venue. A tap-to-call link, not text to copy out —
                       this is the number they have been waiting for, and they
@@ -172,11 +209,11 @@ export default async function CustomerEnquiriesPage() {
                         Finish sending
                       </Link>
                     )}
-                    {/* Withdrawing is offered only while the venue can still be
-                        spared the call. Once they have confirmed, a commission
-                        exists and the record is no longer the customer's alone
-                        to delete. */}
-                    {(lead.status === "awaiting_verification" || lead.status === "pending") && (
+                    {/* Withdrawing is offered until the hall marks it booked.
+                        After that a commission exists and the record is no
+                        longer the customer's alone to delete. (A quote is
+                        turned down from the quote card instead.) */}
+                    {(lead.status === "awaiting_verification" || lead.status === "pending" || lead.status === "accepted") && (
                       <WithdrawEnquiry leadId={lead.id} />
                     )}
                   </div>

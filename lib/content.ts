@@ -33,7 +33,7 @@
 // and telling a customer their binding terms changed when they did not is the
 // same lie in the other direction.
 export const LEGAL_LAST_UPDATED = {
-  "/terms":                "2026-09-17",
+  "/terms":                "2026-10-05",
   "/privacy":              "2026-10-05",
   "/refund-policy":        "2026-09-17",
   "/cancellation-policy":  "2026-09-17",

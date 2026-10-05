@@ -1,13 +1,13 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { CalendarDays, Inbox, MessageSquare, Phone, Users } from "lucide-react";
+import { CalendarDays, Inbox, Lock, MessageSquare, Phone, Users } from "lucide-react";
 import { requireRole } from "@/lib/auth";
 import { fetchVenueCategories } from "@/lib/venue-categories.server";
 import { categoryLabelMap } from "@/lib/venue-categories";
 import { fetchOwnerRow, fetchOwnerHalls } from "@/lib/owner";
 import { fetchLeadsForHalls, fetchLeadCommissions, type LeadStatus } from "@/lib/leads";
 import { formatPrice } from "@/lib/mock-data";
-import { formatBookingDates } from "@/lib/dates";
+import { formatBookingDates, todayInBusinessTz } from "@/lib/dates";
 import { Badge } from "@/components/ui/Badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { buttonVariants } from "@/components/ui/Button";
@@ -19,17 +19,20 @@ export const metadata: Metadata = { title: "Enquiries" };
 type BadgeVar = "success" | "warning" | "secondary" | "destructive" | "default";
 
 const STATUS_CFG: Record<LeadStatus, { label: string; variant: BadgeVar }> = {
-  awaiting_verification: { label: "Unverified",  variant: "secondary"   },
-  pending:               { label: "Pending",     variant: "warning"     },
-  confirmed:             { label: "Confirmed",   variant: "success"     },
-  rejected:              { label: "Declined",    variant: "destructive" },
-  cancelled:             { label: "Withdrawn",   variant: "secondary"   },
-  expired:               { label: "Expired",     variant: "secondary"   },
+  awaiting_verification: { label: "Unverified",     variant: "secondary"   },
+  pending:               { label: "New",            variant: "warning"     },
+  quoted:                { label: "Quoted",         variant: "default"     },
+  accepted:              { label: "Quote accepted", variant: "success"     },
+  confirmed:             { label: "Booked",         variant: "success"     },
+  rejected:              { label: "Declined",       variant: "destructive" },
+  cancelled:             { label: "Withdrawn",      variant: "secondary"   },
+  expired:               { label: "Expired",        variant: "secondary"   },
 };
 
 const TABS = [
-  { key: "open",   label: "To answer", statuses: ["pending"] },
-  { key: "closed", label: "Answered",  statuses: ["confirmed", "rejected", "cancelled", "expired"] },
+  { key: "open",   label: "To answer", statuses: ["pending", "accepted"] },
+  { key: "quoted", label: "Quoted",    statuses: ["quoted"] },
+  { key: "closed", label: "Closed",    statuses: ["confirmed", "rejected", "cancelled", "expired"] },
   { key: "all",    label: "All",       statuses: [] as string[] },
 ];
 
@@ -80,20 +83,21 @@ export default async function OwnerLeadsPage({ searchParams }: Props) {
   const EVENT_LABELS = categoryLabelMap(catalogue);
 
   const hallIds = halls.map((h) => h.id);
-  const leadHalls = halls.filter((h) => h.booking_mode === "LEAD_GENERATION");
 
   // UNVERIFIED LEADS ARE NOT FETCHED. fetchLeadsForHalls filters on
   // phone_verified by default, and this page does not override it — so an
   // enquiry whose number has not been proved is invisible here, exactly as
-  // leads_select makes it invisible to a direct database read.
+  // leads_select makes it invisible to a direct database read. It also blanks
+  // the family's number until they accept a quote.
   const leads = await fetchLeadsForHalls(hallIds);
   const commissions = await fetchLeadCommissions(leads.map((l) => l.id));
+  const today = todayInBusinessTz();
 
   const shown = currentTab.statuses.length
     ? leads.filter((l) => currentTab.statuses.includes(l.status))
     : leads;
 
-  const pendingCount = leads.filter((l) => l.status === "pending").length;
+  const pendingCount = leads.filter((l) => l.status === "pending" || l.status === "accepted").length;
   const hallById = new Map(halls.map((h) => [h.id, h]));
 
   return (
@@ -108,31 +112,15 @@ export default async function OwnerLeadsPage({ searchParams }: Props) {
           <p className="text-sm font-semibold text-charcoal-900">
             {pendingCount > 0
               ? `${pendingCount} ${pendingCount === 1 ? "enquiry needs" : "enquiries need"} your answer`
-              : "Enquiries from your Lead Generation venues"}
+              : "Enquiries for your venues"}
           </p>
-          <p className="mt-1 text-xs leading-relaxed text-charcoal-600">
-            Every enquiry below came from a customer whose mobile number we verified by SMS.
-            Contact them, agree the price, and then <strong>Confirm</strong> here with the
-            amount you settled on — that is what raises Hallnect&apos;s commission. Confirming
-            does <strong>not</strong> block the date; do that under Availability.
-          </p>
+          <ol className="mt-1.5 list-decimal space-y-0.5 pl-4 text-xs leading-relaxed text-charcoal-600">
+            <li>A family sends an enquiry. We verified their mobile number by SMS.</li>
+            <li><strong>Send a quote</strong>: your price for their date, what is included and the advance.</li>
+            <li>If they accept, you get their number. Call them and agree the booking.</li>
+            <li><strong>Mark it booked</strong> with the amount agreed. That raises Hallnect&apos;s commission. It does not block the date; use Availability for that.</li>
+          </ol>
         </div>
-
-        {leadHalls.length === 0 && (
-          <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
-            <p className="text-sm font-semibold text-amber-900">No venue is set to Lead Generation</p>
-            <p className="mt-1 text-xs leading-relaxed text-amber-900/80">
-              Enquiries only arrive for venues whose booking mode is Lead Generation. Change a
-              venue&apos;s mode from its edit page.
-            </p>
-            <Link
-              href="/owner/halls"
-              className={`${buttonVariants({ variant: "outline", size: "sm" })} mt-2.5`}
-            >
-              My venues
-            </Link>
-          </div>
-        )}
 
         {/* Tabs */}
         <div className="flex gap-2 overflow-x-auto">
@@ -195,16 +183,24 @@ export default async function OwnerLeadsPage({ searchParams }: Props) {
                       <CalendarDays className="h-3.5 w-3.5 text-charcoal-400" aria-hidden />
                       {formatBookingDates(lead.event_date, null)}
                     </span>
-                    {/* THE PHONE IS THE PRODUCT. This is what the venue paid a
-                        commission to receive, so it is a tap-to-call link
-                        rather than text to copy out. */}
-                    <a
-                      href={`tel:${lead.contact_phone}`}
-                      className="flex items-center gap-1 font-semibold text-maroon-700"
-                    >
-                      <Phone className="h-3.5 w-3.5" aria-hidden />
-                      {lead.contact_phone}
-                    </a>
+                    {/* THE NUMBER ARRIVES WITH THE FAMILY'S YES. Until they
+                        accept a quote it is blank here (forVenue) and
+                        unreadable in the database (0112); after, it is a
+                        tap-to-call link. */}
+                    {lead.contact_phone ? (
+                      <a
+                        href={`tel:${lead.contact_phone}`}
+                        className="flex items-center gap-1 font-semibold text-maroon-700"
+                      >
+                        <Phone className="h-3.5 w-3.5" aria-hidden />
+                        {lead.contact_phone}
+                      </a>
+                    ) : (
+                      <span className="flex items-center gap-1 text-charcoal-500">
+                        <Lock className="h-3.5 w-3.5 text-charcoal-400" aria-hidden />
+                        Number shared if they accept your quote
+                      </span>
+                    )}
                     {lead.guest_count != null && (
                       <span className="flex items-center gap-1">
                         <Users className="h-3.5 w-3.5 text-charcoal-400" aria-hidden />
@@ -226,11 +222,30 @@ export default async function OwnerLeadsPage({ searchParams }: Props) {
                     </p>
                   )}
 
+                  {/* The quote this venue sent, while it is live. */}
+                  {lead.quote_amount != null && (lead.status === "quoted" || lead.status === "accepted" || lead.status === "pending") && (
+                    <div className="mt-2.5 rounded-xl border border-maroon-100 bg-maroon-50/40 p-2.5 text-[11px] text-charcoal-700">
+                      <p className="font-semibold text-charcoal-900">
+                        {lead.status === "pending" ? "Your last quote (the family asked for a new one)" : "Your quote"}:{" "}
+                        {formatPrice(lead.quote_amount)}
+                        {lead.quote_advance ? ` · advance ${formatPrice(lead.quote_advance)}` : ""}
+                      </p>
+                      {lead.quote_valid_until && (
+                        <p className={lead.status === "quoted" && lead.quote_valid_until < today ? "font-semibold text-amber-800" : ""}>
+                          {lead.status === "quoted" && lead.quote_valid_until < today ? "Ran out on " : "Open until "}
+                          {formatBookingDates(lead.quote_valid_until, null)}
+                        </p>
+                      )}
+                      {lead.quote_includes && <p className="mt-1 whitespace-pre-line">{lead.quote_includes}</p>}
+                      {lead.quote_note && <p className="mt-1 text-charcoal-500">Note: {lead.quote_note}</p>}
+                    </div>
+                  )}
+
                   {/* Confirmed: show the money, and where to pay it. */}
                   {lead.status === "confirmed" && (
                     <div className="mt-2.5 rounded-xl border border-green-200 bg-green-50 p-3">
                       <p className="text-[11px] font-semibold text-green-900">
-                        ✓ Confirmed{lead.confirmed_at ? ` on ${fmtDateTime(lead.confirmed_at)}` : ""}
+                        ✓ Booked{lead.confirmed_at ? ` on ${fmtDateTime(lead.confirmed_at)}` : ""}
                       </p>
                       <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-charcoal-700">
                         <span>
@@ -277,14 +292,33 @@ export default async function OwnerLeadsPage({ searchParams }: Props) {
                       Declined — {lead.cancel_reason}
                     </p>
                   )}
+                  {lead.status === "cancelled" && lead.cancel_reason?.startsWith("Quote declined") && (
+                    <p className="mt-2.5 text-[11px] text-charcoal-500">
+                      The family turned the quote down{lead.cancel_reason.length > 15 ? ` — ${lead.cancel_reason.slice(16)}` : "."}
+                    </p>
+                  )}
 
-                  {/* The tick, only where a transition is legal. Once confirmed
-                      the control is GONE, not merely disabled: there is nothing
-                      left to do and a greyed-out button invites a second try. */}
-                  {lead.status === "pending" && (
+                  {/* Only where a step is legal. Once booked the controls are
+                      GONE, not merely disabled: there is nothing left to do
+                      and a greyed-out button invites a second try. */}
+                  {(lead.status === "pending" || lead.status === "quoted" || lead.status === "accepted") && (
                     <LeadActions
                       leadId={lead.id}
+                      status={lead.status}
+                      eventDate={lead.event_date}
+                      today={today}
                       suggestedAmount={hall?.price_per_day ?? null}
+                      quote={
+                        lead.quote_amount != null && lead.quote_valid_until
+                          ? {
+                              amount: lead.quote_amount,
+                              advance: lead.quote_advance,
+                              includes: lead.quote_includes,
+                              note: lead.quote_note,
+                              validUntil: lead.quote_valid_until,
+                            }
+                          : null
+                      }
                     />
                   )}
                 </li>

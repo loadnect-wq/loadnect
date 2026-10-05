@@ -78,13 +78,13 @@ export async function expireStaleLeads(): Promise<LeadExpirySummary> {
   const today = todayInBusinessTz();
 
   // ── 1. The event has been and gone ────────────────────────────────────────
-  // Only 'pending'. An enquiry the venue never answered, for a date now in the
+  // Pending, quoted or accepted — anything not booked — for a date now in the
   // past. `lt`, not `lte`: an event happening TODAY is still live all day.
   try {
     const { data, error } = await anyDb
       .from("leads")
       .update({ status: "expired", responded_at: new Date().toISOString() })
-      .eq("status", "pending")
+      .in("status", ["pending", "quoted", "accepted"])
       .lt("event_date", today)
       .select("id");
     if (error) {

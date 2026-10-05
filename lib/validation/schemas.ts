@@ -29,6 +29,7 @@ import { VENUE_CATEGORY_GROUPS, VENUE_CATEGORY_SLUG_PATTERN } from "@/lib/venue-
 // here keeps this module client-safe.
 import { normalizePhoneE164 } from "@/lib/notifications/phone";
 import { isAllowedPushEndpoint } from "@/lib/date-alerts";
+import { DIRECT_BOOKING_ENABLED } from "@/lib/booking-switch";
 import { INVITE_TOKEN_PATTERN, ITEM_STATUSES, PLAN_CATEGORY_KEYS, type PlanCategory } from "@/lib/plan";
 
 export function sanitizeText(input: unknown, maxLen = 4000): string {
@@ -313,7 +314,10 @@ export function isBookingMode(v: unknown): v is BookingMode {
  */
 export const bookingModeSchema = z
   .union([z.string(), z.null(), z.undefined()])
-  .transform((v) => (v == null || v === "" ? "DIRECT_BOOKING" : String(v).trim()))
+  // Direct booking is switched off (lib/booking-mode.ts, 0112): whatever a
+  // form sends, a hall is saved as taking enquiries.
+  .transform((v) =>
+    !DIRECT_BOOKING_ENABLED ? "LEAD_GENERATION" : v == null || v === "" ? "DIRECT_BOOKING" : String(v).trim())
   .refine(isBookingMode, `Choose either ${BOOKING_MODES.join(" or ")}.`);
 
 /**
@@ -460,7 +464,7 @@ export const hallSchema = z
     //
     // .default() short-circuits on undefined and makes the key optional; the
     // union still handles an explicit null or "" arriving from a form.
-    bookingMode:  bookingModeSchema.default("DIRECT_BOOKING"),
+    bookingMode:  bookingModeSchema.default(DIRECT_BOOKING_ENABLED ? "DIRECT_BOOKING" : "LEAD_GENERATION"),
     // OPTIONAL AT THE TYPE LEVEL, REQUIRED BY THE REFINE BELOW FOR A DIRECT
     // BOOKING. A lead-generation venue may legitimately publish no price at all
     // ("Contact for pricing"), which is why the column lost its NOT NULL in
@@ -682,7 +686,10 @@ export const adminHallDraftSchema = z
     priceMorning: optionalMoneySchema.optional(),
     priceEvening: optionalMoneySchema.optional(),
 
-    bookingMode: z.enum(["DIRECT_BOOKING", "LEAD_GENERATION"]),
+    bookingMode: z
+      .enum(["DIRECT_BOOKING", "LEAD_GENERATION"])
+      .default("LEAD_GENERATION")
+      .transform((m) => (DIRECT_BOOKING_ENABLED ? m : "LEAD_GENERATION")),
     // Same vocabulary as a real hall, because a draft BECOMES one: 0090's
     // claim copies this array straight into halls.venue_types, so anything
     // this accepts and halls refuses would fail weeks later, in front of the
@@ -1172,6 +1179,25 @@ export const leadConfirmSchema = z.object({
 });
 
 export type LeadConfirmInput = z.input<typeof leadConfirmSchema>;
+
+/**
+ * A venue's quote (0112). The price is the venue's own offer, held to the same
+ * floor as a confirmed amount; the advance and the notes are optional; the
+ * quote is open until a date the server checks against today and the
+ * function's date.
+ */
+export const leadQuoteSchema = z.object({
+  amount: leadConfirmSchema.shape.agreedAmount.refine(
+    (n) => n <= 1_000_000_000,
+    "That price is too large.",
+  ),
+  advance: planAmountSchema,
+  includes: optionalMultiline(600),
+  note: optionalTrimmed(300),
+  validUntil: dateStringSchema,
+});
+
+export type LeadQuoteFormInput = z.input<typeof leadQuoteSchema>;
 
 // ── Payment session ──────────────────────────────────────────────────────────
 

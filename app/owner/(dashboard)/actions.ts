@@ -22,6 +22,7 @@ import {
   CUSTOM_AMENITY_LIMITS,
   customAmenityListSchema,
   leadConfirmSchema,
+  leadQuoteSchema,
 } from "@/lib/validation/schemas";
 import { sanitizeError } from "@/lib/errors";
 import { STANDARD_COMMISSION_PERCENT } from "@/lib/commission";
@@ -1725,7 +1726,7 @@ export async function confirmLeadAction(
       action:         "lead.confirmed",
       entityType:     "lead",
       entityId:       leadId,
-      previousStatus: "pending",
+      previousStatus: "accepted",
       newStatus:      "confirmed",
       reason:
         `Venue confirmed an enquiry at an agreed amount of ` +
@@ -1774,7 +1775,7 @@ export async function rejectLeadAction(
       action:         "lead.rejected",
       entityType:     "lead",
       entityId:       leadId,
-      previousStatus: "pending",
+      previousStatus: null,
       newStatus:      "rejected",
       reason:         reason ? `Venue declined an enquiry: ${reason}` : "Venue declined an enquiry.",
     });
@@ -1783,6 +1784,62 @@ export async function rejectLeadAction(
   revalidatePath("/owner/leads");
   revalidatePath("/admin/leads");
   return { success: true };
+}
+
+export type SendLeadQuoteActionResult = { success: true; revised: boolean } | { error: string };
+
+/**
+ * The venue answers an enquiry with a quote (0112). Every figure is the
+ * owner's; leadQuoteSchema checks their shape and sendLeadQuote checks them
+ * against today and the function's date. The family's number is not part of
+ * any of this — it arrives only if they accept.
+ */
+export async function sendLeadQuoteAction(
+  leadId: string,
+  input: { amount: number | string; advance?: number | string; includes?: string; note?: string; validUntil: string },
+): Promise<SendLeadQuoteActionResult> {
+  const caller = await callerOwnerRow();
+  if (!caller) return { error: "Complete your business profile first." };
+  if (!parseSafe(uuidSchema, leadId).ok) return { error: "Invalid enquiry id." };
+
+  const parsed = parseSafe(leadQuoteSchema, input);
+  if (!parsed.ok) return { error: parsed.error };
+  const v = parsed.data;
+
+  const { sendLeadQuote } = await import("@/lib/leads");
+  const res = await sendLeadQuote({
+    leadId,
+    ownerProfileId: caller.profileId,
+    quote: {
+      amount: v.amount,
+      advance: v.advance ?? null,
+      includes: v.includes || null,
+      note: v.note || null,
+      validUntil: v.validUntil,
+    },
+  });
+  if (!res.ok) return { error: res.error };
+
+  // The family hears about the first quote; a revision is visible on their
+  // page without another message.
+  if (!res.revised) {
+    const { notifyLeadEvent } = await import("@/lib/notifications/events");
+    await notifyLeadEvent("lead.quoted", leadId, { amount: v.amount });
+  }
+  await recordOwnerAction({
+    action:         res.revised ? "lead.quote_revised" : "lead.quoted",
+    entityType:     "lead",
+    entityId:       leadId,
+    previousStatus: res.revised ? "quoted" : "pending",
+    newStatus:      "quoted",
+    reason:         `Venue quoted ${v.amount}${v.advance ? ` with an advance of ${v.advance}` : ""}, open until ${v.validUntil}.`,
+  });
+
+  revalidatePath("/owner/leads");
+  revalidatePath("/owner/dashboard");
+  revalidatePath("/admin/leads");
+  revalidatePath("/customer/enquiries");
+  return { success: true, revised: res.revised };
 }
 
 export type StartCommissionPaymentActionResult =

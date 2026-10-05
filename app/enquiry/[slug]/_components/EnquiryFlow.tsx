@@ -192,12 +192,12 @@ export function EnquiryFlow({ hall, minDate, initialName, initialPhone, otpConfi
         <div className="rounded-2xl border border-green-200 bg-green-50 p-6 text-center">
           <CheckCircle2 className="mx-auto h-10 w-10 text-green-600" aria-hidden />
           <p className="mt-3 font-serif text-lg font-bold text-charcoal-900">
-            Your enquiry has been sent to the Mahal owner
+            Your request is with {hall.name}
           </p>
           <p className="mt-1.5 text-sm leading-relaxed text-charcoal-600">
             {freshlyForwarded
-              ? `${hall.name} has been notified and will contact you on the number you verified.`
-              : `${hall.name} already has this enquiry and will contact you on the number you verified.`}
+              ? `${hall.name} will reply with a quote in My Enquiries. Your number stays with Hallnect until you accept one.`
+              : `${hall.name} already has this request. Its quote will appear in My Enquiries.`}
           </p>
           {/* SAYS WHAT HAS *NOT* HAPPENED. A customer who has just completed a
               form with a date on it can reasonably think the date is now
@@ -205,21 +205,19 @@ export function EnquiryFlow({ hall, minDate, initialName, initialPhone, otpConfi
               hands — and finding that out later, from the venue, is the worst
               possible moment. */}
           <p className="mt-3 rounded-xl bg-white/70 p-3 text-[11px] leading-relaxed text-charcoal-600">
-            This is an enquiry, not a booking. Your date is not held and Hallnect has not
-            taken any payment. The venue will agree the price and confirm the date with
-            you directly.
+            This is a request for a quote, not a booking. Your date is not held and Hallnect has
+            not taken any payment.
           </p>
-          {/* CALL THE VENUE, right here. This is the peak of intent — they
-              have just spent a minute on a form and a verification code, and
-              the next thing they want is to talk to the venue. Making them
-              navigate to another page to find the number wastes that. */}
+          {/* The venue's own number stays available: calling it is the
+              family's choice, and it gives the venue nothing they did not
+              choose to give. */}
           {venue?.phone && (
             <a
               href={`tel:${venue.phone}`}
               className="mt-4 flex items-center justify-center gap-2 rounded-xl border border-maroon-300 bg-white px-4 py-3 font-semibold text-maroon-800 active:bg-maroon-50"
             >
               <PhoneCall className="h-4 w-4" aria-hidden />
-              Call {venue.businessName} — {venue.phone}
+              Rather talk now? Call {venue.businessName} — {venue.phone}
             </a>
           )}
 
@@ -250,8 +248,8 @@ export function EnquiryFlow({ hall, minDate, initialName, initialPhone, otpConfi
             Verify your number
           </p>
           <p className="mt-1 text-xs leading-relaxed text-charcoal-600">
-            We sent a {OTP_LENGTH}-digit code to <strong>{phone}</strong>. Your enquiry
-            reaches the venue only once this is verified.
+            We sent a {OTP_LENGTH}-digit code to <strong>{phone}</strong>. Your request
+            reaches the hall only once this is verified, and the hall sees this number only if you accept its quote.
           </p>
 
           <div className="mt-4 flex justify-between gap-1.5">
@@ -311,11 +309,13 @@ export function EnquiryFlow({ hall, minDate, initialName, initialPhone, otpConfi
   return (
     <Shell hall={hall}>
       <form onSubmit={submitDetails} className="rounded-2xl bg-white p-5 shadow-card">
-        <p className="font-serif text-base font-semibold text-charcoal-900">Your enquiry</p>
-        <p className="mt-1 text-xs text-charcoal-600">
-          The venue contacts you directly. Hallnect does not take any payment for this
-          listing.
-        </p>
+        <p className="font-serif text-base font-semibold text-charcoal-900">Ask for a quote</p>
+        <ol className="mt-1.5 list-decimal space-y-0.5 pl-4 text-xs leading-relaxed text-charcoal-600">
+          <li>Tell {hall.name} your date and needs.</li>
+          <li>The hall replies here with its price, what is included and the advance.</li>
+          <li>Accept the quote you like. Only then does the hall get your number to call you.</li>
+        </ol>
+        <p className="mt-1.5 text-[11px] text-charcoal-500">Free. Hallnect takes no payment from you.</p>
 
         <div className="mt-4 space-y-3.5">
           <Field label="Your name" htmlFor="enq-name">
@@ -440,7 +440,7 @@ export function EnquiryFlow({ hall, minDate, initialName, initialPhone, otpConfi
               <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> Sending…
             </span>
           ) : (
-            "Send Enquiry"
+            "Ask for a quote"
           )}
         </Button>
         <p className="mt-2 text-center text-[11px] text-charcoal-500">
@@ -470,7 +470,7 @@ function Shell({ hall, children }: { hall: Props["hall"]; children: React.ReactN
 
         <header className="mt-3 rounded-2xl bg-white p-4 shadow-card">
           <span className="inline-flex items-center rounded-full bg-maroon-50 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-maroon-700">
-            Lead Generation
+            Quote first, number later
           </span>
           <h1 className="mt-1.5 font-serif text-xl font-bold text-charcoal-900">{hall.name}</h1>
           <p className="text-xs text-charcoal-500">{hall.city}</p>

@@ -354,7 +354,13 @@ function balanceNote(paid: number, total: number): string {
  */
 // ── Lead generation ──────────────────────────────────────────────────────────
 
-export type LeadEventKind = "lead.created" | "lead.confirmed" | "lead.rejected";
+export type LeadEventKind =
+  | "lead.created"
+  | "lead.quoted"
+  | "lead.accepted"
+  | "lead.quote_declined"
+  | "lead.confirmed"
+  | "lead.rejected";
 
 type LeadContext = {
   leadId: string;
@@ -474,20 +480,18 @@ export function ownerLeadNotification(input: {
   contactName: string;
   dateLabel: string;
   guestLabel: string;
-  contactPhone: string | null;
   ref: string;
 }): {
   templateKey: SmsTemplateKey;
   templateVariables: Array<string | number | null | undefined>;
   substituted: boolean;
 } {
+  // NO PHONE NUMBER, in either branch (0112): the venue gets the family's
+  // number only when the family accepts its quote.
   if (templateIdFor("OWNER_NEW_LEAD")) {
     return {
       templateKey: "OWNER_NEW_LEAD",
-      templateVariables: [
-        input.hallName, input.contactName, input.dateLabel,
-        input.guestLabel, input.contactPhone ?? "Not available", input.ref,
-      ],
+      templateVariables: [input.hallName, input.contactName, input.dateLabel, input.guestLabel, input.ref],
       substituted: false,
     };
   }
@@ -531,11 +535,28 @@ export function ownerLeadNotification(input: {
   // than blaming a stand-in that was never going to be used.
   return {
     templateKey: "OWNER_NEW_LEAD",
-    templateVariables: [
-      input.hallName, input.contactName, input.dateLabel,
-      input.guestLabel, input.contactPhone ?? "Not available", input.ref,
-    ],
+    templateVariables: [input.hallName, input.contactName, input.dateLabel, input.guestLabel, input.ref],
     substituted: false,
+  };
+}
+
+/**
+ * A quote decision, told to the venue over the approved generic owner
+ * template (the same substitution as a new enquiry). No number in it — when
+ * the family accepts, the venue finds it on the dashboard.
+ */
+export function ownerQuoteNotification(input: { hallName: string; contactName: string; dateLabel: string; accepted: boolean }): {
+  templateKey: SmsTemplateKey;
+  templateVariables: string[];
+} {
+  const cut = (v: string) => (v.length <= 30 ? v : `${v.slice(0, 27).trimEnd()}...`);
+  return {
+    templateKey: "OWNER_ACCOUNT_STATUS",
+    templateVariables: [
+      cut(input.hallName),
+      input.accepted ? "Quote accepted" : "Quote declined",
+      cut(`${input.contactName}, ${input.dateLabel}`),
+    ],
   };
 }
 
@@ -595,13 +616,12 @@ export async function notifyLeadEvent(
               contactName: ctx.contactName,
               dateLabel: ctx.dateLabel,
               guestLabel: ctx.guestLabel,
-              contactPhone: ctx.contactPhone,
               ref,
             }),
             leadId: ctx.leadId, hallId: ctx.hallId,
             critical: true, optedIn: ctx.owner.optedIn,
           },
-          toCustomer("Sent to the venue"),
+          toCustomer("Sent to the hall for a quote"),
           adminAlert({
             adminPhone, eventKey, eventType: kind,
             event: "New venue enquiry",
@@ -613,9 +633,33 @@ export async function notifyLeadEvent(
         );
         break;
 
+      case "lead.quoted":
+        // CUSTOMER_LEAD_UPDATE awaits DLT approval; until then this is recorded
+        // and skipped, and the quote waits on /customer/enquiries.
+        requests.push(
+          toCustomer(opts.amount ? `Quote received, ${formatAmount(opts.amount)}` : "Quote received"),
+        );
+        break;
+
+      case "lead.accepted":
+      case "lead.quote_declined":
+        requests.push({
+          eventKey, eventType: kind, recipientType: "owner",
+          recipientUserId: ctx.owner.userId, phone: ctx.owner.phone,
+          ...ownerQuoteNotification({
+            hallName: ctx.hallName,
+            contactName: ctx.contactName,
+            dateLabel: ctx.dateLabel,
+            accepted: kind === "lead.accepted",
+          }),
+          leadId: ctx.leadId, hallId: ctx.hallId,
+          critical: true, optedIn: ctx.owner.optedIn,
+        });
+        break;
+
       case "lead.confirmed":
         requests.push(
-          toCustomer("Confirmed by the venue"),
+          toCustomer("Booked with the venue"),
           adminAlert({
             adminPhone, eventKey, eventType: kind,
             event: "Venue confirmed an enquiry",

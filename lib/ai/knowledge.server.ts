@@ -33,6 +33,7 @@ import { CUSTOMER_REFUND_SCHEDULE } from "@/lib/refund-schedule";
 import { getPublicPaymentSettings } from "@/lib/platform-settings";
 import { fetchPremiumPlans, PLAN_FEATURES } from "@/lib/premium-plans";
 import { formatPrice } from "@/lib/mock-data";
+import { DIRECT_BOOKING_ENABLED } from "@/lib/booking-switch";
 
 export type ChatRole = "guest" | "customer" | "owner" | "admin";
 
@@ -76,17 +77,30 @@ export async function buildKnowledge(role: ChatRole): Promise<string> {
   const sections: string[] = [];
 
   sections.push(`## About Hallnect
-- Hallnect (legal name ${CONTACT.legalName}) is a marketplace for wedding halls and event venues in Tamil Nadu, India. Customers discover venues and book or enquire; venue owners list their halls.
+- Hallnect (legal name ${CONTACT.legalName}) is a marketplace for wedding halls and event venues in Tamil Nadu, India. Customers discover venues and ask them for quotes; venue owners list their halls.
 - Cities with launch coverage: ${LAUNCH_CITIES.join(", ")}. The live catalogue is whatever the hall search tool returns — do not assume a city has halls.
 - Venue types: wedding, reception, party, banquet.
 - Reviews are shown only where real customers have left them. Never state a rating that the tools did not return.`);
 
-  sections.push(`## Two kinds of venue (booking modes)
+  // DIRECT BOOKING IS SWITCHED OFF (lib/booking-switch.ts, migration 0112).
+  // The online-booking sections below are kept for the day it returns.
+  if (!DIRECT_BOOKING_ENABLED) {
+    sections.push(`## How booking a venue works (every venue works on quotes)
+- Online booking with an advance is not offered at the moment. Every venue works on quotes.
+1. On a hall's page the customer taps "Get a quote" and gives the date, occasion, guest count and anything else, then verifies their mobile number with a one-time password (OTP).
+2. The venue sees the request (name and event details) but NOT the customer's phone number. It replies on Hallnect with a quote: its price for that date, what is included, the advance it asks for, and how long the quote is open.
+3. The customer sees the quote in My Enquiries (/customer/enquiries) and can accept it, turn it down, or ask for a new one if it has run out. Only when they accept does that venue get their number, to call them and agree the booking. No other venue ever gets it.
+4. The customer pays the venue directly. Hallnect takes no payment from customers and adds no fee.
+- A request is not a booking: no date is held until the venue confirms the booking with the customer.
+- The customer can withdraw a request at any time before the venue marks it booked.
+- Cancellation and refunds on a booking are between the customer and the venue, because the money is paid to the venue. Hallnect's Refund Policy (/refund-policy) and Cancellation Policy (/cancellation-policy) cover payments made through Hallnect.`);
+  } else {
+    sections.push(`## Two kinds of venue (booking modes)
 - Direct Booking: the customer books online. They pick dates (up to 4 days) and a slot (morning, evening or full day; multi-day bookings are full days), pay an advance online, and the balance directly to the venue.
 - Lead Generation (shown as "Send Enquiry"): the customer sends a free enquiry and verifies their mobile number with a one-time password (OTP). Only after that verification is the enquiry passed to the venue, which contacts the customer to agree the date and price. The customer pays Hallnect nothing for these venues.
 - A hall's page shows which mode it uses. The hall details tool returns the mode.`);
 
-  sections.push(`## Booking a Direct Booking venue
+    sections.push(`## Booking a Direct Booking venue
 1. Open the hall's page and choose "Book Now".
 2. Choose date(s), slot, event type, guest count and a mobile number, then review the price summary.
 3. Accept the booking terms and pay online through Cashfree (card, UPI or net banking). Hallnect never asks for card numbers, CVV, UPI PIN or OTPs in chat.
@@ -95,16 +109,17 @@ export async function buildKnowledge(role: ChatRole): Promise<string> {
 - Online payment is currently ${settings.enableOnlineCustomerPayment ? "enabled" : "switched off; customers submit a booking request and Hallnect arranges payment with them"}.
 - Customers track bookings under My Bookings (/customer/bookings) and enquiries under My Enquiries (/customer/enquiries).`);
 
-  sections.push(`## What a customer pays (Direct Booking)
+    sections.push(`## What a customer pays (Direct Booking)
 - An advance of ${advance}% of the hall price, paid online.
 - Plus a ${platformFeeDisclosure()}. On a small booking the fee is capped at ${PLATFORM_FEE_MAX_PERCENT_OF_ADVANCE}% of the advance, so it can be less. A valid promo code can waive it. The exact amount is always shown before payment.
 - The remaining balance is paid directly to the venue.
 - Customers are never charged a commission. Nothing else is added by Hallnect.`);
 
-  sections.push(`## Cancellation and refunds
+    sections.push(`## Cancellation and refunds
 - If the customer cancels, the refund of the ADVANCE depends on how far ahead the event is — ${refundScheduleText()}. The platform fee and its GST are not refunded on a customer cancellation.
 - If the venue declines, cancels, or does not respond within 48 hours, the customer is refunded the full advance AND the platform fee.
 - Full details: Refund Policy (/refund-policy) and Cancellation Policy (/cancellation-policy).`);
+  }
 
   sections.push(`## Accounts and sign-in
 - Customers sign in with Google or with their mobile number and a one-time password (OTP) at /login. New users can register at /signup.
@@ -113,12 +128,14 @@ export async function buildKnowledge(role: ChatRole): Promise<string> {
 
   sections.push(`## For venue owners
 - Joining: go to List Your Hall (/owner/register) and continue with Google. The owner account is ready straight away; listing is free.
-- Adding a hall: from the owner dashboard, add the hall with photos, capacity, pricing, address, amenities and the booking mode. Every hall is reviewed by the Hallnect team for completeness before it goes live; Hallnect does not visit venues.
-- Direct Booking halls: requests arrive with date, customer and amount; the owner accepts or declines within 48 hours. Hallnect collects the advance, keeps its commission out of that advance and pays the rest to the owner; the balance is collected by the owner at the venue. Bank account details and PAN are needed only to receive payouts.
-- Lead Generation halls: verified enquiries appear under Enquiries. The owner contacts the customer, agrees the price, then confirms the enquiry with the agreed amount. That raises a commission the owner pays from the Commissions page.
+- Adding a hall: from the owner dashboard, add the hall with photos, capacity, pricing, address and amenities. Every hall is reviewed by the Hallnect team for completeness before it goes live; Hallnect does not visit venues.
+${DIRECT_BOOKING_ENABLED
+    ? `- Direct Booking halls: requests arrive with date, customer and amount; the owner accepts or declines within 48 hours. Hallnect collects the advance, keeps its commission out of that advance and pays the rest to the owner; the balance is collected by the owner at the venue. Bank account details and PAN are needed only to receive payouts.
+- Lead Generation halls: verified enquiries appear under Enquiries. The owner contacts the customer, agrees the price, then confirms the enquiry with the agreed amount. That raises a commission the owner pays from the Commissions page.`
+    : `- Enquiries: requests appear under Enquiries with the customer's name and event details but without their phone number. The owner sends a quote (price for the date, what is included, advance, how long it is open) and can change it until the customer answers. If the customer accepts, the owner sees their number, calls them and agrees the booking, then marks it booked with the agreed amount. That raises a commission the owner pays from the Commissions page.`}
 - Owner dashboard sections: Dashboard, My Halls (details, photos, availability calendar), Bookings, Enquiries, Revenue, Commissions, Premium, Notifications, Support, Profile.
 - Commission: ${ownerOrAdmin
-    ? `one standard rate of ${COMMISSION_PERCENT_LABEL} of the hall price (Direct Booking) or of the agreed amount (Lead Generation), the same for every venue. It is shown on the owner's hall form, Commissions and Revenue pages. Never quote a payout figure for a specific booking unless the owner's own records are available; point them to Revenue and Commissions.`
+    ? `one standard rate of ${COMMISSION_PERCENT_LABEL} of the agreed amount on a booking the owner confirms, the same for every venue. It is shown on the owner's hall form, Commissions and Revenue pages. Never quote a payout figure for a specific booking unless the owner's own records are available; point them to Revenue and Commissions.`
     : `Hallnect charges venue owners one standard commission, the same for every venue. The rate is shown to owners inside their dashboard after they sign in — do NOT state a percentage or estimate one. Customers never pay it.`}`);
 
   sections.push(`## Premium listing plans for owners (live prices)

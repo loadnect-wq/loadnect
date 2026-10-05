@@ -240,29 +240,34 @@ export const SMS_TEMPLATES: Record<SmsTemplateKey, SmsTemplateDef> = {
   // whole lead lifecycle — "we sent it" and "the venue confirmed" — is ONE
   // template with a status variable, the same economy ADMIN_ALERT already
   // makes for six different admin alerts.
+  // Rewritten for quotes before the number (0112), before either was approved:
+  // the venue no longer gets the phone with the enquiry, so the owner text
+  // carries none, and the family is pointed at their enquiries page rather
+  // than told the venue will ring.
   CUSTOMER_LEAD_UPDATE: def(
     "CUSTOMER_LEAD_UPDATE",
     "customer",
-    "The customer's hall enquiry was forwarded to the venue, or answered by it.",
+    "The customer's hall enquiry was sent to the venue, quoted, booked or declined.",
     ["customer_name", "hall_name", "event_date", "status_note"],
     (v) =>
       `Hallnect: Hi ${v[0]}, an update on your hall enquiry for ${v[1]} on ${v[2]}. ` +
-      `Status: ${v[3]}. The venue will contact you on your registered mobile number.`,
+      `Status: ${v[3]}. See the details in My Enquiries on Hallnect.`,
   ),
 
   OWNER_NEW_LEAD: def(
     "OWNER_NEW_LEAD",
     "owner",
-    "A customer sent a verified enquiry about the owner's lead-generation venue.",
-    ["hall_name", "customer_name", "event_date", "guest_count", "customer_phone", "lead_id"],
+    "A customer sent a verified enquiry about the owner's venue.",
+    ["hall_name", "customer_name", "event_date", "guest_count", "lead_id"],
     // "hall enquiry" in FIXED text, per the DLT note above: a reviewer sees one
     // template with opaque variables, so the product has to be named in words
     // they can read. Every variable has static words in front of it — no two
     // are adjacent, which is what STPL rejected CUSTOMER_PAYMENT_SUCCESS for.
+    // No phone number: carriers refused one in a variable, and the venue gets
+    // the number only when the family accepts its quote.
     (v) =>
       `Hallnect: New hall enquiry for ${v[0]} from ${v[1]} for an event on ${v[2]}. ` +
-      `Guests: ${v[3]}. Phone: ${v[4]}. Ref ${v[5]}. ` +
-      `Open your owner dashboard to confirm it.`,
+      `Guests: ${v[3]}. Ref ${v[4]}. Open your owner dashboard to send a quote.`,
   ),
 
   // ── Owner ──────────────────────────────────────────────────────────────────

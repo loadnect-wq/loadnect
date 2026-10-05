@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import QRCode from "qrcode";
 import { describe, expect, it } from "vitest";
+import { DIRECT_BOOKING_ENABLED } from "@/lib/booking-switch";
 import { STANDEE_SLUG, isLikelyBot, standeeCopy, standeePath } from "../standee";
 
 const root = join(__dirname, "..", "..");
@@ -15,7 +16,7 @@ describe("what the standee promises", () => {
     expect(lead.en).toMatch(/enquire/i);
   });
 
-  it("offers dates and the advance for a direct-booking venue", () => {
+  it.runIf(DIRECT_BOOKING_ENABLED)("offers dates and the advance for a direct-booking venue", () => {
     const direct = standeeCopy("DIRECT_BOOKING");
     expect(direct.en).toMatch(/free dates/i);
     expect(direct.en).toMatch(/advance/i);

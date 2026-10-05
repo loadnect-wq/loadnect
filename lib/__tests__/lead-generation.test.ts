@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { DIRECT_BOOKING_ENABLED } from "@/lib/booking-switch";
 import { calculateLeadCommission } from "@/lib/leads";
 import { isCommissionOrderId, COMMISSION_ORDER_PREFIX } from "@/lib/commission-payments";
 import { isPlanOrderId } from "@/lib/plan-payments";
@@ -106,8 +107,29 @@ describe("gateway order-id routing", () => {
 
 // ── Presentation: a missing price must never render as a number ─────────────
 
+// Direct booking is switched off (lib/booking-switch.ts, 0112). The tests of
+// its rules run only while it is on; the ones below say what "off" means.
+const whenDirectOn = it.runIf(DIRECT_BOOKING_ENABLED);
+const whenDirectOff = it.runIf(!DIRECT_BOOKING_ENABLED);
+
+describe("direct booking switched off", () => {
+  whenDirectOff("reads every hall as taking enquiries, and sends every family to ask for a quote", () => {
+    for (const raw of [null, undefined, "", "DIRECT_BOOKING", "LEAD_GENERATION", "NONSENSE"]) {
+      expect(toBookingMode(raw)).toBe("LEAD_GENERATION");
+      expect(primaryCtaHref(raw, "abc")).toBe("/enquiry/abc");
+      expect(primaryCtaLabel(raw)).toBe("Get a quote");
+    }
+  });
+
+  whenDirectOff("saves every hall as taking enquiries, whatever a form sends", () => {
+    for (const m of [undefined, null, "", "DIRECT_BOOKING", "LEAD_GENERATION"]) {
+      expect(bookingModeSchema.parse(m)).toBe("LEAD_GENERATION");
+    }
+  });
+});
+
 describe("booking mode presentation", () => {
-  it("defaults everything unrecognised to DIRECT_BOOKING", () => {
+  whenDirectOn("defaults everything unrecognised to DIRECT_BOOKING", () => {
     // The safe direction: a hall wrongly shown as direct-booking displays a
     // price and a Book button, which is visibly wrong. The reverse silently
     // hides a working checkout.
@@ -133,12 +155,12 @@ describe("booking mode presentation", () => {
     expect(hasPrice(150_000)).toBe(true);
   });
 
-  it("sends each mode to the route that can actually serve it", () => {
+  whenDirectOn("sends each mode to the route that can actually serve it", () => {
     expect(primaryCtaHref("LEAD_GENERATION", "abc")).toBe("/enquiry/abc");
     expect(primaryCtaHref("DIRECT_BOOKING", "abc")).toBe("/book/abc");
     // An unknown mode must land on checkout, not on a form the server refuses.
     expect(primaryCtaHref(null, "abc")).toBe("/book/abc");
-    expect(primaryCtaLabel("LEAD_GENERATION")).toBe("Send Enquiry");
+    expect(primaryCtaLabel("LEAD_GENERATION")).toBe("Get a quote");
     expect(primaryCtaLabel("DIRECT_BOOKING")).toBe("Book Now");
   });
 });
@@ -146,13 +168,13 @@ describe("booking mode presentation", () => {
 // ── Schemas ──────────────────────────────────────────────────────────────────
 
 describe("bookingModeSchema", () => {
-  it("accepts both real modes", () => {
+  whenDirectOn("accepts both real modes", () => {
     for (const m of BOOKING_MODES) {
       expect(bookingModeSchema.parse(m)).toBe(m);
     }
   });
 
-  it("treats a MISSING key as DIRECT_BOOKING, not as an error", () => {
+  whenDirectOn("treats a MISSING key as DIRECT_BOOKING, not as an error", () => {
     // A Next.js server action DROPS undefined properties, so every call site
     // written before lead generation sends no key at all. Answering "Invalid
     // input" there would break hall editing for a field the form never had.
@@ -161,7 +183,7 @@ describe("bookingModeSchema", () => {
     expect(bookingModeSchema.parse("")).toBe("DIRECT_BOOKING");
   });
 
-  it("rejects anything else rather than coercing it", () => {
+  whenDirectOn("rejects anything else rather than coercing it", () => {
     for (const bad of ["lead_generation", "LEAD", "DIRECT", "DROP TABLE", 1]) {
       expect(() => bookingModeSchema.parse(bad)).toThrow();
     }
@@ -233,7 +255,7 @@ describe("hallSchema — pricing follows the booking mode", () => {
     venueTypes: ["wedding"],
   };
 
-  it("REQUIRES a price for a direct-booking venue", () => {
+  whenDirectOn("REQUIRES a price for a direct-booking venue", () => {
     const r = hallSchema.safeParse({ ...base, bookingMode: "DIRECT_BOOKING", pricePerDay: "" });
     expect(r.success).toBe(false);
     if (!r.success) {
@@ -241,7 +263,7 @@ describe("hallSchema — pricing follows the booking mode", () => {
     }
   });
 
-  it("requires a price when the mode is ABSENT, because that means direct", () => {
+  whenDirectOn("requires a price when the mode is ABSENT, because that means direct", () => {
     const r = hallSchema.safeParse({ ...base, pricePerDay: "" });
     expect(r.success).toBe(false);
   });
@@ -255,7 +277,7 @@ describe("hallSchema — pricing follows the booking mode", () => {
     // Six existing tests caught it. This one keeps it caught.
     const r = hallSchema.safeParse({ ...base, pricePerDay: "150000" });
     expect(r.success).toBe(true);
-    if (r.success) expect(r.data.bookingMode).toBe("DIRECT_BOOKING");
+    if (r.success) expect(r.data.bookingMode).toBe(DIRECT_BOOKING_ENABLED ? "DIRECT_BOOKING" : "LEAD_GENERATION");
   });
 
   it("allows a lead venue to publish no price at all", () => {
@@ -314,10 +336,10 @@ describe("what Google is told about a lead venue", () => {
       ...base, booking_mode: "LEAD_GENERATION",
     } as unknown as Parameters<typeof venueDescription>[0]);
     expect(d).not.toMatch(/book your date online/i);
-    expect(d).toMatch(/enquiry/i);
+    expect(d).toMatch(/quote/i);
   });
 
-  it("still promises it for a direct-booking venue", () => {
+  whenDirectOn("still promises it for a direct-booking venue", () => {
     const d = venueDescription({
       ...base, booking_mode: "DIRECT_BOOKING",
     } as unknown as Parameters<typeof venueDescription>[0]);
@@ -378,10 +400,10 @@ describe("hallCreateSchema — THE PATH AN OWNER ACTUALLY TAKES", () => {
     const { ...noMode } = listing();
     const r = hallCreateSchema.safeParse(noMode);
     expect(r.success).toBe(true);
-    if (r.success) expect(r.data.bookingMode).toBe("DIRECT_BOOKING");
+    if (r.success) expect(r.data.bookingMode).toBe(DIRECT_BOOKING_ENABLED ? "DIRECT_BOOKING" : "LEAD_GENERATION");
   });
 
-  it("still refuses a DIRECT venue with no price", () => {
+  whenDirectOn("still refuses a DIRECT venue with no price", () => {
     const r = hallCreateSchema.safeParse(
       listing({ bookingMode: "DIRECT_BOOKING", pricePerDay: "" }),
     );
@@ -406,7 +428,7 @@ describe("hallCreateSchema — THE PATH AN OWNER ACTUALLY TAKES", () => {
     if (r.success) expect(r.data).not.toHaveProperty("commissionRate");
   });
 
-  it("rejects an unknown mode rather than defaulting it", () => {
+  whenDirectOn("rejects an unknown mode rather than defaulting it", () => {
     expect(hallCreateSchema.safeParse(listing({ bookingMode: "HYBRID" })).success).toBe(false);
   });
 });

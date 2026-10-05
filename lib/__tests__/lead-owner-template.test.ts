@@ -30,7 +30,6 @@ const LEAD = {
   contactName: "Priya",
   dateLabel: "12 Jan 2027",
   guestLabel: "400",
-  contactPhone: "+919876543210",
   ref: "HN-1A2B3C4D",
 };
 
@@ -155,16 +154,19 @@ describe("the substituted message the venue actually receives", () => {
     }
   });
 
-  it("reads the same whether or not the lead carries a phone", () => {
-    // The message no longer depends on the number, so a lead without one is
-    // not a degraded message — it is the same message.
-    const withPhone = ownerLeadNotification(LEAD);
-    const without = ownerLeadNotification({ ...LEAD, contactPhone: null });
-    expect(without.templateVariables).toEqual(withPhone.templateVariables);
-    // No empty slot: DLT operators drop messages with blank variables.
-    for (const v of coerceVariables(without.templateKey, without.templateVariables)) {
+  it("never carries the family's phone number, in either template (0112)", () => {
+    // The venue gets the number only when the family accepts its quote, so
+    // the new-enquiry message has no place for it at all.
+    const r = ownerLeadNotification(LEAD);
+    for (const v of coerceVariables(r.templateKey, r.templateVariables)) {
+      expect(v).not.toMatch(/\d{10}/);
+      // No empty slot: DLT operators drop messages with blank variables.
       expect(v.trim()).not.toBe("");
     }
+    process.env.MSG91_TEMPLATE_OWNER_NEW_LEAD = REAL;
+    const direct = ownerLeadNotification(LEAD);
+    expect(direct.templateKey).toBe("OWNER_NEW_LEAD");
+    expect(renderTemplate(direct.templateKey, coerceVariables(direct.templateKey, direct.templateVariables))).not.toMatch(/Phone/);
   });
 
   it("survives a venue name with no GSM-7 form at all", () => {

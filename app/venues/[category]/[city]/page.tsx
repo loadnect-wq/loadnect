@@ -92,7 +92,7 @@ function describe(
     `Compare ${venueCount} ${noun} for ${category.pluralNoun} in ${city}${price} — photos, ` +
     `capacity and amenities. ` +
     (allLeadGeneration
-      ? `Send an enquiry and the venue will confirm your date.`
+      ? `Ask for a quote; the hall gets your number only if you accept.`
       : `Check availability and book your date online.`)
   );
 }

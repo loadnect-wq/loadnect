@@ -12,6 +12,7 @@ import { CategoryPicker } from "@/components/venues/CategoryPicker";
 import { createAdminHallDraft, checkHallDraftDuplicates } from "../../actions";
 import { HallPhotosField } from "./HallPhotosField";
 import { commitDraftPhotos, revokePreview, type DraftPhoto } from "./draft-photos";
+import { DIRECT_BOOKING_ENABLED } from "@/lib/booking-switch";
 
 type Match = { kind: "hall" | "draft"; id: string; name: string; city: string; reason: string; href: string | null };
 
@@ -235,29 +236,31 @@ export function AddHallDraftForm({
                  hint="Leave blank if unknown — enquiry listings do not need one." />
         </div>
 
-        <div>
-          <Label>How does this venue take business?</Label>
-          <div className="mt-1.5 flex flex-wrap gap-2">
-            {(["LEAD_GENERATION", "DIRECT_BOOKING"] as const).map((m) => (
-              <button
-                key={m} type="button"
-                onClick={() => setF((p) => ({ ...p, bookingMode: m }))}
-                className={[
-                  "rounded-full border px-3 py-1.5 text-xs font-medium transition-colors",
-                  f.bookingMode === m
-                    ? "border-maroon-400 bg-maroon-50 text-maroon-800"
-                    : "border-border bg-white text-charcoal-600 hover:border-maroon-200",
-                ].join(" ")}
-              >
-                {m === "LEAD_GENERATION" ? "Enquiries" : "Direct booking"}
-              </button>
-            ))}
+        {DIRECT_BOOKING_ENABLED && (
+          <div>
+            <Label>How does this venue take business?</Label>
+            <div className="mt-1.5 flex flex-wrap gap-2">
+              {(["LEAD_GENERATION", "DIRECT_BOOKING"] as const).map((m) => (
+                <button
+                  key={m} type="button"
+                  onClick={() => setF((p) => ({ ...p, bookingMode: m }))}
+                  className={[
+                    "rounded-full border px-3 py-1.5 text-xs font-medium transition-colors",
+                    f.bookingMode === m
+                      ? "border-maroon-400 bg-maroon-50 text-maroon-800"
+                      : "border-border bg-white text-charcoal-600 hover:border-maroon-200",
+                  ].join(" ")}
+                >
+                  {m === "LEAD_GENERATION" ? "Enquiries" : "Direct booking"}
+                </button>
+              ))}
+            </div>
+            <p className="mt-1 text-[11px] leading-relaxed text-charcoal-500">
+              Enquiries is the safe default: nobody is maintaining this venue&apos;s calendar yet, and direct
+              booking would take a deposit against dates no one has confirmed. Direct booking needs a day rate.
+            </p>
           </div>
-          <p className="mt-1 text-[11px] leading-relaxed text-charcoal-500">
-            Enquiries is the safe default: nobody is maintaining this venue&apos;s calendar yet, and direct
-            booking would take a deposit against dates no one has confirmed. Direct booking needs a day rate.
-          </p>
-        </div>
+        )}
 
         {/* Suitable for. The admin ticks what the OWNER would tick: this array
             is copied verbatim into halls.venue_types when the venue is claimed

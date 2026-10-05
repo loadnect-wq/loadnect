@@ -8,13 +8,16 @@
 // moment the customer decides whether to type their number.
 //
 // EVERY CLAUSE IS ENFORCED, NOT ASPIRATIONAL — keep it that way:
-//   "Only <hall> gets your number"   RLS: leads_select and bookings_select are
-//                                    owns_hall(), so no other venue can read it.
-//   "only after you verify it"       enquiry only: leads_select also requires
-//                                    phone_verified (0073), so an unverified
-//                                    enquiry is invisible even to its own venue.
-//                                    NOT said on the booking form, where the
-//                                    rule is a display filter, not a policy.
+//   ENQUIRY (quotes before the number, 0112):
+//   "<hall> sees your request,       no session can read leads.contact_phone
+//    not your number"                (0112 column grant); lib/leads.ts forVenue
+//                                    blanks it in the venue's view.
+//   "It gets your number only if     phoneVisibleToVenue: accepted or
+//    you accept its quote"           confirmed only; a lead cannot be booked
+//                                    without acceptance (0112 constraint).
+//   BOOKING (direct booking, switched off since 0112 but kept):
+//   "Only <hall> gets your number"   RLS: bookings_select is owns_hall().
+//   BOTH:
 //   "We never sell it"               Privacy Policy section 3.
 //   "or share it with other halls"   Privacy Policy section 5(a), which this
 //                                    links to (#sharing).
@@ -39,7 +42,9 @@ export function NumberPromise({
       <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-green-700" aria-hidden />
       <p>
         <strong className="font-semibold">No spam calls.</strong>{" "}
-        Only {hallName} gets your number{flow === "enquiry" ? ", and only after you verify it" : ""}.
+        {flow === "enquiry"
+          ? `${hallName} sees your request, not your number. It gets your number only if you accept its quote.`
+          : `Only ${hallName} gets your number.`}
         {" "}We never sell it or share it with other halls.{" "}
         <Link href="/privacy#sharing" className="font-semibold underline underline-offset-2" target="_blank">
           How we use it

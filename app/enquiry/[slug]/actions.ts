@@ -35,6 +35,7 @@
 
 import { revalidatePath } from "next/cache";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
+import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import {
   isOtpConfigured,
   normalizePhoneE164,
@@ -51,6 +52,7 @@ import {
 } from "@/lib/otp-guard";
 import {
   createLeadEnquiry, markLeadPhoneVerified, cancelLead, fetchVenueContactForLead,
+  acceptLeadQuote, declineLeadQuote, requestNewQuote,
 } from "@/lib/leads";
 import { notifyLeadEvent } from "@/lib/notifications/events";
 import { leadEnquirySchema, uuidSchema, parseSafe } from "@/lib/validation/schemas";
@@ -136,7 +138,7 @@ export async function startLeadEnquiry(input: {
       return {
         error:
           `Your enquiry is saved. We sent a code to this number moments ago — wait ` +
-          `${guard.retryAfterSeconds}s and tap Send Enquiry again to get a new one, ` +
+          `${guard.retryAfterSeconds}s and tap Ask for a quote again to get a new one, ` +
           `or enter the code you already received.`,
       };
     }
@@ -291,7 +293,7 @@ export async function withdrawLeadEnquiry(leadId: string): Promise<WithdrawEnqui
   const res = await cancelLead({ leadId, customerId: user.id });
   if (!res.ok) return { error: res.error };
   if (!res.changed) {
-    return { error: "This enquiry can no longer be withdrawn — the venue has already responded." };
+    return { error: "This enquiry can no longer be withdrawn — the hall has marked it booked." };
   }
 
   revalidatePath("/customer/enquiries");
@@ -299,22 +301,81 @@ export async function withdrawLeadEnquiry(leadId: string): Promise<WithdrawEnqui
   return { success: true };
 }
 
+export type QuoteDecisionActionResult = { success: true } | { error: string };
+
 /**
- * The caller's OWN enquiry, read through the SESSION client so RLS decides.
+ * The family accepts a venue's quote — and with it, lets that venue have
+ * their number. Their own enquiry only: the session's id scopes the write in
+ * lib/leads.ts.
+ */
+export async function acceptQuoteAction(leadId: string): Promise<QuoteDecisionActionResult> {
+  const supabase = await getSupabaseServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Please sign in to continue." };
+  if (!parseSafe(uuidSchema, leadId).ok) return { error: "Invalid enquiry." };
+
+  const res = await acceptLeadQuote({ leadId, customerId: user.id });
+  if (!res.ok) return { error: res.error };
+  if (res.changed) await notifyLeadEvent("lead.accepted", leadId);
+
+  revalidatePath("/customer/enquiries");
+  revalidatePath("/owner/leads");
+  revalidatePath("/owner/dashboard");
+  return { success: true };
+}
+
+/** The family turns a quote down. The venue is told, and never gets the number. */
+export async function declineQuoteAction(leadId: string, reason?: string): Promise<QuoteDecisionActionResult> {
+  const supabase = await getSupabaseServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Please sign in to continue." };
+  if (!parseSafe(uuidSchema, leadId).ok) return { error: "Invalid enquiry." };
+
+  const res = await declineLeadQuote({
+    leadId,
+    customerId: user.id,
+    reason: (reason ?? "").replace(/\s+/g, " ").trim().slice(0, 200) || null,
+  });
+  if (!res.ok) return { error: res.error };
+  await notifyLeadEvent("lead.quote_declined", leadId);
+
+  revalidatePath("/customer/enquiries");
+  revalidatePath("/owner/leads");
+  return { success: true };
+}
+
+/** Once a quote has run out, the family can ask the venue for a fresh one. */
+export async function requestNewQuoteAction(leadId: string): Promise<QuoteDecisionActionResult> {
+  const supabase = await getSupabaseServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Please sign in to continue." };
+  if (!parseSafe(uuidSchema, leadId).ok) return { error: "Invalid enquiry." };
+
+  const res = await requestNewQuote({ leadId, customerId: user.id });
+  if (!res.ok) return { error: res.error };
+
+  revalidatePath("/customer/enquiries");
+  revalidatePath("/owner/leads");
+  revalidatePath("/owner/dashboard");
+  return { success: true };
+}
+
+/**
+ * The caller's OWN enquiry, including the number a code goes to.
  *
- * Deliberately not the service role: leads_select already scopes a customer to
- * `customer_id = auth.uid()`, and letting the database make that decision means
- * a mistake in this file cannot read somebody else's enquiry — including their
- * phone number, which is the value the next line sends a code to.
+ * SERVICE ROLE, SCOPED BY customer_id. This used to read through the session
+ * client so RLS decided; since 0112 no session may read leads.contact_phone at
+ * all (that is what keeps the number from a venue until the family accepts a
+ * quote), so the scope is the `.eq("customer_id", …)` below, with customerId
+ * taken from the session by every caller.
  */
 async function loadOwnEnquiry(
   leadId: string,
   customerId: string,
 ): Promise<{ id: string; status: string; contact_phone: string } | null> {
   try {
-    const supabase = await getSupabaseServerClient();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data, error } = await (supabase as any)
+    const { data, error } = await (getSupabaseAdminClient() as any)
       .from("leads")
       .select("id, status, contact_phone")
       .eq("id", leadId)

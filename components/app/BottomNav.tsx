@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Home, Search, CalendarCheck, Heart, User } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { DIRECT_BOOKING_ENABLED } from "@/lib/booking-switch";
 
 const TABS = [
   { href: "/",         label: "Home",     Icon: Home,          match: (p: string) => p === "/" },
@@ -15,7 +16,12 @@ const TABS = [
   // is the same thing to a customer as a booking request: something they sent a
   // venue and are waiting on. The tab highlights for both, and the bookings
   // page links across.
-  { href: "/customer/bookings", label: "Bookings", Icon: CalendarCheck, match: (p: string) => p.startsWith("/bookings") || p.startsWith("/customer/bookings") || p.startsWith("/customer/enquiries") || p.startsWith("/customer/visits") },
+  // With direct booking switched off (lib/booking-switch.ts) there are no
+  // online bookings to list, so the tab opens the family's enquiries and the
+  // quotes on them.
+  DIRECT_BOOKING_ENABLED
+    ? { href: "/customer/bookings", label: "Bookings", Icon: CalendarCheck, match: (p: string) => p.startsWith("/bookings") || p.startsWith("/customer/bookings") || p.startsWith("/customer/enquiries") || p.startsWith("/customer/visits") }
+    : { href: "/customer/enquiries", label: "Enquiries", Icon: CalendarCheck, match: (p: string) => p.startsWith("/bookings") || p.startsWith("/customer/bookings") || p.startsWith("/customer/enquiries") || p.startsWith("/customer/visits") },
   { href: "/saved",    label: "Saved",    Icon: Heart,         match: (p: string) => p.startsWith("/saved") },
   { href: "/profile",  label: "Profile",  Icon: User,          match: (p: string) => p.startsWith("/profile") },
 ] as const;

@@ -60,7 +60,7 @@ export function venueDescription(hall: HallDetail): string {
     // brings someone to the page expecting to book and hands them a form.
     bits.push(
       isLeadGeneration(hall.booking_mode)
-        ? "Send an enquiry and the venue will confirm your date."
+        ? "Ask for a quote; the hall gets your number only if you accept."
         : "Check live availability and book your date online.",
     );
   }
