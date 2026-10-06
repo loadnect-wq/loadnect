@@ -137,7 +137,7 @@ export default async function AdminTicketsPage({ searchParams }: Props) {
                       <p className="font-serif text-sm font-semibold text-charcoal-900">{t.subject}</p>
                       <p className="text-[11px] text-charcoal-500 mt-0.5">
                         From <strong className="text-charcoal-700">{t.user_name ?? "—"}</strong>
-                        <span className="text-charcoal-400"> ({t.user_email ?? "—"})</span>
+                        <span className="text-charcoal-500"> ({t.user_email ?? "—"})</span>
                       </p>
                       {/* THE REF THE CALLER READS OUT. The customer sees this
                           exact string on their own ticket
@@ -153,7 +153,7 @@ export default async function AdminTicketsPage({ searchParams }: Props) {
                           status filter and nothing else, so this is matched by
                           eye or by the browser's find within the 200 newest
                           tickets of the selected filter. */}
-                      <p className="text-[10px] text-charcoal-400">
+                      <p className="text-[10px] text-charcoal-500">
                         <span className="font-mono tracking-wide text-charcoal-600">{ticketRef(t.id)}</span>
                         {" · "}
                         {fmtDateTime(t.created_at)}

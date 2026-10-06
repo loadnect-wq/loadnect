@@ -368,7 +368,7 @@ export default async function OwnerRevenuePage() {
 function PayoutLine({ payout }: { payout: AdvancePayout | null }) {
   if (!payout) {
     return (
-      <p className="mt-2 border-t border-ivory-200 pt-2 text-[11px] text-charcoal-400">
+      <p className="mt-2 border-t border-ivory-200 pt-2 text-[11px] text-charcoal-500">
         No online advance recorded for this booking.
       </p>
     );

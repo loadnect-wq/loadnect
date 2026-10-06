@@ -166,7 +166,7 @@ export function PayoutSetup({
       <div className="flex items-start gap-3">
         {verified ? <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-green-600" />
           : awaitingKyc ? <Clock className="mt-0.5 h-5 w-5 shrink-0 text-amber-500" />
-          : <Banknote className="mt-0.5 h-5 w-5 shrink-0 text-charcoal-400" />}
+          : <Banknote className="mt-0.5 h-5 w-5 shrink-0 text-charcoal-500" />}
 
         <div className="min-w-0 flex-1">
           {/* The card is named after what it currently DOES. Calling it

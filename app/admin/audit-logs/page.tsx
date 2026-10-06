@@ -162,7 +162,7 @@ export default async function AdminAuditLogPage({ searchParams }: Props) {
                     >
                       {row.action}
                     </span>
-                    <span className="shrink-0 text-[10px] text-charcoal-400">
+                    <span className="shrink-0 text-[10px] text-charcoal-500">
                       {fmtWhen(row.created_at)}
                     </span>
                   </div>
@@ -215,7 +215,7 @@ export default async function AdminAuditLogPage({ searchParams }: Props) {
                       <td className="px-4 py-2.5 text-xs text-charcoal-600">
                         {row.entity_type}
                         {row.entity_id && (
-                          <span className="block font-mono text-[10px] text-charcoal-400">
+                          <span className="block font-mono text-[10px] text-charcoal-500">
                             {row.entity_id.slice(0, 8)}…
                           </span>
                         )}

@@ -181,7 +181,7 @@ export default async function BookingDetailPage({ params }: Props) {
                     {booking.hall_city}{booking.hall_state ? `, ${booking.hall_state}` : ""}
                   </p>
                   {booking.hall_address && (
-                    <p className="mt-0.5 text-xs text-charcoal-400">{booking.hall_address}</p>
+                    <p className="mt-0.5 text-xs text-charcoal-500">{booking.hall_address}</p>
                   )}
                 </div>
               </div>
@@ -214,7 +214,7 @@ export default async function BookingDetailPage({ params }: Props) {
                           "flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-bold " +
                           (done || active
                             ? "bg-maroon-600 text-white"
-                            : "bg-ivory-200 text-charcoal-400")
+                            : "bg-ivory-200 text-charcoal-500")
                         }
                       >
                         {done ? (
@@ -235,7 +235,7 @@ export default async function BookingDetailPage({ params }: Props) {
                     <p
                       className={
                         "mt-1.5 text-[10px] font-medium text-center leading-tight " +
-                        (active ? "text-maroon-700" : done ? "text-charcoal-600" : "text-charcoal-400")
+                        (active ? "text-maroon-700" : done ? "text-charcoal-600" : "text-charcoal-500")
                       }
                     >
                       {step.label}
@@ -247,7 +247,7 @@ export default async function BookingDetailPage({ params }: Props) {
           </div>
         ) : (
           <div className="rounded-2xl bg-white shadow-card p-4 flex items-center gap-3">
-            <XCircle className="h-5 w-5 shrink-0 text-charcoal-400" />
+            <XCircle className="h-5 w-5 shrink-0 text-charcoal-500" />
             <p className="text-sm text-charcoal-600">{cfg.description}</p>
           </div>
         )}
@@ -429,7 +429,7 @@ export default async function BookingDetailPage({ params }: Props) {
               Message from Venue
             </p>
             <div className="flex items-start gap-2">
-              <MessageSquare className="h-4 w-4 shrink-0 mt-0.5 text-charcoal-400" />
+              <MessageSquare className="h-4 w-4 shrink-0 mt-0.5 text-charcoal-500" />
               <p className="text-sm text-charcoal-700 leading-relaxed">{booking.owner_notes}</p>
             </div>
           </div>

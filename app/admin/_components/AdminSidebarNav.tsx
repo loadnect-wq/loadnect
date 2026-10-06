@@ -89,7 +89,7 @@ export function AdminSidebarNav({ counts }: { counts: BadgeCounts }) {
     <nav className="px-2 pb-6 space-y-4">
       {SECTIONS.map((section) => (
         <div key={section.title}>
-          <p className="mb-1 px-3 text-[10px] font-bold uppercase tracking-wider text-charcoal-400">
+          <p className="mb-1 px-3 text-[10px] font-bold uppercase tracking-wider text-charcoal-500">
             {section.title}
           </p>
           <div className="space-y-0.5">
@@ -112,7 +112,7 @@ export function AdminSidebarNav({ counts }: { counts: BadgeCounts }) {
                   <item.icon
                     className={cn(
                       "h-4 w-4 shrink-0",
-                      active ? "text-maroon-600" : "text-charcoal-400",
+                      active ? "text-maroon-600" : "text-charcoal-500",
                     )}
                   />
                   <span className="flex-1 truncate">{item.label}</span>

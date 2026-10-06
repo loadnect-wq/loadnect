@@ -89,7 +89,7 @@ export default async function PlanPaymentStatusPage({ searchParams }: Props) {
       body: "The mandate was not set up and nothing has been charged. You can try again from the plans page.",
     },
     not_found: {
-      icon: <XCircle className="h-10 w-10 text-charcoal-400" />,
+      icon: <XCircle className="h-10 w-10 text-charcoal-500" />,
       tone: "border-border bg-white",
       title: "Payment not found",
       body: "We could not find this payment. If you were charged, contact Hallnect support with the time of payment.",
@@ -112,7 +112,7 @@ export default async function PlanPaymentStatusPage({ searchParams }: Props) {
     },
     // The mandate was stopped (by the owner, or by Cashfree completing it).
     cancelled: {
-      icon: <XCircle className="h-10 w-10 text-charcoal-400" />,
+      icon: <XCircle className="h-10 w-10 text-charcoal-500" />,
       tone: "border-border bg-white",
       title: "This subscription has ended",
       body: "No further monthly payments will be taken. Any month you have already paid for still runs to its end date.",

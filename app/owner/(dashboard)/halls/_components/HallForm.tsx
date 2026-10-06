@@ -658,7 +658,7 @@ export function HallForm({ ownerId, amenities, categories, hall }: Props) {
             onClick={() => photoRef.current?.click()}
             className="mt-3 flex w-full flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-border bg-white px-6 py-8 transition-colors hover:border-maroon-400 hover:bg-maroon-50/30"
           >
-            <ImagePlus className="h-7 w-7 text-charcoal-400" aria-hidden />
+            <ImagePlus className="h-7 w-7 text-charcoal-500" aria-hidden />
             <span className="text-sm font-medium text-charcoal-700">Upload photos</span>
             <span className="text-xs text-charcoal-500">You can select several at once</span>
           </button>

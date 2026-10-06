@@ -103,7 +103,7 @@ export default async function AdminAdsPage({ searchParams }: Props) {
                     {ad.image_url && isDisplayableAdImageHost(ad.image_url) ? (
                       <Image src={ad.image_url} alt="" fill sizes="(min-width: 768px) 33vw, 100vw" className="object-cover" />
                     ) : ad.image_url ? (
-                      <div className="flex h-full w-full flex-col items-center justify-center gap-1 px-3 text-center text-charcoal-400">
+                      <div className="flex h-full w-full flex-col items-center justify-center gap-1 px-3 text-center text-charcoal-500">
                         <Megaphone className="h-6 w-6" />
                         <span className="text-[11px] leading-tight">
                           Creative is hosted off-site and cannot be shown — re-upload it to Hallnect storage.
@@ -123,15 +123,15 @@ export default async function AdminAdsPage({ searchParams }: Props) {
                     </div>
 
                     <div className="space-y-0.5 text-[11px] text-charcoal-500">
-                      {ad.advertiser_name && <p><span className="text-charcoal-400">Advertiser:</span> {ad.advertiser_name}</p>}
-                      {ad.owner_business && <p><span className="text-charcoal-400">Owner:</span> {ad.owner_business}</p>}
-                      {ad.hall_name      && <p><span className="text-charcoal-400">Hall:</span> {ad.hall_name}</p>}
-                      <p><span className="text-charcoal-400">Placement:</span> {ad.placement ?? "—"}</p>
-                      <p><span className="text-charcoal-400">Window:</span> {fmtDate(ad.start_date)} → {fmtDate(ad.end_date)}</p>
-                      {ad.amount != null && <p><span className="text-charcoal-400">Amount:</span> {formatPrice(ad.amount)}</p>}
+                      {ad.advertiser_name && <p><span className="text-charcoal-500">Advertiser:</span> {ad.advertiser_name}</p>}
+                      {ad.owner_business && <p><span className="text-charcoal-500">Owner:</span> {ad.owner_business}</p>}
+                      {ad.hall_name      && <p><span className="text-charcoal-500">Hall:</span> {ad.hall_name}</p>}
+                      <p><span className="text-charcoal-500">Placement:</span> {ad.placement ?? "—"}</p>
+                      <p><span className="text-charcoal-500">Window:</span> {fmtDate(ad.start_date)} → {fmtDate(ad.end_date)}</p>
+                      {ad.amount != null && <p><span className="text-charcoal-500">Amount:</span> {formatPrice(ad.amount)}</p>}
                       {ad.target_url && (
                         <p className="truncate">
-                          <span className="text-charcoal-400">Target:</span>{" "}
+                          <span className="text-charcoal-500">Target:</span>{" "}
                           <a href={ad.target_url} target="_blank" rel="noopener noreferrer nofollow" className="text-maroon-700 hover:underline">
                             {ad.target_url}
                           </a>

@@ -180,7 +180,7 @@ export default async function HallApprovalsPage() {
 function Field({ label, value }: { label: string; value: string | null }) {
   return (
     <div className="flex items-baseline gap-1.5">
-      <span className="text-[10px] font-bold uppercase tracking-wide text-charcoal-400">{label}</span>
+      <span className="text-[10px] font-bold uppercase tracking-wide text-charcoal-500">{label}</span>
       <span className="font-medium text-charcoal-700">{value ?? "—"}</span>
     </div>
   );

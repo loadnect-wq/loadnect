@@ -57,7 +57,7 @@ export default async function CommissionPaymentStatusPage({ searchParams }: Prop
       body: "Your payment went through, but we could not mark the commission settled just yet. Please do NOT pay again. This normally clears within a few minutes; refresh this page, and contact Hallnect support if it persists.",
     },
     not_found: {
-      icon: <AlertTriangle className="h-10 w-10 text-charcoal-400" aria-hidden />,
+      icon: <AlertTriangle className="h-10 w-10 text-charcoal-500" aria-hidden />,
       tone: "border-border bg-ivory-50",
       title: "We could not find that payment",
       body: "This payment reference does not match anything on your account. If you were charged, contact Hallnect support with the reference from your bank statement.",

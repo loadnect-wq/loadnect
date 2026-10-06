@@ -109,7 +109,7 @@ export default async function HallDraftsPage() {
                         {d.ownerEmail}
                       </span>
                     )}
-                    <span className="text-charcoal-400">added {fmtDate(d.createdAt)}</span>
+                    <span className="text-charcoal-500">added {fmtDate(d.createdAt)}</span>
                   </div>
 
                   {/* The matching rule, stated where the consequence lands. An

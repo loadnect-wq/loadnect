@@ -44,7 +44,7 @@ export function CustomerSidebarNav() {
             <item.icon
               className={cn(
                 "h-4 w-4 shrink-0",
-                active ? "text-maroon-600" : "text-charcoal-400",
+                active ? "text-maroon-600" : "text-charcoal-500",
               )}
             />
             {item.label}

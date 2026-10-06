@@ -147,7 +147,7 @@ export default async function OwnerBookingsPage({ searchParams }: Props) {
                         <p className="font-serif text-sm font-semibold text-charcoal-900 truncate">
                           {booking.hall_name}
                         </p>
-                        <p className="mt-0.5 text-[11px] font-mono text-charcoal-400">
+                        <p className="mt-0.5 text-[11px] font-mono text-charcoal-500">
                           #{booking.id.slice(0, 8).toUpperCase()}
                         </p>
                       </div>
@@ -157,16 +157,16 @@ export default async function OwnerBookingsPage({ searchParams }: Props) {
                     {/* Details grid */}
                     <div className="grid grid-cols-2 gap-2 text-xs text-charcoal-600">
                       <div className="flex items-center gap-1.5">
-                        <CalendarDays className="h-3.5 w-3.5 shrink-0 text-charcoal-400" />
+                        <CalendarDays className="h-3.5 w-3.5 shrink-0 text-charcoal-500" />
                         {formatBookingDates(booking.event_date, booking.end_date)}
                       </div>
                       <div className="flex items-center gap-1.5">
-                        <Clock className="h-3.5 w-3.5 shrink-0 text-charcoal-400" />
+                        <Clock className="h-3.5 w-3.5 shrink-0 text-charcoal-500" />
                         {SLOT_LABELS[booking.slot] ?? booking.slot}
                       </div>
                       {booking.guest_count && (
                         <div className="flex items-center gap-1.5">
-                          <Users className="h-3.5 w-3.5 shrink-0 text-charcoal-400" />
+                          <Users className="h-3.5 w-3.5 shrink-0 text-charcoal-500" />
                           {booking.guest_count} guests
                         </div>
                       )}

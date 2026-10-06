@@ -95,7 +95,7 @@ export default async function AdminReviewsPage({ searchParams }: Props) {
                     {/* Reviewer */}
                     <p className="text-xs text-charcoal-500">
                       By <strong className="text-charcoal-700">{r.customer_name ?? "Anonymous"}</strong>
-                      <span className="text-charcoal-400"> · {fmtDate(r.created_at)}</span>
+                      <span className="text-charcoal-500"> · {fmtDate(r.created_at)}</span>
                     </p>
 
                     {/* Title + Comment */}

@@ -89,11 +89,11 @@ export default async function SavedHallsPage() {
                               ? `${formatPrice(hall.price_per_day)}/day`
                               : PRICE_ON_REQUEST}
                           </p>
-                          <p className="text-[10px] text-charcoal-400">
+                          <p className="text-[10px] text-charcoal-500">
                             Up to {hall.capacity_max.toLocaleString("en-IN")} guests
                           </p>
                         </div>
-                        <p className="text-[10px] text-charcoal-400">
+                        <p className="text-[10px] text-charcoal-500">
                           Saved {new Date(saved_at).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
                         </p>
                       </div>

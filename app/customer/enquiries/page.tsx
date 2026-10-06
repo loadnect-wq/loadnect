@@ -115,12 +115,12 @@ export default async function CustomerEnquiriesPage() {
                       </Link>
                       <p className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-charcoal-600">
                         <span className="flex items-center gap-1">
-                          <CalendarDays className="h-3.5 w-3.5 text-charcoal-400" aria-hidden />
+                          <CalendarDays className="h-3.5 w-3.5 text-charcoal-500" aria-hidden />
                           {formatBookingDates(lead.event_date, null)}
                         </span>
                         {lead.guest_count != null && (
                           <span className="flex items-center gap-1">
-                            <Users className="h-3.5 w-3.5 text-charcoal-400" aria-hidden />
+                            <Users className="h-3.5 w-3.5 text-charcoal-500" aria-hidden />
                             {lead.guest_count.toLocaleString("en-IN")}
                           </span>
                         )}

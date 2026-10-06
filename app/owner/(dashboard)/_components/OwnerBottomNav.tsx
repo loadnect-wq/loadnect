@@ -73,7 +73,7 @@ export function OwnerBottomNav() {
                   active ? "text-maroon-700" : "text-charcoal-500",
                 )}
               >
-                <Icon className={cn("h-5 w-5", active ? "text-maroon-600" : "text-charcoal-400")} />
+                <Icon className={cn("h-5 w-5", active ? "text-maroon-600" : "text-charcoal-500")} />
                 <span className="leading-none">{label}</span>
               </Link>
             </li>

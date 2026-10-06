@@ -122,7 +122,7 @@ export function GrantComplimentaryForm({ halls }: { halls: HallOption[] }) {
           </p>
         </div>
         <button type="button" onClick={() => { reset(); setOpen(false); }} aria-label="Close"
-                className="text-charcoal-400 hover:text-charcoal-700">
+                className="text-charcoal-500 hover:text-charcoal-700">
           <X className="h-4 w-4" />
         </button>
       </div>

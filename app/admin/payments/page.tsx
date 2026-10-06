@@ -274,7 +274,7 @@ export default async function AdminPaymentsPage({ searchParams }: Props) {
                     <tr key={p.id} className="border-b border-border last:border-b-0 hover:bg-ivory-50/50">
                       <Td>
                         <p className="font-mono text-[11px] text-charcoal-700 truncate max-w-[160px]">{p.cashfree_order_id ?? `#${p.id.slice(0,8)}`}</p>
-                        <p className="font-mono text-[10px] text-charcoal-400">Booking #{p.booking_id.slice(0,8).toUpperCase()}</p>
+                        <p className="font-mono text-[10px] text-charcoal-500">Booking #{p.booking_id.slice(0,8).toUpperCase()}</p>
                       </Td>
                       <Td>
                         <p className="font-medium truncate max-w-[200px]">{p.hall_name}</p>

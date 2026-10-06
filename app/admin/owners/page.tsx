@@ -96,7 +96,7 @@ export default async function AdminOwnersPage({ searchParams }: Props) {
                       <Field label="UPI" value={o.payout_upi} />
                     </div>
                     <BankPayout accountNumber={o.payout_account_number} ifsc={o.payout_ifsc} />
-                    <p className="mt-1 text-[10px] text-charcoal-400">Registered {fmtDate(o.created_at)}</p>
+                    <p className="mt-1 text-[10px] text-charcoal-500">Registered {fmtDate(o.created_at)}</p>
                   </div>
 
                   <div className="shrink-0 flex flex-col items-end gap-1">
@@ -125,7 +125,7 @@ export default async function AdminOwnersPage({ searchParams }: Props) {
 function Field({ label, value }: { label: string; value: string | null }) {
   return (
     <div>
-      <span className="text-charcoal-400 mr-1">{label}:</span>
+      <span className="text-charcoal-500 mr-1">{label}:</span>
       <span className="font-medium">{value ?? "—"}</span>
     </div>
   );
@@ -161,7 +161,7 @@ function BankPayout({ accountNumber, ifsc }: { accountNumber: string | null; ifs
   if (!accountNumber || !ifsc) {
     return (
       <p className="mt-2 text-[11px] text-charcoal-500">
-        <span className="text-charcoal-400 mr-1">Bank:</span>
+        <span className="text-charcoal-500 mr-1">Bank:</span>
         <span className="font-medium">
           {!accountNumber && !ifsc
             ? "not provided"
@@ -177,17 +177,17 @@ function BankPayout({ accountNumber, ifsc }: { accountNumber: string | null; ifs
   return (
     <details className="mt-2 rounded-lg border border-border bg-charcoal-50 px-2 py-1 text-[11px]">
       <summary className="flex cursor-pointer list-none items-center gap-1 text-charcoal-600 [&::-webkit-details-marker]:hidden">
-        <span className="text-charcoal-400">Bank:</span>
+        <span className="text-charcoal-500">Bank:</span>
         <span className="font-mono font-medium text-charcoal-800">{maskAccount(accountNumber)}</span>
         <span className="ml-1 font-semibold text-maroon-700 underline">reveal</span>
       </summary>
       <dl className="mt-1 space-y-0.5 border-t border-border pt-1">
         <div className="flex gap-2">
-          <dt className="w-10 shrink-0 text-charcoal-400">A/C</dt>
+          <dt className="w-10 shrink-0 text-charcoal-500">A/C</dt>
           <dd className="font-mono font-medium text-charcoal-800 break-all">{accountNumber ?? "—"}</dd>
         </div>
         <div className="flex gap-2">
-          <dt className="w-10 shrink-0 text-charcoal-400">IFSC</dt>
+          <dt className="w-10 shrink-0 text-charcoal-500">IFSC</dt>
           <dd className="font-mono font-medium text-charcoal-800">{ifsc ?? "—"}</dd>
         </div>
       </dl>

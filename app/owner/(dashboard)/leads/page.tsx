@@ -180,7 +180,7 @@ export default async function OwnerLeadsPage({ searchParams }: Props) {
 
                   <div className="mt-2.5 flex flex-wrap gap-x-4 gap-y-1.5 text-[11px] text-charcoal-600">
                     <span className="flex items-center gap-1">
-                      <CalendarDays className="h-3.5 w-3.5 text-charcoal-400" aria-hidden />
+                      <CalendarDays className="h-3.5 w-3.5 text-charcoal-500" aria-hidden />
                       {formatBookingDates(lead.event_date, null)}
                     </span>
                     {/* THE NUMBER ARRIVES WITH THE FAMILY'S YES. Until they
@@ -197,13 +197,13 @@ export default async function OwnerLeadsPage({ searchParams }: Props) {
                       </a>
                     ) : (
                       <span className="flex items-center gap-1 text-charcoal-500">
-                        <Lock className="h-3.5 w-3.5 text-charcoal-400" aria-hidden />
+                        <Lock className="h-3.5 w-3.5 text-charcoal-500" aria-hidden />
                         Number shared if they accept your quote
                       </span>
                     )}
                     {lead.guest_count != null && (
                       <span className="flex items-center gap-1">
-                        <Users className="h-3.5 w-3.5 text-charcoal-400" aria-hidden />
+                        <Users className="h-3.5 w-3.5 text-charcoal-500" aria-hidden />
                         {lead.guest_count.toLocaleString("en-IN")} guests
                       </span>
                     )}
@@ -212,12 +212,12 @@ export default async function OwnerLeadsPage({ searchParams }: Props) {
                         {EVENT_LABELS[lead.event_type] ?? lead.event_type}
                       </span>
                     )}
-                    <span className="text-charcoal-400">Received {fmtDateTime(lead.created_at)}</span>
+                    <span className="text-charcoal-500">Received {fmtDateTime(lead.created_at)}</span>
                   </div>
 
                   {lead.requirements && (
                     <p className="mt-2 flex items-start gap-1.5 rounded-xl bg-ivory-50 p-2.5 text-[11px] leading-relaxed text-charcoal-700">
-                      <MessageSquare className="mt-0.5 h-3.5 w-3.5 shrink-0 text-charcoal-400" aria-hidden />
+                      <MessageSquare className="mt-0.5 h-3.5 w-3.5 shrink-0 text-charcoal-500" aria-hidden />
                       {lead.requirements}
                     </p>
                   )}

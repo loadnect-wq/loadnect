@@ -127,7 +127,7 @@ function NotificationCard({ row }: { row: AdminNotificationRow }) {
         <span className="rounded-md bg-ivory-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-charcoal-500">
           {row.recipient_type}
         </span>
-        <span className="ml-auto shrink-0 text-[10px] text-charcoal-400">{fmtWhen(row.created_at)}</span>
+        <span className="ml-auto shrink-0 text-[10px] text-charcoal-500">{fmtWhen(row.created_at)}</span>
       </div>
 
       {/* The rendered template — exactly the text the recipient received. */}
@@ -322,7 +322,7 @@ export default async function AdminNotificationsPage({ searchParams }: Props) {
           <div className="rounded-xl border border-border bg-white p-3">
             <p className="text-[10px] font-bold uppercase tracking-wide text-charcoal-500">Templates configured</p>
             <p className="mt-0.5 text-lg font-bold text-charcoal-900">
-              {templatesReady}<span className="text-sm font-semibold text-charcoal-400">/{templates.length}</span>
+              {templatesReady}<span className="text-sm font-semibold text-charcoal-500">/{templates.length}</span>
             </p>
             <p className="text-[10px] text-charcoal-500">
               {templatesBroken.length > 0
@@ -467,7 +467,7 @@ export default async function AdminNotificationsPage({ searchParams }: Props) {
         </div>
 
         <div className="mb-4 flex flex-wrap items-center gap-1.5">
-          <span className="text-[10px] font-bold uppercase tracking-wide text-charcoal-400">To</span>
+          <span className="text-[10px] font-bold uppercase tracking-wide text-charcoal-500">To</span>
           {RECIPIENT_FILTERS.map((f) => (
             <Link
               key={f.key}
@@ -482,7 +482,7 @@ export default async function AdminNotificationsPage({ searchParams }: Props) {
               {f.label}
             </Link>
           ))}
-          <span className="ml-2 text-[10px] font-bold uppercase tracking-wide text-charcoal-400">About</span>
+          <span className="ml-2 text-[10px] font-bold uppercase tracking-wide text-charcoal-500">About</span>
           {CATEGORY_FILTERS.map((f) => (
             <Link
               key={f.key}
@@ -567,7 +567,7 @@ export default async function AdminNotificationsPage({ searchParams }: Props) {
           </>
         )}
 
-        <p className="mt-6 flex items-start gap-1.5 text-[11px] leading-relaxed text-charcoal-400">
+        <p className="mt-6 flex items-start gap-1.5 text-[11px] leading-relaxed text-charcoal-500">
           <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0" />
           Recipient numbers are masked here and the MSG91 auth key is never displayed or logged.
           Message content is composed server-side from registered templates — it can never be set by a customer.

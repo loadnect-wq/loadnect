@@ -93,14 +93,14 @@ export default async function ProfilePage() {
           </button>
         </form>
 
-        <p className="text-center text-[11px] text-charcoal-400">Hallnect · Customer Dashboard</p>
+        <p className="text-center text-[11px] text-charcoal-500">Hallnect · Customer Dashboard</p>
 
         {/* Back to full profile / settings */}
         <div className="text-center space-y-1">
           <Link href="/customer/support" className="block text-xs text-maroon-600 underline underline-offset-2">
             Contact support
           </Link>
-          <Link href="/profile" className="text-xs text-charcoal-400 underline underline-offset-2">
+          <Link href="/profile" className="text-xs text-charcoal-500 underline underline-offset-2">
             View full settings
           </Link>
         </div>

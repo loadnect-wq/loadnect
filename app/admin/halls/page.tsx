@@ -118,7 +118,7 @@ export default async function AdminHallsPage({ searchParams }: Props) {
     <div>
       <AdminPageHeader
         title="Halls"
-        description={`${halls.length} ${activeFilter.label.toLowerCase()} hall${halls.length !== 1 ? "s" : ""}`}
+        description={`${halls.length} ${activeFilter.value ? `${activeFilter.label.toLowerCase()} ` : ""}hall${halls.length !== 1 ? "s" : ""}`}
       />
 
       <div className="px-4 py-4 sm:px-6 lg:px-8 space-y-4">
@@ -170,7 +170,7 @@ export default async function AdminHallsPage({ searchParams }: Props) {
             added ten minutes ago is filterable here without a release. */}
         {catalogue.length > 0 && (
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-[11px] font-semibold uppercase tracking-wide text-charcoal-400">
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-charcoal-500">
               Suitable for
             </span>
             <Link
@@ -206,7 +206,7 @@ export default async function AdminHallsPage({ searchParams }: Props) {
             two settle in opposite directions — one commission is retained from
             a customer advance, the other is billed to the venue. */}
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-[11px] font-semibold uppercase tracking-wide text-charcoal-400">
+          <span className="text-[11px] font-semibold uppercase tracking-wide text-charcoal-500">
             Mode
           </span>
           {MODE_FILTERS.map((m) => {
@@ -272,7 +272,7 @@ export default async function AdminHallsPage({ searchParams }: Props) {
                           </p>
                           {h.owner_business && (
                             <p className="text-[11px] text-charcoal-500">
-                              <span className="text-charcoal-400">Owner:</span> {h.owner_business}
+                              <span className="text-charcoal-500">Owner:</span> {h.owner_business}
                               {h.owner_name && <span> ({h.owner_name})</span>}
                             </p>
                           )}

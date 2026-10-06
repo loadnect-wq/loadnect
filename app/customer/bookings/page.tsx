@@ -61,7 +61,7 @@ export default async function CustomerBookingsPage({ searchParams }: Props) {
               Requests you sent to venues that take enquiries
             </span>
           </span>
-          <ChevronRight className="h-4 w-4 shrink-0 text-charcoal-400" aria-hidden />
+          <ChevronRight className="h-4 w-4 shrink-0 text-charcoal-500" aria-hidden />
         </Link>
         {/* Site visits (0109) live next door too, for the same reason. */}
         <Link
@@ -75,7 +75,7 @@ export default async function CustomerBookingsPage({ searchParams }: Props) {
               Halls you asked to see before deciding
             </span>
           </span>
-          <ChevronRight className="h-4 w-4 shrink-0 text-charcoal-400" aria-hidden />
+          <ChevronRight className="h-4 w-4 shrink-0 text-charcoal-500" aria-hidden />
         </Link>
       </div>
 
@@ -156,7 +156,7 @@ export default async function CustomerBookingsPage({ searchParams }: Props) {
 
                     <div className="flex flex-col items-end gap-1.5 shrink-0">
                       <Badge variant={cfg.variant} size="sm">{cfg.label}</Badge>
-                      <ChevronRight className="h-4 w-4 text-charcoal-400" />
+                      <ChevronRight className="h-4 w-4 text-charcoal-500" />
                     </div>
                   </Link>
                 </li>

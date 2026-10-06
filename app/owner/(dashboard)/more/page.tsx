@@ -38,7 +38,7 @@ export default async function OwnerMorePage() {
                 href={href}
                 className="flex min-h-[60px] items-center gap-3 px-4 py-3 active:bg-ivory-100"
               >
-                <Icon className="h-5 w-5 shrink-0 text-charcoal-400" />
+                <Icon className="h-5 w-5 shrink-0 text-charcoal-500" />
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-semibold text-charcoal-900">{label}</p>
                   <p className="truncate text-xs text-charcoal-500">{desc}</p>

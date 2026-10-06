@@ -128,7 +128,7 @@ function StatCard({
         <p className="text-[11px] font-semibold uppercase tracking-wide text-charcoal-500">
           {label}
         </p>
-        <span className="text-charcoal-400">{icon}</span>
+        <span className="text-charcoal-500">{icon}</span>
       </div>
       <p className="mt-2 font-serif text-2xl font-bold text-charcoal-900">
         <CountUp value={value} />

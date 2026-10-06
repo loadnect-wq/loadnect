@@ -191,11 +191,11 @@ export function CreateAdForm() {
                   <p className="truncate text-sm font-semibold text-charcoal-900">{title || "Ad title"}</p>
                   <p className="truncate text-[11px] text-charcoal-500">{advertiser || "Advertiser"}</p>
                 </div>
-                <ExternalLink className="h-3.5 w-3.5 shrink-0 text-charcoal-400" />
+                <ExternalLink className="h-3.5 w-3.5 shrink-0 text-charcoal-500" />
               </div>
             </a>
           ) : (
-            <div className="flex h-32 items-center justify-center rounded-lg border border-border bg-white text-xs text-charcoal-400">
+            <div className="flex h-32 items-center justify-center rounded-lg border border-border bg-white text-xs text-charcoal-500">
               Add a valid image URL to preview
             </div>
           )}

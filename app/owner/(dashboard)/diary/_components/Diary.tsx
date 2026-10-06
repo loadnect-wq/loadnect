@@ -385,7 +385,7 @@ function OwnRow({ lang, booking, onOpen }: { lang: DiaryLang; booking: DiaryBook
         </span>
         <span className="mt-1 block"><PaymentChip lang={lang} booking={booking} /></span>
       </span>
-      <ChevronRight className="h-4 w-4 shrink-0 text-charcoal-400" aria-hidden />
+      <ChevronRight className="h-4 w-4 shrink-0 text-charcoal-500" aria-hidden />
     </button>
   );
 }
@@ -475,7 +475,7 @@ function MonthCalendar({
                 "relative flex min-h-[48px] flex-col items-center justify-center gap-1 rounded-xl text-sm tabular-nums transition-colors",
                 day.claims.length > 0
                   ? kinds.has("online") ? "bg-red-50 text-red-900" : kinds.has("offline") ? "bg-amber-50 text-amber-950" : "bg-charcoal-50 text-charcoal-700"
-                  : past ? "text-charcoal-400" : "bg-ivory-100 text-charcoal-900 hover:bg-ivory-200",
+                  : past ? "text-charcoal-500" : "bg-ivory-100 text-charcoal-900 hover:bg-ivory-200",
                 day.date === today && "ring-2 ring-maroon-500",
               )}
             >

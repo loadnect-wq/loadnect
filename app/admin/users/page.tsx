@@ -39,7 +39,9 @@ export default async function AdminUsersPage({ searchParams }: Props) {
   // and only then got its 307. Nothing leaked, but the work was wasted and each
   // denial now logs at error level, which would bury real failures. Guarding
   // here also means this page is not relying on a file it does not control.
-  await requireRole(["admin"]);
+  // The signed-in admin, so their own row offers no "Deactivate": the server
+  // refuses it anyway, and a button that can only fail is a trap.
+  const me = await requireRole(["admin"]);
   const { role } = await searchParams;
   const activeFilter = ROLE_FILTERS.find((f) => f.key === role) ?? ROLE_FILTERS[0];
 
@@ -49,7 +51,7 @@ export default async function AdminUsersPage({ searchParams }: Props) {
     <div>
       <AdminPageHeader
         title="Users"
-        description={`${users.length} ${activeFilter.label.toLowerCase()} account${users.length !== 1 ? "s" : ""}`}
+        description={`${users.length} ${activeFilter.value ? `${activeFilter.label.toLowerCase()} ` : ""}account${users.length !== 1 ? "s" : ""}`}
       />
 
       <div className="px-4 py-4 sm:px-6 lg:px-8 space-y-4">
@@ -91,7 +93,7 @@ export default async function AdminUsersPage({ searchParams }: Props) {
                           {u.full_name ?? "—"}
                         </p>
                         <p className="truncate text-[11px] text-charcoal-500">{u.email}</p>
-                        <p className="mt-1 text-[10px] text-charcoal-400">Joined {fmtDate(u.created_at)}</p>
+                        <p className="mt-1 text-[10px] text-charcoal-500">Joined {fmtDate(u.created_at)}</p>
                       </div>
                       <div className="shrink-0 space-y-1 text-right">
                         <Badge variant={cfg.variant} size="sm">{cfg.label}</Badge>
@@ -99,7 +101,9 @@ export default async function AdminUsersPage({ searchParams }: Props) {
                       </div>
                     </div>
                     <div className="mt-2.5">
-                      {u.is_active ? (
+                      {u.id === me.id ? (
+                        <span className="text-[11px] font-semibold text-charcoal-600">This is you</span>
+                      ) : u.is_active ? (
                         <ReasonButton
                           action={toggleUserActive.bind(null, u.id, false)}
                           label="Deactivate"
@@ -139,7 +143,7 @@ export default async function AdminUsersPage({ searchParams }: Props) {
                     const cfg = ROLE_CFG[u.role] ?? { label: u.role, variant: "secondary" as const };
                     return (
                       <tr key={u.id} className="border-b border-border last:border-b-0 hover:bg-ivory-50/50">
-                        <Td>{u.full_name ?? <span className="text-charcoal-400">—</span>}</Td>
+                        <Td>{u.full_name ?? <span className="text-charcoal-500">—</span>}</Td>
                         <Td>{u.email ?? "—"}</Td>
                         <Td>{u.phone ?? "—"}</Td>
                         <Td><Badge variant={cfg.variant} size="sm">{cfg.label}</Badge></Td>
@@ -151,7 +155,9 @@ export default async function AdminUsersPage({ searchParams }: Props) {
                         </Td>
                         <Td className="text-charcoal-500">{fmtDate(u.created_at)}</Td>
                         <Td align="right">
-                          {u.is_active ? (
+                          {u.id === me.id ? (
+                            <span className="text-[11px] font-semibold text-charcoal-600">This is you</span>
+                          ) : u.is_active ? (
                             <ReasonButton
                               action={toggleUserActive.bind(null, u.id, false)}
                               label="Deactivate"

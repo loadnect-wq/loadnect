@@ -53,6 +53,12 @@ export default async function AdminDashboardPage() {
       color: "border-rose-200 bg-rose-50 text-rose-900",
     },
     {
+      count: stats.open.unreadMessages,
+      label: "Unread contact messages",
+      href:  "/admin/support-tickets",
+      color: "border-rose-200 bg-rose-50 text-rose-900",
+    },
+    {
       count: stats.open.pendingAds,
       label: "Ads awaiting review",
       href:  "/admin/advertisements",
@@ -308,7 +314,7 @@ export default async function AdminDashboardPage() {
                   <li key={row.id} className="flex flex-wrap items-center gap-x-2 gap-y-0.5 px-4 py-2.5 text-xs">
                     <span className="font-mono font-semibold text-charcoal-800">{row.action}</span>
                     <span className="text-charcoal-500">by {row.actor_email ?? "unknown"}</span>
-                    <span className="ml-auto shrink-0 text-[10px] text-charcoal-400">
+                    <span className="ml-auto shrink-0 text-[10px] text-charcoal-500">
                       {new Date(row.created_at).toLocaleString("en-IN", {
                         timeZone: "Asia/Kolkata",
                         day: "numeric", month: "short", hour: "numeric", minute: "2-digit", hour12: true,

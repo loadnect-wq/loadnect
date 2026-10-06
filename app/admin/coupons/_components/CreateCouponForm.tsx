@@ -78,7 +78,7 @@ export function CreateCouponForm() {
 
         <label className="flex flex-col gap-1 sm:col-span-2">
           <span className="text-[11px] font-semibold uppercase tracking-wide text-charcoal-500">
-            Description <span className="font-normal normal-case text-charcoal-400">(optional)</span>
+            Description <span className="font-normal normal-case text-charcoal-500">(optional)</span>
           </span>
           <input
             value={description}
@@ -90,7 +90,7 @@ export function CreateCouponForm() {
 
         <label className="flex flex-col gap-1">
           <span className="text-[11px] font-semibold uppercase tracking-wide text-charcoal-500">
-            Max uses <span className="font-normal normal-case text-charcoal-400">(optional)</span>
+            Max uses <span className="font-normal normal-case text-charcoal-500">(optional)</span>
           </span>
           <input
             value={maxRedemptions}
@@ -106,7 +106,7 @@ export function CreateCouponForm() {
 
         <label className="flex flex-col gap-1">
           <span className="text-[11px] font-semibold uppercase tracking-wide text-charcoal-500">
-            Expires <span className="font-normal normal-case text-charcoal-400">(optional)</span>
+            Expires <span className="font-normal normal-case text-charcoal-500">(optional)</span>
           </span>
           <input
             type="date"

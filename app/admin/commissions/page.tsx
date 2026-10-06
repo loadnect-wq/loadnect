@@ -253,7 +253,7 @@ export default async function AdminCommissionsPage({ searchParams }: Props) {
                         <p className="font-mono text-[11px] text-charcoal-700">
                           #{(c.booking_id ?? c.lead_id ?? "").slice(0, 8).toUpperCase() || "—"}
                         </p>
-                        <p className="text-[10px] font-semibold uppercase tracking-wide text-charcoal-400">
+                        <p className="text-[10px] font-semibold uppercase tracking-wide text-charcoal-500">
                           {c.lead_id ? "Enquiry · billed" : "Booking · retained"}
                         </p>
                       </Td>

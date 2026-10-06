@@ -176,7 +176,7 @@ export default async function AdminLeadsPage({ searchParams }: Props) {
                         <span className="font-mono text-[11px] text-charcoal-700">
                           {lead.id.slice(0, 8).toUpperCase()}
                         </span>
-                        <span className="mt-0.5 block text-[10px] text-charcoal-400">
+                        <span className="mt-0.5 block text-[10px] text-charcoal-500">
                           {fmtDate(lead.created_at)}
                         </span>
                         <span className="mt-0.5 block rounded-full bg-amber-50 px-1.5 py-0.5 text-[9px] font-semibold text-amber-800">
@@ -218,7 +218,7 @@ export default async function AdminLeadsPage({ searchParams }: Props) {
                       <Td>
                         <Badge variant={cfg.variant} size="sm">{cfg.label}</Badge>
                         {lead.confirmed_at && (
-                          <span className="mt-0.5 block text-[10px] text-charcoal-400">
+                          <span className="mt-0.5 block text-[10px] text-charcoal-500">
                             {fmtDate(lead.confirmed_at)}
                           </span>
                         )}
@@ -242,7 +242,7 @@ export default async function AdminLeadsPage({ searchParams }: Props) {
                       </Td>
                       <Td>
                         {!commission ? (
-                          <span className="text-charcoal-400">—</span>
+                          <span className="text-charcoal-500">—</span>
                         ) : settled ? (
                           <>
                             <span className="font-semibold text-green-700">Paid</span>
@@ -279,10 +279,10 @@ export default async function AdminLeadsPage({ searchParams }: Props) {
                             {payment.cashfreeOrderId}
                           </span>
                         ) : (
-                          <span className="text-charcoal-400">—</span>
+                          <span className="text-charcoal-500">—</span>
                         )}
                         {payment?.cashfreePaymentId && (
-                          <span className="mt-0.5 block font-mono text-[10px] text-charcoal-400">
+                          <span className="mt-0.5 block font-mono text-[10px] text-charcoal-500">
                             {payment.cashfreePaymentId}
                           </span>
                         )}
@@ -312,7 +312,7 @@ function Card({ label, value, sub, tone }: {
     <div className={`rounded-2xl bg-white p-4 shadow-card ${ring}`}>
       <p className="text-[11px] font-semibold uppercase tracking-wide text-charcoal-500">{label}</p>
       <p className="mt-1 text-lg font-bold text-charcoal-900">{value}</p>
-      <p className="text-[10px] text-charcoal-400">{sub}</p>
+      <p className="text-[10px] text-charcoal-500">{sub}</p>
     </div>
   );
 }

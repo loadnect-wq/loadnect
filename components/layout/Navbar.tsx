@@ -134,6 +134,15 @@ export function Navbar() {
   // component — the same reason `hallnect-header` works the way it does.
   const overHero = pathname === "/";
 
+  // INSIDE A DASHBOARD THE FAMILY LINKS ARE NOISE. The admin and owner areas
+  // have their own navigation; above it this header offered Muhurtham Dates,
+  // the budget calculator and a Saved list to someone running a hall or the
+  // platform. There it keeps the logo and the account controls only. The
+  // public owner landing page (/owner/register) is not a dashboard.
+  const workspace =
+    pathname.startsWith("/admin") ||
+    (pathname.startsWith("/owner") && !pathname.startsWith("/owner/register"));
+
   return (
     // `hallnect-header` is styled in app/globals.css against `html.is-scrolled`,
     // which the one shared scroll listener in RevealObserver already maintains.
@@ -161,6 +170,7 @@ export function Navbar() {
           </Link>
 
           {/* Desktop nav links */}
+          {!workspace && (
           <ul className="hidden items-center gap-6 lg:flex" role="list">
             {NAV_LINKS.map((link) => {
               // A prefix match so /halls/ns-khalyaana-mahal still marks
@@ -195,6 +205,7 @@ export function Navbar() {
               );
             })}
           </ul>
+          )}
 
           {/* Desktop CTAs */}
           <div className="hidden items-center gap-2 lg:flex">
@@ -203,7 +214,7 @@ export function Navbar() {
                 bottom bar — on a desktop a family could heart a hall and never
                 find it again. Everyone gets it: the list lives in the browser,
                 signed in or not. */}
-            <SavedLink active={pathname.startsWith("/saved")} />
+            {!workspace && <SavedLink active={pathname.startsWith("/saved")} />}
             {/* THE CACHED HTML MUST ASSERT NOTHING. Every public page is now
                 prerendered and served to everyone identically, so the markup
                 cannot claim either state. While `user` is undefined this

@@ -50,7 +50,7 @@ export function ProfileEditForm({ initialName, initialPhone, email, initialNotif
           readOnly
           className="w-full rounded-xl border border-border bg-ivory-100 px-3 py-2.5 text-sm text-charcoal-500 cursor-not-allowed"
         />
-        <p className="mt-1 text-[11px] text-charcoal-400">Email cannot be changed here.</p>
+        <p className="mt-1 text-[11px] text-charcoal-500">Email cannot be changed here.</p>
       </div>
 
       {/* Full name */}

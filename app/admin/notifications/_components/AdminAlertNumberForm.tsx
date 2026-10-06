@@ -51,10 +51,10 @@ export function AdminAlertNumberForm({
   return (
     <div className="mb-4 rounded-xl border border-border bg-white p-3">
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-        <Phone className="h-3.5 w-3.5 shrink-0 text-charcoal-400" />
+        <Phone className="h-3.5 w-3.5 shrink-0 text-charcoal-500" />
         <p className="text-xs font-semibold text-charcoal-800">Admin alert number</p>
         <span className="font-mono text-[11px] text-charcoal-500">{currentMasked}</span>
-        <span className="text-[10px] text-charcoal-400">({sourceLabel})</span>
+        <span className="text-[10px] text-charcoal-500">({sourceLabel})</span>
       </div>
 
       <div className="mt-2 flex flex-wrap gap-2">
@@ -107,7 +107,7 @@ export function AdminAlertNumberForm({
         </span>
       </div>
 
-      <p className="mt-1.5 text-[10px] leading-relaxed text-charcoal-400">
+      <p className="mt-1.5 text-[10px] leading-relaxed text-charcoal-500">
         Operational alerts (new bookings, payments, hall submissions, failures) go out
         over <strong>both</strong> channels, independently.
         {webhookConfigured

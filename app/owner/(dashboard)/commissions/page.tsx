@@ -237,7 +237,7 @@ export default async function OwnerCommissionsPage() {
                           the owner has to reconcile against their own bank
                           statement. */}
                       {verified?.cashfree_order_id && (
-                        <p className="text-[10px] font-mono text-charcoal-400">
+                        <p className="text-[10px] font-mono text-charcoal-500">
                           Ref {verified.cashfree_order_id}
                         </p>
                       )}
@@ -331,7 +331,7 @@ export default async function OwnerCommissionsPage() {
         )}
 
         <p className="flex items-start gap-2 rounded-xl border border-border bg-white p-3 text-[11px] leading-relaxed text-charcoal-600 shadow-card">
-          <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-charcoal-400" />
+          <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-charcoal-500" />
           <span>
             &ldquo;Your share&rdquo; is the hall price less commission, across the advance Hallnect
             transfers to you and the balance you collect at the venue. The platform fee shown to
@@ -358,7 +358,7 @@ function SummaryCard({ icon, label, value, highlight = false }: {
 function Field({ label, value, strong = false }: { label: string; value: string; strong?: boolean }) {
   return (
     <div>
-      <p className="text-[10px] uppercase tracking-wide text-charcoal-400">{label}</p>
+      <p className="text-[10px] uppercase tracking-wide text-charcoal-500">{label}</p>
       <p className={strong ? "font-semibold text-maroon-700" : "text-charcoal-700"}>{value}</p>
     </div>
   );

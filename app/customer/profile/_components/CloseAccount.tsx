@@ -46,7 +46,7 @@ export function CloseAccount() {
         <button
           type="button"
           onClick={() => setOpen(true)}
-          className="text-xs text-charcoal-400 underline underline-offset-2 hover:text-red-600"
+          className="text-xs text-charcoal-500 underline underline-offset-2 hover:text-red-600"
         >
           Close my account
         </button>

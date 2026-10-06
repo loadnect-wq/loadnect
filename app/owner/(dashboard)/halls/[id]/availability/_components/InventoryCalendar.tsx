@@ -144,7 +144,7 @@ export function InventoryCalendar({
           in its accessible name, which is what a screen-reader user needs. */}
       <div className="mt-3 grid grid-cols-7 gap-1" role="group" aria-label={`Availability for ${monthLabel}`}>
         {["S", "M", "T", "W", "T", "F", "S"].map((d, i) => (
-          <div key={i} className="pb-1 text-center text-[10px] font-bold uppercase tracking-wide text-charcoal-400">
+          <div key={i} className="pb-1 text-center text-[10px] font-bold uppercase tracking-wide text-charcoal-500">
             {d}
           </div>
         ))}
@@ -165,7 +165,7 @@ export function InventoryCalendar({
               className={[
                 "relative flex min-h-[52px] flex-col items-center justify-center gap-1 rounded-xl border text-sm transition",
                 selected === day.date ? "border-maroon-500 ring-2 ring-maroon-200" : "border-transparent",
-                isPast ? "bg-ivory-50 text-charcoal-400" : "bg-ivory-100 text-charcoal-900 hover:bg-ivory-200",
+                isPast ? "bg-ivory-50 text-charcoal-500" : "bg-ivory-100 text-charcoal-900 hover:bg-ivory-200",
                 isToday ? "font-bold" : "",
               ].join(" ")}
             >
@@ -192,7 +192,7 @@ export function InventoryCalendar({
         <Legend dot={KIND_DOT.platform} label="Blocked by Hallnect" />
       </ul>
 
-      <p className="mt-2 flex items-center gap-1.5 text-[11px] text-charcoal-400">
+      <p className="mt-2 flex items-center gap-1.5 text-[11px] text-charcoal-500">
         <Radio className={`h-3 w-3 shrink-0 ${live ? "text-green-600" : "text-charcoal-300"}`} aria-hidden />
         {live
           ? "Live — this updates by itself when a customer books."
@@ -381,7 +381,7 @@ function DaySheet({
 
             <label className="block">
               <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-charcoal-500">
-                Also block until <span className="font-normal normal-case text-charcoal-400">(optional — for a multi-day event)</span>
+                Also block until <span className="font-normal normal-case text-charcoal-500">(optional — for a multi-day event)</span>
               </span>
               <input
                 type="date" value={until} min={addDaysToIsoDate(day.date, 1)}
@@ -422,7 +422,7 @@ function DaySheet({
               {pending && <Loader2 className="h-4 w-4 animate-spin" aria-hidden />}
               {pending ? "Blocking…" : until && until !== day.date ? "Block these dates" : "Block this date"}
             </button>
-            <p className="text-[11px] text-charcoal-400">
+            <p className="text-[11px] text-charcoal-500">
               Saved the moment you press it — there is nothing else to save.
             </p>
           </div>

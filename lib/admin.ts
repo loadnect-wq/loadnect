@@ -259,6 +259,12 @@ export type AdminStats = {
     pendingHalls:   number;
     pendingOwners:  number;
     openTickets:    number;
+    /**
+     * Contact-form messages nobody has marked read. They live in their own
+     * table, not support_tickets, so "Open support tickets: 0" sat above a
+     * family's unanswered "facing problem in booking" for two weeks.
+     */
+    unreadMessages: number;
     pendingAds:     number;
     /** Money owed BACK to customers and not yet sent. */
     refundsOwed:         number;
@@ -319,7 +325,7 @@ export async function fetchAdminStats(): Promise<AdminStats> {
     halls:    { total: 0, approved: 0, pending: 0, rejected: 0, suspended: 0 },
     bookings: { total: 0, requested: 0, confirmed: 0, completed: 0, cancelled: 0 },
     revenue:  { grossBookings: 0, grossAdvances: 0, commission: 0, platformFees: 0, netRevenue: 0, ownerPayouts: 0, refunds: 0, commissionBilledPaid: 0, commissionBilledOutstanding: 0 },
-    open:     { pendingHalls: 0, pendingOwners: 0, openTickets: 0, pendingAds: 0,
+    open:     { pendingHalls: 0, pendingOwners: 0, openTickets: 0, unreadMessages: 0, pendingAds: 0,
                 refundsOwed: 0, stuckPayouts: 0, failedNotifications: 0,
                 deadLetterNotifications: 0 },
     failed:   [],
@@ -335,7 +341,7 @@ export async function fetchAdminStats(): Promise<AdminStats> {
     empty.failed.push(section);
   };
 
-  const [usersRes, hallsRes, bookingsRes, commissionsRes, ticketsRes, adsRes, paymentsRes] = await Promise.all([
+  const [usersRes, hallsRes, bookingsRes, commissionsRes, ticketsRes, adsRes, paymentsRes, contactRes] = await Promise.all([
     db.from("profiles").select("role"),
     db.from("halls").select("status"),
     db.from("bookings").select("status, total_amount"),
@@ -361,6 +367,7 @@ export async function fetchAdminStats(): Promise<AdminStats> {
     db.from("payments")
       .select("amount, status, platform_fee_amount, refund_amount")
       .in("status", ["payment_success", "refunded"]),
+    db.from("contact_messages").select("id", { count: "exact", head: true }).eq("is_read", false),
   ]);
 
   // Each result is checked. Previously only this one was, and it returned an
@@ -372,6 +379,7 @@ export async function fetchAdminStats(): Promise<AdminStats> {
   noteFailure("support tickets", ticketsRes.error);
   noteFailure("advertisements", adsRes.error);
   noteFailure("payments", paymentsRes.error);
+  noteFailure("contact messages", contactRes.error);
 
   const roles = (usersRes.data ?? []) as { role: string }[];
   empty.users.total          = roles.length;
@@ -469,6 +477,7 @@ export async function fetchAdminStats(): Promise<AdminStats> {
   empty.open.pendingOwners = 0;
   empty.open.openTickets   = ((ticketsRes.data ?? []) as { status: string }[])
     .filter((t) => t.status === "open" || t.status === "in_progress").length;
+  empty.open.unreadMessages = contactRes.count ?? 0;
   empty.open.pendingAds    = ((adsRes.data ?? []) as { status: string }[])
     .filter((a) => a.status === "pending").length;
 

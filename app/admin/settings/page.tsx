@@ -18,6 +18,7 @@ import { CleanupButton } from "./_components/CleanupButton";
 import { InternalTrafficToggle } from "./_components/InternalTrafficToggle";
 import { PremiumPlansForm } from "./_components/PremiumPlansForm";
 import { PaymentSettingsForm } from "./_components/PaymentSettingsForm";
+import { DIRECT_BOOKING_ENABLED } from "@/lib/booking-switch";
 
 export const metadata: Metadata = { title: "Admin Settings" };
 
@@ -131,6 +132,16 @@ export default async function AdminSettingsPage() {
 
         {/* Payment & commission settings (editable) */}
         <Section title="Payments & commission" icon={<SettingsIcon className="h-4 w-4" />}>
+          {/* These two settings drive the ONLINE booking checkout. With direct
+              booking switched off (lib/booking-switch.ts) no customer reaches
+              that checkout, so changing them here changes nothing anyone sees —
+              say so before an admin spends time on it. */}
+          {!DIRECT_BOOKING_ENABLED && (
+            <p className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-900">
+              Direct booking is switched off, so every venue works on quotes and no customer pays
+              online. These settings take effect only if online booking is switched back on.
+            </p>
+          )}
           <PaymentSettingsForm initial={paymentSettings} />
         </Section>
 

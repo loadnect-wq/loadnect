@@ -111,3 +111,37 @@ describe("the assistant offers the planning tools", () => {
     expect(CHAT_ACTION_ROUTES.budget_calculator.href).toBe("/budget");
   });
 });
+
+describe("the admin area (reviewed signed in, 2026-10-06)", () => {
+  it("never offers an admin a button to deactivate themselves", () => {
+    const users = read("app/admin/users/page.tsx");
+    expect(users).toContain("const me = await requireRole([\"admin\"]);");
+    expect(users.match(/u\.id === me\.id \?/g)?.length).toBe(2);
+  });
+
+  it("counts read as English ('1 hall', not '1 all hall')", () => {
+    expect(read("app/admin/users/page.tsx")).toContain("${activeFilter.value ? `${activeFilter.label.toLowerCase()} ` : \"\"}account");
+    expect(read("app/admin/halls/page.tsx")).toContain("${activeFilter.value ? `${activeFilter.label.toLowerCase()} ` : \"\"}hall");
+  });
+
+  it("surfaces unread contact-form messages on the dashboard", () => {
+    expect(read("lib/admin.ts")).toContain('db.from("contact_messages").select("id", { count: "exact", head: true }).eq("is_read", false)');
+    expect(read("app/admin/dashboard/page.tsx")).toContain('label: "Unread contact messages"');
+  });
+
+  it("says the payment settings are dormant while direct booking is off", () => {
+    expect(read("app/admin/settings/page.tsx")).toContain("{!DIRECT_BOOKING_ENABLED && (");
+  });
+
+  it("keeps the family links out of the dashboards' header", () => {
+    const nav = read("components/layout/Navbar.tsx");
+    expect(nav).toContain('(pathname.startsWith("/owner") && !pathname.startsWith("/owner/register"))');
+    expect(nav).toContain("{!workspace && <SavedLink");
+  });
+
+  it("uses readable grey for text in the signed-in areas", () => {
+    for (const f of ["app/admin/_components/AdminSidebarNav.tsx", "app/admin/owners/page.tsx", "app/owner/(dashboard)/_components/OwnerBottomNav.tsx"]) {
+      expect(read(f), f).not.toMatch(/(^|[" {`])text-charcoal-400/);
+    }
+  });
+});

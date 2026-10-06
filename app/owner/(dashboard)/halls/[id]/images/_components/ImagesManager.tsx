@@ -261,7 +261,7 @@ export function ImagesManager({ hallId, initial }: Props) {
           </>
         ) : (
           <>
-            <ImagePlus className="h-8 w-8 text-charcoal-400" />
+            <ImagePlus className="h-8 w-8 text-charcoal-500" />
             <div className="text-center">
               <p className="text-sm font-medium text-charcoal-700">Upload photos</p>
               <p className="mt-0.5 text-xs text-charcoal-500">
