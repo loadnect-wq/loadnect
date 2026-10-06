@@ -592,7 +592,7 @@ export function HallDetailView({ hall, categories, similar, isPreview, sidebarAd
                   href={mapsHref}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="mt-3 flex items-center gap-1.5 text-sm font-semibold text-maroon-600 hover:underline"
+                  className="mt-2 inline-flex min-h-[44px] items-center gap-1.5 text-sm font-semibold text-maroon-700 hover:underline"
                 >
                   View on Google Maps
                   <ExternalLink className="h-3.5 w-3.5" />
@@ -919,7 +919,7 @@ export function HallDetailView({ hall, categories, similar, isPreview, sidebarAd
                           the page that did not pin a timezone, and it was a
                           hydration mismatch. */}
                       {reviewMonthLabel(r.created_at) && (
-                        <p className="mt-1.5 text-[10px] text-charcoal-400">
+                        <p className="mt-1.5 text-[11px] text-charcoal-600">
                           {reviewMonthLabel(r.created_at)}
                         </p>
                       )}

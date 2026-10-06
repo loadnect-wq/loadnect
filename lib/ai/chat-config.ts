@@ -26,11 +26,16 @@ export const MAX_HISTORY_MESSAGES = 16;
 
 export type QuickAction = { id: string; label: string; prompt: string };
 
+// The family's planning questions lead (2026-10-06). "Check Availability"
+// went: every venue works on quotes, so no hall publishes open dates and the
+// button could only lead to an explanation of why not. Muhurtham dates and the
+// budget are what families actually ask first, and each has a tool to send
+// them to (suggestActions: muhurtham_dates, budget_calculator).
 export const QUICK_ACTIONS: readonly QuickAction[] = [
   { id: "find_hall",      label: "🏛️ Find a Hall",         prompt: "Help me find a wedding hall." },
-  { id: "availability",   label: "📅 Check Availability",  prompt: "How can I check if a hall is available on my date?" },
-  { id: "pricing",        label: "💰 Pricing & Plans",      prompt: "What does it cost to book a hall on Hallnect, and what are the plans for hall owners?" },
-  { id: "how_booking",    label: "📖 How Booking Works",    prompt: "How does booking a hall on Hallnect work?" },
+  { id: "muhurtham",      label: "🗓️ Muhurtham Dates",      prompt: "When are the next wedding muhurtham dates?" },
+  { id: "budget",         label: "🧮 Plan My Budget",       prompt: "Help me work out the budget for my function." },
+  { id: "how_booking",    label: "📖 How Booking Works",    prompt: "How does booking a hall on Hallnect work, and what does it cost?" },
   { id: "owner",          label: "👤 I'm a Hall Owner",     prompt: "I own a hall. How do I list it on Hallnect?" },
   { id: "support",        label: "❓ Help & Support",       prompt: "I need help. How do I contact Hallnect support?" },
 ] as const;
@@ -54,6 +59,12 @@ export const CHAT_ACTION_ROUTES = {
   refund_policy:      { label: "Refund Policy",           href: "/refund-policy" },
   cancellation_policy:{ label: "Cancellation Policy",     href: "/cancellation-policy" },
   verify_phone:       { label: "Verify Mobile Number",    href: "/verify-phone" },
+  // The family planning tools (lib/family-tools.ts).
+  muhurtham_dates:    { label: "Muhurtham Dates",         href: "/muhurtham-dates" },
+  budget_calculator:  { label: "Budget Calculator",       href: "/budget" },
+  shortlist:          { label: "My Shortlist",            href: "/saved" },
+  function_planner:   { label: "Function Planner",        href: "/plan" },
+  planning_tools:     { label: "All Planning Tools",      href: "/tools" },
 } as const;
 
 export type ChatActionKey = keyof typeof CHAT_ACTION_ROUTES;
@@ -75,5 +86,10 @@ export const CHAT_BUSY_MESSAGE =
 export const CHAT_RATE_LIMIT_MESSAGE =
   "You've sent a lot of messages in a short time. Please wait a little and try again.";
 
-/** Routes where the launcher is not shown at all. */
-export const CHAT_HIDDEN_PREFIXES = ["/invoice/"] as const;
+/**
+ * Routes where the launcher is not shown at all. The sign-in screens are here
+ * because the button floats where a phone shows "Continue with mobile" —
+ * covering the one control on the page — and there is no bottom bar there for
+ * it to sit above.
+ */
+export const CHAT_HIDDEN_PREFIXES = ["/invoice/", "/login", "/signup"] as const;

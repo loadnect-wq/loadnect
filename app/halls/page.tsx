@@ -168,6 +168,11 @@ export default async function HallsPage({
   // Only cities that actually hold inventory get a link — the same gate that
   // decides whether their landing page is indexable at all.
   const citiesWithVenues = cityInventory.filter((c) => c.venueCount > 0);
+  // The searched city has nothing listed at all (and the inventory read worked:
+  // on success it covers every service-area city, so empty means it failed).
+  const cityHasNoVenues =
+    Boolean(city) && cityInventory.length > 0 && citiesWithVenues.length > 0 &&
+    !citiesWithVenues.some((c) => c.city.toLowerCase() === city!.toLowerCase());
 
   // EVERY occasion gets a chip, the ones with venues first.
   //
@@ -329,6 +334,36 @@ export default async function HallsPage({
             ))}
           </div>
           </>
+        ) : cityHasNoVenues && !hallsFailed ? (
+          // A CITY WITH NOTHING LISTED IS NOT A FILTER PROBLEM. "Try adjusting
+          // your filters" sent a family searching Chennai off to fiddle with
+          // guests and budget when no Chennai hall is listed at all. Say so,
+          // and offer the cities that do have halls. Only when the inventory
+          // read succeeded — a failed read must not claim a city is empty.
+          <EmptyState
+            icon={<Building2 className="h-8 w-8" />}
+            title={`No halls in ${city} yet`}
+            description={`Hallnect has no ${city} venues listed yet. Halls are listed today in:`}
+            action={
+              <div className="flex flex-col items-center gap-3">
+                <ul className="flex flex-wrap justify-center gap-2">
+                  {citiesWithVenues.map((c) => (
+                    <li key={c.slug}>
+                      <Link
+                        href={`/halls?city=${encodeURIComponent(c.city)}`}
+                        className="inline-flex min-h-[40px] items-center gap-1.5 rounded-full border border-border bg-white px-4 text-sm font-semibold text-charcoal-800 hover:border-maroon-300 hover:text-maroon-700"
+                      >
+                        {c.city} <span className="font-normal text-charcoal-600">{c.venueCount}</span>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+                <Link href="/halls" className="inline-flex min-h-[40px] items-center text-sm font-semibold text-maroon-700 hover:underline">
+                  See all venues
+                </Link>
+              </div>
+            }
+          />
         ) : (
           <EmptyState
             icon={<Building2 className="h-8 w-8" />}
@@ -374,10 +409,10 @@ export default async function HallsPage({
               <li key={c.slug}>
                 <Link
                   href={`/wedding-halls/${c.slug}`}
-                  className="inline-flex items-center gap-1.5 rounded-full border border-border bg-white px-3 py-1.5 text-xs font-medium text-charcoal-700 transition-colors hover:border-maroon-300 hover:text-maroon-700"
+                  className="inline-flex min-h-[36px] items-center gap-1.5 rounded-full border border-border bg-white px-3 py-1.5 text-xs font-medium text-charcoal-700 transition-colors hover:border-maroon-300 hover:text-maroon-700"
                 >
                   {c.city}
-                  <span className="text-charcoal-400">
+                  <span className="text-charcoal-600">
                     {c.venueCount}
                   </span>
                 </Link>

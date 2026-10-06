@@ -261,7 +261,7 @@ export function SearchControls({
       <p className="mt-2 text-[11px] text-charcoal-500">
         {count} venue{count !== 1 ? "s" : ""} found
       </p>
-      <p className="mt-0.5 text-[11px] text-charcoal-400">{rankingNote}</p>
+      <p className="mt-0.5 text-[11px] text-charcoal-600">{rankingNote}</p>
 
       {/* ── Filter bottom sheet ── */}
       <BottomSheet

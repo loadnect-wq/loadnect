@@ -66,7 +66,7 @@ export default function DisclaimerPage() {
 function LegalHeader({ title, updated }: { title: string; updated: string }) {
   return (
     <div className="mb-10 border-b border-border pb-8">
-      <p className="text-xs font-semibold uppercase tracking-widest text-gold-600">Hallnect Legal</p>
+      <p className="text-xs font-semibold uppercase tracking-widest text-gold-700">Hallnect Legal</p>
       <h1 className="mt-2 font-serif text-3xl font-bold text-charcoal-900 sm:text-4xl">{title}</h1>
       <p className="mt-3 text-sm text-muted-foreground">Last updated: {updated}</p>
     </div>

@@ -18,8 +18,18 @@
 // goes, never how fast it arrives.
 //
 // It does not publish the commission RATE either (business decision,
-// 2026-09-17): it says there is one standard commission taken from the advance,
-// and the exact figure is shown to signed-in owners and admins only.
+// 2026-09-17): it says there is one standard commission, and the exact figure
+// is shown to signed-in owners and admins only.
+//
+// TWO VERSIONS OF THE MONEY STORY, CHOSEN BY THE BOOKING SWITCH
+// (lib/booking-switch.ts). With direct booking on, Hallnect collects the
+// customer's advance and keeps its commission out of it, so the owner is never
+// invoiced. With it switched off (0112) every venue works on quotes: Hallnect
+// never touches the family's money, the family pays the venue directly, and
+// the owner pays the commission from the Commissions page after marking a
+// booking confirmed. The page told owners the first story while the site ran
+// the second — "collects the advance for you", "never sends you a bill" —
+// which is exactly the promise an owner would hold us to.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import Link from "next/link";
@@ -30,6 +40,7 @@ import {
 } from "lucide-react";
 import { PLATFORM_FEE_RUPEES } from "@/lib/booking-payment";
 import { formatPrice } from "@/lib/mock-data";
+import { DIRECT_BOOKING_ENABLED } from "@/lib/booking-switch";
 import { OwnerRegisterForm } from "./_components/OwnerRegisterForm";
 
 export default async function OwnerRegisterPage() {
@@ -55,12 +66,47 @@ export default async function OwnerRegisterPage() {
       title: "We review your listing",
       body: "Before your hall goes live, we check the listing is complete and makes sense — photos, capacity, pricing and address. We do not visit the venue, so its details stay yours to stand behind.",
     },
-    {
-      Icon: CalendarCheck,
-      title: "You approve each booking",
-      body: "A request arrives with the date, the customer and the amount. Nothing is confirmed until you accept it.",
-    },
+    DIRECT_BOOKING_ENABLED
+      ? {
+          Icon: CalendarCheck,
+          title: "You approve each booking",
+          body: "A request arrives with the date, the customer and the amount. Nothing is confirmed until you accept it.",
+        }
+      : {
+          Icon: CalendarCheck,
+          title: "You quote, the family decides",
+          body: "A request arrives with the date, the occasion and the guest count. You reply with your price; if the family accepts, you get their number to agree the booking.",
+        },
   ];
+
+  const money = DIRECT_BOOKING_ENABLED
+    ? {
+        hero:
+          "Hallnect brings couples in Tamil Nadu to your venue, collects the advance for you, and never " +
+          "sends you a bill. Listing is free. Hallnect earns one small commission, the same for every " +
+          "venue — you will see the exact rate in your owner dashboard before your hall goes live.",
+        intro: "One commission, taken from the advance Hallnect already holds. There is nothing to pay up front and no invoice afterwards.",
+        cards: [
+          { Icon: Wallet, lead: "You are never invoiced.", text: "The commission comes out of the advance Hallnect collects from the customer, so no money ever leaves your pocket." },
+          { Icon: IndianRupee, lead: `The ${formatPrice(PLATFORM_FEE_RUPEES)} platform fee is the customer's.`, text: "It is charged on top of the advance and is never deducted from your share." },
+        ],
+        footnote: "The customer pays an advance online to hold the date. The balance is collected by you, directly, as it always was.",
+        ready: { label: "Bank account and PAN", note: "Needed only to receive payouts — you can add it later." },
+      }
+    : {
+        hero:
+          "Hallnect brings families in Tamil Nadu to your venue. They ask you for a quote, you reply with " +
+          "your price, and if they accept, you get their number to agree the booking. Listing is free. " +
+          "Hallnect earns one small commission on a booking you confirm, the same for every venue — you " +
+          "will see the exact rate in your owner dashboard before your hall goes live.",
+        intro: "One commission, and only on a booking you confirm. There is nothing to pay up front and nothing for an enquiry that does not book.",
+        cards: [
+          { Icon: Wallet, lead: "You pay only when you book.", text: "When you mark a booking as confirmed with the agreed amount, Hallnect raises its commission, and you pay it online from your owner dashboard." },
+          { Icon: IndianRupee, lead: "Families pay Hallnect nothing.", text: "Asking for a quote is free for them, and they pay you directly." },
+        ],
+        footnote: "The family pays you the advance and the balance directly, as they always have. Hallnect never handles their money.",
+        ready: { label: "A way to pay online", note: "The commission is paid through Cashfree from your dashboard, only after a booking you confirm." },
+      };
 
   return (
     <div className="bg-ivory-100">
@@ -80,12 +126,7 @@ export default async function OwnerRegisterPage() {
           <h1 className="mx-auto mt-7 max-w-2xl font-serif text-3xl font-bold leading-tight text-ivory-100 sm:text-5xl">
             List your wedding hall. Approve every booking yourself.
           </h1>
-          <p className="mx-auto mt-4 max-w-xl text-base leading-relaxed text-ivory-400">
-            Hallnect brings couples in Tamil Nadu to your venue, collects the advance
-            for you, and never sends you a bill. Listing is free. Hallnect earns one small
-            commission, the same for every venue — you will see the exact rate in your owner
-            dashboard before your hall goes live.
-          </p>
+          <p className="mx-auto mt-4 max-w-xl text-base leading-relaxed text-ivory-400">{money.hero}</p>
 
           <a
             href="#register"
@@ -105,39 +146,22 @@ export default async function OwnerRegisterPage() {
           <h2 className="text-center font-serif text-2xl font-bold text-charcoal-900 sm:text-3xl">
             What it costs you
           </h2>
-          <p className="mx-auto mt-2 max-w-xl text-center text-sm text-muted-foreground">
-            One commission, taken from the advance Hallnect already holds. There is
-            nothing to pay up front and no invoice afterwards.
-          </p>
+          <p className="mx-auto mt-2 max-w-xl text-center text-sm text-muted-foreground">{money.intro}</p>
 
           <div className="mt-5 grid gap-3 sm:grid-cols-2">
-            <div className="rounded-xl border border-border bg-white p-4">
-              <div className="flex items-start gap-2.5">
-                <Wallet className="mt-0.5 h-4 w-4 shrink-0 text-maroon-600" aria-hidden />
-                <p className="text-xs leading-relaxed text-charcoal-700">
-                  <span className="font-semibold text-charcoal-900">You are never invoiced.</span>{" "}
-                  The commission comes out of the advance Hallnect collects from the
-                  customer, so no money ever leaves your pocket.
-                </p>
+            {money.cards.map(({ Icon, lead, text }) => (
+              <div key={lead} className="rounded-xl border border-border bg-white p-4">
+                <div className="flex items-start gap-2.5">
+                  <Icon className="mt-0.5 h-4 w-4 shrink-0 text-maroon-600" aria-hidden />
+                  <p className="text-sm leading-relaxed text-charcoal-700">
+                    <span className="font-semibold text-charcoal-900">{lead}</span> {text}
+                  </p>
+                </div>
               </div>
-            </div>
-            <div className="rounded-xl border border-border bg-white p-4">
-              <div className="flex items-start gap-2.5">
-                <IndianRupee className="mt-0.5 h-4 w-4 shrink-0 text-maroon-600" aria-hidden />
-                <p className="text-xs leading-relaxed text-charcoal-700">
-                  <span className="font-semibold text-charcoal-900">
-                    The {formatPrice(PLATFORM_FEE_RUPEES)} platform fee is the customer&apos;s.
-                  </span>{" "}
-                  It is charged on top of the advance and is never deducted from your share.
-                </p>
-              </div>
-            </div>
+            ))}
           </div>
 
-          <p className="mt-4 text-center text-xs text-charcoal-500">
-            The customer pays an advance online to hold the date. The balance is
-            collected by you, directly, as it always was.
-          </p>
+          <p className="mt-4 text-center text-sm text-charcoal-600">{money.footnote}</p>
         </div>
       </section>
 
@@ -173,15 +197,17 @@ export default async function OwnerRegisterPage() {
             What to have ready
           </h2>
           <p className="mx-auto mt-2 max-w-lg text-center text-sm text-muted-foreground">
-            Nothing here is needed to register — only to publish your hall and to be
-            paid. Worth knowing now rather than halfway through a form.
+            {DIRECT_BOOKING_ENABLED
+              ? "Nothing here is needed to register — only to publish your hall and to be paid."
+              : "Nothing here is needed to register — only to publish your hall."}{" "}
+            Worth knowing now rather than halfway through a form.
           </p>
           <ul className="mx-auto mt-7 grid max-w-2xl gap-3 sm:grid-cols-2">
             {[
               { Icon: Images, label: "Photos of the hall", note: "The single biggest thing couples judge a venue on." },
               { Icon: IndianRupee, label: "Your pricing", note: "Full-day rate, and morning or evening rates if you offer them." },
               { Icon: CalendarCheck, label: "Capacity and address", note: "Seating capacity, and where the hall is." },
-              { Icon: Wallet, label: "Bank account and PAN", note: "Needed only to receive payouts — you can add it later." },
+              { Icon: Wallet, ...money.ready },
             ].map(({ Icon, label, note }) => (
               <li key={label} className="flex items-start gap-3 rounded-xl border border-border bg-white p-4">
                 <Icon className="mt-0.5 h-4 w-4 shrink-0 text-maroon-600" aria-hidden />

@@ -174,7 +174,7 @@ export function HallCard({ hall, advancePercent, revealIndex, revealNow, eager, 
             <Badge variant="gold" size="sm">✦ {TIER_LABEL.premium}</Badge>
           )}
           {(hall.premium_tier === "premium" || hall.premium_tier === "pro") && (
-            <span className="rounded-full bg-white/95 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-charcoal-600 shadow-sm">
+            <span className="rounded-full bg-white/95 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-charcoal-700 shadow-sm">
               Promoted
             </span>
           )}
@@ -255,7 +255,7 @@ export function HallCard({ hall, advancePercent, revealIndex, revealNow, eager, 
                     Advance shown as an estimate; the authoritative amount is
                     recomputed server-side at booking (the fee % is admin-set). */}
                 {!isLeadGeneration(hall.booking_mode) && (
-                  <span className="mt-0.5 block text-[10px] font-semibold text-gold-600">
+                  <span className="mt-0.5 block text-[10px] font-semibold text-gold-700">
                     ≈ {formatPrice(estimateAdvance(hall.price_per_day, advancePercent))} advance
                   </span>
                 )}
@@ -263,7 +263,7 @@ export function HallCard({ hall, advancePercent, revealIndex, revealNow, eager, 
             ) : (
               <span className="block">
                 <span className="text-sm font-bold text-maroon-700">{PRICE_ON_REQUEST}</span>
-                <span className="mt-0.5 block text-[10px] font-semibold text-gold-600">
+                <span className="mt-0.5 block text-[10px] font-semibold text-gold-700">
                   Get a quote
                 </span>
               </span>

@@ -126,7 +126,7 @@ export function BudgetCalculator() {
               href={share}
               target="_blank"
               rel="noopener noreferrer"
-              className="mt-3 flex min-h-[48px] items-center justify-center gap-2 rounded-xl bg-[#1f8f4e] px-4 text-sm font-semibold text-white hover:bg-[#19773f]"
+              className="mt-3 flex min-h-[48px] items-center justify-center gap-2 rounded-xl bg-[#1a7f45] px-4 text-sm font-semibold text-white hover:bg-[#166b3a]"
             >
               <MessageCircle className="h-4 w-4" aria-hidden /> Send this estimate to the family
             </a>

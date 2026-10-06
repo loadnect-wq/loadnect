@@ -65,7 +65,7 @@ export default async function InvoicePage({ params }: Props) {
           <header className="flex flex-wrap items-start justify-between gap-4 border-b border-border pb-6">
             <div>
               <h1 className="font-serif text-2xl font-bold text-charcoal-900">Tax Invoice</h1>
-              <p className="mt-1 text-xs uppercase tracking-widest text-gold-600">
+              <p className="mt-1 text-xs uppercase tracking-widest text-gold-700">
                 Original for recipient
               </p>
             </div>

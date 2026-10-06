@@ -137,7 +137,7 @@ export default async function AboutPage() {
                   className="inline-flex items-center gap-1.5 rounded-full border border-border bg-white px-3 py-1.5 text-xs font-medium text-charcoal-700 transition-colors hover:border-maroon-300 hover:text-maroon-700"
                 >
                   {c.city}
-                  <span className="text-charcoal-400">{c.venueCount}</span>
+                  <span className="text-charcoal-600">{c.venueCount}</span>
                 </Link>
               </li>
             ))}

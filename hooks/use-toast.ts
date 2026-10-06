@@ -12,6 +12,8 @@ export interface ToastData {
   description?: string;
   variant?: ToastVariant;
   duration?: number;
+  /** A link the toast offers, e.g. "View" after saving a hall. */
+  action?: { label: string; href: string };
   open: boolean;
 }
 

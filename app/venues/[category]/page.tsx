@@ -286,7 +286,7 @@ export default async function CategoryPage({ params }: Props) {
                     className="inline-block rounded-full border border-border bg-white px-3 py-1.5 text-xs font-medium text-charcoal-700 transition hover:border-maroon-300 hover:text-maroon-700"
                   >
                     {category.name} halls in {c.city}
-                    <span className="ml-1 text-charcoal-400">({c.count})</span>
+                    <span className="ml-1 text-charcoal-600">({c.count})</span>
                   </Link>
                 </li>
               ))}

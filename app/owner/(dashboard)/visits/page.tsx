@@ -122,7 +122,7 @@ export default async function OwnerVisitsPage({ searchParams }: Props) {
                         href={whatsappUrl(v.contactPhone, greeting)}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="inline-flex min-h-[44px] items-center justify-center gap-1.5 rounded-xl border border-[#1f8f4e] text-sm font-semibold text-[#17703c] hover:bg-green-50"
+                        className="inline-flex min-h-[44px] items-center justify-center gap-1.5 rounded-xl border border-[#1a7f45] text-sm font-semibold text-[#17703c] hover:bg-green-50"
                       >
                         <MessageCircle className="h-4 w-4" aria-hidden /> WhatsApp
                       </a>

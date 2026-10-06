@@ -322,7 +322,9 @@ export default async function HomePage() {
                 Wedding, Party &amp; Event Halls in Tamil Nadu
               </h1>
               <p className="hero-ink mt-2 text-sm text-white">
-                Weddings, parties, meetings and more. Owner-submitted listings, transparent pricing.
+                {/* nowrap: at 390px the line broke at the hyphen, "Owner-" / "submitted". */}
+                Weddings, parties, meetings and more.{" "}
+                <span className="whitespace-nowrap">Owner-submitted listings</span>, transparent pricing.
               </p>
             </div>
           </div>
@@ -604,6 +606,37 @@ export default async function HomePage() {
               {featured.map((h, i) => (
                 <HallCard key={h.id} hall={h} advancePercent={advancePercent} revealIndex={i} />
               ))}
+              {/* THE REST OF THE ROW. With one hall listed, two thirds of this
+                  row was empty page. The phone carousel already ends on a
+                  "Browse all venues" tile; this is the desktop's, spanning
+                  whatever the grid has left so there is never a hole. */}
+              {featured.length < 6 && (
+                <div
+                  data-reveal="up"
+                  className={`flex flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-charcoal-300 bg-white/60 p-8 text-center ${
+                    featured.length % 2 === 0 ? "col-span-2" : "col-span-1"
+                  } ${["xl:col-span-3", "xl:col-span-2", "xl:col-span-1"][featured.length % 3]}`}
+                >
+                  <p className="font-serif text-xl font-semibold text-charcoal-900">Browse every venue</p>
+                  <p className="max-w-sm text-sm text-charcoal-600">
+                    All the halls listed on Hallnect, with filters for city, guests, budget and your date.
+                  </p>
+                  <div className="mt-1 flex flex-wrap justify-center gap-3">
+                    <Link
+                      href="/halls"
+                      className="inline-flex min-h-[44px] items-center gap-2 rounded-xl bg-maroon-700 px-5 text-sm font-semibold text-white hover:bg-maroon-800"
+                    >
+                      Browse all venues <ArrowRight className="h-4 w-4" aria-hidden />
+                    </Link>
+                    <Link
+                      href="/owner/register"
+                      className="inline-flex min-h-[44px] items-center rounded-xl border border-border bg-white px-5 text-sm font-semibold text-charcoal-800 hover:border-maroon-300 hover:text-maroon-700"
+                    >
+                      Own a hall? List it free
+                    </Link>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </section>
@@ -916,7 +949,7 @@ function DesktopSectionHeader({
       className={centered ? "text-center" : "flex items-end justify-between gap-6"}
     >
       <div className={centered ? "mx-auto max-w-2xl" : "max-w-2xl"}>
-        <span className="text-xs font-semibold uppercase tracking-widest text-gold-600">{eyebrow}</span>
+        <span className="text-xs font-semibold uppercase tracking-widest text-gold-700">{eyebrow}</span>
         <h2 className="mt-2 font-serif text-3xl font-bold text-charcoal-900">{title}</h2>
         {blurb && <p className="mt-3 text-sm text-charcoal-600">{blurb}</p>}
       </div>

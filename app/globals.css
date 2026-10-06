@@ -25,7 +25,9 @@
 
     /* Muted */
     --muted:            38 25% 94%;
-    --muted-foreground: 22  5% 46%;
+    /* 42%, not 46%: at 46% this read 4.27:1 on the ivory page background,
+       under the 4.5:1 floor for body text; 42% is 4.94:1. */
+    --muted-foreground: 22  5% 42%;
 
     /* Royal Gold – accent */
     --accent:            42 75% 47%;

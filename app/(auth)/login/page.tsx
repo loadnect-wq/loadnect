@@ -101,6 +101,23 @@ function safeNextPath(raw: string | null): string {
   return allowed ? raw : fallback;
 }
 
+/**
+ * Why this person is being asked to sign in, from where they were going.
+ * A family that tapped "Get a quote" landed on a generic welcome and had to
+ * guess that signing in was the way to their quote; the line under the
+ * heading now says so, and says what happens to their number.
+ */
+function signInReason(nextPath: string): string {
+  if (nextPath.startsWith("/enquiry/")) return "Sign in to ask this hall for a quote. It sees your request, not your number, until you accept its quote.";
+  if (nextPath.startsWith("/visit/")) return "Sign in to ask to visit this hall.";
+  if (nextPath.startsWith("/plan")) return "Sign in so your plan is saved, and only the family you invite can see it.";
+  if (nextPath.startsWith("/book/")) return "Sign in to book this hall.";
+  if (nextPath.startsWith("/customer/enquiries")) return "Sign in to see your enquiries and quotes.";
+  if (nextPath.startsWith("/customer/notifications")) return "Sign in to see your notifications.";
+  if (nextPath.startsWith("/customer")) return "Sign in to your Hallnect account.";
+  return "Sign in to discover, book and manage your perfect venue.";
+}
+
 const AUTH_ERROR_MESSAGES: Record<string, string> = {
   oauth_failed:     "Google sign-in could not be completed. Please try again.",
   account_disabled: "This account has been deactivated. Contact Hallnect support if you think this is a mistake.",
@@ -356,9 +373,7 @@ export default function LoginPage() {
                 Hallnect
               </span>
             </h1>
-            <p className="mx-auto mt-2 max-w-xs text-sm text-charcoal-600">
-              Sign in to discover, book and manage your perfect venue.
-            </p>
+            <p className="mx-auto mt-2 max-w-xs text-sm text-charcoal-600">{signInReason(nextPath)}</p>
           </div>
 
           <div className="relative rounded-3xl p-[1px] shadow-elevated">

@@ -118,13 +118,15 @@ export const NAV_LINKS: readonly NavLink[] = [
   { label: "Pricing",            href: "/premium", wide: true },
 ];
 
+// EACH LINK ONCE (2026-10-06). "Contact Us", "Refund Policy" and "Cancellation
+// Policy" were each listed in two columns, so on a phone — where the columns
+// stack — the same three links came round twice in one long scroll.
 export const FOOTER_LINKS = {
   explore: [
     { label: "Browse Halls",   href: "/halls" },
     { label: "About Us",       href: "/about" },
     { label: "Pricing",        href: "/premium" },
     { label: "List Your Hall", href: "/owner/register" },
-    { label: "Contact Us",     href: "/contact" },
   ],
   // The family planning tools, in a family's order (lib/family-tools.ts).
   plan: [
@@ -142,8 +144,6 @@ export const FOOTER_LINKS = {
   legal: [
     { label: "Privacy Policy",      href: "/privacy"              },
     { label: "Terms of Service",    href: "/terms"                },
-    { label: "Refund Policy",       href: "/refund-policy"        },
-    { label: "Cancellation Policy", href: "/cancellation-policy"  },
     { label: "Disclaimer",          href: "/disclaimer"           },
     { label: "Grievance Redressal", href: "/grievance-redressal"   },
   ],

@@ -7,6 +7,9 @@ import { redirect } from "next/navigation";
 // every nested page inherits noindex — a new page added under here cannot leak
 // into the index by forgetting a directive.
 export const metadata: Metadata = {
+  // The browser tab read just "Hallnect". The page is a client component, so
+  // its title has to come from here; the root template adds " | Hallnect".
+  title: "Sign in",
   robots: { index: false, follow: false, nocache: true },
 };
 

@@ -48,7 +48,7 @@ export function ShareButtons({
           href={whatsappShareUrl(`${text}\n${url}`)}
           target="_blank"
           rel="noopener noreferrer"
-          className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl bg-[#1f8f4e] px-4 text-sm font-semibold text-white hover:bg-[#19773f]"
+          className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl bg-[#1a7f45] px-4 text-sm font-semibold text-white hover:bg-[#166b3a]"
         >
           <MessageCircle className="h-4 w-4" aria-hidden /> {label}
         </a>

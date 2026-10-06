@@ -23,10 +23,10 @@ export function Footer() {
             The footer is the last thing on the page and is usually already in
             view by the time a user reaches it, so a stagger here would just
             delay the site-wide link graph for no perceptible gain. */}
-        <div data-reveal="fade" className="grid grid-cols-1 gap-10 sm:grid-cols-2 lg:grid-cols-5">
+        <div data-reveal="fade" className="grid grid-cols-2 gap-x-6 gap-y-10 lg:grid-cols-5">
 
           {/* Brand column */}
-          <div className="space-y-5 lg:col-span-1">
+          <div className="col-span-2 space-y-5 lg:col-span-1">
             <div>
               <p className="font-serif text-2xl font-bold tracking-tight text-ivory-100">
                 {APP_NAME}
@@ -75,9 +75,9 @@ export function Footer() {
 
           {/* Plan your function — the family tools (lib/family-tools.ts). */}
           <div>
-            <h3 className="mb-4 font-serif text-xs font-semibold uppercase tracking-widest text-gold-400">
+            <h2 className="mb-4 font-serif text-xs font-semibold uppercase tracking-widest text-gold-400">
               Plan Your Function
-            </h3>
+            </h2>
             <ul className="space-y-2.5">
               {FOOTER_LINKS.plan.map((link) => (
                 <li key={link.href}>
@@ -94,9 +94,9 @@ export function Footer() {
 
           {/* Explore */}
           <div>
-            <h3 className="mb-4 font-serif text-xs font-semibold uppercase tracking-widest text-gold-400">
+            <h2 className="mb-4 font-serif text-xs font-semibold uppercase tracking-widest text-gold-400">
               Explore
-            </h3>
+            </h2>
             <ul className="space-y-2.5">
               {FOOTER_LINKS.explore.map((link) => (
                 <li key={link.href}>
@@ -113,9 +113,9 @@ export function Footer() {
 
           {/* Support */}
           <div>
-            <h3 className="mb-4 font-serif text-xs font-semibold uppercase tracking-widest text-gold-400">
+            <h2 className="mb-4 font-serif text-xs font-semibold uppercase tracking-widest text-gold-400">
               Support
-            </h3>
+            </h2>
             <ul className="space-y-2.5">
               {FOOTER_LINKS.support.map((link) => (
                 <li key={link.href}>
@@ -132,9 +132,9 @@ export function Footer() {
 
           {/* Legal */}
           <div>
-            <h3 className="mb-4 font-serif text-xs font-semibold uppercase tracking-widest text-gold-400">
+            <h2 className="mb-4 font-serif text-xs font-semibold uppercase tracking-widest text-gold-400">
               Legal
-            </h3>
+            </h2>
             <ul className="space-y-2.5">
               {FOOTER_LINKS.legal.map((link) => (
                 <li key={link.href}>

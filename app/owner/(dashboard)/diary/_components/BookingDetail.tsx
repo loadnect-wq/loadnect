@@ -171,7 +171,7 @@ export function BookingDetail({ lang, hall, booking, onEdit, onDone }: Props) {
           href={whatsappUrl(booking.customerPhone, receiptMessage(lang, message))}
           target="_blank"
           rel="noopener noreferrer"
-          className="flex min-h-[48px] items-center justify-center gap-2 rounded-xl bg-[#1f8f4e] text-sm font-semibold text-white hover:bg-[#19773f]"
+          className="flex min-h-[48px] items-center justify-center gap-2 rounded-xl bg-[#1a7f45] text-sm font-semibold text-white hover:bg-[#166b3a]"
         >
           <MessageCircle className="h-4 w-4" aria-hidden /> {dt(lang, "sendReceipt")}
         </a>
@@ -180,7 +180,7 @@ export function BookingDetail({ lang, hall, booking, onEdit, onDone }: Props) {
             href={whatsappUrl(booking.customerPhone, reminderMessage(lang, message))}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex min-h-[48px] items-center justify-center gap-2 rounded-xl border border-[#1f8f4e] text-sm font-semibold text-[#17703c] hover:bg-green-50"
+            className="flex min-h-[48px] items-center justify-center gap-2 rounded-xl border border-[#1a7f45] text-sm font-semibold text-[#17703c] hover:bg-green-50"
           >
             <MessageCircle className="h-4 w-4" aria-hidden /> {dt(lang, "sendReminder")}
           </a>
