@@ -39,7 +39,7 @@ export default async function OwnerProfilePage() {
 
   return (
     <div className="min-h-screen bg-ivory-100">
-      <AppHeader title="Profile" notificationsHref="/owner/notifications" />
+      <AppHeader title="Profile" notificationsHref="/owner/notifications" heading />
 
       <div className="px-4 py-5 sm:px-6 lg:px-8 max-w-2xl space-y-5">
 

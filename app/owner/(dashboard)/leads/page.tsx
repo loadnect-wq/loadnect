@@ -53,7 +53,7 @@ export default async function OwnerLeadsPage({ searchParams }: Props) {
   if (!ownerRow) {
     return (
       <div className="min-h-screen bg-ivory-100">
-        <AppHeader title="Enquiries" notificationsHref="/owner/notifications" />
+        <AppHeader title="Enquiries" notificationsHref="/owner/notifications" heading />
         <div className="px-4 py-8">
           <EmptyState
             icon={<Inbox className="h-8 w-8" />}
@@ -102,7 +102,7 @@ export default async function OwnerLeadsPage({ searchParams }: Props) {
 
   return (
     <div className="min-h-screen bg-ivory-100 pb-10">
-      <AppHeader title="Enquiries" notificationsHref="/owner/notifications" />
+      <AppHeader title="Enquiries" notificationsHref="/owner/notifications" heading />
 
       <div className="space-y-4 px-4 py-4 sm:px-6 lg:px-8">
         {/* What an enquiry is and is not. Stated once, at the top, because the

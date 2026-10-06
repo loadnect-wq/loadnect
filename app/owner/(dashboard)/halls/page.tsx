@@ -29,7 +29,7 @@ export default async function OwnerHallsPage() {
 
   return (
     <div className="min-h-screen bg-ivory-100">
-      <AppHeader title="My Halls" notificationsHref="/owner/notifications" />
+      <AppHeader title="My Halls" notificationsHref="/owner/notifications" heading />
 
       <div className="px-4 py-4 sm:px-6 lg:px-8">
         {/* Header row */}

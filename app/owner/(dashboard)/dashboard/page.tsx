@@ -22,6 +22,7 @@ import { fetchClaimableDraft } from "@/lib/admin-hall-drafts";
 import { ClaimHallCard } from "../_components/ClaimHallCard";
 import { CountUp } from "@/components/motion/CountUp";
 import { revealDelay } from "@/lib/motion";
+import { DIRECT_BOOKING_ENABLED } from "@/lib/booking-switch";
 
 export const metadata: Metadata = { title: "Owner Dashboard" };
 
@@ -141,6 +142,16 @@ export default async function OwnerDashboardPage() {
     .sort()[0] ?? null;
   const hasDirectVenue = halls.some((h) => h.booking_mode === "DIRECT_BOOKING");
 
+  // FIRST RUN: no hall, and none waiting to be claimed. Everything else on
+  // this page is a count of things a venue has, so for a new owner it read as
+  // a wall of zeros with a premium-plan pitch underneath — and the one thing
+  // to do next was a small button in a row of six. It leads instead.
+  const firstRun = halls.length === 0 && !claimable;
+  // "Pending Requests" counts ONLINE booking requests. While direct booking
+  // is switched off none can arrive, so the tile is a permanent zero beside
+  // "Open Enquiries" — shown only if one somehow exists.
+  const showBookingRequests = DIRECT_BOOKING_ENABLED || stats.pendingBookings > 0;
+
   return (
     <div className="min-h-screen bg-ivory-100">
       <AppHeader title="Dashboard" notificationsHref="/owner/notifications" />
@@ -233,10 +244,46 @@ export default async function OwnerDashboardPage() {
           </Link>
         )}
 
+        {firstRun && (
+          <section className="rounded-2xl border-2 border-gold-300 bg-white p-5 shadow-card">
+            <p className="text-[11px] font-bold uppercase tracking-wide text-gold-700">Get started</p>
+            <h2 className="mt-1 font-serif text-xl font-bold text-charcoal-900">Add your first hall</h2>
+            <p className="mt-1 text-sm text-charcoal-600">
+              Listing is free. Once your hall is live, families can find it and ask you for a quote.
+            </p>
+            <ol className="mt-4 space-y-3">
+              {[
+                ["Add your hall", "Photos, capacity, pricing and address. It takes one sitting, and you can edit it later."],
+                ["We review it", "We check the listing is complete before it goes live, usually within 48 hours."],
+                [DIRECT_BOOKING_ENABLED ? "Take bookings" : "Answer enquiries", DIRECT_BOOKING_ENABLED
+                  ? "Requests arrive with the date and the amount; nothing is confirmed until you accept."
+                  : "Families send the date and guest count; you reply with your price, and get their number if they accept."],
+              ].map(([title, text], i) => (
+                <li key={title} className="flex gap-3">
+                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-maroon-700 text-xs font-bold text-white">
+                    {i + 1}
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block text-sm font-semibold text-charcoal-900">{title}</span>
+                    <span className="block text-xs leading-relaxed text-charcoal-600">{text}</span>
+                  </span>
+                </li>
+              ))}
+            </ol>
+            <Link
+              href="/owner/halls/new"
+              className="mt-5 inline-flex min-h-[48px] w-full items-center justify-center gap-2 rounded-xl bg-gold-gradient px-6 text-sm font-bold text-charcoal-950 shadow-gold sm:w-auto"
+            >
+              <Plus className="h-4 w-4" aria-hidden /> Add your first hall
+            </Link>
+          </section>
+        )}
+
+        {!firstRun && (<>
         {/* Stats grid. The tiles carry the entrance individually rather than
             the grid carrying one for all six, which is the difference between
             a block appearing and a row dealing itself out. */}
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+        <div className={`grid grid-cols-2 gap-3 sm:grid-cols-3 ${showBookingRequests ? "lg:grid-cols-5" : "lg:grid-cols-4"}`}>
           <StatCard
             revealIndex={0}
             icon={<Building2 className="h-5 w-5 text-maroon-600" />}
@@ -249,13 +296,15 @@ export default async function OwnerDashboardPage() {
             label="Live Halls"
             value={stats.approvedHalls}
           />
-          <StatCard
-            revealIndex={2}
-            icon={<CalendarDays className="h-5 w-5 text-amber-600" />}
-            label="Pending Requests"
-            value={stats.pendingBookings}
-            highlight={stats.pendingBookings > 0}
-          />
+          {showBookingRequests && (
+            <StatCard
+              revealIndex={2}
+              icon={<CalendarDays className="h-5 w-5 text-amber-600" />}
+              label="Pending Requests"
+              value={stats.pendingBookings}
+              highlight={stats.pendingBookings > 0}
+            />
+          )}
           <StatCard
             revealIndex={3}
             icon={<Inbox className="h-5 w-5 text-maroon-600" />}
@@ -268,7 +317,7 @@ export default async function OwnerDashboardPage() {
             icon={<IndianRupee className="h-5 w-5 text-emerald-600" />}
             label="Total Revenue"
             value={formatPrice(stats.totalRevenue)}
-            wide
+            wide={showBookingRequests}
           />
         </div>
 
@@ -366,8 +415,13 @@ export default async function OwnerDashboardPage() {
           )}
 
         </section>
+        </>)}
 
-        {/* ── Subscription upgrade ──────────────────────────────────────── */}
+        {/* ── Subscription upgrade ──────────────────────────────────────────
+            Only once a hall is live: a plan promotes a listing, and every plan
+            needs an approved hall to attach to, so pitching it to an owner
+            with nothing live sold them something they could not use yet. */}
+        {stats.approvedHalls > 0 && (
         <section data-reveal="scale" className="overflow-hidden rounded-2xl bg-gradient-to-br from-maroon-900 to-maroon-950 p-4 text-ivory-100 shadow-elevated">
           <p className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-gold-300">
             <Sparkles className="h-3.5 w-3.5" /> Grow your bookings
@@ -394,8 +448,10 @@ export default async function OwnerDashboardPage() {
             Compare plans
           </Link>
         </section>
+        )}
 
-        {/* Halls summary */}
+        {/* Halls summary — not on first run, where the card above says it. */}
+        {!firstRun && (
         <section data-reveal="up">
           <div className="flex items-center justify-between mb-3">
             <h2 className="font-serif text-base font-semibold text-charcoal-900">My Halls</h2>
@@ -450,6 +506,7 @@ export default async function OwnerDashboardPage() {
             </div>
           )}
         </section>
+        )}
       </div>
     </div>
   );

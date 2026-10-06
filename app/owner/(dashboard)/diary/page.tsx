@@ -71,7 +71,7 @@ export default async function DiaryPage({ searchParams }: Props) {
   if (halls.length === 0) {
     return (
       <div className="min-h-screen bg-ivory-100" lang={lang === "ta" ? "ta" : undefined}>
-        <AppHeader title={dt(lang, "title")} notificationsHref="/owner/notifications" />
+        <AppHeader title={dt(lang, "title")} notificationsHref="/owner/notifications" heading />
         <div className="mx-auto max-w-md px-4 py-12 text-center">
           <Building2 className="mx-auto h-10 w-10 text-charcoal-300" aria-hidden />
           <p className="mt-3 text-sm text-charcoal-700">{dt(lang, "noHall")}</p>

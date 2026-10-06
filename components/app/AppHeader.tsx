@@ -16,10 +16,18 @@ interface AppHeaderProps {
   /** Where the bell goes. Owner pages pass their own route. */
   notificationsHref?: string;
   transparent?: boolean;
+  /**
+   * Also give the page its h1 from `title`. This bar is phone-only, so a page
+   * that relied on it for its name had NO heading on a desktop — the owner's
+   * My Halls, Enquiries, Revenue and others opened onto bare content — and no
+   * h1 for a screen reader anywhere. The heading shows from lg and is
+   * screen-reader-only below it, where the bar already shows the title.
+   */
+  heading?: boolean;
 }
 
 export function AppHeader({
-  title, showBack, rightSlot, transparent, notificationsHref,
+  title, showBack, rightSlot, transparent, notificationsHref, heading,
 }: AppHeaderProps) {
   const pathname = usePathname() ?? "/";
   const router = useRouter();
@@ -27,60 +35,67 @@ export function AppHeader({
   if (HIDDEN_PREFIXES.some((p) => pathname.startsWith(p))) return null;
 
   return (
-    <header
-      // `hallnect-appbar` is styled in app/globals.css against
-      // `html.is-scrolled`, the class the one shared scroll listener in
-      // RevealObserver already maintains. Pure CSS, so the bar elevating on
-      // scroll costs neither a listener nor a re-render on any mobile page.
-      className={cn(
-        "hallnect-appbar sticky top-0 z-30 w-full border-b border-border lg:hidden",
-        transparent && "hallnect-appbar-float",
-      )}
-    >
-      <div className="flex h-14 items-center justify-between px-4">
-        <div className="flex min-w-0 items-center gap-3">
-          {showBack ? (
-            <button
-              type="button"
-              onClick={() => router.back()}
-              aria-label="Back"
-              className="hit-44 flex h-9 w-9 items-center justify-center rounded-full bg-white shadow-card"
-            >
-              <ArrowLeft className="h-4 w-4 text-charcoal-800" />
-            </button>
-          ) : (
-            <Link href="/" className="hit-44 flex items-center gap-1.5" aria-label={`${APP_NAME} home`}>
-              <span className="relative block h-7 w-7 shrink-0">
-                {/* No `priority` — see the note in Navbar.tsx. */}
-                <Image src="/logo.png" alt="" fill sizes="28px" className="object-contain" />
-              </span>
-              <span className="font-serif text-base font-bold text-maroon-800">{APP_NAME}</span>
-            </Link>
-          )}
-          {title && (
-            <p className="truncate font-serif text-base font-semibold text-charcoal-900">{title}</p>
-          )}
-        </div>
+    <>
+      <header
+        // `hallnect-appbar` is styled in app/globals.css against
+        // `html.is-scrolled`, the class the one shared scroll listener in
+        // RevealObserver already maintains. Pure CSS, so the bar elevating on
+        // scroll costs neither a listener nor a re-render on any mobile page.
+        className={cn(
+          "hallnect-appbar sticky top-0 z-30 w-full border-b border-border lg:hidden",
+          transparent && "hallnect-appbar-float",
+        )}
+      >
+        <div className="flex h-14 items-center justify-between px-4">
+          <div className="flex min-w-0 items-center gap-3">
+            {showBack ? (
+              <button
+                type="button"
+                onClick={() => router.back()}
+                aria-label="Back"
+                className="hit-44 flex h-9 w-9 items-center justify-center rounded-full bg-white shadow-card"
+              >
+                <ArrowLeft className="h-4 w-4 text-charcoal-800" />
+              </button>
+            ) : (
+              <Link href="/" className="hit-44 flex items-center gap-1.5" aria-label={`${APP_NAME} home`}>
+                <span className="relative block h-7 w-7 shrink-0">
+                  {/* No `priority` — see the note in Navbar.tsx. */}
+                  <Image src="/logo.png" alt="" fill sizes="28px" className="object-contain" />
+                </span>
+                <span className="font-serif text-base font-bold text-maroon-800">{APP_NAME}</span>
+              </Link>
+            )}
+            {title && (
+              <p className="truncate font-serif text-base font-semibold text-charcoal-900">{title}</p>
+            )}
+          </div>
 
-        <div className="flex items-center gap-2">
-          {/* A real link, not an ornament. This was a <button> with no handler
-              on every mobile page: it looked like the way to reach your
-              notifications and did nothing when tapped. */}
-          {/* Owners have their own notifications page. This was hardcoded to
-              the customer route, which requireRole refuses for an owner — so
-              the bell on every owner page bounced them back to their dashboard.
-              `notificationsHref` lets an owner surface point at its own. */}
-          {rightSlot ?? (
-            <Link
-              href={notificationsHref ?? "/customer/notifications"}
-              aria-label="Notifications"
-              className="hit-44 flex h-9 w-9 items-center justify-center rounded-full bg-ivory-200 text-charcoal-700 transition-colors hover:bg-ivory-300"
-            >
-              <Bell className="h-4 w-4" />
-            </Link>
-          )}
+          <div className="flex items-center gap-2">
+            {/* A real link, not an ornament. This was a <button> with no handler
+                on every mobile page: it looked like the way to reach your
+                notifications and did nothing when tapped. */}
+            {/* Owners have their own notifications page. This was hardcoded to
+                the customer route, which requireRole refuses for an owner — so
+                the bell on every owner page bounced them back to their dashboard.
+                `notificationsHref` lets an owner surface point at its own. */}
+            {rightSlot ?? (
+              <Link
+                href={notificationsHref ?? "/customer/notifications"}
+                aria-label="Notifications"
+                className="hit-44 flex h-9 w-9 items-center justify-center rounded-full bg-ivory-200 text-charcoal-700 transition-colors hover:bg-ivory-300"
+              >
+                <Bell className="h-4 w-4" />
+              </Link>
+            )}
+          </div>
         </div>
-      </div>
-    </header>
+      </header>
+      {heading && title && (
+        <h1 className="sr-only font-serif text-2xl font-bold text-charcoal-900 lg:not-sr-only lg:block lg:px-8 lg:pt-6">
+          {title}
+        </h1>
+      )}
+    </>
   );
 }

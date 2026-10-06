@@ -145,3 +145,35 @@ describe("the admin area (reviewed signed in, 2026-10-06)", () => {
     }
   });
 });
+
+describe("the owner area (reviewed signed in, 2026-10-06)", () => {
+  const dash = read("app/owner/(dashboard)/dashboard/page.tsx");
+
+  it("leads a new owner to their first hall instead of a wall of zeros", () => {
+    expect(dash).toContain("const firstRun = halls.length === 0 && !claimable;");
+    expect(dash).toContain(">Add your first hall</h2>");
+    expect(dash).toContain("{!firstRun && (<>");
+  });
+
+  it("pitches premium only once a hall is live", () => {
+    expect(dash).toContain("{stats.approvedHalls > 0 && (");
+  });
+
+  it("drops the always-zero online-requests tile while direct booking is off", () => {
+    expect(dash).toContain("const showBookingRequests = DIRECT_BOOKING_ENABLED || stats.pendingBookings > 0;");
+  });
+
+  it("puts Enquiries in the phone tab bar while direct booking is off", () => {
+    const nav = read("app/owner/(dashboard)/_components/OwnerBottomNav.tsx");
+    expect(nav).toContain('{ href: "/owner/leads",    label: "Enquiries", Icon: Inbox }');
+    const more = read("app/owner/(dashboard)/more/page.tsx");
+    expect(more).toContain('{ href: "/owner/bookings", label: "Bookings"');
+  });
+
+  it("gives every owner page a heading on desktop", () => {
+    for (const f of ["halls", "leads", "revenue", "commissions", "premium", "profile", "bookings", "more", "halls/new"]) {
+      expect(read(`app/owner/(dashboard)/${f}/page.tsx`), f).toContain(' heading />');
+    }
+    expect(read("components/app/AppHeader.tsx")).toContain("lg:not-sr-only");
+  });
+});

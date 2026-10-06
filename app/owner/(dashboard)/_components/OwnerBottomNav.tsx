@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BookOpen, Building2, CalendarDays, LayoutDashboard, Menu } from "lucide-react";
+import { BookOpen, Building2, CalendarDays, Inbox, LayoutDashboard, Menu } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { DIRECT_BOOKING_ENABLED } from "@/lib/booking-switch";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Owner navigation on a phone.
@@ -28,10 +29,17 @@ import { cn } from "@/lib/utils";
 // wrong on a slow device.
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ENQUIRIES TAKE THE BOOKINGS SLOT WHILE DIRECT BOOKING IS OFF (2026-10-06).
+// "Bookings" lists online bookings, and with lib/booking-switch.ts off none can
+// arrive — so the tab bar spent a slot on a permanently empty page while the
+// owner's actual inbox, the quote requests, sat behind More. Same switch the
+// customer BottomNav uses; Bookings moves into More.
 const TABS = [
   { href: "/owner/dashboard", label: "Dashboard", Icon: LayoutDashboard, exact: true },
   { href: "/owner/halls",     label: "My Halls",  Icon: Building2 },
-  { href: "/owner/bookings",  label: "Bookings",  Icon: CalendarDays },
+  DIRECT_BOOKING_ENABLED
+    ? { href: "/owner/bookings", label: "Bookings",  Icon: CalendarDays }
+    : { href: "/owner/leads",    label: "Enquiries", Icon: Inbox },
   { href: "/owner/diary",     label: "Diary",     Icon: BookOpen },
   { href: "/owner/more",      label: "More",      Icon: Menu },
 ] as const;

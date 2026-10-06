@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import {
-  Wallet, Sparkles, Bell, MessageSquare, User, ChevronRight, Building2, Inbox, IndianRupee, CalendarCheck,
+  Wallet, Sparkles, Bell, MessageSquare, User, ChevronRight, Building2, Inbox, IndianRupee, CalendarCheck, CalendarDays,
 } from "lucide-react";
+import { DIRECT_BOOKING_ENABLED } from "@/lib/booking-switch";
 import { requireRole } from "@/lib/auth";
 import { AppHeader } from "@/components/app/AppHeader";
 
@@ -12,11 +13,14 @@ export const metadata: Metadata = { title: "More" };
 // 360px, so the rest live here rather than being unreachable — which is what
 // they were before this page existed.
 const ITEMS = [
-  { href: "/owner/leads",         label: "Enquiries",     desc: "Lead Generation requests waiting on you", Icon: Inbox },
+  // Whichever of Bookings and Enquiries is NOT in the tab bar (OwnerBottomNav).
+  DIRECT_BOOKING_ENABLED
+    ? { href: "/owner/leads",    label: "Enquiries",     desc: "Quote requests from families",          Icon: Inbox }
+    : { href: "/owner/bookings", label: "Bookings",      desc: "Online bookings, when they are switched on", Icon: CalendarDays },
   { href: "/owner/visits",        label: "Site visits",   desc: "Families asking to see your hall",      Icon: CalendarCheck },
   // Moved here from the tab bar when Diary took its slot.
   { href: "/owner/revenue",       label: "Revenue",       desc: "What your Hallnect bookings have earned", Icon: IndianRupee },
-  { href: "/owner/commissions",   label: "Commissions",   desc: "What Hallnect kept from each booking", Icon: Wallet },
+  { href: "/owner/commissions",   label: "Commissions",   desc: DIRECT_BOOKING_ENABLED ? "What Hallnect kept from each booking" : "Commission on bookings you confirm, and paying it", Icon: Wallet },
   { href: "/owner/premium",       label: "Premium",       desc: "Your plan and monthly billing",        Icon: Sparkles },
   { href: "/owner/notifications", label: "Notifications", desc: "Booking and payment alerts",           Icon: Bell },
   { href: "/owner/support",       label: "Support",       desc: "Get help from Hallnect",               Icon: MessageSquare },
@@ -29,7 +33,7 @@ export default async function OwnerMorePage() {
 
   return (
     <div className="min-h-screen bg-ivory-100">
-      <AppHeader title="More" notificationsHref="/owner/notifications" />
+      <AppHeader title="More" notificationsHref="/owner/notifications" heading />
       <div className="px-4 py-5 sm:px-6 lg:px-8">
         <ul className="divide-y divide-border overflow-hidden rounded-2xl bg-white shadow-card">
           {ITEMS.map(({ href, label, desc, Icon }) => (
