@@ -6,6 +6,7 @@ import { releaseAvailabilityForBooking } from "@/lib/availability-release";
 import { CANCELLABLE_STATUSES } from "@/lib/customer";
 import {
   reviewSchema,
+  enquiryReviewSchema,
   profileUpdateSchema,
   uuidSchema,
   parseSafe,
@@ -14,6 +15,7 @@ import { sanitizeError } from "@/lib/errors";
 import { notifyBookingEvent } from "@/lib/notifications/events";
 import { normalizePhoneE164 } from "@/lib/notifications/phone";
 import { recordBookingRefundOrAlert } from "@/lib/refunds";
+import { todayInBusinessTz } from "@/lib/dates";
 
 type ActionResult = { success: true } | { error: string };
 
@@ -179,6 +181,79 @@ export async function submitReview(data: {
 
   revalidatePath(`/customer/bookings/${v.bookingId}`);
   revalidatePath("/customer/reviews");
+  return { success: true };
+}
+
+// ── Review a hall booked through a quote ──────────────────────────────────────
+// With direct booking switched off no booking row ever exists, so a family's
+// only record of using a hall is the enquiry the hall marked booked.
+// Security:
+//   • RLS reviews_insert (0113) allows the enquiry path only for the caller's
+//     own enquiry, on that enquiry's hall, marked booked ('confirmed'), once
+//     the function date has passed in India. The checks below repeat it only
+//     to give a clear message; the database is what refuses.
+//   • The hall is read off the enquiry, never taken from the client.
+//   • uq_review_per_lead: one review per enquiry.
+
+export async function submitEnquiryReview(data: {
+  leadId:             string;
+  rating:             number;
+  title?:             string;
+  comment?:           string;
+  cleanlinessRating?: number;
+  valueRating?:       number;
+  locationRating?:    number;
+  serviceRating?:     number;
+}): Promise<ActionResult> {
+  const supabase = await getSupabaseServerClient();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const db = supabase as any;
+
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Not authenticated" };
+
+  const parsed = parseSafe(enquiryReviewSchema, data);
+  if (!parsed.ok) return { error: parsed.error };
+  const v = parsed.data;
+
+  const { data: lead, error: leadErr } = await db
+    .from("leads")
+    .select("id, hall_id, status, event_date, halls!hall_id(slug)")
+    .eq("id", v.leadId)
+    .eq("customer_id", user.id)
+    .maybeSingle();
+
+  if (leadErr) return { error: sanitizeError(leadErr, "submitEnquiryReview.lead") };
+  if (!lead) return { error: "That enquiry is not yours." };
+  if (String(lead.status) !== "confirmed") {
+    return { error: "You can rate a hall once it has marked your enquiry booked." };
+  }
+  if (String(lead.event_date) > todayInBusinessTz()) {
+    return { error: "You can rate this hall after your function." };
+  }
+
+  const { error } = await db.from("reviews").insert({
+    hall_id:            lead.hall_id,
+    lead_id:            v.leadId,
+    customer_id:        user.id,
+    rating:             v.rating,
+    title:              v.title || null,
+    comment:            v.comment || null,
+    cleanliness_rating: v.cleanlinessRating ?? null,
+    value_rating:       v.valueRating ?? null,
+    location_rating:    v.locationRating ?? null,
+    service_rating:     v.serviceRating ?? null,
+  });
+
+  if (error) {
+    if (error.code === "23505") return { error: "You have already rated this hall for this function." };
+    return { error: sanitizeError(error, "submitEnquiryReview") };
+  }
+
+  revalidatePath("/customer/enquiries");
+  revalidatePath("/customer/reviews");
+  const slug = (lead.halls as { slug?: string } | null)?.slug;
+  if (slug) revalidatePath(`/halls/${slug}`);
   return { success: true };
 }
 

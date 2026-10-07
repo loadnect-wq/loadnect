@@ -97,7 +97,7 @@ export default function TermsPage() {
       </Section>
 
       <Section title="11. Reviews">
-        Customers may leave reviews only for venues they have booked through Hallnect, and only after the booking is marked completed. Reviews must be honest and factual. Hallnect reserves the right to hide or remove reviews that violate community guidelines.
+        Customers may leave reviews only for venues they have booked through Hallnect: an online booking, once it is marked completed, or an enquiry the venue has marked booked, once the date of the function has passed. Each booking or enquiry can be reviewed once. Reviews must be honest and factual. Hallnect reserves the right to hide or remove reviews that violate community guidelines.
       </Section>
 
       <Section title="12. Prohibited Conduct">

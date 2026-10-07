@@ -14,7 +14,7 @@ import {
   CANCELLABLE_STATUSES } from "@/lib/customer";
 import { formatPrice } from "@/lib/mock-data";
 import { CancelButton } from "./_components/CancelButton";
-import { ReviewForm } from "./_components/ReviewForm";
+import { ReviewForm } from "@/app/customer/_components/ReviewForm";
 
 type Props = { params: Promise<{ id: string }> };
 

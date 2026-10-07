@@ -16,6 +16,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { buttonVariants } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { fetchMyReviews } from "@/lib/customer";
+import { DIRECT_BOOKING_ENABLED } from "@/lib/booking-switch";
 
 export const metadata: Metadata = { title: "My Reviews" };
 
@@ -31,11 +32,21 @@ export default async function MyReviewsPage() {
           <EmptyState
             icon={<Star className="h-8 w-8" />}
             title="No reviews yet"
-            description="Complete a booking to leave your first review."
+            description={
+              DIRECT_BOOKING_ENABLED
+                ? "Complete a booking to leave your first review."
+                : "When a hall you booked through a quote has held your function, rate it from My Enquiries."
+            }
             action={
-              <Link href="/customer/bookings" className={buttonVariants({ variant: "gold", size: "sm" })}>
-                My Bookings
-              </Link>
+              DIRECT_BOOKING_ENABLED ? (
+                <Link href="/customer/bookings" className={buttonVariants({ variant: "gold", size: "sm" })}>
+                  My Bookings
+                </Link>
+              ) : (
+                <Link href="/customer/enquiries" className={buttonVariants({ variant: "gold", size: "sm" })}>
+                  My enquiries
+                </Link>
+              )
             }
           />
         ) : (

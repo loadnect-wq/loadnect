@@ -402,6 +402,30 @@ export async function fetchMyReviews(): Promise<MyReview[]> {
   }));
 }
 
+/**
+ * The enquiries this family has already reviewed (0113), so My Enquiries can
+ * say "You rated this hall" instead of offering the form a second time.
+ * NULL when the read fails: an empty set would offer the form on every booked
+ * enquiry, and the family would write a review only to be told it exists.
+ */
+export async function fetchReviewedLeadIds(): Promise<Set<string> | null> {
+  const supabase = await getSupabaseServerClient();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const db = supabase as any;
+
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return null;
+
+  const { data, error } = await db
+    .from("reviews")
+    .select("lead_id")
+    .eq("customer_id", user.id)
+    .not("lead_id", "is", null);
+
+  if (error) { handleErr("fetchReviewedLeadIds", error); return null; }
+  return new Set((data ?? []).map((r: { lead_id: string }) => r.lead_id));
+}
+
 export async function fetchCustomerStats(): Promise<CustomerStats> {
   const supabase = await getSupabaseServerClient();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

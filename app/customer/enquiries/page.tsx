@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { CalendarDays, Inbox, Phone, Users } from "lucide-react";
+import { CalendarDays, Inbox, Phone, Star, Users } from "lucide-react";
 import { requireRole } from "@/lib/auth";
 import { fetchVenueCategories } from "@/lib/venue-categories.server";
 import { categoryLabelMap } from "@/lib/venue-categories";
@@ -14,6 +14,8 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { buttonVariants } from "@/components/ui/Button";
 import { AppHeader } from "@/components/app/AppHeader";
 import { WithdrawEnquiry } from "./_components/WithdrawEnquiry";
+import { ReviewForm } from "../_components/ReviewForm";
+import { fetchReviewedLeadIds } from "@/lib/customer";
 
 export const metadata: Metadata = { title: "My enquiries" };
 
@@ -42,7 +44,7 @@ const STATUS_CFG: Record<LeadStatus, { label: string; variant: BadgeVar; note: s
   },
   confirmed: {
     label: "Booked", variant: "success",
-    note: "The hall has marked this booked. Pay the hall directly — Hallnect does not collect it.",
+    note: "The hall has marked this booked. Pay the hall directly — Hallnect does not collect it. After your function you can rate the hall here.",
   },
   rejected: {
     label: "Declined", variant: "destructive",
@@ -63,7 +65,7 @@ export default async function CustomerEnquiriesPage() {
   const user = await getSession();
   if (!user) return null;
 
-  const [leads, venueContacts, catalogue] = await Promise.all([
+  const [leads, venueContacts, catalogue, reviewed] = await Promise.all([
     fetchLeadsForCustomer(user.id),
     // THE VENUE'S NUMBER, released only for enquiries that actually reached
     // them. Deliberately not on the public venue page: a lead venue earns
@@ -73,6 +75,10 @@ export default async function CustomerEnquiriesPage() {
     // introduction. Here the introduction has already been made and recorded.
     fetchVenueContactsForCustomer(user.id),
     fetchVenueCategories(),
+    // Which booked enquiries already have a review (0113). Null on a failed
+    // read, and then no form is offered at all rather than one that may be a
+    // second review.
+    fetchReviewedLeadIds(),
   ]);
 
   // slug -> name for the occasion on each enquiry. This WAS four hard-coded
@@ -193,6 +199,37 @@ export default async function CustomerEnquiriesPage() {
                       </p>
                     );
                   })()}
+
+                  {/* RATE THE HALL. A family's only record of using a hall
+                      booked through a quote is this enquiry, so this is where
+                      the review is offered (0113): once the hall has marked it
+                      booked and the function date has passed. The database
+                      enforces the same rule; this only decides what to show. */}
+                  {lead.status === "confirmed" && lead.event_date <= today && reviewed && (
+                    reviewed.has(lead.id) ? (
+                      <Link
+                        href="/customer/reviews"
+                        className="mt-2.5 flex items-center gap-2 rounded-xl border border-border bg-ivory-50 px-3 py-2.5 text-xs text-charcoal-700"
+                      >
+                        <Star className="h-4 w-4 shrink-0 fill-gold-500 text-gold-500" aria-hidden />
+                        <span>You rated this hall. <span className="font-semibold text-maroon-700">See your review</span></span>
+                      </Link>
+                    ) : (
+                      <details className="group mt-2.5 rounded-xl border border-gold-200 bg-gold-50/60">
+                        <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 px-3 py-2.5 [&::-webkit-details-marker]:hidden">
+                          <Star className="h-4 w-4 shrink-0 fill-gold-500 text-gold-500" aria-hidden />
+                          <span className="min-w-0 flex-1">
+                            <span className="block text-xs font-semibold text-gold-900">Rate this hall</span>
+                            <span className="block text-[11px] text-charcoal-700">Your function is over. Tell other families how it went.</span>
+                          </span>
+                          <span className="text-[11px] font-semibold text-maroon-700 group-open:hidden">Write a review</span>
+                        </summary>
+                        <div className="border-t border-gold-200 px-3 pb-3 pt-3">
+                          <ReviewForm leadId={lead.id} hallName={lead.hall_name} />
+                        </div>
+                      </details>
+                    )
+                  )}
 
                   {lead.status === "rejected" && lead.cancel_reason && (
                     <p className="mt-1 text-[11px] text-charcoal-500">

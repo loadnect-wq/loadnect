@@ -4,13 +4,15 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Star } from "lucide-react";
 import { Button } from "@/components/ui/Button";
-import { submitReview } from "@/app/customer/actions";
+import { submitEnquiryReview, submitReview } from "@/app/customer/actions";
 
-interface Props {
-  hallId:    string;
-  bookingId: string;
-  hallName:  string;
-}
+// What the review is about: an online booking, or (while direct booking is
+// off, the only kind) an enquiry the hall marked booked. An enquiry review
+// carries no hall id — the server reads it off the family's own enquiry.
+type Props = { hallName: string } & (
+  | { hallId: string; bookingId: string; leadId?: never }
+  | { leadId: string; hallId?: never; bookingId?: never }
+);
 
 const LABELS = ["", "Poor", "Fair", "Good", "Very Good", "Excellent"];
 
@@ -78,7 +80,8 @@ function StarRow({
   );
 }
 
-export function ReviewForm({ hallId, bookingId, hallName }: Props) {
+export function ReviewForm(props: Props) {
+  const { hallName } = props;
   const router  = useRouter();
   const [rating,   setRating]  = useState(0);
   const [hovered,  setHovered] = useState(0);
@@ -95,7 +98,7 @@ export function ReviewForm({ hallId, bookingId, hallName }: Props) {
     return (
       <div className="rounded-2xl bg-green-50 border border-green-200 p-4 text-center">
         <p className="text-sm font-semibold text-green-800">Thank you for your review!</p>
-        <p className="mt-1 text-xs text-green-700">Your feedback helps other guests choose the right venue.</p>
+        <p className="mt-1 text-xs text-green-700">Your feedback helps other families choose the right venue.</p>
       </div>
     );
   }
@@ -105,9 +108,7 @@ export function ReviewForm({ hallId, bookingId, hallName }: Props) {
     if (rating === 0) { setError("Please select an overall rating."); return; }
     setLoading(true);
     setError(null);
-    const result = await submitReview({
-      hallId,
-      bookingId,
+    const review = {
       rating,
       title:             title.trim() || undefined,
       comment:           comment.trim() || undefined,
@@ -115,7 +116,10 @@ export function ReviewForm({ hallId, bookingId, hallName }: Props) {
       valueRating:       subRatings.value       || undefined,
       locationRating:    subRatings.location     || undefined,
       serviceRating:     subRatings.service      || undefined,
-    });
+    };
+    const result = props.bookingId === undefined
+      ? await submitEnquiryReview({ leadId: props.leadId, ...review })
+      : await submitReview({ hallId: props.hallId, bookingId: props.bookingId, ...review });
     setLoading(false);
     if ("error" in result) {
       setError(result.error);

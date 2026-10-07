@@ -1241,6 +1241,15 @@ export const reviewSchema = z.object({
 
 export type ReviewInput = z.input<typeof reviewSchema>;
 
+// A review of a hall booked through a quote (0113). It names the enquiry and
+// NOT the hall: the action reads the hall off the family's own enquiry, so a
+// review cannot be pointed at a hall the enquiry was not for.
+export const enquiryReviewSchema = reviewSchema
+  .omit({ hallId: true, bookingId: true })
+  .extend({ leadId: uuidSchema });
+
+export type EnquiryReviewInput = z.input<typeof enquiryReviewSchema>;
+
 // ── Support ticket ───────────────────────────────────────────────────────────
 
 export const ticketSchema = z.object({

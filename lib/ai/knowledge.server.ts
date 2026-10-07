@@ -92,6 +92,7 @@ export async function buildKnowledge(role: ChatRole): Promise<string> {
 2. The venue sees the request (name and event details) but NOT the customer's phone number. It replies on Hallnect with a quote: its price for that date, what is included, the advance it asks for, and how long the quote is open.
 3. The customer sees the quote in My Enquiries (/customer/enquiries) and can accept it, turn it down, or ask for a new one if it has run out. Only when they accept does that venue get their number, to call them and agree the booking. No other venue ever gets it.
 4. The customer pays the venue directly. Hallnect takes no payment from customers and adds no fee.
+5. Once the venue has marked the enquiry booked and the function date has passed, the customer can rate the hall from My Enquiries ("Rate this hall"). The review appears on the hall's page and in My Reviews (/customer/reviews). One review per booked enquiry.
 - A request is not a booking: no date is held until the venue confirms the booking with the customer.
 - The customer can withdraw a request at any time before the venue marks it booked.
 - Cancellation and refunds on a booking are between the customer and the venue, because the money is paid to the venue. Hallnect's Refund Policy (/refund-policy) and Cancellation Policy (/cancellation-policy) cover payments made through Hallnect.`);
