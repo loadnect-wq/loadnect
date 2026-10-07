@@ -400,11 +400,13 @@ html:not(.is-scrolled) .hallnect-header--over-hero .hallnect-nav-ink {
   color: #fff;
   text-shadow: var(--over-hero-shadow);
 }
-html:not(.is-scrolled) .hallnect-header--over-hero a:not(.hallnect-nav-solid):hover {
+html:not(.is-scrolled) .hallnect-header--over-hero a:not(.hallnect-nav-solid):hover,
+html:not(.is-scrolled) .hallnect-header--over-hero button.hallnect-nav-ink:hover {
   color: #FBC751; /* gold-300 */
 }
 /* The underline that marks the current page reads as grey-on-video otherwise. */
-html:not(.is-scrolled) .hallnect-header--over-hero a::after {
+html:not(.is-scrolled) .hallnect-header--over-hero a::after,
+html:not(.is-scrolled) .hallnect-header--over-hero button.hallnect-nav-ink::after {
   background-color: #FBC751;
 }
 /* Outlined controls need a visible edge on video; the filled gold CTA already

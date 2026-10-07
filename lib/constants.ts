@@ -103,19 +103,23 @@ export const SUPPORT_HOURS = {
 // so it appeared twice side by side. "Contact" left it for room: it is in the
 // footer twice, and the assistant answers on every page.
 //
+// ONE ENTRY FOR THE TOOLS (2026-10-07). Muhurtham Dates and Budget Calculator
+// sat beside "Plan Your Function" as links of their own, though both are on
+// the page it opens (/tools) — three header slots for one thing. They now live
+// in its menu (`menu: true`), which lists every tool from lib/family-tools.ts,
+// so each is still one click from any page.
+//
 // MEASURED, NOT GUESSED. The page container stops growing at 1280px (1216px
 // inside), so a wider screen never adds room. Signed in, the header's right
 // side is Saved + Dashboard + the name (truncated) + Sign Out, about 480px; at
-// 1024px only three links fit beside that, at 1280px five. `wide` links show
-// from 1280px (xl).
-export type NavLink = { label: string; href: string; wide?: boolean };
+// 1024px only three links fit beside that. These three fit, so none needs
+// `wide` (shown from 1280px, xl) any more.
+export type NavLink = { label: string; href: string; wide?: boolean; menu?: boolean };
 
 export const NAV_LINKS: readonly NavLink[] = [
   { label: "Browse Halls",       href: "/halls" },
-  { label: "Muhurtham Dates",    href: "/muhurtham-dates" },
-  { label: "Budget Calculator",  href: "/budget", wide: true },
-  { label: "Plan Your Function", href: "/tools" },
-  { label: "Pricing",            href: "/premium", wide: true },
+  { label: "Plan Your Function", href: "/tools", menu: true },
+  { label: "Pricing",            href: "/premium" },
 ];
 
 // EACH LINK ONCE (2026-10-06). "Contact Us", "Refund Policy" and "Cancellation

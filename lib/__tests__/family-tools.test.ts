@@ -59,12 +59,21 @@ describe("every way in", () => {
     expect(desktop.indexOf("<FamilyToolCards")).toBeLessThan(desktop.indexOf("Featured venues grid"));
   });
 
-  it("the desktop header leads with them, and has the saved list", () => {
-    const hrefs = NAV_LINKS.map((l) => l.href);
-    expect(hrefs.slice(0, 4)).toEqual(["/halls", "/muhurtham-dates", "/budget", "/tools"]);
-    // On a 1024px laptop only the links that fit beside the account controls.
-    expect(NAV_LINKS.filter((l) => !l.wide).map((l) => l.href)).toEqual(["/halls", "/muhurtham-dates", "/tools"]);
+  it("the desktop header has ONE entry for them, whose menu lists every tool, and the saved list", () => {
+    // Muhurtham Dates and Budget Calculator were header links beside "Plan
+    // Your Function", though both are on the page it opens (2026-10-07).
+    expect(NAV_LINKS.map((l) => l.href)).toEqual(["/halls", "/tools", "/premium"]);
+    expect(NAV_LINKS.find((l) => l.href === "/tools")?.menu).toBe(true);
+    for (const t of FAMILY_TOOLS) expect(NAV_LINKS.map((l) => l.href)).not.toContain(t.href);
+    // All three fit beside the signed-in controls at 1024px.
+    expect(NAV_LINKS.every((l) => !l.wide)).toBe(true);
     const navbar = read("components/layout/Navbar.tsx");
+    expect(navbar).toContain("<PlanMenu key={href} label={link.label} href={href} pathname={pathname} />");
+    expect(navbar).toContain("{FAMILY_TOOLS.map((tool) => {");
+    expect(navbar).toContain("All planning tools →");
+    // Over the homepage video every header link is whitened; the menu's links
+    // sit on their own white panel and must opt out.
+    expect(navbar.match(/hallnect-nav-solid/g)?.length).toBeGreaterThanOrEqual(3);
     expect(navbar).toContain('className={link.wide ? "hidden xl:block" : undefined}');
     expect(navbar).toContain('<SavedLink active={pathname.startsWith("/saved")} />');
     expect(navbar).toContain('href="/saved"');

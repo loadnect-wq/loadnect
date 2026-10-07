@@ -2,12 +2,14 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { Heart, Menu, X, LogOut, LayoutDashboard } from "lucide-react";
+import { ChevronDown, Heart, Menu, X, LogOut, LayoutDashboard } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { buttonVariants } from "@/components/ui/Button";
 import { APP_NAME, NAV_LINKS, getDashboardPath } from "@/lib/constants";
+import { FAMILY_TOOLS } from "@/lib/family-tools";
+import { TOOL_ICONS } from "@/components/tools/tool-icons";
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { useSavedHalls } from "@/lib/hooks/useSavedHalls";
 
@@ -182,6 +184,9 @@ export function Navbar() {
               // today, and narrowing would make the home case a type error
               // rather than dead-but-correct code if one is ever added.
               const href: string = link.href;
+              if (link.menu) {
+                return <PlanMenu key={href} label={link.label} href={href} pathname={pathname} />;
+              }
               const active = href === "/" ? pathname === "/" : pathname.startsWith(href);
               return (
                 <li key={link.href} className={link.wide ? "hidden xl:block" : undefined}>
@@ -352,6 +357,169 @@ export function Navbar() {
         </div>
       )}
     </header>
+  );
+}
+
+/**
+ * "Plan Your Function" and the tools under it (lib/family-tools.ts).
+ *
+ * Muhurtham Dates and Budget Calculator used to be header links of their own,
+ * beside this one, though both are on the page it opens — so they moved in
+ * here, where each is still one click from any page. The label opens the
+ * menu; the page itself is the menu's last link.
+ *
+ * HOW IT OPENS AND CLOSES:
+ *   • A mouse resting on it opens it, and leaving closes it — unless it was
+ *     clicked, which pins it open until a click outside.
+ *   • Keyboard: Enter/Space on the button; Escape closes and returns focus to
+ *     the button; tabbing out of it closes it.
+ *   • Any page change closes it. "Open" is stored as the path it was opened
+ *     on, so a new path is closed by definition — no effect has to notice.
+ *
+ * NOT CLOSED ON BLUR. Safari does not focus a link when it is clicked, so a
+ * blur-to-close unmounted the menu between mousedown and click and the click
+ * was lost. Focus moving to something OUTSIDE (focusin) is what closes it.
+ *
+ * Its links carry hallnect-nav-solid: over the homepage video every header
+ * link is whitened (globals.css), and these sit on the menu's own white panel.
+ */
+function PlanMenu({ label, href, pathname }: { label: string; href: string; pathname: string }) {
+  const [openAt, setOpenAt] = useState<string | null>(null);
+  const open = openAt === pathname;
+  const rootRef = useRef<HTMLLIElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const byHover = useRef(false);
+  const closeTimer = useRef<number | undefined>(undefined);
+
+  const active = pathname.startsWith(href) || FAMILY_TOOLS.some((t) => pathname.startsWith(t.href));
+
+  const close = () => {
+    byHover.current = false;
+    setOpenAt(null);
+  };
+
+  useEffect(() => {
+    if (!open) return;
+    const shut = () => {
+      byHover.current = false;
+      setOpenAt(null);
+    };
+    const outside = (target: EventTarget | null) =>
+      !(target instanceof Node && rootRef.current?.contains(target));
+    const onPointerDown = (e: PointerEvent) => { if (outside(e.target)) shut(); };
+    const onFocusIn = (e: FocusEvent) => { if (outside(e.target)) shut(); };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        shut();
+        buttonRef.current?.focus();
+      }
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("focusin", onFocusIn);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("focusin", onFocusIn);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [open]);
+
+  useEffect(() => () => window.clearTimeout(closeTimer.current), []);
+
+  return (
+    <li
+      ref={rootRef}
+      className="relative"
+      onPointerEnter={(e) => {
+        if (e.pointerType !== "mouse") return;
+        window.clearTimeout(closeTimer.current);
+        if (!open) {
+          byHover.current = true;
+          setOpenAt(pathname);
+        }
+      }}
+      onPointerLeave={(e) => {
+        if (e.pointerType !== "mouse" || !byHover.current) return;
+        // A short grace, so a pointer crossing the gap to the panel, or
+        // overshooting its edge, does not snap it shut.
+        closeTimer.current = window.setTimeout(close, 180);
+      }}
+    >
+      <button
+        ref={buttonRef}
+        type="button"
+        aria-expanded={open}
+        aria-controls="plan-menu"
+        onClick={() => {
+          // Hover already opened it: the click pins it rather than shutting
+          // the menu the pointer is resting on.
+          if (open && byHover.current) {
+            byHover.current = false;
+            return;
+          }
+          byHover.current = false;
+          setOpenAt(open ? null : pathname);
+        }}
+        className={cn(
+          "hallnect-nav-ink inline-flex items-center gap-1",
+          "relative whitespace-nowrap text-sm font-medium",
+          "transition-colors duration-150 hover:text-maroon-700",
+          "after:absolute after:-bottom-0.5 after:left-0 after:h-px",
+          "after:bg-maroon-500 after:transition-[width] after:duration-200",
+          "hover:after:w-full",
+          active || open ? "text-maroon-700 after:w-full" : "text-charcoal-600 after:w-0",
+        )}
+      >
+        {label}
+        <ChevronDown
+          className={cn("h-3.5 w-3.5 transition-transform duration-150 motion-reduce:transition-none", open && "rotate-180")}
+          aria-hidden
+        />
+      </button>
+
+      {open && (
+        // pt-3, not mt-3: the gap belongs to this element, so a pointer
+        // crossing from the button to the panel never leaves the menu.
+        <div id="plan-menu" className="absolute left-1/2 top-full z-50 w-[21rem] -translate-x-1/2 pt-3">
+          <div className="rounded-2xl border border-border bg-white p-2 shadow-xl">
+            <ul role="list">
+              {FAMILY_TOOLS.map((tool) => {
+                const Icon = TOOL_ICONS[tool.key];
+                const here = pathname.startsWith(tool.href);
+                return (
+                  <li key={tool.key}>
+                    <Link
+                      href={tool.href}
+                      onClick={close}
+                      aria-current={here ? "page" : undefined}
+                      className={cn(
+                        "hallnect-nav-solid flex items-center gap-3 rounded-xl px-3 py-2.5 transition-colors hover:bg-maroon-50",
+                        here && "bg-maroon-50",
+                      )}
+                    >
+                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-maroon-50 text-maroon-700">
+                        <Icon className="h-4 w-4" aria-hidden />
+                      </span>
+                      <span className="min-w-0">
+                        <span className="block text-sm font-semibold text-charcoal-900">{tool.title}</span>
+                        <span className="block text-xs text-charcoal-500">{tool.step}</span>
+                      </span>
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+            <Link
+              href={href}
+              onClick={close}
+              className="hallnect-nav-solid mt-1 block rounded-xl border-t border-border px-3 py-2.5 text-xs font-semibold text-maroon-700 transition-colors hover:bg-maroon-50"
+            >
+              All planning tools →
+            </Link>
+          </div>
+        </div>
+      )}
+    </li>
   );
 }
 
