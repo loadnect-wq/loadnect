@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import { requireRole } from "@/lib/auth";
+import { ownerTakesOnlinePayments } from "@/lib/owner";
+import { DIRECT_BOOKING_ENABLED } from "@/lib/booking-switch";
 import { OwnerSidebarNav } from "./_components/OwnerSidebarNav";
 import { OwnerBottomNav } from "./_components/OwnerBottomNav";
 
@@ -17,6 +19,10 @@ export default async function OwnerDashboardLayout({
 }) {
   const profile = await requireRole(["owner_approved"]);
   const initial = (profile.full_name ?? profile.email ?? "?")[0].toUpperCase();
+  // Which inbox gets the phone tab: Bookings for an owner with a hall in
+  // online-booking mode, Enquiries otherwise (see OwnerBottomNav).
+  const bookingsTab =
+    DIRECT_BOOKING_ENABLED && (await ownerTakesOnlinePayments()).takesOnlinePayments;
 
   return (
     <div className="min-h-screen bg-ivory-100">
@@ -50,7 +56,7 @@ export default async function OwnerDashboardLayout({
 
       {/* Phone navigation. The sidebar above is lg-only, so without this an
           owner on a phone had no way to move around their own dashboard. */}
-      <OwnerBottomNav />
+      <OwnerBottomNav bookingsTab={bookingsTab} />
     </div>
   );
 }

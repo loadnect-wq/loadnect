@@ -4,7 +4,6 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { BookOpen, Building2, CalendarDays, Inbox, LayoutDashboard, Menu } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { DIRECT_BOOKING_ENABLED } from "@/lib/booking-switch";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Owner navigation on a phone.
@@ -29,27 +28,33 @@ import { DIRECT_BOOKING_ENABLED } from "@/lib/booking-switch";
 // wrong on a slow device.
 // ─────────────────────────────────────────────────────────────────────────────
 
-// ENQUIRIES TAKE THE BOOKINGS SLOT WHILE DIRECT BOOKING IS OFF (2026-10-06).
-// "Bookings" lists online bookings, and with lib/booking-switch.ts off none can
-// arrive — so the tab bar spent a slot on a permanently empty page while the
-// owner's actual inbox, the quote requests, sat behind More. Same switch the
-// customer BottomNav uses; Bookings moves into More.
-const TABS = [
-  { href: "/owner/dashboard", label: "Dashboard", Icon: LayoutDashboard, exact: true },
-  { href: "/owner/halls",     label: "My Halls",  Icon: Building2 },
-  DIRECT_BOOKING_ENABLED
-    ? { href: "/owner/bookings", label: "Bookings",  Icon: CalendarDays }
-    : { href: "/owner/leads",    label: "Enquiries", Icon: Inbox },
-  { href: "/owner/diary",     label: "Diary",     Icon: BookOpen },
-  { href: "/owner/more",      label: "More",      Icon: Menu },
-] as const;
+// BOOKINGS OR ENQUIRIES, WHICHEVER THIS OWNER ACTUALLY RECEIVES. One slot,
+// two inboxes: "Bookings" lists online bookings, which only a hall in
+// online-booking mode can receive, and "Enquiries" lists quote requests. A
+// fixed choice spent the slot on a permanently empty page for half the
+// owners — so the layout asks (ownerTakesOnlinePayments) and the other one
+// lives in More (app/owner/(dashboard)/more/page.tsx asks the same question).
+type Tab = { href: string; label: string; Icon: typeof LayoutDashboard; exact?: boolean };
+
+function tabsFor(bookingsTab: boolean): Tab[] {
+  return [
+    { href: "/owner/dashboard", label: "Dashboard", Icon: LayoutDashboard, exact: true },
+    { href: "/owner/halls",     label: "My Halls",  Icon: Building2 },
+    bookingsTab
+      ? { href: "/owner/bookings", label: "Bookings",  Icon: CalendarDays }
+      : { href: "/owner/leads",    label: "Enquiries", Icon: Inbox },
+    { href: "/owner/diary",     label: "Diary",     Icon: BookOpen },
+    { href: "/owner/more",      label: "More",      Icon: Menu },
+  ];
+}
 
 /** Pages that are their own full-screen flow and should not carry tabs. */
 const HIDDEN_PREFIXES = ["/owner/register", "/owner/halls/new"];
 
-export function OwnerBottomNav() {
+export function OwnerBottomNav({ bookingsTab }: { bookingsTab: boolean }) {
   const pathname = usePathname() ?? "";
   if (HIDDEN_PREFIXES.some((p) => pathname.startsWith(p))) return null;
+  const TABS = tabsFor(bookingsTab);
 
   return (
     <nav
@@ -57,15 +62,14 @@ export function OwnerBottomNav() {
       className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-white/95 backdrop-blur-md pb-[env(safe-area-inset-bottom)] lg:hidden"
     >
       <ul className="flex">
-        {TABS.map(({ href, label, Icon, ...rest }) => {
-          const exact = "exact" in rest && rest.exact;
+        {TABS.map(({ href, label, Icon, exact }) => {
           // "More" is active for anything not covered by the other four, so the
           // owner is never looking at a page with no tab lit.
           const active =
             href === "/owner/more"
               ? !TABS.some((t) =>
                   t.href !== "/owner/more" &&
-                  ("exact" in t && t.exact ? pathname === t.href : pathname.startsWith(t.href)),
+                  (t.exact ? pathname === t.href : pathname.startsWith(t.href)),
                 )
               : exact
                 ? pathname === href

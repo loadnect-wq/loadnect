@@ -159,8 +159,8 @@ describe("the owner area (reviewed signed in, 2026-10-06)", () => {
     expect(dash).toContain("{stats.approvedHalls > 0 && (");
   });
 
-  it("drops the always-zero online-requests tile while direct booking is off", () => {
-    expect(dash).toContain("const showBookingRequests = DIRECT_BOOKING_ENABLED || stats.pendingBookings > 0;");
+  it("shows the online-requests tile only to a venue that takes online bookings", () => {
+    expect(dash).toContain("const showBookingRequests = (DIRECT_BOOKING_ENABLED && hasDirectVenue) || stats.pendingBookings > 0;");
   });
 
   it("puts Enquiries in the phone tab bar while direct booking is off", () => {
@@ -181,8 +181,10 @@ describe("the owner area (reviewed signed in, 2026-10-06)", () => {
 describe("the family's account (reviewed signed in, 2026-10-07)", () => {
   const dash = read("app/customer/page.tsx");
 
-  it("tracks enquiries and quotes, not online bookings, while direct booking is off", () => {
-    expect(dash).toContain("DIRECT_BOOKING_ENABLED ? null : countLeadsForCustomer(profile.id)");
+  it("tracks quotes always, and online bookings beside them when those are on", () => {
+    expect(dash).toContain("countLeadsForCustomer(profile.id),");
+    expect(dash).not.toContain("DIRECT_BOOKING_ENABLED ? null : countLeadsForCustomer");
+    expect(dash).toContain("DIRECT_BOOKING_ENABLED ? fetchCustomerStats() : null,");
     expect(dash).toContain('label="Quotes to answer"');
     expect(dash).toContain('title="My Enquiries"');
     // An unread failure prints a dash, never a reassuring zero.

@@ -147,10 +147,16 @@ export default async function OwnerDashboardPage() {
   // a wall of zeros with a premium-plan pitch underneath — and the one thing
   // to do next was a small button in a row of six. It leads instead.
   const firstRun = halls.length === 0 && !claimable;
-  // "Pending Requests" counts ONLINE booking requests. While direct booking
-  // is switched off none can arrive, so the tile is a permanent zero beside
-  // "Open Enquiries" — shown only if one somehow exists.
-  const showBookingRequests = DIRECT_BOOKING_ENABLED || stats.pendingBookings > 0;
+  // "Pending Requests" counts ONLINE booking requests, which only a hall in
+  // online-booking mode can receive. For an owner whose halls all take quotes
+  // the tile is a permanent zero beside "Open Enquiries", so it is shown only
+  // to an online-booking venue, or if a request somehow exists.
+  const showBookingRequests = (DIRECT_BOOKING_ENABLED && hasDirectVenue) || stats.pendingBookings > 0;
+  // An online-booking venue is paid its share of each advance through its
+  // payout account. Until Cashfree has verified one, that share waits with
+  // Hallnect — so this is a standing prompt, not a one-off tip.
+  const needsPayoutAccount =
+    DIRECT_BOOKING_ENABLED && hasDirectVenue && ownerRow.payout_beneficiary_status !== "VERIFIED";
 
   return (
     <div className="min-h-screen bg-ivory-100">
@@ -186,6 +192,30 @@ export default async function OwnerDashboardPage() {
             address={claimable.address}
             capacityMax={claimable.capacityMax}
           />
+        )}
+
+        {needsPayoutAccount && (
+          <Link
+            href="/owner/profile"
+            className="flex items-start gap-3 rounded-2xl border-2 border-amber-300 bg-amber-50 p-4 shadow-card"
+          >
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-600">
+              <Wallet className="h-5 w-5 text-white" aria-hidden />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block font-serif text-base font-bold text-amber-950">
+                Add your payout account to be paid for online bookings
+              </span>
+              <span className="mt-0.5 block text-xs leading-relaxed text-amber-950/80">
+                Your hall takes online bookings. Hallnect collects the advance and sends you your
+                share — to a bank account or UPI ID that Cashfree has verified. Until then, your
+                share waits with Hallnect.
+              </span>
+              <span className="mt-1.5 inline-block text-xs font-semibold text-amber-900">
+                Set it up under Profile
+              </span>
+            </span>
+          </Link>
         )}
 
         {/* ── ENQUIRIES WAITING ON YOU ────────────────────────────────────
@@ -256,7 +286,7 @@ export default async function OwnerDashboardPage() {
                 ["Add your hall", "Photos, capacity, pricing and address. It takes one sitting, and you can edit it later."],
                 ["We review it", "We check the listing is complete before it goes live, usually within 48 hours."],
                 [DIRECT_BOOKING_ENABLED ? "Take bookings" : "Answer enquiries", DIRECT_BOOKING_ENABLED
-                  ? "Requests arrive with the date and the amount; nothing is confirmed until you accept."
+                  ? "Choose how families book: they ask for your quote, or book online with an advance that you accept or decline."
                   : "Families send the date and guest count; you reply with your price, and get their number if they accept."],
               ].map(([title, text], i) => (
                 <li key={title} className="flex gap-3">

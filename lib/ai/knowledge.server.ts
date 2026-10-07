@@ -97,10 +97,11 @@ export async function buildKnowledge(role: ChatRole): Promise<string> {
 - The customer can withdraw a request at any time before the venue marks it booked.
 - Cancellation and refunds on a booking are between the customer and the venue, because the money is paid to the venue. Hallnect's Refund Policy (/refund-policy) and Cancellation Policy (/cancellation-policy) cover payments made through Hallnect.`);
   } else {
-    sections.push(`## Two kinds of venue (booking modes)
-- Direct Booking: the customer books online. They pick dates (up to 4 days) and a slot (morning, evening or full day; multi-day bookings are full days), pay an advance online, and the balance directly to the venue.
-- Lead Generation (shown as "Send Enquiry"): the customer sends a free enquiry and verifies their mobile number with a one-time password (OTP). Only after that verification is the enquiry passed to the venue, which contacts the customer to agree the date and price. The customer pays Hallnect nothing for these venues.
-- A hall's page shows which mode it uses. The hall details tool returns the mode.`);
+    sections.push(`## Two ways a venue takes bookings
+- Online booking (the hall's page shows "Book Now"; mode DIRECT_BOOKING): the customer books online. They pick dates (up to 4 days) and a slot (morning, evening or full day; multi-day bookings are full days), pay an advance online, and the balance directly to the venue.
+- Quotes (the hall's page shows "Get a quote"; mode LEAD_GENERATION): the customer tells the venue the date, occasion and guest count and verifies their mobile number with a one-time password (OTP). The venue sees the request but NOT the customer's phone number, and replies on Hallnect with a quote: its price for the date, what is included, the advance it asks for, and how long the quote is open. The customer accepts, turns it down, or asks for a new one under My Enquiries (/customer/enquiries). Only when they accept does that venue get their number, to call them and agree the booking. The customer pays the venue directly and pays Hallnect nothing.
+- A hall's page shows which way it works. The hall details tool returns the mode. Never tell a customer they can book online at a hall unless the tool says DIRECT_BOOKING.
+- Reviews: after the function, a customer rates the hall from My Bookings (an online booking, once completed) or from My Enquiries ("Rate this hall", on a quote the venue marked booked, once the function date has passed). One review per booking or enquiry.`);
 
     sections.push(`## Booking a Direct Booking venue
 1. Open the hall's page and choose "Book Now".
@@ -142,8 +143,9 @@ export async function buildKnowledge(role: ChatRole): Promise<string> {
 - Joining: go to List Your Hall (/owner/register) and continue with Google. The owner account is ready straight away; listing is free.
 - Adding a hall: from the owner dashboard, add the hall with photos, capacity, pricing, address and amenities. Every hall is reviewed by the Hallnect team for completeness before it goes live; Hallnect does not visit venues.
 ${DIRECT_BOOKING_ENABLED
-    ? `- Direct Booking halls: requests arrive with date, customer and amount; the owner accepts or declines within 48 hours. Hallnect collects the advance, keeps its commission out of that advance and pays the rest to the owner; the balance is collected by the owner at the venue. Bank account details and PAN are needed only to receive payouts.
-- Lead Generation halls: verified enquiries appear under Enquiries. The owner contacts the customer, agrees the price, then confirms the enquiry with the agreed amount. That raises a commission the owner pays from the Commissions page.`
+    ? `- Each hall takes either online bookings or quotes; the owner chooses on the hall's form (online booking needs a full-day price) and can change it.
+- Online-booking halls: requests arrive with date, customer and amount; the owner accepts or declines within 48 hours. Hallnect collects the advance, keeps its commission out of that advance and pays the rest to the owner's payout account (bank account or UPI ID, added and verified under Profile — until it is verified the owner's share waits with Hallnect); the balance is collected by the owner at the venue.
+- Quote halls: requests appear under Enquiries with the customer's name and event details but without their phone number. The owner sends a quote and can change it until the customer answers. If the customer accepts, the owner sees their number, calls them and agrees the booking, then marks it booked with the agreed amount. That raises a commission the owner pays from the Commissions page.`
     : `- Enquiries: requests appear under Enquiries with the customer's name and event details but without their phone number. The owner sends a quote (price for the date, what is included, advance, how long it is open) and can change it until the customer answers. If the customer accepts, the owner sees their number, calls them and agrees the booking, then marks it booked with the agreed amount. That raises a commission the owner pays from the Commissions page.`}
 - Owner dashboard sections: Dashboard, My Halls (details, photos, availability calendar), Bookings, Enquiries, Revenue, Commissions, Premium, Notifications, Support, Profile.
 - Commission: ${ownerOrAdmin

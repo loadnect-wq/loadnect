@@ -174,13 +174,13 @@ describe("bookingModeSchema", () => {
     }
   });
 
-  whenDirectOn("treats a MISSING key as DIRECT_BOOKING, not as an error", () => {
-    // A Next.js server action DROPS undefined properties, so every call site
-    // written before lead generation sends no key at all. Answering "Invalid
-    // input" there would break hall editing for a field the form never had.
-    expect(bookingModeSchema.parse(undefined)).toBe("DIRECT_BOOKING");
-    expect(bookingModeSchema.parse(null)).toBe("DIRECT_BOOKING");
-    expect(bookingModeSchema.parse("")).toBe("DIRECT_BOOKING");
+  whenDirectOn("treats a MISSING key as quotes (LEAD_GENERATION), not as an error", () => {
+    // A Next.js server action DROPS undefined properties, so a caller that
+    // forgets the mode sends no key at all. Since 0114 that means quotes: a
+    // hall takes money online only when its owner explicitly chooses it.
+    expect(bookingModeSchema.parse(undefined)).toBe("LEAD_GENERATION");
+    expect(bookingModeSchema.parse(null)).toBe("LEAD_GENERATION");
+    expect(bookingModeSchema.parse("")).toBe("LEAD_GENERATION");
   });
 
   whenDirectOn("rejects anything else rather than coercing it", () => {
@@ -263,9 +263,10 @@ describe("hallSchema — pricing follows the booking mode", () => {
     }
   });
 
-  whenDirectOn("requires a price when the mode is ABSENT, because that means direct", () => {
+  whenDirectOn("needs no price when the mode is ABSENT, because that means quotes", () => {
     const r = hallSchema.safeParse({ ...base, pricePerDay: "" });
-    expect(r.success).toBe(false);
+    expect(r.success).toBe(true);
+    if (r.success) expect(r.data.bookingMode).toBe("LEAD_GENERATION");
   });
 
   it("accepts a payload with NO bookingMode key at all", () => {
@@ -277,7 +278,8 @@ describe("hallSchema — pricing follows the booking mode", () => {
     // Six existing tests caught it. This one keeps it caught.
     const r = hallSchema.safeParse({ ...base, pricePerDay: "150000" });
     expect(r.success).toBe(true);
-    if (r.success) expect(r.data.bookingMode).toBe(DIRECT_BOOKING_ENABLED ? "DIRECT_BOOKING" : "LEAD_GENERATION");
+    // Quotes either way (0114): an absent mode never starts taking advances.
+    if (r.success) expect(r.data.bookingMode).toBe("LEAD_GENERATION");
   });
 
   it("allows a lead venue to publish no price at all", () => {
@@ -400,7 +402,7 @@ describe("hallCreateSchema — THE PATH AN OWNER ACTUALLY TAKES", () => {
     const { ...noMode } = listing();
     const r = hallCreateSchema.safeParse(noMode);
     expect(r.success).toBe(true);
-    if (r.success) expect(r.data.bookingMode).toBe(DIRECT_BOOKING_ENABLED ? "DIRECT_BOOKING" : "LEAD_GENERATION");
+    if (r.success) expect(r.data.bookingMode).toBe("LEAD_GENERATION");
   });
 
   whenDirectOn("still refuses a DIRECT venue with no price", () => {

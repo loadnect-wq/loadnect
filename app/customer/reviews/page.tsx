@@ -34,19 +34,23 @@ export default async function MyReviewsPage() {
             title="No reviews yet"
             description={
               DIRECT_BOOKING_ENABLED
-                ? "Complete a booking to leave your first review."
+                ? "After a hall has held your function, rate it: from My Bookings if you booked online, or from My Enquiries if you booked through a quote."
                 : "When a hall you booked through a quote has held your function, rate it from My Enquiries."
             }
             action={
-              DIRECT_BOOKING_ENABLED ? (
-                <Link href="/customer/bookings" className={buttonVariants({ variant: "gold", size: "sm" })}>
-                  My Bookings
-                </Link>
-              ) : (
-                <Link href="/customer/enquiries" className={buttonVariants({ variant: "gold", size: "sm" })}>
+              <div className="flex flex-wrap justify-center gap-2">
+                {DIRECT_BOOKING_ENABLED && (
+                  <Link href="/customer/bookings" className={buttonVariants({ variant: "gold", size: "sm" })}>
+                    My bookings
+                  </Link>
+                )}
+                <Link
+                  href="/customer/enquiries"
+                  className={buttonVariants({ variant: DIRECT_BOOKING_ENABLED ? "outline" : "gold", size: "sm" })}
+                >
                   My enquiries
                 </Link>
-              )
+              </div>
             }
           />
         ) : (

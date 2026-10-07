@@ -210,7 +210,7 @@ export async function createBookingRequest(
   // route back out to them.
   if (isLeadGeneration(hall.booking_mode)) {
     return {
-      error: "This venue takes enquiries rather than online bookings. Please send an enquiry instead.",
+      error: "This venue works on quotes rather than online booking. Please ask it for a quote instead.",
     };
   }
   if (v.guestCount > hall.capacity_max) {

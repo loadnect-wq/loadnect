@@ -26,6 +26,33 @@ import { jsonLdGraph, organizationJsonLd, breadcrumbJsonLd } from "@/lib/seo/jso
 import { fetchCityInventory } from "@/lib/seo/cities";
 import { CONTACT, SUPPORT_HOURS, APP_NAME } from "@/lib/constants";
 import { SERVICE_AREA_CITIES } from "@/lib/seo/service-areas";
+import { DIRECT_BOOKING_ENABLED } from "@/lib/booking-switch";
+import { platformFeeDisclosure } from "@/lib/booking-payment";
+
+// HOW BOOKING WORKS, IN TWO VERSIONS chosen by the booking switch, like the
+// homepage. With online booking on (0114) a hall either takes an advance online
+// or works on quotes; with it off every hall works on quotes. The off version
+// said "Hallnect takes no payment from you", which is false the moment a
+// family can pay an advance here.
+const HOW_TO_BOOK = DIRECT_BOOKING_ENABLED
+  ? {
+      intro: "Some halls on Hallnect take an online advance to hold your date. The rest work on quotes, and your phone number stays with us until you choose one.",
+      steps: [
+        ["Book online, where a hall offers it", "Pick your date and pay the advance through Cashfree. The booking is confirmed once the hall accepts it, and you pay the balance to the hall."],
+        ["Or ask for a quote", "Tell the hall your date, the occasion and how many guests. You verify your mobile number with a one-time password, but the hall does not see it."],
+        ["Accept the quote you want", "The hall replies on Hallnect with its price for your date. Only if you accept does it get your number, to call you and agree the booking — and you pay that hall directly."],
+      ],
+      charges: `On an online booking you pay the hall's advance plus a ${platformFeeDisclosure()}, shown before you pay. Asking a hall for a quote is free. A venue pays a small commission on a booking made through Hallnect.`,
+    }
+  : {
+      intro: "Every venue on Hallnect works on quotes, and your phone number stays with us until you choose a venue.",
+      steps: [
+        ["Ask for a quote", "Tell the venue your date, the occasion and how many guests. You verify your mobile number with a one-time password, but the venue does not see it."],
+        ["Compare the replies", "The venue answers on Hallnect with its price for your date, what is included, the advance it asks for and how long the offer stands."],
+        ["Accept the one you want", "Only then does that venue get your number, to call you and agree the booking. You pay the venue directly — Hallnect takes no payment from you."],
+      ],
+      charges: "Families pay Hallnect nothing. A venue pays a small commission only on a booking it confirms through Hallnect.",
+    };
 
 export const metadata: Metadata = buildMetadata({
   // "About Us", not "About Hallnect": buildMetadata's template appends
@@ -84,15 +111,10 @@ export default async function AboutPage() {
           How booking a venue works
         </h2>
         <p className="mt-3 text-sm leading-relaxed text-charcoal-700">
-          Every venue on Hallnect works on quotes, and your phone number stays
-          with us until you choose a venue.
+          {HOW_TO_BOOK.intro}
         </p>
         <ol className="mt-4 space-y-4">
-          {[
-            ["Ask for a quote", "Tell the venue your date, the occasion and how many guests. You verify your mobile number with a one-time password, but the venue does not see it."],
-            ["Compare the replies", "The venue answers on Hallnect with its price for your date, what is included, the advance it asks for and how long the offer stands."],
-            ["Accept the one you want", "Only then does that venue get your number, to call you and agree the booking. You pay the venue directly — Hallnect takes no payment from you."],
-          ].map(([title, text], i) => (
+          {HOW_TO_BOOK.steps.map(([title, text], i) => (
             <li key={title} className="rounded-2xl border border-border bg-white p-5">
               <h3 className="font-serif text-base font-semibold text-charcoal-900">
                 {i + 1}. {title}
@@ -107,8 +129,7 @@ export default async function AboutPage() {
           What Hallnect charges
         </h2>
         <p className="mt-3 text-sm leading-relaxed text-charcoal-700">
-          Families pay Hallnect nothing. A venue pays a small commission only on
-          a booking it confirms through Hallnect. Listing a venue is free — the
+          {HOW_TO_BOOK.charges} Listing a venue is free — the
           paid{" "}
           <Link href="/premium" className="font-medium text-maroon-600 hover:underline">
             premium plans

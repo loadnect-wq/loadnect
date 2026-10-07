@@ -67,12 +67,12 @@ export function HallForm({ ownerId, amenities, categories, hall }: Props) {
   const [capMin,       setCapMin]       = useState(String(hall?.capacity_min  ?? ""));
   const [capMax,       setCapMax]       = useState(String(hall?.capacity_max  ?? ""));
   const [priceDay,     setPriceDay]     = useState(String(hall?.price_per_day ?? ""));
-  // DEFAULTS TO DIRECT_BOOKING for a NEW hall: a booking mode has a right
-  // answer for almost every venue and one of the two radios has to be on for
-  // the control to make sense. On EDIT the hall's stored mode wins, so opening
-  // and saving the form cannot silently switch a live listing.
+  // A NEW hall starts on quotes (0114): it takes money online only when its
+  // owner picks that, which is also the database default and what the schema
+  // assumes when no mode is sent. On EDIT the hall's stored mode wins, so
+  // opening and saving the form cannot silently switch a live listing.
   const [bookingMode,  setBookingMode]  =
-    useState<BookingMode>(toBookingMode(hall?.booking_mode));
+    useState<BookingMode>(hall ? toBookingMode(hall.booking_mode) : "LEAD_GENERATION");
   const [priceMorn,    setPriceMorn]    = useState(String(hall?.price_morning ?? ""));
   const [priceEven,    setPriceEven]    = useState(String(hall?.price_evening ?? ""));
 
@@ -422,23 +422,34 @@ export function HallForm({ ownerId, amenities, categories, hall }: Props) {
                       {on && <span className="h-2 w-2 rounded-full bg-maroon-600" />}
                     </span>
                     <span className="text-sm font-semibold text-charcoal-900">
-                      {isLead ? "Lead Generation" : "Direct Booking"}
+                      {isLead ? "Quotes" : "Online booking"}
                     </span>
                   </span>
                   <span className="mt-1.5 block text-[11px] leading-relaxed text-charcoal-600">
                     {isLead
-                      ? "Customers send you an enquiry. You agree the price and take payment yourself, then confirm the enquiry here and settle Hallnect's commission."
-                      : "Customers book and pay an advance online. Hallnect's commission is kept from that advance automatically — you are never billed for it."}
+                      ? "Families ask you for a quote. If they accept, you get their number, agree the booking and take payment yourself, then mark it booked here and settle Hallnect's commission."
+                      : "Families book a date and pay an advance online. You accept or decline each booking; Hallnect keeps its commission from that advance and pays the rest to your payout account — you are never billed."}
                   </span>
                 </button>
               );
             })}
           </div>
-          {bookingMode === "LEAD_GENERATION" && (
+          {bookingMode === "LEAD_GENERATION" ? (
             <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-[11px] leading-relaxed text-amber-900">
-              <strong>Enquiries do not hold a date.</strong> Confirming one records what you
+              <strong>A quote does not hold a date.</strong> Marking one booked records what you
               agreed and raises Hallnect&apos;s commission — it does not block the calendar.
-              Block the date yourself under Availability once the customer has paid you.
+              Block the date yourself under Availability once the family has paid you.
+            </p>
+          ) : (
+            // THE ONE STEP AN ONLINE-BOOKING VENUE MUST NOT SKIP. Hallnect
+            // collects the advance; without a verified payout account the
+            // venue's share has nowhere to go and waits with Hallnect. Named,
+            // not linked: a link here would throw away the unsaved form. The
+            // dashboard carries the link (and nags until it is verified).
+            <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-[11px] leading-relaxed text-amber-900">
+              <strong>Add your payout account to be paid.</strong> Your share of each advance is sent to
+              the bank account or UPI ID you add under <strong>Profile</strong>. Until it is verified,
+              your share waits with Hallnect.
             </p>
           )}
         </FormSection>
@@ -493,9 +504,9 @@ export function HallForm({ ownerId, amenities, categories, hall }: Props) {
             payment flow their listing does not have. */}
         {bookingMode === "LEAD_GENERATION" ? (
           <p className="text-[11px] text-charcoal-500">
-            Hallnect does not collect any payment from the customer for this listing. You
+            Hallnect does not collect any payment from the family for this listing. You
             agree the amount with them directly; Hallnect&apos;s commission is charged to you
-            after you confirm the enquiry.
+            after you mark the booking made.
           </p>
         ) : (
           <p className="text-[11px] text-charcoal-500">
@@ -545,10 +556,11 @@ export function HallForm({ ownerId, amenities, categories, hall }: Props) {
         </p>
         {bookingMode === "LEAD_GENERATION" ? (
           <p className="-mt-1 text-xs text-charcoal-500">
-            The standard commission on enquiries Hallnect sends you, calculated on the amount you
-            confirm. Because you collect the customer&apos;s payment yourself, it is{" "}
-            <strong>billed to you</strong> after you confirm an enquiry — you pay it here by card,
-            UPI or net banking. It is the same for every venue and never shown to customers.
+            The standard commission on bookings that come to you through Hallnect quotes,
+            calculated on the amount you agree. Because you collect the family&apos;s payment
+            yourself, it is <strong>billed to you</strong> after you mark a booking made — you pay
+            it here by card, UPI or net banking. It is the same for every venue and never shown to
+            customers.
           </p>
         ) : (
           <p className="-mt-1 text-xs text-charcoal-500">

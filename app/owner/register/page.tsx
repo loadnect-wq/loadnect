@@ -69,8 +69,8 @@ export default async function OwnerRegisterPage() {
     DIRECT_BOOKING_ENABLED
       ? {
           Icon: CalendarCheck,
-          title: "You approve each booking",
-          body: "A request arrives with the date, the customer and the amount. Nothing is confirmed until you accept it.",
+          title: "You choose how families book",
+          body: "Reply to quote requests with your price, or take online bookings with an advance — each one waits for you to accept it.",
         }
       : {
           Icon: CalendarCheck,
@@ -82,16 +82,17 @@ export default async function OwnerRegisterPage() {
   const money = DIRECT_BOOKING_ENABLED
     ? {
         hero:
-          "Hallnect brings couples in Tamil Nadu to your venue, collects the advance for you, and never " +
-          "sends you a bill. Listing is free. Hallnect earns one small commission, the same for every " +
-          "venue — you will see the exact rate in your owner dashboard before your hall goes live.",
-        intro: "One commission, taken from the advance Hallnect already holds. There is nothing to pay up front and no invoice afterwards.",
+          "Hallnect brings families in Tamil Nadu to your venue. Take online bookings with an advance " +
+          "Hallnect collects for you, or reply to quote requests with your price — your choice, hall by " +
+          "hall. Listing is free. Hallnect earns one small commission, the same for every venue — you " +
+          "will see the exact rate in your owner dashboard before your hall goes live.",
+        intro: "One commission, the same either way, and only on a booking. There is nothing to pay up front.",
         cards: [
-          { Icon: Wallet, lead: "You are never invoiced.", text: "The commission comes out of the advance Hallnect collects from the customer, so no money ever leaves your pocket." },
-          { Icon: IndianRupee, lead: `The ${formatPrice(PLATFORM_FEE_RUPEES)} platform fee is the customer's.`, text: "It is charged on top of the advance and is never deducted from your share." },
+          { Icon: Wallet, lead: "Online bookings: never invoiced.", text: `The commission comes out of the advance Hallnect collects, and the rest is paid to your payout account. The ${formatPrice(PLATFORM_FEE_RUPEES)} platform fee is the family's, never taken from your share.` },
+          { Icon: IndianRupee, lead: "Quotes: you pay only when you book.", text: "Families pay you directly. Mark the booking made with the agreed amount, and pay Hallnect's commission from your dashboard." },
         ],
-        footnote: "The customer pays an advance online to hold the date. The balance is collected by you, directly, as it always was.",
-        ready: { label: "Bank account and PAN", note: "Needed only to receive payouts — you can add it later." },
+        footnote: "On an online booking the family pays an advance to hold the date, and you collect the balance directly. On a quote, you agree everything with the family yourself.",
+        ready: { label: "Bank account and PAN", note: "Needed only for online bookings, to receive your share of each advance — you can add it later." },
       }
     : {
         hero:

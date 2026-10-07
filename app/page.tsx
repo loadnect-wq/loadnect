@@ -60,8 +60,8 @@ const CITY_GRADIENT_FALLBACK = "linear-gradient(135deg,#6B1525 0%,#9B2038 100%)"
 // online-booking wording is kept, unchanged, for the day the switch comes back.
 const HOW_IT_WORKS = DIRECT_BOOKING_ENABLED ? [
   { step: "01", title: "Discover", body: "Browse halls across Tamil Nadu for weddings, parties, meetings and more — photos, capacity, pricing and amenities, as listed by each venue." },
-  { step: "02", title: "Compare",  body: "Filter by city, capacity, budget, and amenities. Venues that publish a calendar show their open dates." },
-  { step: "03", title: "Book or enquire", body: "Some venues take an online advance to hold your date. Others take a free enquiry and confirm the details with you directly." },
+  { step: "02", title: "Compare",  body: "Filter by city, guests, budget and amenities, or search by your date to leave out halls already booked on Hallnect. Compare up to three side by side." },
+  { step: "03", title: "Book or get a quote", body: "Some halls take an online advance to hold your date. Others reply on Hallnect with a quote, and get your phone number only if you accept it." },
 ] : [
   { step: "01", title: "Discover", body: "Browse halls across Tamil Nadu for weddings, parties, meetings and more — photos, capacity, pricing and amenities, as listed by each venue." },
   { step: "02", title: "Compare",  body: "Filter by city, guests, budget and amenities, or search by your date to leave out halls already booked on Hallnect. Compare up to three side by side." },
@@ -70,13 +70,13 @@ const HOW_IT_WORKS = DIRECT_BOOKING_ENABLED ? [
 
 const FAQ_ITEMS = DIRECT_BOOKING_ENABLED ? [
   { q: "How do I book a venue?",
-    a: `It depends on the venue, and each listing says which it is. Where a venue books online, you pick your date and slot and pay the advance plus a ${platformFeeDisclosure()} through Cashfree — capped at a quarter of the advance on a small booking, and waivable with a promotional code — and the booking is confirmed once the owner accepts it. Where a venue takes enquiries instead, you send a free enquiry, verify your mobile number, and the venue contacts you to agree the date and price directly.` },
+    a: `It depends on the hall, and each listing says which it is. Where a hall books online, you pick your date and slot and pay the advance plus a ${platformFeeDisclosure()} through Cashfree — capped at a quarter of the advance on a small booking, and waivable with a promotional code — and the booking is confirmed once the owner accepts it. Where a hall works on quotes, tap "Get a quote" and tell it your date, the occasion and how many guests, then verify your mobile number — the hall does not see it. It replies on Hallnect with its price; if you accept, that hall gets your number to agree the booking with you.` },
   { q: "Is the advance payment refundable?",
-    a: "It depends when you cancel: the full advance is refundable more than 30 days before the event, and partially up to 7 days before. The platform fee and its GST, where charged, are non-refundable on customer cancellations." },
+    a: "On an online booking it depends when you cancel: the full advance is refundable more than 30 days before the event, and partially up to 7 days before. The platform fee and its GST, where charged, are non-refundable on customer cancellations. On a hall that works on quotes you pay the hall directly, so agree its refund terms before you accept the quote." },
   { q: "Can I see the venue before booking?",
-    a: "Yes. We strongly recommend visiting in person. On an online booking the owner's contact details are shared once the booking is confirmed; on an enquiry the venue contacts you as soon as you verify your mobile number." },
+    a: "Yes, and we strongly recommend visiting in person. Tap \"Visit\" on a hall's page to ask to see it, and the hall calls you to confirm a time." },
   { q: "How much does Hallnect charge?",
-    a: `On an online booking you pay the venue advance plus a ${platformFeeDisclosure()} at checkout, shown clearly before you pay; on a small booking the fee is capped at a quarter of the advance, and a promotional code can reduce it to zero. On an enquiry you pay Hallnect nothing at all. There are no other charges from Hallnect.` },
+    a: `On an online booking you pay the hall's advance plus a ${platformFeeDisclosure()} at checkout, shown clearly before you pay; on a small booking the fee is capped at a quarter of the advance, and a promotional code can reduce it to zero. Asking a hall for a quote is free, and you pay that hall directly. There are no other charges from Hallnect.` },
   { q: "I'm a venue owner — how do I list?",
     a: "Register as an owner, complete your business profile, and submit your venue for approval. Listings are reviewed within 48 hours." },
 ] : [
@@ -97,7 +97,7 @@ const FAQ_ITEMS = DIRECT_BOOKING_ENABLED ? [
 // does not exist while every venue works on quotes: what an owner gets is the
 // request itself, and a dashboard to answer it from.
 const OWNER_PITCH = DIRECT_BOOKING_ENABLED
-  ? "List your hall in minutes. Get bookings backed by gateway-verified payments and a dedicated owner dashboard."
+  ? "List your hall in minutes. Take online bookings backed by verified payments, or quote requests — all from one owner dashboard."
   : "List your hall in minutes. Families ask you for quotes with their date and guest count, and you reply from a dedicated owner dashboard.";
 const OWNER_REQUESTS_PERK = DIRECT_BOOKING_ENABLED
   ? { Icon: Shield, text: "Verified payments via Cashfree" }
@@ -108,7 +108,7 @@ const OWNER_REQUESTS_PERK = DIRECT_BOOKING_ENABLED
 // clamp — lib/__tests__/seo-invariants.test.ts measures each one.
 const HOME_DESCRIPTION = DIRECT_BOOKING_ENABLED
   ? "Find and book wedding, marriage, party and meeting halls across Tamil Nadu. " +
-    "Compare owner-submitted photos, capacity and pricing, then book online."
+    "Compare photos, capacity and prices, then book online or get free quotes."
   : "Find and book wedding, marriage, party and meeting halls across Tamil Nadu. " +
     "Compare owner-submitted photos, capacity and pricing, then get free quotes.";
 

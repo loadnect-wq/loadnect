@@ -29,23 +29,24 @@ export const BOOKING_MODE_LABEL: Record<BookingMode, string> = {
 };
 
 /**
- * DIRECT BOOKING IS SWITCHED OFF (2026-10-05). Every venue takes enquiries,
- * answered with a quote (migration 0112). The online-booking code stays —
- * premium plans and commission settlement still use the payment path — but no
- * hall can be in DIRECT_BOOKING mode: the database refuses it
- * (halls_direct_booking_switched_off), and while this is false every mode
- * read here and every mode written through the forms is LEAD_GENERATION.
- * Switching back means the flag (lib/booking-switch.ts) AND dropping the 0112
- * constraints.
+ * ONLINE BOOKING IS BACK (2026-10-07, migration 0114) as each hall's choice:
+ * DIRECT_BOOKING takes an advance online, LEAD_GENERATION works on quotes
+ * (0112). Between 2026-10-05 and then it was switched off — the database
+ * refused DIRECT_BOOKING (halls_direct_booking_switched_off) and every mode
+ * read here was LEAD_GENERATION. While DIRECT_BOOKING_ENABLED is false that is
+ * still what happens; switching it off again means restoring those 0112
+ * constraints too.
  */
 export { DIRECT_BOOKING_ENABLED };
 
 /**
  * Normalises whatever came back from the database.
  *
- * While direct booking was on, null and anything unrecognised meant
- * DIRECT_BOOKING — the mode with the stricter rules. With it switched off
- * there is one mode, and every hall is read as taking enquiries.
+ * With online booking on, null and anything unrecognised read as
+ * DIRECT_BOOKING — the mode with the stricter rules, and a hall misread that
+ * way shows a Book button that the server (createBookingRequest) and the
+ * database (0114's guard) both refuse. The column is NOT NULL, so this is a
+ * fallback, not a path. With it switched off there is one mode.
  */
 export function toBookingMode(raw: unknown): BookingMode {
   if (!DIRECT_BOOKING_ENABLED) return "LEAD_GENERATION";

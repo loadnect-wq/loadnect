@@ -251,13 +251,13 @@ export function AddHallDraftForm({
                       : "border-border bg-white text-charcoal-600 hover:border-maroon-200",
                   ].join(" ")}
                 >
-                  {m === "LEAD_GENERATION" ? "Enquiries" : "Direct booking"}
+                  {m === "LEAD_GENERATION" ? "Quotes" : "Online booking"}
                 </button>
               ))}
             </div>
             <p className="mt-1 text-[11px] leading-relaxed text-charcoal-500">
-              Enquiries is the safe default: nobody is maintaining this venue&apos;s calendar yet, and direct
-              booking would take a deposit against dates no one has confirmed. Direct booking needs a day rate.
+              Quotes is the safe default: nobody is maintaining this venue&apos;s calendar yet, and online
+              booking would take an advance against dates no one has confirmed. Online booking needs a day rate.
             </p>
           </div>
         )}

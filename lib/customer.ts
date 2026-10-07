@@ -6,6 +6,7 @@
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import type { HallListing } from "@/lib/halls";
 import { toBookingMode } from "@/lib/booking-mode";
+import { todayInBusinessTz } from "@/lib/dates";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -87,7 +88,6 @@ export type CustomerStats = {
   upcomingCount:  number;
   pendingCount:   number;
   completedCount: number;
-  savedCount:     number;
 };
 
 export type BookingTab = "upcoming" | "past" | "all";
@@ -426,27 +426,33 @@ export async function fetchReviewedLeadIds(): Promise<Set<string> | null> {
   return new Set((data ?? []).map((r: { lead_id: string }) => r.lead_id));
 }
 
-export async function fetchCustomerStats(): Promise<CustomerStats> {
+/**
+ * A family's online bookings by where they stand, for the account dashboard.
+ *
+ * NULL when the read fails, and the tile prints a dash: a swallowed error used
+ * to come back as zeros, and "0 upcoming bookings" to someone who has paid an
+ * advance is the reassuring wrong answer (see the fail-open note in memory).
+ * "Today" is India's (todayInBusinessTz) — a UTC date is a day behind for the
+ * first five and a half hours of every Indian day. Saved halls are not counted
+ * here: they live in the browser (SavedCountTile), not in saved_halls.
+ */
+export async function fetchCustomerStats(): Promise<CustomerStats | null> {
   const supabase = await getSupabaseServerClient();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = supabase as any;
 
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { upcomingCount: 0, pendingCount: 0, completedCount: 0, savedCount: 0 };
+  if (!user) return null;
 
-  const today = new Date().toISOString().split("T")[0];
+  const { data: bookings, error } = await db
+    .from("bookings").select("status, event_date").eq("customer_id", user.id);
+  if (error) { handleErr("fetchCustomerStats", error); return null; }
 
-  const [{ data: bookings }, { count: savedCount }] = await Promise.all([
-    db.from("bookings").select("status, event_date").eq("customer_id", user.id),
-    db.from("saved_halls").select("*", { count: "exact", head: true }).eq("customer_id", user.id),
-  ]);
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const bkgs: any[] = bookings ?? [];
+  const today = todayInBusinessTz();
+  const bkgs = (bookings ?? []) as { status: string; event_date: string }[];
   return {
     upcomingCount:  bkgs.filter((b) => UPCOMING_STATUSES.includes(b.status) && b.event_date >= today).length,
     pendingCount:   bkgs.filter((b) => b.status === "pending_payment").length,
     completedCount: bkgs.filter((b) => b.status === "completed").length,
-    savedCount:     savedCount ?? 0,
   };
 }

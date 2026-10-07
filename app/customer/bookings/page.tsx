@@ -58,7 +58,7 @@ export default async function CustomerBookingsPage({ searchParams }: Props) {
           <span className="min-w-0 flex-1">
             <span className="block text-xs font-semibold text-charcoal-900">My enquiries</span>
             <span className="block text-[11px] text-charcoal-500">
-              Requests you sent to venues that take enquiries
+              Quotes you asked venues for, and their replies
             </span>
           </span>
           <ChevronRight className="h-4 w-4 shrink-0 text-charcoal-500" aria-hidden />

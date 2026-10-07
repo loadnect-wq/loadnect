@@ -5,6 +5,7 @@ import {
 } from "lucide-react";
 import { DIRECT_BOOKING_ENABLED } from "@/lib/booking-switch";
 import { requireRole } from "@/lib/auth";
+import { ownerTakesOnlinePayments } from "@/lib/owner";
 import { AppHeader } from "@/components/app/AppHeader";
 
 export const metadata: Metadata = { title: "More" };
@@ -12,15 +13,16 @@ export const metadata: Metadata = { title: "More" };
 // Everything the phone tab bar cannot fit. Only five tabs stay tappable at
 // 360px, so the rest live here rather than being unreachable — which is what
 // they were before this page existed.
-const ITEMS = [
-  // Whichever of Bookings and Enquiries is NOT in the tab bar (OwnerBottomNav).
-  DIRECT_BOOKING_ENABLED
+const itemsFor = (bookingsTab: boolean) => [
+  // Whichever of Bookings and Enquiries is NOT in the tab bar — the layout
+  // asks the same question (ownerTakesOnlinePayments) for OwnerBottomNav.
+  bookingsTab
     ? { href: "/owner/leads",    label: "Enquiries",     desc: "Quote requests from families",          Icon: Inbox }
-    : { href: "/owner/bookings", label: "Bookings",      desc: "Online bookings, when they are switched on", Icon: CalendarDays },
+    : { href: "/owner/bookings", label: "Bookings",      desc: DIRECT_BOOKING_ENABLED ? "Online bookings, for a hall that takes them" : "Online bookings, when they are switched on", Icon: CalendarDays },
   { href: "/owner/visits",        label: "Site visits",   desc: "Families asking to see your hall",      Icon: CalendarCheck },
   // Moved here from the tab bar when Diary took its slot.
   { href: "/owner/revenue",       label: "Revenue",       desc: "What your Hallnect bookings have earned", Icon: IndianRupee },
-  { href: "/owner/commissions",   label: "Commissions",   desc: DIRECT_BOOKING_ENABLED ? "What Hallnect kept from each booking" : "Commission on bookings you confirm, and paying it", Icon: Wallet },
+  { href: "/owner/commissions",   label: "Commissions",   desc: "Commission on your bookings, and paying it", Icon: Wallet },
   { href: "/owner/premium",       label: "Premium",       desc: "Your plan and monthly billing",        Icon: Sparkles },
   { href: "/owner/notifications", label: "Notifications", desc: "Booking and payment alerts",           Icon: Bell },
   { href: "/owner/support",       label: "Support",       desc: "Get help from Hallnect",               Icon: MessageSquare },
@@ -30,6 +32,9 @@ const ITEMS = [
 
 export default async function OwnerMorePage() {
   await requireRole(["owner_approved"]);
+  const ITEMS = itemsFor(
+    DIRECT_BOOKING_ENABLED && (await ownerTakesOnlinePayments()).takesOnlinePayments,
+  );
 
   return (
     <div className="min-h-screen bg-ivory-100">

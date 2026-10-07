@@ -1,11 +1,21 @@
 import type { Metadata } from "next";
 import { buildMetadata } from "@/lib/seo/metadata";
 import { legalUpdatedLabel } from "@/lib/content";
+import { platformFeeDisclosure } from "@/lib/booking-payment";
+import { DIRECT_BOOKING_ENABLED } from "@/lib/booking-switch";
+
+// TWO WAYS TO BOOK, CHOSEN BY THE BOOKING SWITCH (lib/booking-switch.ts).
+// With online booking on (0114) a venue either takes an advance at checkout or
+// works on quotes, and sections 4, 6, 8, 9 and 10 say so; the online-booking
+// wording is the text that was live until 2026-10-05, restored. With it off,
+// only the quotes wording applies. Moving the switch changes these words, so
+// it moves LEGAL_LAST_UPDATED["/terms"] too (lib/content.ts).
 
 export const metadata: Metadata = buildMetadata({
   title: "Terms and Conditions",
-  description:
-    "The terms governing use of Hallnect — requests for quotes, bookings arranged with venues, venue owner subscriptions and obligations, and platform liability.",
+  description: DIRECT_BOOKING_ENABLED
+    ? "The terms governing use of Hallnect — online bookings and advance payments, the platform fee, requests for quotes, venue owner obligations and platform liability."
+    : "The terms governing use of Hallnect — requests for quotes, bookings arranged with venues, venue owner subscriptions and obligations, and platform liability.",
   path: "/terms",
 });
 
@@ -27,20 +37,34 @@ export default function TermsPage() {
         You must be at least 18 years old to create an account. By registering, you confirm that the information you provide is accurate and that you have the legal capacity to enter into a contract under Indian law.
       </Section>
 
-      {/* ONLINE BOOKING WAS SWITCHED OFF ON 2026-10-05 (migration 0112). This
-          section used to describe an advance paid at checkout plus a platform
-          fee; that text is in git history and must come back, reviewed, before
-          lib/booking-switch.ts is turned on again. */}
-      <Section title="4. Requests for Quotes and Bookings">
-        Venues on Hallnect take <strong>requests for quotes</strong>. You tell a venue your date and needs; the venue replies on Hallnect with a quote — its price, what is included, any advance it asks for, and how long the offer stands. The venue sees your name and event details, but <strong>not your phone number</strong>, until you accept its quote; only then is your verified number shared with that venue so it can call you. You agree the booking directly with the venue, and any advance and the balance are paid to the venue, not to Hallnect. Hallnect charges you nothing. A date is not held for you until the venue confirms the booking with you. Online booking with an advance paid through Hallnect is not currently offered.
-      </Section>
+      {DIRECT_BOOKING_ENABLED ? (
+        <Section title="4. Bookings, Advance Payment, Platform Fee and Requests for Quotes">
+          Each venue&apos;s listing says how it takes bookings: <strong>online, with an advance</strong>, or by <strong>quote</strong>.
+          <br /><br />
+          <strong>Online bookings.</strong> An online booking requires an <strong>advance payment</strong> at checkout to secure the venue and date, plus a <strong>{platformFeeDisclosure()}</strong> collected with the advance, unless a valid promotional code waives it. On a small booking the fee is capped at 25% of the advance, so it may be less than the standard figure. All amounts are displayed clearly before payment is confirmed. The platform fee and its GST are non-refundable except where a cancellation is initiated by the venue or by Hallnect (see the Refund Policy). A booking is not guaranteed until payment is processed and the venue owner confirms the booking. The remaining balance (if any) is settled directly with the venue owner as agreed.
+          <br /><br />
+          <strong>Requests for quotes.</strong> Venues on Hallnect take <strong>requests for quotes</strong>. You tell a venue your date and needs; the venue replies on Hallnect with a quote — its price, what is included, any advance it asks for, and how long the offer stands. The venue sees your name and event details, but <strong>not your phone number</strong>, until you accept its quote; only then is your verified number shared with that venue so it can call you. You agree the booking directly with the venue, and any advance and the balance are paid to the venue, not to Hallnect. Hallnect charges you nothing. A date is not held for you until the venue confirms the booking with you.
+        </Section>
+      ) : (
+        <Section title="4. Requests for Quotes and Bookings">
+          Venues on Hallnect take <strong>requests for quotes</strong>. You tell a venue your date and needs; the venue replies on Hallnect with a quote — its price, what is included, any advance it asks for, and how long the offer stands. The venue sees your name and event details, but <strong>not your phone number</strong>, until you accept its quote; only then is your verified number shared with that venue so it can call you. You agree the booking directly with the venue, and any advance and the balance are paid to the venue, not to Hallnect. Hallnect charges you nothing. A date is not held for you until the venue confirms the booking with you. Online booking with an advance paid through Hallnect is not currently offered.
+        </Section>
+      )}
 
       <Section title="5. Venue Verification">
         <strong>Customers are strongly advised to verify all venue details before confirming a booking and before their event.</strong> This includes capacity, amenities, catering arrangements, parking, décor restrictions, and any other requirements specific to your event. Hallnect displays venue information as provided by owners and does not independently verify every listing detail.
       </Section>
 
       <Section title="6. Payments">
-        Payments made on Hallnect — venue owners&apos; subscriptions and the commission a venue owes Hallnect on a booking it confirms — are processed through Cashfree Payments. By making a payment, you agree to Cashfree&apos;s terms of service. Hallnect does not store your card number, CVV, or banking credentials. Hallnect&apos;s commission is billed to the venue owner and is never a charge to the customer.
+        {DIRECT_BOOKING_ENABLED ? (
+          <>
+            All payments made on Hallnect — a customer&apos;s advance and platform fee on an online booking, venue owners&apos; subscriptions, and the commission a venue owes Hallnect on a booking made through a quote — are processed through Cashfree Payments. By making a payment, you agree to Cashfree&apos;s terms of service. Hallnect does not store your card number, CVV, or banking credentials. On an online booking, the platform fee and its GST, where charged, are collected from the customer together with the advance; Hallnect&apos;s service commission is settled with the venue owner out of the advance and is never an additional customer charge. On a booking made through a quote, Hallnect&apos;s commission is billed to the venue owner and is never a charge to the customer.
+          </>
+        ) : (
+          <>
+            Payments made on Hallnect — venue owners&apos; subscriptions and the commission a venue owes Hallnect on a booking it confirms — are processed through Cashfree Payments. By making a payment, you agree to Cashfree&apos;s terms of service. Hallnect does not store your card number, CVV, or banking credentials. Hallnect&apos;s commission is billed to the venue owner and is never a charge to the customer.
+          </>
+        )}
       </Section>
 
       <Section title="7. Venue Owner Subscriptions (Pro and Elite)">
@@ -83,17 +107,21 @@ export default function TermsPage() {
       </Section>
 
       <Section title="8. Hall Owner Obligations">
-        Owners must provide accurate listing information including capacity, pricing, amenities, and availability. Owners must honour confirmed bookings. Owner-initiated cancellations must be communicated immediately and may result in penalties. Owners must use a customer&apos;s phone number only to arrange the booking the customer asked about, and must mark a booking that came through Hallnect as booked, at the amount agreed, so that the commission due on it can be billed.
+        Owners must provide accurate listing information including capacity, pricing, amenities, and availability. Owners must honour confirmed bookings. Owner-initiated cancellations must be communicated immediately and may result in penalties.{" "}
+        {DIRECT_BOOKING_ENABLED && "Owners may not collect payments outside the Hallnect platform for online bookings originated through Hallnect. "}
+        Owners must use a customer&apos;s phone number only to arrange the booking the customer asked about, and must mark a booking that came through a Hallnect quote as booked, at the amount agreed, so that the commission due on it can be billed.
       </Section>
 
       <Section title="9. Customer Obligations">
         Customers must use booked venues lawfully and in accordance with the venue owner&apos;s rules. Any damage caused during an event is the responsibility of the booking customer. Customers must give accurate event details when they ask a venue for a quote.
+        {DIRECT_BOOKING_ENABLED && " Customers must not attempt to transact directly with owners to circumvent the platform fee on an online booking."}
       </Section>
 
       <Section title="10. Cancellations and Refunds">
         Cancellation and refund terms are detailed in our{" "}
         <a href="/cancellation-policy" className="text-maroon-600 hover:underline">Cancellation Policy</a> and{" "}
         <a href="/refund-policy" className="text-maroon-600 hover:underline">Refund Policy</a>. These apply to both customers and venue owners.
+        {DIRECT_BOOKING_ENABLED && " They cover payments made through Hallnect. On a booking made through a quote, the advance and the balance are paid to the venue, so cancelling and any refund are agreed with the venue."}
       </Section>
 
       <Section title="11. Reviews">

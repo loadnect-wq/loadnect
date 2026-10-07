@@ -184,11 +184,15 @@ describe("guard rails", () => {
   const root = join(__dirname, "..", "..");
   const read = (p: string) => readFileSync(join(root, p), "utf8");
 
-  it("switches direct booking off in the database and in the code", () => {
+  it("0112 switched direct booking off; 0114 brings it back as each hall's choice", () => {
     const sql = read("supabase/migrations/0112_quotes_before_number.sql");
     expect(sql).toContain("check (booking_mode = 'LEAD_GENERATION')");
     expect(sql).toContain("revoke update (booking_mode) on public.halls from authenticated;");
-    expect(read("lib/booking-switch.ts")).toContain("export const DIRECT_BOOKING_ENABLED = false;");
+    const back = read("supabase/migrations/0114_online_booking_back.sql");
+    expect(back).toContain("drop constraint if exists halls_direct_booking_switched_off;");
+    expect(back).toContain("drop constraint if exists admin_hall_drafts_direct_booking_switched_off;");
+    expect(back).toContain("grant update (booking_mode) on public.halls to authenticated;");
+    expect(read("lib/booking-switch.ts")).toContain("export const DIRECT_BOOKING_ENABLED = true;");
   });
 
   it("tells families about quotes, not the flow before 0112", () => {
@@ -204,7 +208,13 @@ describe("guard rails", () => {
     const steps = branch("HOW_IT_WORKS");
     const faq = branch("FAQ_ITEMS");
     expect(steps.off).toContain('title: "Get quotes"');
-    expect(steps.on).toContain('title: "Book or enquire"');
+    expect(steps.on).toContain('title: "Book or get a quote"');
+    // The online-booking version describes quotes as they work now, not the
+    // pre-0112 enquiry where the venue got the number on verification.
+    for (const stale of ["contacts you", "free enquiry"]) {
+      expect(steps.on, stale).not.toContain(stale);
+      expect(faq.on, stale).not.toContain(stale);
+    }
     expect(faq.off).toContain("Every venue on Hallnect works on quotes.");
     expect(faq.off).toContain("gets your number to call you and agree the booking");
     for (const stale of ["Cashfree", "platform fee", "platformFeeDisclosure", "contacts you", "book online"]) {

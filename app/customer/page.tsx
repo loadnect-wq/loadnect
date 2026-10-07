@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { CalendarCheck, CalendarDays, ClipboardList, Heart, Inbox, MessageSquareQuote, Search, Star } from "lucide-react";
+import { CalendarCheck, CalendarDays, ClipboardList, Heart, Inbox, MessageSquareQuote, Search } from "lucide-react";
 import { requireRole } from "@/lib/auth";
 import { fetchCustomerStats } from "@/lib/customer";
 import { countLeadsForCustomer } from "@/lib/leads";
@@ -15,14 +15,13 @@ export const metadata: Metadata = { title: "Dashboard" };
 
 export default async function CustomerDashboard() {
   const profile = await requireRole(["customer"]);
-  // WHAT A FAMILY IS WAITING ON. With direct booking switched off nobody can
-  // have an online booking, so "Upcoming / Pending / Completed" were three
-  // permanent zeros while a quote waiting on the family appeared nowhere on
-  // this page. The tiles follow the switch: enquiries now, bookings when it
-  // comes back.
+  // WHAT A FAMILY IS WAITING ON. Quotes always: every hall can work on
+  // quotes, and a quote waiting on the family is the one thing here with a
+  // deadline. Online bookings too while that is switched on (0114) — a family
+  // can have both, so neither replaces the other.
   const [stats, leads] = await Promise.all([
     DIRECT_BOOKING_ENABLED ? fetchCustomerStats() : null,
-    DIRECT_BOOKING_ENABLED ? null : countLeadsForCustomer(profile.id),
+    countLeadsForCustomer(profile.id),
   ]);
   const firstName = profile.full_name?.split(" ")[0];
 
@@ -39,21 +38,13 @@ export default async function CustomerDashboard() {
           </h1>
           <p className="mt-1 text-sm text-charcoal-500">
             {DIRECT_BOOKING_ENABLED
-              ? "Manage your bookings, saved halls, and profile."
+              ? "Your bookings, quotes, saved halls and plans in one place."
               : "Your quotes, saved halls and plans in one place."}
           </p>
         </div>
 
         {/* Stats */}
-        {stats ? (
-          <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4 mb-6">
-            <StatCard revealIndex={0} label="Upcoming" value={stats.upcomingCount} icon={<CalendarDays className="h-4 w-4" />} href="/customer/bookings?tab=upcoming" />
-            <StatCard revealIndex={1} label="Pending" value={stats.pendingCount} icon={<CalendarCheck className="h-4 w-4" />} href="/customer/bookings?tab=all" />
-            <StatCard revealIndex={2} label="Completed" value={stats.completedCount} icon={<Star className="h-4 w-4" />} href="/customer/bookings?tab=past" />
-            <SavedCountTile revealIndex={3} />
-          </div>
-        ) : (
-          <>
+        <>
             {/* A quote waiting on the family is the one thing on this page with
                 a deadline, so it is a banner, not just a number in a tile. */}
             {leads && leads.toAnswer > 0 && (
@@ -74,14 +65,22 @@ export default async function CustomerDashboard() {
                 </span>
               </Link>
             )}
+            {/* Four tiles either way. With online booking on, the booking count
+                takes the "Accepted" slot: a family's upcoming bookings matter
+                more than a count of quotes already settled, which My Enquiries
+                still lists. */}
             <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4 mb-6">
-              <StatCard revealIndex={0} label="Quotes to answer" value={leads?.toAnswer ?? null} icon={<MessageSquareQuote className="h-4 w-4" />} href="/customer/enquiries" />
-              <StatCard revealIndex={1} label="Waiting for a quote" value={leads?.waiting ?? null} icon={<Inbox className="h-4 w-4" />} href="/customer/enquiries" />
-              <StatCard revealIndex={2} label="Accepted" value={leads?.agreed ?? null} icon={<CalendarCheck className="h-4 w-4" />} href="/customer/enquiries" />
+              {DIRECT_BOOKING_ENABLED && (
+                <StatCard revealIndex={0} label="Upcoming bookings" value={stats?.upcomingCount ?? null} icon={<CalendarDays className="h-4 w-4" />} href="/customer/bookings?tab=upcoming" />
+              )}
+              <StatCard revealIndex={DIRECT_BOOKING_ENABLED ? 1 : 0} label="Quotes to answer" value={leads?.toAnswer ?? null} icon={<MessageSquareQuote className="h-4 w-4" />} href="/customer/enquiries" />
+              <StatCard revealIndex={DIRECT_BOOKING_ENABLED ? 2 : 1} label="Waiting for a quote" value={leads?.waiting ?? null} icon={<Inbox className="h-4 w-4" />} href="/customer/enquiries" />
+              {!DIRECT_BOOKING_ENABLED && (
+                <StatCard revealIndex={2} label="Accepted" value={leads?.agreed ?? null} icon={<CalendarCheck className="h-4 w-4" />} href="/customer/enquiries" />
+              )}
               <SavedCountTile revealIndex={3} />
             </div>
-          </>
-        )}
+        </>
 
         {/* Quick actions */}
         <h2 data-reveal="up" className="mb-3 font-serif text-base font-semibold text-charcoal-800">
@@ -105,25 +104,24 @@ export default async function CustomerDashboard() {
             href="/halls"
             cta="Find Venues"
           />
-          {DIRECT_BOOKING_ENABLED ? (
+          {DIRECT_BOOKING_ENABLED && (
             <ActionCard
               revealIndex={2}
               icon={<CalendarDays className="h-6 w-6 text-maroon-600" />}
               title="My Bookings"
-              description="View upcoming and past bookings."
+              description="Halls you booked online, with the advance you paid."
               href="/customer/bookings"
-              cta="View Bookings"
-            />
-          ) : (
-            <ActionCard
-              revealIndex={2}
-              icon={<Inbox className="h-6 w-6 text-maroon-600" />}
-              title="My Enquiries"
-              description="Your requests to halls, and the quotes they send back."
-              href="/customer/enquiries"
-              cta="View enquiries"
+              cta="View bookings"
             />
           )}
+          <ActionCard
+            revealIndex={2}
+            icon={<Inbox className="h-6 w-6 text-maroon-600" />}
+            title="My Enquiries"
+            description="Your requests to halls, and the quotes they send back."
+            href="/customer/enquiries"
+            cta="View enquiries"
+          />
           {/* /saved, not /customer/saved-halls: the heart saves to this
               browser's list, and that table was never written to. */}
           <ActionCard

@@ -284,9 +284,10 @@ export const profileUpdateSchema = z.object({
  *   DIRECT_BOOKING  — the original flow. The customer pays an advance through
  *                     Cashfree, Hallnect retains its commission out of it, and
  *                     the slot is held. Unchanged in every respect.
- *   LEAD_GENERATION — Hallnect introduces the customer and never touches their
- *                     money. The venue negotiates and settles directly; the
- *                     commission is billed to the venue afterwards.
+ *   LEAD_GENERATION — quotes (0112). Hallnect introduces the customer and never
+ *                     touches their money: the venue quotes, the family
+ *                     accepts, they settle directly, and the commission is
+ *                     billed to the venue afterwards.
  *
  * UPPERCASE because that is what the brief names, and because these values are
  * pinned by halls_booking_mode_allowed in migration 0073 — the CHECK and this
@@ -300,24 +301,22 @@ export function isBookingMode(v: unknown): v is BookingMode {
 }
 
 /**
- * DEFAULTS TO DIRECT_BOOKING when absent, and that default is load-bearing in
- * two directions.
+ * DEFAULTS TO LEAD_GENERATION (quotes) when absent — since 0114.
  *
- * Forward: a Next.js server action DROPS undefined properties, so a caller that
- * does not mention the mode sends a MISSING KEY. Every such caller predates
- * lead generation and means the original behaviour, so answering "Invalid
- * input" would break hall editing for a field the form never had.
- *
- * Backward: it means no existing test, script or call site has to be rewritten
- * to keep doing what it already did — which is the property that lets the whole
- * feature be additive.
+ * A Next.js server action DROPS undefined properties, so a caller that does
+ * not mention the mode sends a MISSING KEY. It used to mean DIRECT_BOOKING,
+ * because every caller then predated lead generation. Since 0112 every hall is
+ * on quotes, so a missing mode now means "unchanged from quotes": a hall takes
+ * money online only when its owner explicitly chooses it, which is also the
+ * column's database default. Defaulting the other way would let any edit that
+ * forgot the field start taking advances for a venue that never agreed to it.
  */
 export const bookingModeSchema = z
   .union([z.string(), z.null(), z.undefined()])
-  // Direct booking is switched off (lib/booking-mode.ts, 0112): whatever a
-  // form sends, a hall is saved as taking enquiries.
+  // With direct booking switched off (lib/booking-switch.ts) whatever a form
+  // sends, a hall is saved as taking quotes.
   .transform((v) =>
-    !DIRECT_BOOKING_ENABLED ? "LEAD_GENERATION" : v == null || v === "" ? "DIRECT_BOOKING" : String(v).trim())
+    !DIRECT_BOOKING_ENABLED || v == null || v === "" ? "LEAD_GENERATION" : String(v).trim())
   .refine(isBookingMode, `Choose either ${BOOKING_MODES.join(" or ")}.`);
 
 /**
@@ -464,7 +463,7 @@ export const hallSchema = z
     //
     // .default() short-circuits on undefined and makes the key optional; the
     // union still handles an explicit null or "" arriving from a form.
-    bookingMode:  bookingModeSchema.default(DIRECT_BOOKING_ENABLED ? "DIRECT_BOOKING" : "LEAD_GENERATION"),
+    bookingMode:  bookingModeSchema.default("LEAD_GENERATION"),
     // OPTIONAL AT THE TYPE LEVEL, REQUIRED BY THE REFINE BELOW FOR A DIRECT
     // BOOKING. A lead-generation venue may legitimately publish no price at all
     // ("Contact for pricing"), which is why the column lost its NOT NULL in

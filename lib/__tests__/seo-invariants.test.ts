@@ -125,7 +125,7 @@ describe("meta descriptions are never truncated by the clamp", () => {
       expect(d.length, d).toBeGreaterThan(100);
       expect(d.length, `${d.length} chars: ${d}`).toBeLessThanOrEqual(158);
     }
-    expect(text(on)).toContain("then book online.");
+    expect(text(on)).toContain("then book online or get free quotes.");
     expect(text(off)).not.toContain("book online");
   });
 
