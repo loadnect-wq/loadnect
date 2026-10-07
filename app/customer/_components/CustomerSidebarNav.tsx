@@ -16,8 +16,12 @@ const NAV = [
   ...(DIRECT_BOOKING_ENABLED ? [{ label: "My Bookings", href: "/customer/bookings", icon: CalendarDays }] : []),
   { label: "My Enquiries", href: "/customer/enquiries",  icon: Inbox },
   { label: "My Visits",   href: "/customer/visits",       icon: CalendarCheck },
-  { label: "Saved Halls", href: "/customer/saved-halls",  icon: Heart },
-  { label: "My Reviews",  href: "/customer/reviews",      icon: Star },
+  // The heart saves to this browser's list (/saved); the account table it
+  // used to point at was never written to, so it always read "none saved".
+  { label: "Saved Halls", href: "/saved",                 icon: Heart },
+  // A review attaches to an ONLINE booking (reviews.booking_id), so with
+  // direct booking switched off there is nothing a family can review.
+  ...(DIRECT_BOOKING_ENABLED ? [{ label: "My Reviews", href: "/customer/reviews", icon: Star }] : []),
   { label: "Notifications", href: "/customer/notifications", icon: Bell },
   { label: "Profile",     href: "/customer/profile",      icon: User },
 ];

@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { LogOut, Shield } from "lucide-react";
+import { LogOut, Shield, User } from "lucide-react";
 import { requireRole } from "@/lib/auth";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { AppHeader } from "@/components/app/AppHeader";
@@ -27,17 +27,18 @@ export default async function ProfilePage() {
     ({ data: extra } = await db.from("profiles").select("phone").eq("id", profile.id).maybeSingle());
   }
 
-  const initial = (profile.full_name ?? profile.email ?? "?")[0].toUpperCase();
+  // No name or email yet (a mobile-number account): a person icon, not "?".
+  const initial = (profile.full_name ?? profile.email ?? "")[0]?.toUpperCase() ?? null;
 
   return (
     <div className="min-h-screen bg-ivory-100 pb-10">
-      <AppHeader title="Profile" />
+      <AppHeader heading title="Profile" />
 
       <div className="px-4 py-5 sm:px-6 lg:px-8 space-y-5">
         {/* Avatar card */}
         <div className="flex items-center gap-4 rounded-2xl bg-gradient-to-br from-maroon-800 to-maroon-950 p-5 text-ivory-100 shadow-elevated">
           <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-gold-400 font-serif text-2xl font-bold text-maroon-900">
-            {initial}
+            {initial ?? <User className="h-7 w-7" aria-hidden />}
           </div>
           <div className="min-w-0">
             <p className="truncate font-serif text-lg font-bold">

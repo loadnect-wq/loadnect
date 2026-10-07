@@ -62,7 +62,7 @@ export default async function CustomerVisitsPage() {
           <EmptyState
             icon={<CalendarCheck className="h-8 w-8" />}
             title="No visits yet"
-            description="Open any hall and tap “Visit the hall” to ask to see it before you decide."
+            description="Open any hall and tap “Visit” to ask to see it before you decide."
             action={<Link href="/halls" className={buttonVariants({ variant: "gold", size: "sm" })}>Browse halls</Link>}
           />
         ) : (

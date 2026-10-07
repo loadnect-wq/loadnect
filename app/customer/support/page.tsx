@@ -11,7 +11,7 @@ export default async function CustomerSupportPage() {
 
   return (
     <div className="min-h-screen bg-ivory-100">
-      <AppHeader title="Support" />
+      <AppHeader heading title="Support" />
 
       <div className="px-4 py-5 sm:px-6 lg:px-8 space-y-4">
         <CreateTicketForm />

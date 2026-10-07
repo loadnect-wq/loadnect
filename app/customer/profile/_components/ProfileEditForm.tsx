@@ -43,14 +43,24 @@ export function ProfileEditForm({ initialName, initialPhone, email, initialNotif
         <label htmlFor="email" className="mb-1.5 block text-xs font-semibold text-charcoal-700">
           Email address
         </label>
-        <input
-          id="email"
-          type="email"
-          value={email ?? ""}
-          readOnly
-          className="w-full rounded-xl border border-border bg-ivory-100 px-3 py-2.5 text-sm text-charcoal-500 cursor-not-allowed"
-        />
-        <p className="mt-1 text-[11px] text-charcoal-500">Email cannot be changed here.</p>
+        {/* A mobile-number account has no email: an empty locked box saying
+            "cannot be changed" read as broken. Say what is true instead. */}
+        {email ? (
+          <>
+            <input
+              id="email"
+              type="email"
+              value={email}
+              readOnly
+              className="w-full rounded-xl border border-border bg-ivory-100 px-3 py-2.5 text-sm text-charcoal-500 cursor-not-allowed"
+            />
+            <p className="mt-1 text-[11px] text-charcoal-500">Email cannot be changed here.</p>
+          </>
+        ) : (
+          <p id="email" className="rounded-xl border border-dashed border-border px-3 py-2.5 text-sm text-charcoal-600">
+            None — you sign in with your mobile number.
+          </p>
+        )}
       </div>
 
       {/* Full name */}
@@ -90,7 +100,7 @@ export function ProfileEditForm({ initialName, initialPhone, email, initialNotif
         <div>
           <p className="text-xs font-semibold text-charcoal-800">SMS updates</p>
           <p className="mt-0.5 text-[11px] leading-relaxed text-charcoal-500">
-            Optional text updates, when messaging is available. Your bookings and payments are always shown on your bookings page.
+            Optional text updates, when messaging is available. Your enquiries and quotes are always shown in My Enquiries.
           </p>
         </div>
         <button

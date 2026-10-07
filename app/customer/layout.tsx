@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { requireRole } from "@/lib/auth";
+import { User } from "lucide-react";
 import { CustomerSidebarNav } from "./_components/CustomerSidebarNav";
 
 // SEO: this whole subtree is private. Declaring robots ONCE on the layout means
@@ -15,7 +16,9 @@ export default async function CustomerLayout({
   children: React.ReactNode;
 }) {
   const profile = await requireRole(["customer"]);
-  const initial = (profile.full_name ?? profile.email ?? "?")[0].toUpperCase();
+  // A mobile-number account has no name or email yet, and showed a bare "?"
+  // where the initial goes. It gets a person icon instead.
+  const initial = (profile.full_name ?? profile.email ?? "")[0]?.toUpperCase() ?? null;
 
   return (
     <div className="min-h-screen bg-ivory-100">
@@ -26,13 +29,15 @@ export default async function CustomerLayout({
             <div className="px-4 py-5 border-b border-border">
               <div className="flex items-center gap-3">
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-maroon-100 font-bold text-maroon-700">
-                  {initial}
+                  {initial ?? <User className="h-5 w-5" aria-hidden />}
                 </div>
                 <div className="min-w-0">
                   <p className="truncate text-sm font-semibold text-charcoal-900">
                     {profile.full_name ?? "My Account"}
                   </p>
-                  <p className="truncate text-[11px] text-charcoal-500">{profile.email}</p>
+                  <p className="truncate text-[11px] text-charcoal-500">
+                    {profile.email ?? "Signed in with your mobile number"}
+                  </p>
                 </div>
               </div>
             </div>

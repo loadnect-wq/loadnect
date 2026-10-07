@@ -85,7 +85,7 @@ export default async function CustomerEnquiriesPage() {
 
   return (
     <div className="min-h-screen bg-ivory-100 pb-20">
-      <AppHeader title="My enquiries" notificationsHref="/customer/notifications" />
+      <AppHeader heading title="My enquiries" notificationsHref="/customer/notifications" />
 
       <div className="space-y-3 px-4 py-4 sm:px-6 lg:px-8">
         {leads.length === 0 ? (

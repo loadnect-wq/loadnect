@@ -24,7 +24,7 @@ export default async function MyReviewsPage() {
 
   return (
     <div className="min-h-screen bg-ivory-100">
-      <AppHeader title="My Reviews" />
+      <AppHeader heading title="My Reviews" />
 
       <div className="px-4 py-5 sm:px-6 lg:px-8">
         {reviews.length === 0 ? (

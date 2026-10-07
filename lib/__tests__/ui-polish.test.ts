@@ -177,3 +177,38 @@ describe("the owner area (reviewed signed in, 2026-10-06)", () => {
     expect(read("components/app/AppHeader.tsx")).toContain("lg:not-sr-only");
   });
 });
+
+describe("the family's account (reviewed signed in, 2026-10-07)", () => {
+  const dash = read("app/customer/page.tsx");
+
+  it("tracks enquiries and quotes, not online bookings, while direct booking is off", () => {
+    expect(dash).toContain("DIRECT_BOOKING_ENABLED ? null : countLeadsForCustomer(profile.id)");
+    expect(dash).toContain('label="Quotes to answer"');
+    expect(dash).toContain('title="My Enquiries"');
+    // An unread failure prints a dash, never a reassuring zero.
+    expect(dash).toContain('{value === null ? "—" : <CountUp value={value} />}');
+    expect(read("lib/leads.ts")).toContain("export async function countLeadsForCustomer(");
+  });
+
+  it("points every Saved link at the list the heart actually writes to", () => {
+    expect(read("app/customer/saved-halls/page.tsx")).toContain('redirect("/saved")');
+    expect(read("app/customer/_components/CustomerSidebarNav.tsx")).toContain('{ label: "Saved Halls", href: "/saved",');
+    expect(read("app/customer/_components/SavedCountTile.tsx")).toContain("useSavedHalls()");
+    expect(dash).not.toContain('href="/customer/saved-halls"');
+  });
+
+  it("shows a person, not '?', for an account with no name or email", () => {
+    for (const f of ["app/customer/layout.tsx", "app/customer/profile/page.tsx"]) {
+      const src = read(f);
+      expect(src, f).not.toContain('?? "?"');
+      expect(src, f).toContain("<User ");
+    }
+    expect(read("app/customer/profile/_components/ProfileEditForm.tsx")).toContain("None — you sign in with your mobile number.");
+  });
+
+  it("gives the family's pages a heading on desktop", () => {
+    for (const f of ["enquiries", "bookings", "profile", "reviews", "support"]) {
+      expect(read(`app/customer/${f}/page.tsx`), f).toContain("<AppHeader heading");
+    }
+  });
+});

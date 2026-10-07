@@ -969,6 +969,38 @@ export async function fetchLeadsForCustomer(customerId: string): Promise<LeadWit
   }
 }
 
+/**
+ * A family's enquiries by where they stand, for the account dashboard: quotes
+ * waiting on THEM, requests still waiting on a venue, and accepted or booked.
+ * NULL when the read fails — never zeros, which would say "nothing waiting" to
+ * someone with a quote about to expire (see the fail-open note in memory).
+ */
+export async function countLeadsForCustomer(
+  customerId: string,
+): Promise<{ toAnswer: number; waiting: number; agreed: number } | null> {
+  try {
+    const { data, error } = await admin()
+      .from("leads")
+      .select("status, quote_valid_until")
+      .eq("customer_id", customerId)
+      .limit(500);
+    if (error) {
+      console.error("[leads] customer counts failed", error.code, error.message);
+      return null;
+    }
+    const today = todayInBusinessTz();
+    const rows = (data ?? []) as { status: LeadStatus; quote_valid_until: string | null }[];
+    return {
+      toAnswer: rows.filter((r) => r.status === "quoted" && (!r.quote_valid_until || r.quote_valid_until >= today)).length,
+      waiting: rows.filter((r) => r.status === "pending" || r.status === "awaiting_verification").length,
+      agreed: rows.filter((r) => r.status === "accepted" || r.status === "confirmed").length,
+    };
+  } catch (e) {
+    console.error("[leads] customer counts threw", e instanceof Error ? e.message : e);
+    return null;
+  }
+}
+
 // ── The venue's phone, for a customer who has actually enquired ──────────────
 
 export type VenueContact = { businessName: string; phone: string | null };

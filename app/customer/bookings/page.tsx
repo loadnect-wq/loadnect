@@ -41,7 +41,7 @@ export default async function CustomerBookingsPage({ searchParams }: Props) {
 
   return (
     <div className="min-h-screen bg-ivory-100">
-      <AppHeader title="My Bookings" />
+      <AppHeader heading title="My Bookings" />
 
       {/* ENQUIRIES LIVE NEXT DOOR, and this link is how a phone user reaches
           them at all: the tab bar is capped at five and cannot carry a sixth,
