@@ -1,41 +1,63 @@
+import { cache } from "react";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
-import { fetchHallBySlug, fetchSimilarHalls } from "@/lib/halls";
-import { getAdvancePercent } from "@/lib/platform-settings";
-import { HallDetailView } from "./_components/HallDetailView";
-import { AdSlot } from "@/components/ads/AdSlot";
+import { fetchHallBySlug } from "@/lib/halls";
 import { buildMetadata, noindexMetadata } from "@/lib/seo/metadata";
 import { venueTitle, venueDescription, venueImageAlt } from "@/lib/seo/venue";
-import { JsonLd } from "@/components/seo/JsonLd";
-import { jsonLdGraph, venueJsonLd, breadcrumbJsonLd } from "@/lib/seo/jsonld";
-import { citySlug } from "@/lib/seo/cities";
-import { fetchVenueCategories } from "@/lib/venue-categories.server";
-import { selectCategories } from "@/lib/venue-categories";
+import { fetchIndexableVenues } from "@/lib/seo/sitemap-data";
+import { VenuePage } from "./_components/VenuePage";
+
+// ─────────────────────────────────────────────────────────────────────────────
+// THE PUBLIC VENUE PAGE IS CACHED (2026-10-08).
+//
+// It used to read the visitor's session — only so that an owner or admin could
+// preview a hall that was not live yet — which made every request a fresh
+// render, and that cost the page four things the SEO audit found:
+//   • Next streamed its title, description and canonical into the <body>, not
+//     the <head>, for Googlebot and every AI crawler. Google ignores a body
+//     canonical in the raw HTML; crawlers that run no JavaScript may miss the
+//     title outright.
+//   • A missing or removed venue answered HTTP 200 (a "soft 404"): the status
+//     was committed before the page knew the hall did not exist.
+//   • Most of the page's words arrived in hidden streamed blocks that only
+//     JavaScript reveals.
+//   • Cache-Control: no-store — every visit paid a round trip to the database.
+//
+// Now the page reads through the cookie-free client, approved halls only, and
+// is rendered once and regenerated (ISR): metadata in the <head>, the whole
+// page in the HTML, a real 404 for a hall that is missing or not live, and a
+// cached response. The preview moved to /halls/[slug]/preview, which keeps the
+// session. Hall edits, approvals and photo changes refresh it at once
+// (revalidateVenuePages); otherwise it is at most five minutes old.
+// ─────────────────────────────────────────────────────────────────────────────
 
 type Props = { params: Promise<{ slug: string }> };
 
+export const revalidate = 300;
+
+/**
+ * Every live venue is rendered at build. A hall approved later renders on its
+ * first visit (dynamicParams stays on). A failed read here just means nothing
+ * is pre-rendered — never a failed build.
+ */
+export async function generateStaticParams() {
+  try {
+    return (await fetchIndexableVenues()).map((v) => ({ slug: v.slug }));
+  } catch {
+    return [];
+  }
+}
+
+/** One read per render, shared by generateMetadata and the page. */
+const getLiveHall = cache((slug: string) => fetchHallBySlug(slug, { publicOnly: true }));
+
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params;
-  const hall = await fetchHallBySlug(slug);
+  const hall = await getLiveHall(slug);
 
-  // A missing hall 404s in the page body; returning bare metadata here kept the
-  // route title-less. An owner/admin previewing an UNAPPROVED hall reaches this
-  // page legitimately, so it must be explicitly noindex — a draft venue must
-  // never enter the index.
-  //
-  // ON THE 200 STATUS (checked against the Next 16 docs, do not re-litigate):
-  // a missing hall serves the 404 UI under HTTP 200 — a soft 404. That is
-  // documented behaviour, not a defect here: "Next.js will return a 200 HTTP
-  // status code for streamed responses, and 404 for non-streamed responses",
-  // and this route streams because it awaits a cookie-aware database read.
-  // Moving the notFound() earlier does NOT change it; the status is committed
-  // when streaming starts. The documented mitigation is the noindex tag, which
-  // is exactly what this line provides and which keeps the URL out of search
-  // results. A genuine 404 status would require checking the slug in `proxy`
-  // before the response streams — a database lookup on every request to buy a
-  // status code on a page crawlers already ignore.
+  // Missing, or not live: the page below answers 404. The noindex is a second
+  // line, not the mechanism.
   if (!hall) return noindexMetadata("Venue not found");
-  if (hall.status !== "approved") return noindexMetadata(`${hall.name} (preview)`);
 
   const coverImg = hall.images.find((i) => i.is_cover) ?? hall.images[0];
 
@@ -52,84 +74,11 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 export default async function HallDetailPage({ params }: Props) {
   const { slug } = await params;
 
-  // fetchHallBySlug uses the session-aware Supabase client.
-  // RLS automatically enforces:
-  //   - public/unauthenticated: only status='approved' halls returned
-  //   - hall owner: their own hall any status
-  //   - admin: any hall
-  // If the hall doesn't exist OR the caller lacks permission → null → 404.
-  const hall = await fetchHallBySlug(slug);
+  // Approved halls only (fetchHallBySlug publicOnly). A hall that does not
+  // exist, or exists but is not live — draft, pending, rejected, suspended —
+  // is a 404 here. Its owner and the admins see it at /halls/[slug]/preview.
+  const hall = await getLiveHall(slug);
   if (!hall) notFound();
 
-  // Together, not one after the other. Only fetchSimilarHalls needs the hall;
-  // getAdvancePercent needs nothing, and awaiting it second added a whole
-  // Mumbai-to-Sydney round trip to the page a customer books from.
-  const [similar, advancePercent, catalogue] = await Promise.all([
-    fetchSimilarHalls(hall.id, hall.city),
-    getAdvancePercent(),
-    // LENIENT. If the catalogue cannot be read, this venue's "Suitable for"
-    // chips and its one-line summary of what it hosts are simply absent. Every
-    // other fact on the page — price, capacity, photos, availability, the
-    // booking button — is unaffected, so failing the whole venue page over a
-    // decorative strip would be the worse trade.
-    fetchVenueCategories(),
-  ]);
-
-  // Resolved HERE, on the server, and only this hall's few rows cross to the
-  // client. See venueCategoriesSentence for why the whole catalogue does not.
-  const hallCategories = selectCategories(hall.venue_types, catalogue);
-
-  // isPreview is true only when an owner/admin fetched a non-approved hall.
-  // Public users can never reach this point with a non-approved hall (RLS → 404).
-  const isPreview = hall.status !== "approved";
-
-  return (
-    <>
-      {/* EventVenue + breadcrumbs, from real columns only. Emitted ONLY for a
-          publicly approved hall: a preview of a draft venue must not publish
-          structured data about a listing the public cannot see. */}
-      {!isPreview && (
-        <JsonLd
-          data={jsonLdGraph(
-            venueJsonLd({
-              name: hall.name,
-              slug: hall.slug,
-              description: hall.description,
-              city: hall.city,
-              state: hall.state,
-              address: hall.address,
-              pincode: hall.pincode,
-              latitude: hall.latitude,
-              longitude: hall.longitude,
-              capacityMax: hall.capacity_max,
-              pricePerDay: hall.price_per_day,
-              ratingAverage: hall.rating_average,
-              ratingCount: hall.rating_count,
-              images: hall.images.map((i) => ({ url: i.url, alt: i.alt_text })),
-              amenities: [
-                ...hall.amenities.map((a) => a.name),
-                ...hall.custom_amenities,
-              ],
-              venueTypes: hallCategories.map((c) => c.name),
-            }),
-            breadcrumbJsonLd([
-              { name: "Home", path: "/" },
-              { name: "Tamil Nadu", path: "/halls" },
-              { name: hall.city, path: `/wedding-halls/${citySlug(hall.city)}` },
-              { name: hall.name, path: `/halls/${hall.slug}` },
-            ]),
-          )}
-        />
-      )}
-      <HallDetailView
-      hall={hall}
-      citySlug={citySlug(hall.city)}
-      advancePercent={advancePercent}
-      categories={hallCategories}
-      similar={similar}
-      isPreview={isPreview}
-        sidebarAd={<AdSlot placement="hall_detail_sidebar" limit={1} variant="card" />}
-      />
-    </>
-  );
+  return <VenuePage hall={hall} isPreview={false} />;
 }

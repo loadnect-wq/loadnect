@@ -372,7 +372,7 @@ describe("guard rails", () => {
   });
 
   it("the search page offers an alert only when it can work and a hall is hidden", () => {
-    const page = read("app/halls/page.tsx");
+    const page = read("app/halls/(browse)/page.tsx");
     expect(page).toContain("push && alertDate && dateChoice && bookedOnDate !== null && bookedOnDate > 0");
     expect(page).toContain("!(dateTo && dateTo > effectiveDate)");
     expect(page).toContain("effectiveDate >= todayInBusinessTz()");

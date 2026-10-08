@@ -70,3 +70,40 @@ export async function fetchIndexableVenues(): Promise<SitemapVenue[]> {
     throw e instanceof Error ? e : new Error(reason);
   }
 }
+
+/**
+ * The facts /llms.txt states about each live venue (lib/seo/llms.ts). Approved
+ * halls only, cookie-free, and — like fetchIndexableVenues — it THROWS on a
+ * failed read: an empty list is a claim ("no venues"), and the route is ISR, so
+ * a throw keeps the last good file instead of publishing that claim.
+ */
+export async function fetchLiveVenueFacts(): Promise<
+  { name: string; slug: string; city: string; capacityMax: number | null; pricePerDay: number | null; bookingMode: string | null }[]
+> {
+  const supabase = getSupabasePublicClient();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const db = supabase as any;
+  const { data, error } = await db
+    .from("halls")
+    .select("name, slug, city, capacity_max, price_per_day, booking_mode")
+    .eq("status", "approved")
+    .order("name")
+    .limit(5000);
+  if (error) {
+    console.error("[seo/llms] venue query failed:", error.message);
+    throw new Error(`[seo/llms] venue query failed: ${error.message}`);
+  }
+  return ((data ?? []) as {
+    name: string; slug: string; city: string | null;
+    capacity_max: number | null; price_per_day: string | number | null; booking_mode: string | null;
+  }[])
+    .filter((h) => typeof h.slug === "string" && h.slug.length > 0)
+    .map((h) => ({
+      name: h.name,
+      slug: h.slug,
+      city: (h.city ?? "").trim(),
+      capacityMax: h.capacity_max ?? null,
+      pricePerDay: h.price_per_day == null ? null : Number(h.price_per_day),
+      bookingMode: h.booking_mode ?? null,
+    }));
+}

@@ -125,6 +125,6 @@ describe("date alerts on iPhone", () => {
     const manifest = JSON.parse(read("public/hallnect.webmanifest"));
     expect(manifest.display).toBe("standalone");
     expect(manifest.start_url).toBe("/halls");
-    expect(read("app/halls/page.tsx")).toContain('manifest: "/hallnect.webmanifest"');
+    expect(read("app/halls/(browse)/page.tsx")).toContain('manifest: "/hallnect.webmanifest"');
   });
 });

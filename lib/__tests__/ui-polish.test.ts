@@ -80,7 +80,7 @@ describe("saving a hall", () => {
 
 describe("dead ends", () => {
   it("a city with no halls says so and offers the cities that have them", () => {
-    const halls = read("app/halls/page.tsx");
+    const halls = read("app/halls/(browse)/page.tsx");
     expect(halls).toContain("title={`No halls in ${city} yet`}");
     expect(halls).toContain("cityHasNoVenues && !hallsFailed");
   });

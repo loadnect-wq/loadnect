@@ -1,3 +1,12 @@
+// WHY THIS PAGE SITS IN A ROUTE GROUP, (browse), and not at app/halls/page.tsx
+// (2026-10-08). Its loading.tsx — the listing skeleton — used to sit at
+// app/halls/, and a loading.tsx wraps every page BELOW it in a Suspense
+// boundary, including the venue pages at /halls/[slug]. A boundary means the
+// response starts streaming as HTTP 200 before the page runs, so a missing
+// venue's notFound() could only ever produce a soft 404 (Next 16 docs:
+// streaming.md, "Status codes"). The group keeps /halls at the same URL and
+// the skeleton for this page only. Do not move loading.tsx back up a level.
+
 import { Suspense } from "react";
 import type { Metadata } from "next";
 import Link from "next/link";
@@ -6,8 +15,8 @@ import { fetchHallsResult, countActivePremiumHalls } from "@/lib/halls";
 import { todayInBusinessTz } from "@/lib/dates";
 import { getAdvancePercent } from "@/lib/platform-settings";
 import { EmptyState } from "@/components/ui/empty-state";
-import { HallCard } from "./_components/HallCard";
-import { SearchControls } from "./_components/SearchControls";
+import { HallCard } from "../_components/HallCard";
+import { SearchControls } from "../_components/SearchControls";
 import { AppHeader } from "@/components/app/AppHeader";
 import { AdSlot } from "@/components/ads/AdSlot";
 import { buildMetadata } from "@/lib/seo/metadata";
@@ -20,7 +29,7 @@ import { formatDateChoice } from "@/lib/search-url";
 import { isMuhurtham } from "@/lib/muhurtham";
 import { countBookedHalls, pushConfig } from "@/lib/date-alerts.server";
 import { bookedSentence } from "@/lib/date-alerts";
-import { DateAlertCard } from "./_components/DateAlertCard";
+import { DateAlertCard } from "../_components/DateAlertCard";
 
 /**
  * CRAWL-TRAP CONTROL. This route accepts TEN independent query parameters

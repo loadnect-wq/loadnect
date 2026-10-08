@@ -16,6 +16,7 @@ import { notifyBookingEvent } from "@/lib/notifications/events";
 import { normalizePhoneE164 } from "@/lib/notifications/phone";
 import { recordBookingRefundOrAlert } from "@/lib/refunds";
 import { todayInBusinessTz } from "@/lib/dates";
+import { revalidateVenuePages } from "@/lib/revalidate-venues";
 
 type ActionResult = { success: true } | { error: string };
 
@@ -181,6 +182,7 @@ export async function submitReview(data: {
 
   revalidatePath(`/customer/bookings/${v.bookingId}`);
   revalidatePath("/customer/reviews");
+  revalidateVenuePages();
   return { success: true };
 }
 

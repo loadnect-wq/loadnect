@@ -58,6 +58,7 @@ import { STANDARD_COMMISSION_PERCENT } from "@/lib/commission";
 import { planDisplayName } from "@/lib/premium-plans";
 import { recordBookingRefundOrAlert } from "@/lib/refunds";
 import { releaseAvailabilityForBooking } from "@/lib/availability-release";
+import { revalidateVenuePages } from "@/lib/revalidate-venues";
 
 function requireUuid(id: string, label = "id"): string | null {
   return parseSafe(uuidSchema, id).ok ? null : `Invalid ${label}.`;
@@ -244,6 +245,9 @@ async function moderateHall(
   revalidatePath("/");
   revalidatePath("/halls");
   revalidatePath("/wedding-halls/[city]", "layout");
+  // The public venue page is cached (ISR): approving makes it exist, every
+  // other status change makes it a 404. Neither may wait five minutes.
+  revalidateVenuePages();
   revalidatePath("/sitemap.xml");
   return { success: true };
 }
@@ -626,6 +630,7 @@ export async function toggleReviewVisible(reviewId: string, visible: boolean): P
 
   revalidatePath("/admin/reviews");
   revalidatePath("/admin/audit-logs");
+  revalidateVenuePages();
   return { success: true };
 }
 
@@ -660,6 +665,7 @@ export async function deleteReview(reviewId: string): Promise<ActionResult> {
 
   revalidatePath("/admin/reviews");
   revalidatePath("/admin/audit-logs");
+  revalidateVenuePages();
   return { success: true };
 }
 
@@ -1211,6 +1217,7 @@ export async function expirePremiumListingsAction(): Promise<
     revalidatePath("/admin/premium-listings");
     revalidatePath("/owner/premium");
     revalidatePath("/");
+    revalidateVenuePages();
     return { success: true, summary };
   } catch {
     return { error: "Premium expiry sweep failed. Check server logs." };
@@ -2943,6 +2950,7 @@ export async function saveHallDraftPhotos(
 /** The pages whose content is decided by the catalogue. */
 function revalidateCategorySurfaces() {
   revalidatePath("/admin/venue-categories");
+  revalidateVenuePages();
   revalidatePath("/");
   revalidatePath("/halls");
   // The category hubs are ISR, and which ones exist just changed.

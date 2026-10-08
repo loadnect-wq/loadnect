@@ -114,7 +114,9 @@ export default async function OwnerHallsPage() {
                       { label: "Edit",         href: `/owner/halls/${hall.id}/edit`         },
                       { label: hall.image_count === 1 ? "1 Photo" : `${hall.image_count} Photos`, href: `/owner/halls/${hall.id}/images` },
                       { label: "Availability",  href: `/owner/halls/${hall.id}/availability` },
-                      { label: "View",          href: `/halls/${hall.slug}`                  },
+                      // A hall that is not live yet has no public page: View opens the
+                      // owner's preview of it (app/halls/[slug]/preview).
+                      { label: "View",          href: hall.status === "approved" ? `/halls/${hall.slug}` : `/halls/${hall.slug}/preview` },
                       { label: "QR code",       href: `/owner/halls/${hall.id}/standee`      },
                     ].map((action) => (
                       <Link

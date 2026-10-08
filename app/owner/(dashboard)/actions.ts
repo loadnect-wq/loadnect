@@ -40,6 +40,7 @@ import { isPayoutsConfigured } from "@/lib/cashfree-payouts";
 import { registerBeneficiary, refreshBeneficiary } from "@/lib/payout-dispatch";
 import { publicUrlForStoragePath } from "@/lib/supabase/storage";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
+import { revalidateVenuePages } from "@/lib/revalidate-venues";
 
 type ActionResult = { success: true; id?: string } | { error: string };
 
@@ -568,6 +569,7 @@ export async function updateHall(hallId: string, data: {
   }
 
   revalidatePath(`/owner/halls/${hallId}/edit`);
+  revalidateVenuePages();
   revalidatePath("/owner/halls");
   // updateHall can change the name, price or photos of an APPROVED hall, which
   // is what the cached public pages show. Without this the listing page would
@@ -575,9 +577,8 @@ export async function updateHall(hallId: string, data: {
   revalidatePath("/");
   revalidatePath("/halls");
   revalidatePath("/wedding-halls/[city]", "layout");
-  // NOT the venue page: its route is /halls/[slug], not the id, and it is still
-  // rendered dynamically because owner/admin preview of an unapproved hall
-  // depends on the caller's session.
+  // And the venue page, cached since 2026-10-08 (lib/revalidate-venues.ts).
+  revalidateVenuePages();
   return { success: true };
 }
 
@@ -686,6 +687,7 @@ export async function submitHallForApproval(hallId: string): Promise<ActionResul
   // Admin alert (max once/day per hall — resubmits after fixes still notify).
   await notifyHallSubmitted(hallId);
   revalidatePath(`/owner/halls/${hallId}/edit`);
+  revalidateVenuePages();
   revalidatePath("/owner/halls");
   return { success: true };
 }
@@ -812,6 +814,7 @@ export async function setCoverImage(hallId: string, imageId: string): Promise<Ac
 
   revalidatePath(`/owner/halls/${hallId}/images`);
   revalidatePath(`/owner/halls/${hallId}/edit`);
+  revalidateVenuePages();
   return { success: true };
 }
 
@@ -928,6 +931,7 @@ export async function deleteHallImage(hallId: string, imageId: string): Promise<
 
   revalidatePath(`/owner/halls/${hallId}/images`);
   revalidatePath(`/owner/halls/${hallId}/edit`);
+  revalidateVenuePages();
   return { success: true };
 }
 

@@ -27,7 +27,7 @@ const mobileSearch = read("app/_components/MobileSearch.tsx");
 const calendar   = read("components/sections/DateRangeCalendar.tsx");
 const searchUrl  = read("lib/search-url.ts");
 const halls      = read("lib/halls.ts");
-const hallsPage  = read("app/halls/page.tsx");
+const hallsPage  = read("app/halls/(browse)/page.tsx");
 const pkg        = JSON.parse(read("package.json"));
 
 /** Source with comments stripped, so notes quoting old markup cannot pass or fail a test. */

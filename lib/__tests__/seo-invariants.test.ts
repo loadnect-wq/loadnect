@@ -29,7 +29,7 @@ const exists = (rel: string) => fs.existsSync(path.join(ROOT, rel));
 /** Every page that is meant to be indexable, and the file that owns its metadata. */
 const INDEXABLE_PAGES: { route: string; file: string }[] = [
   { route: "/",                     file: "app/page.tsx" },
-  { route: "/halls",                file: "app/halls/page.tsx" },
+  { route: "/halls",                file: "app/halls/(browse)/page.tsx" },
   { route: "/about",                file: "app/about/page.tsx" },
   { route: "/tools",                file: "app/tools/page.tsx" },
   { route: "/budget",               file: "app/budget/page.tsx" },
@@ -160,7 +160,8 @@ describe("robots.txt", () => {
   it("keeps /owner/register crawlable despite blocking /owner", () => {
     // The one public page under an otherwise-private subtree, and the page
     // whose entire job is winning inventory. Longest-match wins in robots.txt.
-    expect(src).toMatch(/allow:\s*\[[^\]]*"\/owner\/register"/);
+    // One allow list, shared by the "*" group and the named crawlers.
+    expect(src).toMatch(/allow\s*[:=]\s*\[[^\]]*"\/owner\/register"/);
   });
 
   it("does NOT disallow pages that rely on noindex to be removed", () => {

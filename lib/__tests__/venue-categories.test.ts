@@ -570,7 +570,9 @@ describe("strict vs lenient catalogue reads", () => {
   });
 
   it("uses the lenient read on surfaces that can honestly render nothing", () => {
-    for (const rel of ["app/page.tsx", "app/halls/page.tsx", "app/halls/[slug]/page.tsx"]) {
+    // The venue page's body lives in VenuePage since it was split into the
+    // cached public page and the owner/admin preview (2026-10-08).
+    for (const rel of ["app/page.tsx", "app/halls/(browse)/page.tsx", "app/halls/[slug]/_components/VenuePage.tsx"]) {
       expect(read(rel), rel).toContain("fetchVenueCategories(");
       expect(read(rel), rel).not.toContain("fetchVenueCategoriesStrict");
     }

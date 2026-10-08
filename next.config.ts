@@ -1,4 +1,33 @@
 import type { NextConfig } from "next";
+// Relative, not "@/": this file is compiled before the path alias exists.
+import { cityAliasRedirects } from "./lib/seo/city-aliases";
+
+/**
+ * WHO GETS METADATA IN THE <head> (2026-10-08).
+ *
+ * On a page rendered per request, Next 16 streams the <title>, description and
+ * canonical AFTER the <head> has gone out — into the <body> — except for the
+ * user agents in `htmlLimitedBots`. Its default list covers Bingbot, Google's
+ * -Google crawlers, WhatsApp, Facebook and LinkedIn previews, but not plain
+ * Googlebot or any AI crawler: the SEO audit found the venue page's canonical
+ * in the body for Googlebot, GPTBot and ClaudeBot. Google ignores a canonical
+ * in the body of the raw HTML, and crawlers that run no JavaScript may miss the
+ * title altogether.
+ *
+ * The venue page is now cached (so it renders its <head> in full anyway); this
+ * is the safety net for every page that is still rendered per request. Setting
+ * the option REPLACES Next's list, so the first line is that list verbatim
+ * (next/dist/shared/lib/router/utils/html-bots.js) and the second adds the
+ * crawlers it lacks. Cost: those crawlers wait for metadata before the first
+ * byte; people still get the streamed response.
+ */
+const HTML_LIMITED_BOTS = new RegExp(
+  [
+    "[\\w-]+-Google|Google-[\\w-]+|Chrome-Lighthouse|Slurp|DuckDuckBot|baiduspider|yandex|sogou|bitlybot|tumblr|vkShare|quora link preview|redditbot|ia_archiver|Bingbot|BingPreview|applebot|facebookexternalhit|facebookcatalog|Twitterbot|LinkedInBot|Slackbot|Discordbot|WhatsApp|SkypeUriPreview|Yeti|googleweblight",
+    "Googlebot|GPTBot|OAI-SearchBot|ChatGPT-User|ClaudeBot|Claude-SearchBot|Claude-User|PerplexityBot|Perplexity-User|CCBot|Amazonbot|meta-externalagent",
+  ].join("|"),
+  "i",
+);
 
 /**
  * The Supabase storage host, derived from the project URL rather than
@@ -27,6 +56,8 @@ const nextConfig: NextConfig = {
   // /_next/ paths and build-manifest shapes. This removes a free hint, it does
   // not hide anything, and nothing else should be built on top of that belief.
   poweredByHeader: false,
+
+  htmlLimitedBots: HTML_LIMITED_BOTS,
 
   images: {
     // AVIF first, WebP as the fallback. The LCP element on /, /halls and every
@@ -68,7 +99,12 @@ const nextConfig: NextConfig = {
    * App Router is concerned.
    */
   async redirects() {
-    return [{ source: "/pricing", destination: "/premium", permanent: true }];
+    return [
+      { source: "/pricing", destination: "/premium", permanent: true },
+      // "Trichy", "Kovai", "Tanjore"... the names people search, onto the city
+      // page that exists (lib/seo/city-aliases.ts). 301, not a second page.
+      ...cityAliasRedirects(),
+    ];
   },
 
   /**

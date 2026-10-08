@@ -70,14 +70,14 @@ interface Props {
    *
    * DEFAULTS TO ZERO, i.e. HIDDEN. That is correct at launch (there is no
    * premium inventory) but it means the chip stays hidden until the parent
-   * actually passes this. app/halls/page.tsx must add:
+   * actually passes this. app/halls/(browse)/page.tsx must add:
    *     premiumCount={await countActivePremiumHalls()}
    * or premium owners lose the category filter their plan sells.
    */
   premiumCount?:   number;
   /**
    * Occasion chips, already filtered to those with approved inventory and in
-   * catalogue order — see app/halls/page.tsx.
+   * catalogue order — see app/halls/(browse)/page.tsx.
    *
    * A chip for an occasion nothing declares is a control that looks like a
    * filter and dead-ends on "No halls found". That is the defect migration

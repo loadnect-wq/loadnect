@@ -46,19 +46,40 @@ export default function robots(): MetadataRoute.Robots {
     "/bookings",
     "/api/",           // no public content is served from an API route
     "/q/",             // QR standee redirects: a crawl would count as a scan
+    // An owner's or admin's preview of a hall that is not live yet (noindex,
+    // and needs their session). Linked only from the dashboards above, so
+    // blocking it costs nothing and saves crawling a page that 404s for bots.
+    "/halls/*/preview",
+  ];
+
+  // Longest-match wins in robots.txt, so these Allow rules override the
+  // broader Disallow entries. /owner/register is a PUBLIC landing page for
+  // venue owners — it must stay crawlable even though the rest of /owner is
+  // the private dashboard.
+  const allow = ["/", "/owner/register"];
+
+  // NAMED, AS WELL AS COVERED BY "*". Search engines and the AI answer engines
+  // that cite pages (2026-10-08). "*" already allowed every one of them; naming
+  // them states the decision explicitly. Google-Extended is not a crawler but
+  // the token that governs use of the content in Google's AI models.
+  //
+  // EACH NAMED GROUP REPEATS THE DISALLOW LIST. A crawler that finds a group
+  // with its own name obeys ONLY that group and ignores "*" entirely — a bare
+  // "User-agent: GPTBot / Allow: /" would have opened the dashboards to it.
+  const namedCrawlers = [
+    "Googlebot",
+    "Bingbot",
+    "GPTBot",
+    "OAI-SearchBot",
+    "ClaudeBot",
+    "PerplexityBot",
+    "Google-Extended",
   ];
 
   return {
     rules: [
-      {
-        userAgent: "*",
-        // Longest-match wins in robots.txt, so these Allow rules override the
-        // broader Disallow entries below. /owner/register is a PUBLIC landing
-        // page for venue owners — it must stay crawlable even though the rest
-        // of /owner is the private dashboard.
-        allow: ["/", "/owner/register"],
-        disallow,
-      },
+      { userAgent: namedCrawlers, allow, disallow },
+      { userAgent: "*", allow, disallow },
     ],
     sitemap: `${SITE_URL}/sitemap.xml`,
     host: SITE_URL,

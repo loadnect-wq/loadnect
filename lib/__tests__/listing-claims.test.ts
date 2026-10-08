@@ -41,7 +41,7 @@ const read = (rel: string) => fs.readFileSync(path.join(ROOT, rel), "utf8");
 
 const halls = read("lib/halls.ts");
 const card = read("app/halls/_components/HallCard.tsx");
-const listPage = read("app/halls/page.tsx");
+const listPage = read("app/halls/(browse)/page.tsx");
 const detail = read("app/halls/[slug]/_components/HallDetailView.tsx");
 
 /** The `switch (filters.sort)` block, and nothing else. */
@@ -153,7 +153,7 @@ describe("the budget filter's treatment of an unpriced venue is a decision, not 
 describe("a noindex page nominates nothing", () => {
   // /halls?city=Madurai shipped `noindex, follow` AND `rel=canonical -> /halls`
   // together — one tag saying "index that instead", the other "index nothing".
-  // app/halls/page.tsx:71-76 asserts at length that this does not happen; the
+  // app/halls/(browse)/page.tsx:71-76 asserts at length that this does not happen; the
   // comment was right about the intent and wrong about the code, because
   // buildMetadata set alternates.canonical before the indexable branch.
   const base = { title: "T", description: "D", path: "/halls" };

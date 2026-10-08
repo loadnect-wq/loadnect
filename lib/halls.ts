@@ -605,11 +605,11 @@ export async function countActivePremiumHalls(): Promise<number> {
  */
 async function fetchHallSeller(
   hallId: string,
-): Promise<{ seller: HallSeller | null; unavailable: boolean }> {
-  const supabase = await getSupabaseServerClient();
+  // The caller's client: hall_seller_public is executable by anon, so the
+  // cached public venue page passes its cookie-free client and stays cacheable.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const db = supabase as any;
-
+  db: any,
+): Promise<{ seller: HallSeller | null; unavailable: boolean }> {
   const { data, error } = await db.rpc("hall_seller_public", { _hall_id: hallId });
 
   // A database without 0054 (42883 = undefined_function) must not 500 a venue
@@ -643,16 +643,31 @@ async function fetchHallSeller(
   };
 }
 
-// SECURITY: uses getSupabaseServerClient() (session-aware, anon key).
+// SECURITY: by default uses getSupabaseServerClient() (session-aware, anon key).
 // RLS on halls:  status='approved' OR owns_hall() OR is_admin()
 // RLS on availability/hall_images/hall_amenities: mirrors the same rule.
 // Reviews:       is_visible=true is public; profiles are NOT joined (RLS blocks
 //                anonymous reads of other users' profiles — reviewer names are
 //                not exposed).
-export async function fetchHallBySlug(slug: string): Promise<HallDetail | null> {
-  const supabase = await getSupabaseServerClient();
+//
+// publicOnly — THE CACHED VENUE PAGE (/halls/[slug]). Reads through the
+// cookie-free client, so the page can be rendered once and served from cache
+// (lib/supabase/public.ts), and only ever returns an APPROVED hall. It differs
+// from the default in one more way that matters: a failed read THROWS instead
+// of returning null. On an ISR page null means "render a 404 and cache it", so
+// one database blip would publish a 404 for a live venue; a throw makes Next
+// keep serving the last good version. The owner/admin preview of a hall that
+// is not live yet keeps the session-aware default (/halls/[slug]/preview).
+export async function fetchHallBySlug(
+  slug: string,
+  opts: { publicOnly?: boolean } = {},
+): Promise<HallDetail | null> {
+  const publicOnly = opts.publicOnly === true;
+  const supabase = publicOnly ? getSupabasePublicClient() : await getSupabaseServerClient();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = supabase as any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const onlyLive = (q: any) => (publicOnly ? q.eq("status", "approved") : q);
 
   // Forwards-compat: try with premium_tier; fall back if column missing.
   // owner_id is selected so the published seller identity can be resolved
@@ -670,18 +685,18 @@ export async function fetchHallBySlug(slug: string): Promise<HallDetail | null> 
     `;
   const SELECT_LEGACY = SELECT_WITH_TIER.replace(", premium_tier", "");
 
-  let { data: hall, error } = await db
+  let { data: hall, error } = await onlyLive(db
     .from("halls")
     .select(SELECT_WITH_TIER)
-    .eq("slug", slug)
+    .eq("slug", slug))
     .maybeSingle();
 
   if (error?.code === "42703") {
     console.info("[fetchHallBySlug] halls.premium_tier missing — run migration 0013.");
-    ({ data: hall, error } = await db
+    ({ data: hall, error } = await onlyLive(db
       .from("halls")
       .select(SELECT_LEGACY)
-      .eq("slug", slug)
+      .eq("slug", slug))
       .maybeSingle());
   }
 
@@ -691,6 +706,7 @@ export async function fetchHallBySlug(slug: string): Promise<HallDetail | null> 
     } else {
       console.error("[fetchHallBySlug]", error.message);
     }
+    if (publicOnly) throw new Error(`[fetchHallBySlug] venue read failed: ${error.code ?? ""} ${error.message}`);
     return null;
   }
 
@@ -698,7 +714,7 @@ export async function fetchHallBySlug(slug: string): Promise<HallDetail | null> 
 
   // Published seller identity (Rule 5(3)(a)). Fetched alongside availability
   // rather than embedded — see fetchHallSeller for why an embed cannot work.
-  const sellerResult = await fetchHallSeller(hall.id as string);
+  const sellerResult = await fetchHallSeller(hall.id as string, db);
 
   // Availability for next 30 days (separate query — embedding with date filter
   // is cleaner here since we don't want to pull years of rows)
@@ -836,13 +852,15 @@ export async function fetchHallBySlug(slug: string): Promise<HallDetail | null> 
   };
 }
 
-// Approved halls in the same city, excluding the current hall
+// Approved halls in the same city, excluding the current hall. Cookie-free:
+// it only ever reads approved halls, which any visitor can see, and the venue
+// page that shows them is cached.
 export async function fetchSimilarHalls(
   hallId: string,
   city:   string,
   limit   = 6,
 ): Promise<HallListing[]> {
-  const supabase = await getSupabaseServerClient();
+  const supabase = getSupabasePublicClient();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = supabase as any;
 

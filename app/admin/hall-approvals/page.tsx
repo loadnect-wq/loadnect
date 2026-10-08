@@ -143,7 +143,7 @@ export default async function HallApprovalsPage() {
                     {/* Actions */}
                     <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3">
                       <Link
-                        href={`/halls/${h.slug}`}
+                        href={`/halls/${h.slug}/preview`}
                         target="_blank"
                         className="flex items-center gap-1 text-xs font-semibold text-maroon-600 hover:underline"
                       >
