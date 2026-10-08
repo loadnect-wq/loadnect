@@ -1,6 +1,8 @@
 "use client";
 
 import { TIER_LABEL } from "@/lib/plan-names";
+// Type-only: erased at build, so nothing of lib/seo reaches the client bundle.
+import type { VenueFact } from "@/lib/seo/venue";
 import { useEffect } from "react";
 import { HARD_BLOCK_STATUSES, PARTIAL_BLOCK_STATUSES } from "@/lib/availability-status";
 import { useLiveAvailability } from "@/lib/useLiveAvailability";
@@ -144,6 +146,11 @@ function gradientForId(id: string): string {
 interface Props {
   /** Live advance % from platform_settings; falls back to the constant. */
   advancePercent?: number;
+  /** Two sentences that answer what, where, how big, how much and how to
+   *  book — first thing under the name (lib/seo/venue.ts venueSummary). */
+  summary?: string;
+  /** The "At a glance" list (lib/seo/venue.ts venueFacts). */
+  facts?: VenueFact[];
   hall:        HallDetail;
   /**
    * This venue's occasions, ALREADY resolved against public.venue_categories
@@ -173,7 +180,7 @@ interface Props {
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export function HallDetailView({ hall, categories, similar, isPreview, sidebarAd, advancePercent, citySlug }: Props) {
+export function HallDetailView({ hall, categories, similar, isPreview, sidebarAd, advancePercent, citySlug, summary, facts }: Props) {
   const router = useRouter();
 
   useEffect(() => { recordRecentlyViewed(hall.id); }, [hall.id]);
@@ -410,6 +417,12 @@ export function HallDetailView({ hall, categories, similar, isPreview, sidebarAd
               )}
             </div>
 
+            {/* ANSWER FIRST: what, where, how big, how much, how to book — in
+                two sentences, before anything else (SEO phase 3). */}
+            {summary && (
+              <p className="mt-3 text-sm leading-relaxed text-charcoal-700">{summary}</p>
+            )}
+
             {/* Stat cards */}
             <div className="mt-5 grid grid-cols-3 gap-2.5">
               <StatCard
@@ -435,8 +448,8 @@ export function HallDetailView({ hall, categories, similar, isPreview, sidebarAd
                 <StatCard
                   Icon={Sparkles}
                   label="Booking"
-                  value={isLead ? "Enquiry" : "Direct"}
-                  sub={isLead ? "venue replies" : "pay online"}
+                  value={isLead ? "Quotes" : "Online"}
+                  sub={isLead ? "venue quotes you" : "pay online"}
                 />
               )}
             </div>
@@ -479,6 +492,26 @@ export function HallDetailView({ hall, categories, similar, isPreview, sidebarAd
                 <p className="mt-2 text-sm leading-relaxed text-charcoal-600">{typesSentence}</p>
               )}
             </section>
+
+            {/* ── At a glance ─────────────────────────────────────────────
+                The facts as a list a person scans and a crawler lifts cleanly:
+                location, capacity, price, how to book, occasions, amenities
+                and when the listing last changed. Only what the listing says. */}
+            {facts && facts.length > 0 && (
+              <section data-reveal="up" className="mt-6">
+                <h2 className="font-serif text-base font-semibold text-charcoal-900">At a glance</h2>
+                <dl className="mt-2 divide-y divide-border overflow-hidden rounded-2xl bg-white text-sm shadow-card">
+                  {facts.map((f) => (
+                    <div key={f.label} className="grid grid-cols-[7.5rem_1fr] gap-3 px-4 py-2.5 sm:grid-cols-[9rem_1fr]">
+                      <dt className="text-xs font-semibold text-charcoal-500">{f.label}</dt>
+                      <dd className="text-charcoal-800">
+                        {f.dateTime ? <time dateTime={f.dateTime}>{f.value}</time> : f.value}
+                      </dd>
+                    </div>
+                  ))}
+                </dl>
+              </section>
+            )}
 
             {/* ── Suitable for ────────────────────────────────────────────
                 The same facts as the sentence above, in the form someone

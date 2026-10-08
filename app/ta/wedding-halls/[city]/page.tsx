@@ -29,7 +29,7 @@ import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
 import { notoSansTamil } from "@/app/fonts/noto-sans-tamil/font";
-import { Building2, CalendarDays, Languages, MapPin, PhoneOff, Search, Star, Tag, UserCheck, Users, Wallet } from "lucide-react";
+import { Building2, CalendarDays, Clock, Languages, MapPin, PhoneOff, Search, Star, Tag, UserCheck, Users, Wallet } from "lucide-react";
 import { fetchHalls, type HallListing } from "@/lib/halls";
 import { hasPrice, isLeadGeneration } from "@/lib/booking-mode";
 import { getAdvancePercent } from "@/lib/platform-settings";
@@ -50,6 +50,7 @@ import {
   englishCityPath,
   formatRupees,
   formatTamilDate,
+  tamilDate,
   tamilCityName,
   tamilCityPath,
 } from "@/lib/seo/tamil";
@@ -128,10 +129,13 @@ export default async function TamilCityPage({ params }: Props) {
   const taCity = city ? tamilCityName(city) : null;
   if (!city || !taCity) notFound();
 
-  const [advancePercent, halls] = await Promise.all([
+  const [advancePercent, halls, inventory] = await Promise.all([
     getAdvancePercent(),
     fetchHalls({ city, sort: "rating" }),
+    // Only for the "updated" date; lenient, as on the English twin.
+    fetchCityInventoryBySlug(slug).catch(() => null),
   ]);
+  const listingsUpdated = tamilDate(inventory?.lastUpdated);
   const pricedFrom = halls.map((h) => h.price_per_day).filter(hasPrice);
   const priceFrom = pricedFrom.length ? Math.min(...pricedFrom) : null;
   const largest = halls.length ? Math.max(...halls.map((h) => h.capacity_max)) : null;
@@ -260,6 +264,13 @@ export default async function TamilCityPage({ params }: Props) {
                 <Users className="h-4 w-4 text-maroon-500" aria-hidden />
                 <dt className="sr-only">அதிகபட்சக் கொள்ளளவு</dt>
                 <dd>{largest.toLocaleString("en-IN")} விருந்தினர் வரை</dd>
+              </div>
+            )}
+            {listingsUpdated && inventory?.lastUpdated && (
+              <div className="flex items-center gap-1.5">
+                <Clock className="h-4 w-4 text-maroon-500" aria-hidden />
+                <dt className="sr-only">கடைசியாகப் புதுப்பிக்கப்பட்டது</dt>
+                <dd>கடைசியாகப் புதுப்பிக்கப்பட்டது: <time dateTime={inventory.lastUpdated}>{listingsUpdated}</time></dd>
               </div>
             )}
           </dl>

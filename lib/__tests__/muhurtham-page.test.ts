@@ -65,14 +65,14 @@ describe("the FAQ", () => {
     }
   });
 
-  it("keeps both meta descriptions under the 158-char clamp on every day of the list", () => {
-    // buildMetadata cuts at 158 and adds "…"; the longest month names
+  it("keeps both meta descriptions under the 155-char clamp on every day of the list", () => {
+    // buildMetadata cuts at 155 and adds "…"; the longest month names
     // ("September", "செப்டம்பர்") must still fit.
     for (let t = Date.UTC(2026, 9, 1); t <= Date.UTC(2028, 0, 1); t += 86_400_000) {
       const today = new Date(t).toISOString().slice(0, 10);
       for (const lang of ["en", "ta"] as const) {
         const { description } = muhurthamMeta(lang, today);
-        expect(description.length, `${lang} ${today}`).toBeLessThanOrEqual(158);
+        expect(description.length, `${lang} ${today}`).toBeLessThanOrEqual(155);
       }
     }
     expect(muhurthamMeta("en", "2026-10-03").title).toBe("Tamil Muhurtham Dates 2026–2027 | Wedding Dates");

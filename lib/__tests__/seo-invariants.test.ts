@@ -101,17 +101,17 @@ describe("metadata: every indexable page declares one", () => {
 });
 
 describe("meta descriptions are never truncated by the clamp", () => {
-  // buildMetadata clamps at 158 and appends an ellipsis. A clamped description
+  // buildMetadata clamps at 155 (DESCRIPTION_MAX, phase 3) and appends an ellipsis. A clamped description
   // is one Google prints ending mid-clause, so the source string must fit.
-  const LIMIT = 158;
+  const LIMIT = 155;
 
-  it.each(INDEXABLE_PAGES)("$route's description fits in 158 characters", ({ route, file }) => {
+  it.each(INDEXABLE_PAGES)("$route's description fits in 155 characters", ({ route, file }) => {
     const d = literalField(read(file), "description");
     if (d === null) return; // dynamic (template literal) — covered below
     expect(d.length, `${route} is ${d.length} chars and will ship cut off: …${d.slice(-45)}`).toBeLessThanOrEqual(LIMIT);
   });
 
-  it("the homepage description fits in 158 characters with the booking switch either way", () => {
+  it("the homepage description fits in 155 characters with the booking switch either way", () => {
     // Chosen by lib/booking-switch.ts, so it is not a literal at the
     // buildMetadata call and the per-page check above cannot see it.
     const src = read("app/page.tsx");
@@ -123,7 +123,7 @@ describe("meta descriptions are never truncated by the clamp", () => {
     const text = (b: string) => (b.match(/"(?:[^"\\]|\\.)*"/g) ?? []).map((p) => JSON.parse(p) as string).join("");
     for (const d of [text(on), text(off)]) {
       expect(d.length, d).toBeGreaterThan(100);
-      expect(d.length, `${d.length} chars: ${d}`).toBeLessThanOrEqual(158);
+      expect(d.length, `${d.length} chars: ${d}`).toBeLessThanOrEqual(155);
     }
     expect(text(on)).toContain("then book online or get free quotes.");
     expect(text(off)).not.toContain("book online");

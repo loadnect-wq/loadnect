@@ -19,6 +19,8 @@ import { jsonLdGraph, venueJsonLd, breadcrumbJsonLd } from "@/lib/seo/jsonld";
 import { citySlug } from "@/lib/seo/cities";
 import { fetchVenueCategories } from "@/lib/venue-categories.server";
 import { selectCategories } from "@/lib/venue-categories";
+import { venueSummary, venueFacts } from "@/lib/seo/venue";
+import { DIRECT_BOOKING_ENABLED } from "@/lib/booking-switch";
 
 export async function VenuePage({ hall, isPreview }: { hall: HallDetail; isPreview: boolean }) {
   // Together, not one after the other. Only fetchSimilarHalls needs the hall;
@@ -39,6 +41,16 @@ export async function VenuePage({ hall, isPreview }: { hall: HallDetail; isPrevi
   // Resolved HERE, on the server, and only this hall's few rows cross to the
   // client. See venueCategoriesSentence for why the whole catalogue does not.
   const hallCategories = selectCategories(hall.venue_types, catalogue);
+
+  // Answer first, from stored fields only (lib/seo/venue.ts). Computed here
+  // because HallDetailView is a client component.
+  const factsContext = {
+    categoryNames: hallCategories.map((c) => c.name),
+    advancePercent,
+    directBookingEnabled: DIRECT_BOOKING_ENABLED,
+  };
+  const summary = venueSummary(hall, factsContext);
+  const facts = venueFacts(hall, factsContext);
 
   return (
     <>
@@ -85,6 +97,8 @@ export async function VenuePage({ hall, isPreview }: { hall: HallDetail; isPrevi
         categories={hallCategories}
         similar={similar}
         isPreview={isPreview}
+        summary={summary}
+        facts={facts}
         sidebarAd={<AdSlot placement="hall_detail_sidebar" limit={1} variant="card" />}
       />
     </>

@@ -59,10 +59,10 @@ export const metadata: Metadata = buildMetadata({
   // " | Hallnect", so the latter renders "About Hallnect | Hallnect" — the
   // exact duplication this pass removed from two other pages. Caught by
   // lib/__tests__/seo-invariants.test.ts on the page I had just written.
-  title: "About Us",
+  title: "About Us: Who We Are and How It Works",
   description:
-    "Hallnect is a wedding hall marketplace for Tamil Nadu, operated by HALLNECT LLP " +
-    "from Madurai. How listings, enquiries and bookings work, and what we charge.",
+    "Hallnect is a wedding hall marketplace for Tamil Nadu, run by HALLNECT LLP " +
+    "from Madurai: how listings, quotes and bookings work, and what we charge.",
   path: "/about",
 });
 

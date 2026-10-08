@@ -14,18 +14,19 @@
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Building2, Languages, MapPin, Users, Wallet } from "lucide-react";
+import { Building2, Clock, Languages, MapPin, Users, Wallet } from "lucide-react";
 import { fetchHalls } from "@/lib/halls";
 import { hasPrice, isLeadGeneration } from "@/lib/booking-mode";
 import { getAdvancePercent } from "@/lib/platform-settings";
 import { HallCard } from "@/app/halls/_components/HallCard";
 import { AppHeader } from "@/components/app/AppHeader";
 import { platformFeeDisclosure } from "@/lib/booking-payment";
-import { buildMetadata } from "@/lib/seo/metadata";
+import { buildMetadata, fitSentences } from "@/lib/seo/metadata";
 import { JsonLd } from "@/components/seo/JsonLd";
 import { jsonLdGraph, breadcrumbJsonLd, cityCollectionJsonLd, faqJsonLd } from "@/lib/seo/jsonld";
 import { cityFromSlug, fetchCityInventoryBySlug, citySlug, SERVICE_AREA_CITIES } from "@/lib/seo/cities";
 import { cityLanguageAlternates, tamilCityName, tamilCityPath } from "@/lib/seo/tamil";
+import { listingUpdatedLabel } from "@/lib/seo/venue";
 
 type Props = { params: Promise<{ city: string }> };
 
@@ -69,16 +70,15 @@ function describeCity(
   }
   const price = priceFrom ? ` from ₹${Math.round(priceFrom).toLocaleString("en-IN")} per day` : "";
   const noun = venueCount === 1 ? "venue" : "venues";
-  return (
-    // Counted against the LONGEST live case, not the shortest: a one-venue city
-    // with a six-figure price renders the widest string, and that is the one
-    // that was hitting the 158-char clamp and ending on "the venue will…".
-    `Compare ${venueCount} wedding ${noun} in ${city}${price} — photos, ` +
-    `capacity and amenities. ` +
-    (allLeadGeneration
+  // Whole sentences within the 155-character budget (fitSentences): a long
+  // city name with a six-figure price drops the second sentence rather than
+  // ending the snippet on "the hall gets your…".
+  return fitSentences([
+    `Compare ${venueCount} wedding ${noun} in ${city}${price} — photos, capacity and amenities.`,
+    allLeadGeneration
       ? `Ask for a quote; the hall gets your number only if you accept.`
-      : `Check availability and book your date online.`)
-  );
+      : `Check availability and book your date online.`,
+  ]);
 }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
@@ -96,7 +96,10 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const priceFrom = pricedFrom.length ? Math.min(...pricedFrom) : null;
 
   return buildMetadata({
-    title: `Wedding Halls in ${city} | Marriage Halls & Venues`,
+    // Both words families search — "wedding hall", "marriage hall" — within
+    // 60 characters with the brand, even for Tiruchirappalli. Was "Wedding
+    // Halls in X | Marriage Halls & Venues", 61 rendered for Madurai.
+    title: `Wedding & Marriage Halls in ${city}`,
     description: describeCity(city, inventory?.venueCount ?? 0, priceFrom, allLead(halls)),
     path: `/wedding-halls/${citySlug(city)}`,
     // The gate: no inventory, no index.
@@ -153,10 +156,14 @@ export default async function CityPage({ params }: Props) {
   // An unknown city is a genuine 404, not an empty page pretending to be one.
   if (!city) notFound();
 
-  const [advancePercent, halls] = await Promise.all([
+  const [advancePercent, halls, inventory] = await Promise.all([
     getAdvancePercent(),
     fetchHalls({ city, sort: "rating" }),
+    // Only for the "Listings updated" date. LENIENT: the date is a courtesy,
+    // so a failed read omits it rather than failing a cached city page.
+    fetchCityInventoryBySlug(slug).catch(() => null),
   ]);
+  const listingsUpdated = listingUpdatedLabel(inventory?.lastUpdated);
   // PRICED VENUES ONLY. Math.min over a list containing null yields 0
   // (Math.min coerces null to 0), so one "Contact for pricing" venue in a city
   // would advertise that whole city as "wedding halls from Rs.0" — in the page
@@ -289,6 +296,13 @@ export default async function CityPage({ params }: Props) {
                 <Users className="h-3.5 w-3.5 text-maroon-500" />
                 <dt className="sr-only">Largest capacity</dt>
                 <dd>Up to {largest.toLocaleString("en-IN")} guests</dd>
+              </div>
+            )}
+            {listingsUpdated && inventory?.lastUpdated && (
+              <div className="flex items-center gap-1.5">
+                <Clock className="h-3.5 w-3.5 text-maroon-500" />
+                <dt className="sr-only">Last updated</dt>
+                <dd>Listings updated <time dateTime={inventory.lastUpdated}>{listingsUpdated}</time></dd>
               </div>
             )}
           </dl>

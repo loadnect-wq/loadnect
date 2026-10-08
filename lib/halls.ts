@@ -221,6 +221,9 @@ export type HallDetail = {
    */
   venue_types:    string[];
   status:         string; // hall_status enum value
+  /** When the listing's own row last changed (halls.updated_at) — shown as
+   *  "Listing updated" on the venue page. Photo changes do not move it. */
+  updated_at:     string | null;
   is_premium:     boolean;
   premium_tier:   PremiumTier | null;
   rating_average: number;
@@ -678,7 +681,7 @@ export async function fetchHallBySlug(
       latitude, longitude, capacity_min, capacity_max,
       price_per_day, price_morning, price_evening, booking_mode,
       description, status, is_premium, premium_tier, owner_id, venue_types,
-      rating_average, rating_count,
+      rating_average, rating_count, updated_at,
       hall_images(url, is_cover, alt_text, sort_order),
       hall_amenities(amenities(name, slug, icon)),
       hall_custom_amenities(name, sort_order)
@@ -838,6 +841,7 @@ export async function fetchHallBySlug(
     // Same defensive shape already used at lib/owner.ts:443.
     venue_types:    Array.isArray(hall.venue_types) ? hall.venue_types : [],
     status:         hall.status,
+    updated_at:     (hall.updated_at as string | null) ?? null,
     is_premium:     hall.is_premium,
     premium_tier:   (hall.premium_tier ?? null) as PremiumTier | null,
     rating_average: Number(hall.rating_average),

@@ -95,6 +95,19 @@ export function formatTamilDate(iso: string): string {
   return `${d} ${TAMIL_MONTHS[m - 1]}, ${TAMIL_WEEKDAYS[weekday]}`;
 }
 
+/**
+ * "17 செப்டம்பர் 2026" for a timestamp — a "last updated" date in India time,
+ * with the year (formatTamilDate has none, and adds the weekday). null for a
+ * missing or unreadable value, so the caller shows nothing rather than a guess.
+ */
+export function tamilDate(timestamp: string | null | undefined): string | null {
+  if (!timestamp) return null;
+  const t = new Date(timestamp);
+  if (Number.isNaN(t.getTime())) return null;
+  const ist = new Date(t.getTime() + 330 * 60_000); // UTC+05:30
+  return `${ist.getUTCDate()} ${TAMIL_MONTHS[ist.getUTCMonth()]} ${ist.getUTCFullYear()}`;
+}
+
 /** "₹1,60,000" — Indian digit grouping, no decimals. */
 export function formatRupees(n: number): string {
   return `₹${Math.round(n).toLocaleString("en-IN")}`;

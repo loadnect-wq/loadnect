@@ -33,7 +33,7 @@ import { getAdvancePercent } from "@/lib/platform-settings";
 import { HallCard } from "@/app/halls/_components/HallCard";
 import { AppHeader } from "@/components/app/AppHeader";
 import { EmptyState } from "@/components/ui/empty-state";
-import { buildMetadata } from "@/lib/seo/metadata";
+import { buildMetadata, fitSentences } from "@/lib/seo/metadata";
 import { JsonLd } from "@/components/seo/JsonLd";
 import { jsonLdGraph, breadcrumbJsonLd, categoryCollectionJsonLd } from "@/lib/seo/jsonld";
 import { citySlug } from "@/lib/seo/cities";
@@ -100,13 +100,14 @@ function describeCategory(
   }
   const price = priceFrom ? ` from ₹${Math.round(priceFrom).toLocaleString("en-IN")} per day` : "";
   const noun = venueCount === 1 ? "venue" : "venues";
-  return (
-    `Compare ${venueCount} ${noun} for ${category.pluralNoun} in Tamil Nadu${price} — photos, ` +
-    `capacity and amenities. ` +
-    (allLeadGeneration
+  // Whole sentences within the 155-character budget (fitSentences): a long
+  // occasion name drops the second sentence rather than cutting it.
+  return fitSentences([
+    `Compare ${venueCount} ${noun} for ${category.pluralNoun} in Tamil Nadu${price} — photos, capacity and amenities.`,
+    allLeadGeneration
       ? `Ask for a quote; the hall gets your number only if you accept.`
-      : `Check availability and book your date online.`)
-  );
+      : `Check availability and book your date online.`,
+  ]);
 }
 
 /** True only when EVERY listed venue takes enquiries — [] is false, not true. */

@@ -32,6 +32,9 @@ export type CityInventory = {
   slug: string;
   venueCount: number;
   indexable: boolean;
+  /** The newest updated_at among this city's live halls — the city page's
+   *  "Listings updated" date (SEO phase 3). null for a city with none. */
+  lastUpdated: string | null;
 };
 
 /** Canonical slug for a city name ("Tiruchirappalli" -> "tiruchirappalli"). */
@@ -77,7 +80,7 @@ async function queryCityInventory(): Promise<InventoryResult> {
     const db = supabase as any;
     const { data, error } = await db
       .from("halls")
-      .select("city")
+      .select("city, updated_at")
       .eq("status", "approved");
 
     if (error) {
@@ -86,10 +89,13 @@ async function queryCityInventory(): Promise<InventoryResult> {
     }
 
     const counts = new Map<string, number>();
-    for (const row of (data ?? []) as { city: string }[]) {
+    const newest = new Map<string, string>();
+    for (const row of (data ?? []) as { city: string; updated_at: string | null }[]) {
       const name = (row.city ?? "").trim();
       if (!name) continue;
       counts.set(name, (counts.get(name) ?? 0) + 1);
+      // ISO timestamps from one column compare correctly as strings.
+      if (row.updated_at && (newest.get(name) ?? "") < row.updated_at) newest.set(name, row.updated_at);
     }
 
     // Every city with inventory, plus the declared service areas (which may
@@ -104,6 +110,7 @@ async function queryCityInventory(): Promise<InventoryResult> {
           slug: citySlug(city),
           venueCount,
           indexable: venueCount >= MIN_VENUES_FOR_INDEX,
+          lastUpdated: newest.get(city) ?? null,
         };
       })
       .sort((a, b) => b.venueCount - a.venueCount || a.city.localeCompare(b.city));
@@ -154,6 +161,7 @@ export async function fetchCityInventoryBySlug(slug: string): Promise<CityInvent
       slug: citySlug(city),
       venueCount: 0,
       indexable: false,
+      lastUpdated: null,
     }
   );
 }

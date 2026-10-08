@@ -32,6 +32,59 @@ export function clamp(text: string, max: number): string {
   return `${tidy || kept.trimEnd()}…`;
 }
 
+/**
+ * THE SEARCH-RESULT BUDGETS (SEO phase 3, 2026-10-08).
+ *
+ * A title is measured AS IT RENDERS — including the " | Hallnect" the layout
+ * template appends — and kept to 60 characters, where Google stops showing it.
+ * A description is kept to 155. These were 65 (before the suffix, so up to 76
+ * rendered) and 158.
+ */
+export const TITLE_MAX = 60;
+export const DESCRIPTION_MAX = 155;
+const BRAND_SUFFIX = ` | ${SITE_NAME}`;
+
+/**
+ * The <title> for Next's metadata, fitted to TITLE_MAX.
+ *
+ * WHAT GIVES WAY FIRST IS THE BRAND, NOT THE PAGE'S OWN WORDS. If the title
+ * plus " | Hallnect" fits, the layout template appends it as usual. If not, the
+ * title is emitted absolute — no suffix — so "Sri Lakshmi Kalyana Mandapam |
+ * Wedding Hall in Tiruchirappalli" keeps its city instead of losing it to the
+ * brand. Only a title too long on its own is clamped. A title that already
+ * ends in the brand (the homepage, whose segment the template does not reach)
+ * is passed through as written.
+ */
+export function fitTitle(title: string): string | { absolute: string } {
+  const clean = title.replace(/\s+/g, " ").trim();
+  if (clean.endsWith(BRAND_SUFFIX)) return { absolute: clamp(clean, TITLE_MAX) };
+  if ((clean + BRAND_SUFFIX).length <= TITLE_MAX) return clean;
+  return { absolute: clamp(clean, TITLE_MAX) };
+}
+
+/**
+ * A description from whole sentences, in order, kept within DESCRIPTION_MAX:
+ * a sentence that does not fit is DROPPED, not cut, so the snippet never ends
+ * mid-thought ("…the hall gets your…"). The first sentence — the facts — is
+ * always kept (clamped only if it is too long on its own).
+ */
+export function fitSentences(sentences: readonly string[], max = DESCRIPTION_MAX): string {
+  const [first, ...rest] = sentences.map((s) => s.replace(/\s+/g, " ").trim()).filter(Boolean);
+  if (!first) return "";
+  let out = clamp(first, max);
+  for (const s of rest) {
+    if (out.length + 1 + s.length > max) break;
+    out = `${out} ${s}`;
+  }
+  return out;
+}
+
+/** The title exactly as a browser tab and a search result show it. */
+export function renderedTitle(title: string): string {
+  const fitted = fitTitle(title);
+  return typeof fitted === "string" ? fitted + BRAND_SUFFIX : fitted.absolute;
+}
+
 export type SeoImage = { url: string; alt: string; width?: number; height?: number };
 
 export type BuildMetadataInput = {
@@ -68,12 +121,14 @@ export function buildMetadata(input: BuildMetadataInput): Metadata {
     ...(i.width ? { width: i.width } : {}),
     ...(i.height ? { height: i.height } : {}),
   }));
-  const title = clamp(input.title, 65);
-  const description = clamp(input.description, 158);
+  // The page's own title for social cards (they carry the site name
+  // separately, as og:site_name), and the fitted one for the <title>.
+  const title = clamp(input.title, TITLE_MAX);
+  const description = clamp(input.description, DESCRIPTION_MAX);
   const indexable = input.indexable !== false;
 
   return {
-    title,
+    title: fitTitle(input.title),
     description,
     // A NOINDEX PAGE NOMINATES NOTHING — the same rule noindexMetadata already
     // states and follows. This was set unconditionally, so /halls?city=Madurai

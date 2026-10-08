@@ -93,7 +93,7 @@ describe("buildMetadata", () => {
       path: "/x",
     });
     expect(String(long.title).length).toBeLessThanOrEqual(65);
-    expect(String(long.description).length).toBeLessThanOrEqual(158);
+    expect(String(long.description).length).toBeLessThanOrEqual(155);
   });
 
   it("does not cut words in half when clamping", () => {

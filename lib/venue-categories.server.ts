@@ -324,4 +324,12 @@ export async function fetchCategoryInventoryStrict(): Promise<Map<string, Catego
  * publishes the handful that are real and nothing else, and each flips to
  * indexable on its own the moment a venue declares it.
  */
-export const MIN_VENUES_FOR_CATEGORY_INDEX = 1;
+//
+// RAISED TO 3 (SEO phase 3, 2026-10-08). At 1, three category pages —
+// /venues/wedding, /venues/reception and /venues/reception/madurai — were
+// indexable while each listed the same single hall as /wedding-halls/madurai:
+// four near-identical pages for one venue. A category page now needs three
+// live venues before it is indexed and enters the sitemap; below that it stays
+// up and useful (noindex, follow). City pages keep MIN_VENUES_FOR_INDEX = 1:
+// they carry their own guide and FAQ, answered from the city's data.
+export const MIN_VENUES_FOR_CATEGORY_INDEX = 3;
