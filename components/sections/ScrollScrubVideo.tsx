@@ -41,6 +41,7 @@
 
 import Image from "next/image";
 import { useEffect, useRef } from "react";
+import { NO_IMAGE_SRCSET } from "@/lib/responsive-image";
 
 /** Frames per second of the encoded clip. Seeks smaller than half a frame are skipped. */
 const FPS = 24;
@@ -76,6 +77,12 @@ const INTRO_SHADE =
 type Props = {
   src: string;
   poster: string;
+  /**
+   * The screens this walk-through is shown on, as a media query. Outside it
+   * the poster is not downloaded at all (lib/responsive-image.ts) — on the
+   * homepage it lives in the desktop tree, display:none on a phone.
+   */
+  posterMedia?: string;
   /** Content over the opening frames; fades out as scrubbing starts. */
   intro?: React.ReactNode;
   /** Content pinned to the bottom of the frame for the whole walk-through. */
@@ -85,7 +92,7 @@ type Props = {
   className?: string;
 };
 
-export function ScrollScrubVideo({ src, poster, intro, footer, lengthVh = 300, className }: Props) {
+export function ScrollScrubVideo({ src, poster, posterMedia, intro, footer, lengthVh = 300, className }: Props) {
   const rootRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -308,15 +315,21 @@ export function ScrollScrubVideo({ src, poster, intro, footer, lengthVh = 300, c
     >
       <div ref={stageRef} className="sticky top-0 h-[100dvh] w-full overflow-hidden bg-charcoal-950">
         {/* Frame 0 of the clip, so the hand-over to the first decoded frame is
-            invisible. `priority`: it is the hero, and the LCP element. */}
-        <Image
-          src={poster}
-          alt=""
-          fill
-          priority
-          sizes="100vw"
-          className="object-cover object-center"
-        />
+            invisible. Eager + high priority: it is the hero, and the LCP
+            element. (It was `priority`, which in Next 16 is an unconditional
+            head preload — fetched by phones that never show it.) */}
+        <picture className="absolute inset-0">
+          {posterMedia && <source media={`not all and ${posterMedia}`} srcSet={NO_IMAGE_SRCSET} />}
+          <Image
+            src={poster}
+            alt=""
+            fill
+            loading="eager"
+            fetchPriority="high"
+            sizes="100vw"
+            className="object-cover object-center"
+          />
+        </picture>
         <video
           ref={videoRef}
           aria-hidden

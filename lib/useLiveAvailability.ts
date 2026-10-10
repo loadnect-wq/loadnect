@@ -2,7 +2,12 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { getSupabaseClient } from "@/lib/supabase/client";
+
+// THE CLIENT IS LOADED ON DEMAND (SEO phase 6, 2026-10-10). A static import
+// made the whole Supabase client part of the venue page's start-up script; it
+// now arrives as its own file once the page is up. Nothing below is needed
+// before then — the server already rendered the authoritative availability.
+type BrowserClient = ReturnType<typeof import("@/lib/supabase/client").getSupabaseClient>;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Keeps a hall's availability fresh while someone is looking at it.
@@ -79,14 +84,8 @@ export function useLiveAvailability(hallId: string | null | undefined): LiveAvai
     if (!hallId) return;
 
     let cancelled = false;
-    let supabase: ReturnType<typeof getSupabaseClient>;
-    try {
-      supabase = getSupabaseClient();
-    } catch {
-      // No browser client configured. The page still works; it just will not
-      // update on its own, and checkout still refuses a taken date.
-      return;
-    }
+    // Set once the client has loaded and everything below is running.
+    let teardown: (() => void) | undefined;
 
     function scheduleRefresh() {
       if (timer.current) clearTimeout(timer.current);
@@ -95,52 +94,77 @@ export function useLiveAvailability(hallId: string | null | undefined): LiveAvai
       }, REFRESH_DEBOUNCE_MS);
     }
 
-    const channel = supabase
-      .channel(`availability:${hallId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "availability",
-          filter: `hall_id=eq.${hallId}`,
-        },
-        scheduleRefresh,
-      )
-      .subscribe((status) => {
+    import("@/lib/supabase/client").then(
+      ({ getSupabaseClient }) => {
         if (cancelled) return;
-        if (status === "SUBSCRIBED") {
-          setLive(true);
-          // Re-read on every (re)subscribe, not just the first. This is the
-          // reconnect path: anything that changed while the socket was down was
-          // never delivered, and this closes the gap without having to know
-          // what was in it.
-          scheduleRefresh();
-        } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
-          setLive(false);
+        let supabase: BrowserClient;
+        try {
+          supabase = getSupabaseClient();
+        } catch {
+          // No browser client configured. The page still works; it just will
+          // not update on its own, and checkout still refuses a taken date.
+          return;
         }
-      });
+        teardown = subscribe(supabase);
+      },
+      () => {
+        // The client's file failed to load (offline, a deploy mid-visit). Same
+        // outcome as no client: the page works, it just will not self-update.
+      },
+    );
 
-    // A tab that was in the background may have missed events even with the
-    // socket nominally open — phones suspend timers and sockets aggressively.
-    function onVisible() {
-      if (document.visibilityState === "visible") scheduleRefresh();
+    function subscribe(supabase: BrowserClient): () => void {
+      const channel = supabase
+        .channel(`availability:${hallId}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "availability",
+            filter: `hall_id=eq.${hallId}`,
+          },
+          scheduleRefresh,
+        )
+        .subscribe((status) => {
+          if (cancelled) return;
+          if (status === "SUBSCRIBED") {
+            setLive(true);
+            // Re-read on every (re)subscribe, not just the first. This is the
+            // reconnect path: anything that changed while the socket was down
+            // was never delivered, and this closes the gap without having to
+            // know what was in it.
+            scheduleRefresh();
+          } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
+            setLive(false);
+          }
+        });
+
+      // A tab that was in the background may have missed events even with the
+      // socket nominally open — phones suspend timers and sockets aggressively.
+      function onVisible() {
+        if (document.visibilityState === "visible") scheduleRefresh();
+      }
+      document.addEventListener("visibilitychange", onVisible);
+
+      // The floor. Only while the tab is actually being looked at — polling a
+      // backgrounded tab spends the customer's battery to refresh a calendar
+      // nobody is reading, and onVisible already covers their return.
+      const poll = setInterval(() => {
+        if (document.visibilityState === "visible") scheduleRefresh();
+      }, POLL_MS);
+
+      return () => {
+        clearInterval(poll);
+        document.removeEventListener("visibilitychange", onVisible);
+        supabase.removeChannel(channel);
+      };
     }
-    document.addEventListener("visibilitychange", onVisible);
-
-    // The floor. Only while the tab is actually being looked at — polling a
-    // backgrounded tab spends the customer's battery to refresh a calendar
-    // nobody is reading, and onVisible already covers their return.
-    const poll = setInterval(() => {
-      if (document.visibilityState === "visible") scheduleRefresh();
-    }, POLL_MS);
 
     return () => {
       cancelled = true;
       if (timer.current) clearTimeout(timer.current);
-      clearInterval(poll);
-      document.removeEventListener("visibilitychange", onVisible);
-      supabase.removeChannel(channel);
+      teardown?.();
     };
   }, [hallId, router]);
 

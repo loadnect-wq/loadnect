@@ -54,6 +54,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { ArrowLeft, CheckCircle2, Loader2, Phone, ShieldCheck, Smartphone } from "lucide-react";
 import { getSupabaseClient } from "@/lib/supabase/client";
+import { playfairItalic } from "@/app/fonts/playfair-italic";
 import { buildAuthCallbackUrl, rememberAuthNext } from "@/lib/app-url";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/input";
@@ -601,7 +602,8 @@ function RotatingOccasion({ reduceMotion }: { reduceMotion: boolean }) {
     <AnimatePresence mode="wait" initial={false}>
       <motion.span
         key={OCCASIONS[i]}
-        className="inline-block bg-gold-gradient bg-clip-text italic text-transparent"
+        // The italic face is its own font now (app/fonts/playfair-italic.ts).
+        className={`${playfairItalic.className} inline-block bg-gold-gradient bg-clip-text italic text-transparent`}
         initial={{ opacity: 0, y: "0.45em", filter: "blur(6px)" }}
         animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
         exit={{ opacity: 0, y: "-0.45em", filter: "blur(6px)" }}

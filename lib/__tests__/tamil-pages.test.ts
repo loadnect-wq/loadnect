@@ -122,7 +122,11 @@ describe("the Tamil font", () => {
     const site = read("app/fonts/site-fonts.ts");
     expect(site).toContain('variable: "--font-inter"');
     expect(site).toContain('variable: "--font-playfair"');
-    expect(site).toContain('style: "italic"');
+    // The italic face moved to its own file in SEO phase 6, so it is not
+    // preloaded on every page. Still self-hosted, still the same file.
+    const italic = read("app/fonts/playfair-italic.ts");
+    expect(italic).toContain('src: "./playfair-display/PlayfairDisplay-Italic-wght-latin.woff2"');
+    expect(italic).toContain('style: "italic"');
     expect(read("app/layout.tsx")).toContain('from "./fonts/site-fonts"');
   });
 });

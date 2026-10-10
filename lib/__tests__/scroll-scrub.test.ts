@@ -107,7 +107,9 @@ describe("the scrubbing logic", () => {
   it("is vanilla: no animation or scroll library", () => {
     const imports = src.match(/^import .* from "([^"]+)";$/gm) ?? [];
     for (const line of imports) {
-      expect(line, `unexpected dependency: ${line}`).toMatch(/from "(react|next\/image)"/);
+      // lib/responsive-image is three string constants with no imports of its
+      // own (the poster's "not on this screen size" source, SEO phase 6).
+      expect(line, `unexpected dependency: ${line}`).toMatch(/from "(react|next\/image|@\/lib\/responsive-image)"/);
     }
   });
 

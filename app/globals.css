@@ -533,6 +533,23 @@ html:not(.is-scrolled) .hallnect-header--over-hero .hallnect-nav-outline:hover {
   animation: hallnect-hero-zoom 1600ms cubic-bezier(0.16, 0.84, 0.34, 1) backwards;
 }
 
+/* The rotating word in the desktop headline (HeroOccasionWord.tsx), which used
+   to need framer-motion for exactly this. Out: blur away upward and STAY gone
+   (`forwards`) until the component swaps the word; in: the next one blurs up
+   from below. 450ms each — SWAP_MS in the component must match. Not gated on
+   .reveal-js: the classes are only ever added by the component's own timer,
+   so without JavaScript nothing here runs and the first word simply stays. */
+@keyframes occasion-in {
+  from { opacity: 0; transform: translateY(0.45em); filter: blur(6px); }
+  to   { opacity: 1; transform: none; filter: none; }
+}
+@keyframes occasion-out {
+  from { opacity: 1; transform: none; filter: none; }
+  to   { opacity: 0; transform: translateY(-0.45em); filter: blur(6px); }
+}
+.occasion-in  { animation: occasion-in 450ms cubic-bezier(0.22, 1, 0.36, 1) backwards; }
+.occasion-out { animation: occasion-out 450ms cubic-bezier(0.22, 1, 0.36, 1) forwards; }
+
 /* ── Mobile ────────────────────────────────────────────────────────────────
    Clearly animated too — just shorter travel, because the same distance on a
    375px-wide screen reads as a jump rather than a reveal. */
@@ -566,7 +583,9 @@ html:not(.is-scrolled) .hallnect-header--over-hero .hallnect-nav-outline:hover {
   .reveal-js [data-hero],
   .reveal-js [data-reveal-now],
   .reveal-js [data-hero-zoom],
-  .reveal-js [data-photo-in] img {
+  .reveal-js [data-photo-in] img,
+  .occasion-in,
+  .occasion-out {
     animation: none !important;
     opacity: 1 !important;
     transform: none !important;

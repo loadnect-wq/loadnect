@@ -106,12 +106,22 @@ export function HallCard({ hall, advancePercent, revealIndex, revealNow, eager, 
   // on the Link, so the two never share an element — the reveal's transition
   // cannot stretch the 300ms hover, and the keyframe's final `transform: none`
   // cannot cancel the lift.
+  //
+  // THE EAGER CARD NEVER FADES (SEO phase 6, 2026-10-10). It holds the page's
+  // largest image, and Chrome does not count an image as painted while it is
+  // fading up from opacity 0 — measured on /wedding-halls/madurai, the main
+  // image was recorded ~0.7s after the page first painted, the length of the
+  // card-in fade. So the first card is on screen from the first frame and
+  // only its photo animates, by scale (data-photo-in, as in the venue
+  // gallery). The cards after it keep their entrance.
   const entrance =
     revealIndex === undefined
       ? {}
-      : revealNow
-        ? { "data-reveal-now": "", style: revealDelay(revealIndex) }
-        : { "data-reveal": "card", style: revealDelay(revealIndex) };
+      : eager
+        ? { "data-photo-in": "", style: revealDelay(revealIndex) }
+        : revealNow
+          ? { "data-reveal-now": "", style: revealDelay(revealIndex) }
+          : { "data-reveal": "card", style: revealDelay(revealIndex) };
 
   return (
     <div className="h-full" {...entrance}>

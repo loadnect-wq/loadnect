@@ -15,6 +15,7 @@ import { CONTACT } from "@/lib/constants";
 import { hallnectDefinition } from "@/lib/seo/definition";
 import { AdSlot } from "@/components/ads/AdSlot";
 import { heroDelay, revealDelay } from "@/lib/motion";
+import { LG_UP, NO_IMAGE_SRCSET } from "@/lib/responsive-image";
 import { HeroSearch } from "@/components/sections/HeroSearch";
 import { ScrollScrubVideo } from "@/components/sections/ScrollScrubVideo";
 import { HeroOccasionWord } from "@/components/sections/HeroOccasionWord";
@@ -307,19 +308,34 @@ export default async function HomePage() {
             the poster cropped to the card at 390px (95th-percentile brightest
             pixel under the composited shade) — see homepage-hero.test.ts. */}
         <section className="container-app pt-2">
-          <div data-hero style={heroDelay(0)} className="relative overflow-hidden rounded-[28px] bg-charcoal-950">
+          {/* THE CARD ITSELF DOES NOT FADE IN (SEO phase 6). Its photo is the
+              page's LCP element on a phone, and Chrome does not count an image
+              as painted while it fades up from opacity 0 — the whole card used
+              to carry data-hero, which held the photo back by the length of
+              that fade. Now the photo is there from the first frame and only
+              zooms (data-hero-zoom, scale only); the text block below keeps
+              the rise. */}
+          <div className="relative overflow-hidden rounded-[28px] bg-charcoal-950">
             <div data-hero-zoom className="absolute inset-0">
-              <Image
-                src="/scrub/hall-walkthrough-poster.jpg"
-                alt=""
-                fill
-                priority
-                sizes="(max-width: 512px) 100vw, 512px"
-                className="object-cover object-center"
-              />
+              {/* Phones only: at lg and up this card is display:none, and the
+                  source below stops the photo being downloaded there at all
+                  (lib/responsive-image.ts). Eager + high priority instead of
+                  the old `priority` preload, which every desktop fetched too. */}
+              <picture className="absolute inset-0">
+                <source media={LG_UP} srcSet={NO_IMAGE_SRCSET} />
+                <Image
+                  src="/scrub/hall-walkthrough-poster.jpg"
+                  alt=""
+                  fill
+                  loading="eager"
+                  fetchPriority="high"
+                  sizes="(max-width: 512px) 100vw, 512px"
+                  className="object-cover object-center"
+                />
+              </picture>
             </div>
             <div aria-hidden className="absolute inset-0" style={{ background: MOBILE_HERO_SHADE }} />
-            <div className="relative flex min-h-[272px] flex-col justify-end px-5 pb-14 pt-10">
+            <div data-hero style={heroDelay(0)} className="relative flex min-h-[272px] flex-col justify-end px-5 pb-14 pt-10">
               <p className="inline-flex items-center gap-1.5 self-start rounded-full bg-charcoal-950/55 px-3 py-1 text-[11px] font-semibold uppercase tracking-widest text-white backdrop-blur">
                 <Sparkles className="h-3.5 w-3.5" aria-hidden /> Plan your celebration
               </p>
@@ -506,6 +522,7 @@ export default async function HomePage() {
           className="-mt-[calc(4rem+1px)]"
           src="/scrub/hall-walkthrough.mp4"
           poster="/scrub/hall-walkthrough-poster.jpg"
+          posterMedia={LG_UP}
           intro={
             <div className="container-page w-full">
               <div className="mx-auto max-w-4xl text-center">

@@ -10,10 +10,22 @@ import { buttonVariants } from "@/components/ui/Button";
 import { APP_NAME, NAV_LINKS, getDashboardPath } from "@/lib/constants";
 import { FAMILY_TOOLS } from "@/lib/family-tools";
 import { TOOL_ICONS } from "@/components/tools/tool-icons";
-import { getSupabaseClient } from "@/lib/supabase/client";
 import { useSavedHalls } from "@/lib/hooks/useSavedHalls";
 
 type NavUser = { fullName: string | null; role: string } | null;
+
+/**
+ * The Supabase client, fetched on demand rather than bundled into the page.
+ *
+ * SEO phase 6 (2026-10-10): a static import put the whole client — 222 KB of
+ * script, 57 KB compressed — into the start-up bundle of EVERY page, because
+ * this header is on every page. All the header does with it is ask, after the
+ * page is up, who is signed in. A dynamic import makes the client its own file
+ * that loads after hydration, so a visitor's first paint and first tap no
+ * longer wait behind it. Nothing here needs it sooner: until it answers, the
+ * cookie hint below already rules the signed-out case in or out.
+ */
+const loadSupabase = () => import("@/lib/supabase/client").then((m) => m.getSupabaseClient());
 
 /**
  * Is there a Supabase session cookie? Synchronous, no network.
@@ -78,49 +90,61 @@ export function Navbar() {
   }, []);
 
   useEffect(() => {
-    const supabase = getSupabaseClient();
+    // The import resolves after this effect returns, so an unmount in between
+    // must stop it subscribing at all.
+    let cancelled = false;
+    let unsubscribe: (() => void) | undefined;
 
-    async function loadProfile() {
+    loadSupabase().then((supabase) => {
+      if (cancelled) return;
+
+      async function loadProfile() {
+        const {
+          data: { user: authUser },
+        } = await supabase.auth.getUser();
+        if (!authUser) {
+          setUser(null);
+          return;
+        }
+
+        const { data } = await supabase
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          .from("profiles" as any)
+          .select("full_name, role")
+          .eq("id", authUser.id)
+          .single();
+
+        const d = data as { full_name: string | null; role: string } | null;
+        // Set state even when the profile row is missing. Returning early here
+        // left `user` at undefined forever, so the header stayed blank for a
+        // signed-in user whose profile row had not been created yet.
+        setUser({ fullName: d?.full_name ?? null, role: d?.role ?? "customer" });
+      }
+
+      loadProfile();
+
       const {
-        data: { user: authUser },
-      } = await supabase.auth.getUser();
-      if (!authUser) {
-        setUser(null);
-        return;
-      }
-
-      const { data } = await supabase
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        .from("profiles" as any)
-        .select("full_name, role")
-        .eq("id", authUser.id)
-        .single();
-
-      const d = data as { full_name: string | null; role: string } | null;
-      // Set state even when the profile row is missing. Returning early here
-      // left `user` at undefined forever, so the header stayed blank for a
-      // signed-in user whose profile row had not been created yet.
-      setUser({ fullName: d?.full_name ?? null, role: d?.role ?? "customer" });
-    }
-
-    loadProfile();
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((event) => {
-      if (event === "SIGNED_OUT") {
-        setUser(null);
-      } else if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED") {
-        loadProfile();
-      }
+        data: { subscription },
+      } = supabase.auth.onAuthStateChange((event) => {
+        if (event === "SIGNED_OUT") {
+          setUser(null);
+        } else if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED") {
+          loadProfile();
+        }
+      });
+      unsubscribe = () => subscription.unsubscribe();
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      cancelled = true;
+      unsubscribe?.();
+    };
   }, []);
 
   async function handleSignOut() {
     setSigningOut(true);
-    await getSupabaseClient().auth.signOut();
+    const supabase = await loadSupabase();
+    await supabase.auth.signOut();
     setUser(null);
     setMobileOpen(false);
     router.push("/login");

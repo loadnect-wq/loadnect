@@ -15,7 +15,8 @@
 // Display v40), with Google's unicode-range, so the bytes a visitor downloads
 // are the ones they downloaded before. Weights are ranges, which covers every
 // weight the old static config listed (Playfair 400–800) and more. The italic
-// Playfair is used by the homepage hero's occasion word and the login heading.
+// Playfair is NOT here: it lives in playfair-italic.ts, imported only by the
+// two things that use it, so it is no longer preloaded on every page.
 // Licences (OFL 1.1) sit beside each file.
 //
 // The CSS variable names are unchanged — --font-inter and --font-playfair are
@@ -39,7 +40,6 @@ export const inter = localFont({
 export const playfair = localFont({
   src: [
     { path: "./playfair-display/PlayfairDisplay-wght-latin.woff2", weight: "400 900", style: "normal" },
-    { path: "./playfair-display/PlayfairDisplay-Italic-wght-latin.woff2", weight: "400 900", style: "italic" },
   ],
   variable: "--font-playfair",
   display: "swap",
