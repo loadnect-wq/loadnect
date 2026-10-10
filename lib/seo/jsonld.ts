@@ -12,7 +12,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { SITE_URL, SITE_NAME, BUSINESS, absoluteUrl } from "./config";
-import { SUPPORT_HOURS } from "@/lib/constants";
+import { CONTACT, SUPPORT_HOURS } from "@/lib/constants";
 
 /** Drops null/undefined/empty values so no hollow properties are published. */
 function compact<T extends Record<string, unknown>>(obj: T): Record<string, unknown> {
@@ -102,6 +102,17 @@ export function organizationJsonLd() {
         }),
       }),
     ],
+    // WHO RUNS IT, MACHINE-READABLY (SEO phase 4). Both numbers are printed on
+    // the About page (and the LLPIN in the Privacy Policy), so the markup says
+    // only what a visitor can read. GSTIN is India's GST registration —
+    // schema.org's vatID; the LLP identification number has no dedicated
+    // property, so it is a named identifier.
+    vatID: CONTACT.gstin,
+    identifier: {
+      "@type": "PropertyValue",
+      propertyID: "LLPIN",
+      value: CONTACT.llpin,
+    },
     // sameAs is deliberately ABSENT: Hallnect has no verified social profiles
     // configured. Inventing them would be fabricated structured data.
   });
@@ -159,6 +170,9 @@ export type VenueJsonLdInput = {
   capacityMax: number;
   /** Null for a lead-generation venue that publishes no price. */
   pricePerDay: number | null;
+  /** Half-day rates, when the venue publishes them. */
+  priceMorning?: number | null;
+  priceEvening?: number | null;
   ratingAverage: number;
   ratingCount: number;
   images: { url: string; alt: string | null }[];
@@ -185,10 +199,39 @@ export type VenueJsonLdInput = {
   // this file publishes the aggregate rating only, which is valid on its own.
 };
 
+const inr = (n: number) => `₹${Math.round(n).toLocaleString("en-IN")}`;
+
 /**
- * EventVenue for a hall. EventVenue is the accurate type for a bookable event
- * space; LocalBusiness would assert a walk-in trading business, which a venue
- * listed by a third party on a marketplace is not.
+ * The venue's published price as a schema.org priceRange: "₹1,60,000", or
+ * "₹60,000–₹1,60,000" when it also publishes half-day rates. Undefined for a
+ * venue that publishes no price — nothing is guessed.
+ */
+export function venuePriceRange(v: Pick<VenueJsonLdInput, "pricePerDay" | "priceMorning" | "priceEvening">): string | undefined {
+  const prices = [v.pricePerDay, v.priceMorning, v.priceEvening].filter(
+    (p): p is number => typeof p === "number" && Number.isFinite(p) && p > 0,
+  );
+  if (!prices.length) return undefined;
+  const lo = Math.min(...prices);
+  const hi = Math.max(...prices);
+  return lo === hi ? inr(lo) : `${inr(lo)}–${inr(hi)}`;
+}
+
+/**
+ * EventVenue AND LocalBusiness for a hall (SEO phase 4).
+ *
+ * EventVenue says what it is — a space for functions. LocalBusiness says what
+ * else is true: the hall is a business at a street address, run by its owner.
+ * It is THE VENUE's node, not Hallnect's — Hallnect itself stays a plain
+ * Organization with no storefront (organizationJsonLd), matching its Google
+ * Business Profile as a service-area business. The two types together are
+ * valid JSON-LD, and LocalBusiness is what makes priceRange a real property
+ * here: schema.org defines priceRange on LocalBusiness, not on EventVenue,
+ * which is why it was left off while this node was EventVenue alone.
+ *
+ * Deliberately absent: telephone (the venue's number is released to a family
+ * only through Hallnect — see lib/leads.ts), openingHours (not stored), and
+ * isPartOf, which belongs to CreativeWork, not Place — the page that contains
+ * this venue is venueWebPageJsonLd, and that is what is part of the website.
  */
 export function venueJsonLd(v: VenueJsonLdInput) {
   // A STAR RATING NEEDS MORE THAN ONE VOTE TO BE A RATING.
@@ -207,12 +250,8 @@ export function venueJsonLd(v: VenueJsonLdInput) {
   const hasRatings = v.ratingCount >= MIN_RATINGS_FOR_AGGREGATE && v.ratingAverage > 0;
 
   return compact({
-    "@type": "EventVenue",
+    "@type": ["EventVenue", "LocalBusiness"],
     "@id": `${absoluteUrl(`/halls/${v.slug}`)}#venue`,
-    // Ties the venue to the site entity. Without it this node floated free of
-    // the graph, so nothing connected the venue to the publisher that vouches
-    // for it.
-    isPartOf: { "@id": WEBSITE_ID },
     name: v.name,
     description: v.description,
     url: absoluteUrl(`/halls/${v.slug}`),
@@ -248,14 +287,9 @@ export function venueJsonLd(v: VenueJsonLdInput) {
     // compact() drops the key when the join is empty.
     keywords: v.venueTypes.join(", "),
 
-    // NO priceRange HERE. Schema.org defines priceRange on LocalBusiness, not
-    // on EventVenue (which descends from Place), so it was an invalid property
-    // on this node. The day rate is not lost — it reaches search through the
-    // meta description (lib/seo/venue.ts), the visible Pricing section, and the
-    // city page's first FAQ answer. Do not re-add it by multi-typing this node
-    // as ["EventVenue","LocalBusiness"] either: a LocalBusiness claim implies a
-    // storefront Hallnect does not operate, and it would contradict the Google
-    // Business Profile, which is registered as a service-area business.
+    // Valid because this node is also a LocalBusiness (see the docblock). The
+    // same figure the page prints in its price, Pricing and At a glance.
+    priceRange: venuePriceRange(v),
     aggregateRating: hasRatings
       ? compact({
           "@type": "AggregateRating",
@@ -270,6 +304,31 @@ export function venueJsonLd(v: VenueJsonLdInput) {
       name: v.city,
       containedInPlace: { "@type": "State", name: v.state ?? "Tamil Nadu" },
     }),
+  });
+}
+
+/**
+ * The venue page itself (SEO phase 4): the CreativeWork that IS part of the
+ * website, whose main entity is the venue. It carries dateModified — the same
+ * date the page prints as "Listing updated" — which a Place cannot.
+ */
+export function venueWebPageJsonLd(input: {
+  slug: string;
+  name: string;
+  description: string;
+  dateModified: string | null;
+}) {
+  const url = absoluteUrl(`/halls/${input.slug}`);
+  return compact({
+    "@type": "WebPage",
+    "@id": `${url}#webpage`,
+    url,
+    name: input.name,
+    description: input.description,
+    inLanguage: "en-IN",
+    isPartOf: { "@id": WEBSITE_ID },
+    mainEntity: { "@id": `${url}#venue` },
+    dateModified: input.dateModified,
   });
 }
 
@@ -295,6 +354,9 @@ export function cityCollectionJsonLd(input: {
   name?: string;
   /** BCP 47, e.g. "ta-IN". Omitted on the English pages, which the WebSite node already covers. */
   inLanguage?: string;
+  /** The newest change among the listed halls — the date the page prints as
+   *  "Listings updated" (SEO phase 4). Omitted when unknown. */
+  dateModified?: string | null;
 }) {
   return compact({
     "@type": "CollectionPage",
@@ -303,6 +365,7 @@ export function cityCollectionJsonLd(input: {
     name: input.name ?? `Wedding halls in ${input.city}`,
     description: input.description,
     inLanguage: input.inLanguage,
+    dateModified: input.dateModified,
     isPartOf: { "@id": WEBSITE_ID },
     about: compact({
       "@type": "City",
@@ -366,6 +429,40 @@ export function categoryCollectionJsonLd(input: {
           containedInPlace: { "@type": "State", name: "Tamil Nadu" },
         })
       : undefined,
+    mainEntity: input.venues.length
+      ? {
+          "@type": "ItemList",
+          numberOfItems: input.venues.length,
+          itemListElement: input.venues.map((v, i) => ({
+            "@type": "ListItem",
+            position: i + 1,
+            name: v.name,
+            url: absoluteUrl(`/halls/${v.slug}`),
+            item: { "@id": `${absoluteUrl(`/halls/${v.slug}`)}#venue` },
+          })),
+        }
+      : undefined,
+  });
+}
+
+/**
+ * CollectionPage for /halls — every live venue in Tamil Nadu (SEO phase 4).
+ * Emitted on the unfiltered page only: a filtered view is noindex, and its
+ * list is a slice of this one.
+ */
+export function allVenuesCollectionJsonLd(input: {
+  path: string;
+  description: string;
+  venues: { name: string; slug: string }[];
+}) {
+  return compact({
+    "@type": "CollectionPage",
+    "@id": `${absoluteUrl(input.path)}#collection`,
+    url: absoluteUrl(input.path),
+    name: "Halls and venues in Tamil Nadu",
+    description: input.description,
+    isPartOf: { "@id": WEBSITE_ID },
+    about: { "@type": "State", name: "Tamil Nadu", containedInPlace: { "@type": "Country", name: "India" } },
     mainEntity: input.venues.length
       ? {
           "@type": "ItemList",

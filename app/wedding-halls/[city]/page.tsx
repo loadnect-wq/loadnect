@@ -233,6 +233,8 @@ export default async function CityPage({ params }: Props) {
             path: `/wedding-halls/${citySlug(city)}`,
             description,
             venues: halls.map((h) => ({ name: h.name, slug: h.slug })),
+            // The date the page prints as "Listings updated".
+            dateModified: inventory?.lastUpdated,
           }),
           breadcrumbJsonLd([
             { name: "Home", path: "/" },

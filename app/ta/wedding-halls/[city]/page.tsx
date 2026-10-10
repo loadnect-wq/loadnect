@@ -206,6 +206,7 @@ export default async function TamilCityPage({ params }: Props) {
             name: `${taCity} திருமண மண்டபங்கள்`,
             inLanguage: "ta-IN",
             venues: halls.map((h) => ({ name: h.name, slug: h.slug })),
+            dateModified: inventory?.lastUpdated,
           }),
           breadcrumbJsonLd([
             { name: "முகப்பு", path: "/" },

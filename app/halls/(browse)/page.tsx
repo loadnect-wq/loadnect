@@ -21,7 +21,7 @@ import { AppHeader } from "@/components/app/AppHeader";
 import { AdSlot } from "@/components/ads/AdSlot";
 import { buildMetadata } from "@/lib/seo/metadata";
 import { JsonLd } from "@/components/seo/JsonLd";
-import { jsonLdGraph, breadcrumbJsonLd } from "@/lib/seo/jsonld";
+import { jsonLdGraph, breadcrumbJsonLd, allVenuesCollectionJsonLd } from "@/lib/seo/jsonld";
 import { fetchCityInventory } from "@/lib/seo/cities";
 import { fetchVenueCategories, fetchCategoryInventory } from "@/lib/venue-categories.server";
 import { categoryLabelMap } from "@/lib/venue-categories";
@@ -65,6 +65,19 @@ type SearchParams = Promise<{
  * deliberately absent: re-ordering the same venues is the same collection, so
  * /halls?sort=rating stays indexable and consolidates to /halls.
  */
+/** One string for the <head> and the CollectionPage, so they cannot disagree. */
+const HALLS_DESCRIPTION =
+  "Browse every wedding hall, party hall, banquet and meeting venue listed on Hallnect. " +
+  "Filter by occasion, city, guest capacity, budget, date and amenities.";
+
+/** True when any real filter is set — the same test generateMetadata uses. */
+function isFiltered(sp: Record<string, string | string[] | undefined>): boolean {
+  return FILTER_KEYS.some((k) => {
+    const v = sp[k];
+    return typeof v === "string" && v.trim() !== "";
+  });
+}
+
 const FILTER_KEYS = [
   "city", "area", "capacity", "priceMin", "priceMax",
   "q", "category", "amenity", "date", "dateTo", "available",
@@ -81,10 +94,7 @@ export async function generateMetadata({
   // source=whatsapp — the exact URLs a shared link carries — went noindex and
   // canonicalised away. A tracking parameter is not a filter; it is the same
   // page with a label stuck on it.
-  const filtered = FILTER_KEYS.some((k) => {
-    const v = sp[k];
-    return typeof v === "string" && v.trim() !== "";
-  });
+  const filtered = isFiltered(sp);
 
   // A filtered view is a slice of the same collection: keep it out of the
   // index and keep following venue links. It does NOT also get a canonical
@@ -95,9 +105,7 @@ export async function generateMetadata({
   return {
     ...buildMetadata({
       title: filtered ? "Venue Search Results" : "Browse Halls & Venues for Every Occasion",
-      description:
-        "Browse every wedding hall, party hall, banquet and meeting venue listed on Hallnect. " +
-        "Filter by occasion, city, guest capacity, budget, date and amenities.",
+      description: HALLS_DESCRIPTION,
       path: "/halls",
       indexable: !filtered,
     }),
@@ -225,6 +233,15 @@ export default async function HallsPage({
     <div className="min-h-screen bg-ivory-100">
       <JsonLd
         data={jsonLdGraph(
+          // The whole catalogue as an ItemList — on the unfiltered page only:
+          // a filtered view is noindex, and its list is a slice of this one.
+          ...(isFiltered(sp) || hallsFailed
+            ? []
+            : [allVenuesCollectionJsonLd({
+                path: "/halls",
+                description: HALLS_DESCRIPTION,
+                venues: halls.map((h) => ({ name: h.name, slug: h.slug })),
+              })]),
           breadcrumbJsonLd([
             { name: "Home", path: "/" },
             { name: "Venues", path: "/halls" },

@@ -15,11 +15,11 @@ import { getAdvancePercent } from "@/lib/platform-settings";
 import { HallDetailView } from "./HallDetailView";
 import { AdSlot } from "@/components/ads/AdSlot";
 import { JsonLd } from "@/components/seo/JsonLd";
-import { jsonLdGraph, venueJsonLd, breadcrumbJsonLd } from "@/lib/seo/jsonld";
+import { jsonLdGraph, venueJsonLd, venueWebPageJsonLd, breadcrumbJsonLd } from "@/lib/seo/jsonld";
 import { citySlug } from "@/lib/seo/cities";
 import { fetchVenueCategories } from "@/lib/venue-categories.server";
 import { selectCategories } from "@/lib/venue-categories";
-import { venueSummary, venueFacts } from "@/lib/seo/venue";
+import { venueSummary, venueFacts, venueTitle, venueDescription } from "@/lib/seo/venue";
 import { DIRECT_BOOKING_ENABLED } from "@/lib/booking-switch";
 
 export async function VenuePage({ hall, isPreview }: { hall: HallDetail; isPreview: boolean }) {
@@ -54,12 +54,21 @@ export async function VenuePage({ hall, isPreview }: { hall: HallDetail; isPrevi
 
   return (
     <>
-      {/* EventVenue + breadcrumbs, from real columns only. Emitted ONLY for a
-          publicly approved hall: a preview of a draft venue must not publish
-          structured data about a listing the public cannot see. */}
+      {/* The page (WebPage), the venue (EventVenue + LocalBusiness) and the
+          breadcrumbs, from real columns only. Emitted ONLY for a publicly
+          approved hall: a preview of a draft venue must not publish structured
+          data about a listing the public cannot see. */}
       {!isPreview && (
         <JsonLd
           data={jsonLdGraph(
+            // Same title and description the page's <head> carries, and the
+            // date it prints as "Listing updated".
+            venueWebPageJsonLd({
+              slug: hall.slug,
+              name: venueTitle(hall),
+              description: venueDescription(hall),
+              dateModified: hall.updated_at,
+            }),
             venueJsonLd({
               name: hall.name,
               slug: hall.slug,
@@ -72,6 +81,8 @@ export async function VenuePage({ hall, isPreview }: { hall: HallDetail; isPrevi
               longitude: hall.longitude,
               capacityMax: hall.capacity_max,
               pricePerDay: hall.price_per_day,
+              priceMorning: hall.price_morning,
+              priceEvening: hall.price_evening,
               ratingAverage: hall.rating_average,
               ratingCount: hall.rating_count,
               images: hall.images.map((i) => ({ url: i.url, alt: i.alt_text })),

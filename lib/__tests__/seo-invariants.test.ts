@@ -259,17 +259,31 @@ describe("reads that decide indexability must not fail open", () => {
 describe("structured data claims nothing the page cannot show", () => {
   const src = read("lib/seo/jsonld.ts");
 
-  it("does not put priceRange on the EventVenue node", () => {
-    // schema.org defines priceRange on LocalBusiness. An invalid property on a
-    // type is at best ignored and at worst counted against the markup.
-    const venue = src.slice(src.indexOf("EventVenue"));
-    expect(venue).not.toMatch(/^\s*priceRange:/m);
+  it("puts priceRange only on a node that is also a LocalBusiness", () => {
+    // schema.org defines priceRange on LocalBusiness, not EventVenue — so the
+    // venue carries it only because it is typed as both (SEO phase 4). An
+    // invalid property on a type is at best ignored and at worst counted
+    // against the markup.
+    expect(src).toMatch(/"@type":\s*\["EventVenue",\s*"LocalBusiness"\]/);
+    expect(src).toMatch(/^\s*priceRange: venuePriceRange\(v\),/m);
   });
 
-  it("never multi-types the venue as a LocalBusiness", () => {
-    // That would imply a storefront Hallnect does not operate, and contradict
-    // the Google Business Profile's service-area registration.
-    expect(src).not.toMatch(/"@type":\s*\[\s*"EventVenue"\s*,\s*"LocalBusiness"/);
+  it("types the VENUE as a LocalBusiness, never Hallnect itself", () => {
+    // The venue node describes the hall — a business at a street address. Hallnect
+    // stays a plain Organization: a LocalBusiness claim about HALLNECT would imply
+    // a storefront it does not operate and contradict its Google Business Profile's
+    // service-area registration. That was the real risk behind the earlier rule
+    // that kept LocalBusiness off the venue too.
+    const org = src.slice(src.indexOf("export function organizationJsonLd"), src.indexOf("export function websiteJsonLd"));
+    expect(org).toContain('"@type": "Organization"');
+    // The quoted type value, not the word — the builder's comment explains
+    // why it is NOT a LocalBusiness, in words.
+    expect(org).not.toContain('"LocalBusiness"');
+  });
+
+  it("never puts isPartOf on a Place (it belongs to CreativeWork)", () => {
+    const venue = src.slice(src.indexOf("export function venueJsonLd"), src.indexOf("export function venueWebPageJsonLd"));
+    expect(venue).not.toMatch(/^\s*isPartOf:/m);
   });
 
   it("emits aggregateRating only when there are real ratings", () => {
