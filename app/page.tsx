@@ -11,6 +11,8 @@ import { getAdvancePercent } from "@/lib/platform-settings";
 import { todayInBusinessTz } from "@/lib/dates";
 import { platformFeeDisclosure } from "@/lib/booking-payment";
 import { DIRECT_BOOKING_ENABLED } from "@/lib/booking-switch";
+import { CONTACT } from "@/lib/constants";
+import { hallnectDefinition } from "@/lib/seo/definition";
 import { AdSlot } from "@/components/ads/AdSlot";
 import { heroDelay, revealDelay } from "@/lib/motion";
 import { HeroSearch } from "@/components/sections/HeroSearch";
@@ -68,7 +70,17 @@ const HOW_IT_WORKS = DIRECT_BOOKING_ENABLED ? [
   { step: "03", title: "Get quotes", body: "Ask the halls you like for a quote. A hall replies on Hallnect with its price for your date, and gets your phone number only if you accept its quote." },
 ];
 
+// WHAT HALLNECT IS, first (SEO phase 5). Answer engines describe a business
+// from its own pages, so the home page states it plainly — the same paragraph
+// the About page and /llms.txt print (lib/seo/definition.ts). As an FAQ item it
+// is both visible and in the FAQPage markup, from one string.
+const WHAT_IS_HALLNECT = {
+  q: "What is Hallnect?",
+  a: hallnectDefinition({ directBookingEnabled: DIRECT_BOOKING_ENABLED, legalName: CONTACT.legalName }),
+};
+
 const FAQ_ITEMS = DIRECT_BOOKING_ENABLED ? [
+  WHAT_IS_HALLNECT,
   { q: "How do I book a venue?",
     a: `It depends on the hall, and each listing says which it is. Where a hall books online, you pick your date and slot and pay the advance plus a ${platformFeeDisclosure()} through Cashfree — capped at a quarter of the advance on a small booking, and waivable with a promotional code — and the booking is confirmed once the owner accepts it. Where a hall works on quotes, tap "Get a quote" and tell it your date, the occasion and how many guests, then verify your mobile number — the hall does not see it. It replies on Hallnect with its price; if you accept, that hall gets your number to agree the booking with you.` },
   { q: "Is the advance payment refundable?",
@@ -80,6 +92,7 @@ const FAQ_ITEMS = DIRECT_BOOKING_ENABLED ? [
   { q: "I'm a venue owner — how do I list?",
     a: "Register as an owner, complete your business profile, and submit your venue for approval. Listings are reviewed within 48 hours." },
 ] : [
+  WHAT_IS_HALLNECT,
   { q: "How do I book a venue?",
     a: "Every venue on Hallnect works on quotes. On a hall's page, tap \"Get a quote\" and tell the venue your date, the occasion and how many guests, then verify your mobile number with a one-time password — the venue does not see it. The venue replies on Hallnect with its price for your date, what is included, the advance it asks for and how long the offer stands. If you accept, that venue gets your number to call you and agree the booking." },
   { q: "Who do I pay, and is the advance refundable?",

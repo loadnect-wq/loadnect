@@ -3,6 +3,7 @@ import { buildMetadata } from "@/lib/seo/metadata";
 import { legalUpdatedLabel } from "@/lib/content";
 import { platformFeeDisclosure } from "@/lib/booking-payment";
 import { DIRECT_BOOKING_ENABLED } from "@/lib/booking-switch";
+import { CONTACT } from "@/lib/constants";
 
 // TWO WAYS TO BOOK, CHOSEN BY THE BOOKING SWITCH (lib/booking-switch.ts).
 // With online booking on (0114) a venue either takes an advance at checkout or
@@ -164,7 +165,7 @@ export default function TermsPage() {
 
       <Section title="17. Contact">
         For questions about these Terms, contact us at{" "}
-        <a href="mailto:hallnect@gmail.com" className="text-maroon-600 hover:underline">hallnect@gmail.com</a>{" "}
+        <a href={`mailto:${CONTACT.email}`} className="text-maroon-600 hover:underline">{CONTACT.email}</a>{" "}
         or through our <a href="/contact" className="text-maroon-600 hover:underline">Contact page</a>.
       </Section>
     </article>

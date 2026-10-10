@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { buildMetadata } from "@/lib/seo/metadata";
 import { legalUpdatedLabel } from "@/lib/content";
+import { CONTACT } from "@/lib/constants";
 
 export const metadata: Metadata = buildMetadata({
   title: "Disclaimer",
@@ -56,7 +57,7 @@ export default function DisclaimerPage() {
 
       <Section title="11. Contact">
         If you have concerns about a venue listing or believe information is inaccurate or misleading, report it to us at{" "}
-        <a href="mailto:hallnect@gmail.com" className="text-maroon-600 hover:underline">hallnect@gmail.com</a>.
+        <a href={`mailto:${CONTACT.email}`} className="text-maroon-600 hover:underline">{CONTACT.email}</a>.
         We will investigate and take appropriate action.
       </Section>
     </article>

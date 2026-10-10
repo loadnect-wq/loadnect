@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { platformFeeDisclosure } from "@/lib/booking-payment";
 import { buildMetadata } from "@/lib/seo/metadata";
 import { legalUpdatedLabel } from "@/lib/content";
+import { CONTACT } from "@/lib/constants";
 
 export const metadata: Metadata = buildMetadata({
   title: "Refund Policy",
@@ -96,7 +97,7 @@ export default function RefundPolicyPage() {
 
       <Section title="7. How to Request a Refund">
         Log in to your Hallnect account and go to My Bookings. Select the booking and use the Cancel Booking option (if within the cancellation window). Alternatively, email{" "}
-        <a href="mailto:hallnect@gmail.com" className="text-maroon-600 hover:underline">hallnect@gmail.com</a> with your booking reference number. We will confirm the eligible refund amount based on the schedule above and the timing of your request.
+        <a href={`mailto:${CONTACT.email}`} className="text-maroon-600 hover:underline">{CONTACT.email}</a> with your booking reference number. We will confirm the eligible refund amount based on the schedule above and the timing of your request.
       </Section>
 
       {/* "How to Request a Refund" above and this section were both numbered 7, which
@@ -124,7 +125,7 @@ export default function RefundPolicyPage() {
           missing it is the failure that actually costs us. Change both or neither. */}
       <Section title="9. Disputes">
         If you believe a refund was incorrectly denied, raise a support ticket through your account or email{" "}
-        <a href="mailto:hallnect@gmail.com" className="text-maroon-600 hover:underline">hallnect@gmail.com</a> within 7 days of the cancellation decision. We will review and respond within 7 business days. Hallnect&apos;s decision on refund disputes, after review, is final within Hallnect&apos;s internal process; this does not affect your rights under the Consumer Protection Act, 2019.
+        <a href={`mailto:${CONTACT.email}`} className="text-maroon-600 hover:underline">{CONTACT.email}</a> within 7 days of the cancellation decision. We will review and respond within 7 business days. Hallnect&apos;s decision on refund disputes, after review, is final within Hallnect&apos;s internal process; this does not affect your rights under the Consumer Protection Act, 2019.
       </Section>
 
       <Section title="10. Changes to This Policy">

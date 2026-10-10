@@ -28,6 +28,7 @@ import { CONTACT, SUPPORT_HOURS, APP_NAME } from "@/lib/constants";
 import { SERVICE_AREA_CITIES } from "@/lib/seo/service-areas";
 import { DIRECT_BOOKING_ENABLED } from "@/lib/booking-switch";
 import { platformFeeDisclosure } from "@/lib/booking-payment";
+import { hallnectDefinition } from "@/lib/seo/definition";
 
 // HOW BOOKING WORKS, IN TWO VERSIONS chosen by the booking switch, like the
 // homepage. With online booking on (0114) a hall either takes an advance online
@@ -98,12 +99,16 @@ export default async function AboutPage() {
         <h1 className="font-serif text-3xl font-bold text-charcoal-900 sm:text-4xl">
           About {APP_NAME}
         </h1>
+        {/* WHAT HALLNECT IS, in the one form every page uses (lib/seo/
+            definition.ts — the home page's "What is Hallnect?" and /llms.txt
+            print the same paragraph), then what it is not. */}
         <p className="mt-4 text-base leading-relaxed text-charcoal-700">
-          {APP_NAME} is a marketplace for wedding halls, marriage halls and event
-          venues in Tamil Nadu. Venue owners list their own halls with their own
-          photos, capacity and pricing; couples search, compare and get in touch.
-          We are not a venue and we do not run events — we connect the two sides
-          and handle the paperwork in between.
+          {hallnectDefinition({ directBookingEnabled: DIRECT_BOOKING_ENABLED, legalName: CONTACT.legalName })}
+        </p>
+        <p className="mt-3 text-base leading-relaxed text-charcoal-700">
+          {APP_NAME} is not a venue and does not run events: each hall&apos;s
+          photos, capacity and prices are its owner&apos;s, and {APP_NAME} connects
+          families with the halls that fit.
         </p>
 
         {/* ── How it works ─────────────────────────────────────────────── */}

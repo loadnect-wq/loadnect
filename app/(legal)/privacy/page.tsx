@@ -128,7 +128,7 @@ export default function PrivacyPage() {
 
       <Section title="9. Security">
         We use industry-standard security measures including encrypted connections (HTTPS/TLS), Row Level Security on all database tables, and access controls. No internet transmission method is 100% secure. Report suspected unauthorised access to{" "}
-        <a href="mailto:hallnect@gmail.com" className="text-maroon-600 hover:underline">hallnect@gmail.com</a>.
+        <a href={`mailto:${CONTACT.email}`} className="text-maroon-600 hover:underline">{CONTACT.email}</a>.
       </Section>
 
       <Section title="10. Children">

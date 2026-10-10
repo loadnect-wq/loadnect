@@ -17,6 +17,7 @@
 
 import { formatHallPrice, isLeadGeneration } from "@/lib/booking-mode";
 import { FAMILY_TOOLS, TOOLS_PATH } from "@/lib/family-tools";
+import { hallnectDefinition } from "./definition";
 
 export type LlmsVenue = {
   name: string;
@@ -53,13 +54,9 @@ export function buildLlmsTxt(input: LlmsInput): string {
   const lines: string[] = [];
 
   lines.push("# Hallnect", "");
+  // The one definition the home and About pages also print (lib/seo/definition.ts).
   lines.push(
-    "> Hallnect is an online marketplace for wedding halls, kalyana mandapams, reception, party, " +
-      "banquet and meeting venues in Tamil Nadu, India. Families compare venues by city, guest " +
-      "capacity, price and amenities, then ask a hall for a quote" +
-      (input.directBookingEnabled ? " or, where the hall offers it, book online with an advance" : "") +
-      ". Venue owners list their halls for free and answer families from an owner dashboard. " +
-      `Hallnect is run by ${contact.legalName}, based in Madurai.`,
+    `> ${hallnectDefinition({ directBookingEnabled: input.directBookingEnabled, legalName: contact.legalName })}`,
     "",
   );
 

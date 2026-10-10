@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { platformFeeDisclosure } from "@/lib/booking-payment";
 import { buildMetadata } from "@/lib/seo/metadata";
 import { legalUpdatedLabel } from "@/lib/content";
+import { CONTACT } from "@/lib/constants";
 
 export const metadata: Metadata = buildMetadata({
   title: "Cancellation Policy",
@@ -59,7 +60,7 @@ export default function CancellationPolicyPage() {
         the schedule in our{" "}
         <a href="/refund-policy" className="text-maroon-600 hover:underline">Refund Policy</a>. If
         you have an emergency, contact our support team at{" "}
-        <a href="mailto:hallnect@gmail.com" className="text-maroon-600 hover:underline">hallnect@gmail.com</a>{" "}
+        <a href={`mailto:${CONTACT.email}`} className="text-maroon-600 hover:underline">{CONTACT.email}</a>{" "}
         and we will do what we can with the venue.
       </Section>
 
@@ -71,7 +72,7 @@ export default function CancellationPolicyPage() {
 
       <Section title="9. Force Majeure">
         In circumstances beyond the reasonable control of either party — including natural disasters, government-declared emergencies, or pandemic-related restrictions — Hallnect may offer a booking credit, date change, or partial refund at its discretion. These situations are assessed case by case. Contact{" "}
-        <a href="mailto:hallnect@gmail.com" className="text-maroon-600 hover:underline">hallnect@gmail.com</a> immediately if you believe your booking is affected.
+        <a href={`mailto:${CONTACT.email}`} className="text-maroon-600 hover:underline">{CONTACT.email}</a> immediately if you believe your booking is affected.
       </Section>
 
       {/* The response window here and in the Refund Policy's Disputes section describe the
@@ -81,7 +82,7 @@ export default function CancellationPolicyPage() {
           missing it is the failure that actually costs us. Change both or neither. */}
       <Section title="10. Dispute Resolution">
         If a cancellation or refund dispute arises, Hallnect will review the case and respond within 7 business days. Our decision in such disputes is final within Hallnect&apos;s internal process; this does not affect your rights under the Consumer Protection Act, 2019. To raise a dispute, use the Support Tickets feature in your account or email{" "}
-        <a href="mailto:hallnect@gmail.com" className="text-maroon-600 hover:underline">hallnect@gmail.com</a>.
+        <a href={`mailto:${CONTACT.email}`} className="text-maroon-600 hover:underline">{CONTACT.email}</a>.
       </Section>
 
       <Section title="11. Policy Updates">

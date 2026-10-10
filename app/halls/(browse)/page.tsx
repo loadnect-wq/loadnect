@@ -22,6 +22,8 @@ import { AdSlot } from "@/components/ads/AdSlot";
 import { buildMetadata } from "@/lib/seo/metadata";
 import { JsonLd } from "@/components/seo/JsonLd";
 import { jsonLdGraph, breadcrumbJsonLd, allVenuesCollectionJsonLd } from "@/lib/seo/jsonld";
+import { hallsAnswer } from "@/lib/seo/definition";
+import { DIRECT_BOOKING_ENABLED } from "@/lib/booking-switch";
 import { fetchCityInventory } from "@/lib/seo/cities";
 import { fetchVenueCategories, fetchCategoryInventory } from "@/lib/venue-categories.server";
 import { categoryLabelMap } from "@/lib/venue-categories";
@@ -293,9 +295,15 @@ export default async function HallsPage({
               section in HallDetailView. Promising it on the list page sends
               customers to a venue page that (correctly) declines to make the
               claim. */}
-          {halls.length > 0
-            ? `${halls.length} ${halls.length === 1 ? "venue" : "venues"} with photos, capacity and pricing.`
-            : "Venues with photos, capacity and pricing."}
+          {/* ANSWER FIRST on the unfiltered page (SEO phase 5): how many
+              venues, where, from what price, for how many guests, and how to
+              book — from the live list (lib/seo/definition.ts hallsAnswer).
+              A filtered view is a search result, not an answer, and keeps
+              its plain count. */}
+          {(!isFiltered(sp) && hallsAnswer(halls, DIRECT_BOOKING_ENABLED)) ||
+            (halls.length > 0
+              ? `${halls.length} ${halls.length === 1 ? "venue" : "venues"} with photos, capacity and pricing.`
+              : "Venues with photos, capacity and pricing.")}
         </p>
         {dateChoice && halls.length > 0 && (
           <p className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-charcoal-700">
