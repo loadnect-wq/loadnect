@@ -25,7 +25,7 @@ export type GuideLang = "en" | "ta";
 
 export const GUIDES_PATH = { en: "/guides", ta: "/ta/guides" } as const;
 
-type GuideText = {
+export type GuideText = {
   /** <title> without " | Hallnect" (the template adds it; fitTitle drops it when long). */
   title: string;
   /** Meta description, ≤155 characters. */
@@ -46,7 +46,12 @@ export type Guide = {
   /** A native Tamil speaker has checked the Tamil twin. See the header. */
   taReviewed: boolean;
   en: GuideText;
-  ta: GuideText;
+  /**
+   * null for an English-only guide: one whose searches Google showed only in
+   * English (the content plan's rule). No Tamil route exists for it, and
+   * nothing links to one.
+   */
+  ta: GuideText | null;
 };
 
 export const GUIDES: readonly Guide[] = [
@@ -92,14 +97,77 @@ export const GUIDES: readonly Guide[] = [
       card: "பணம் கொடுக்கும் முன் மண்டபத்திடம் கேட்க வேண்டிய பன்னிரண்டு கேள்விகளும், எழுத்தில் வாங்க வேண்டியவையும்.",
     },
   },
+  {
+    slug: "wedding-hall-cost-tamil-nadu",
+    audience: "families",
+    published: "2026-10-11",
+    updated: "2026-10-11",
+    taReviewed: false,
+    en: {
+      title: "Wedding Hall Cost in Tamil Nadu: What You Pay For",
+      description:
+        "What decides a wedding hall's price in Tamil Nadu, what the bill adds to the rent, and real listed prices for cities with three or more halls on Hallnect.",
+      heading: "How much does a wedding hall cost in Tamil Nadu?",
+      card: "What decides a hall's price, what the bill adds to the rent, and real listed prices by city.",
+    },
+    ta: {
+      title: "திருமண மண்டப வாடகை எவ்வளவு?",
+      description:
+        "திருமண மண்டபத்தின் விலையைத் தீர்மானிப்பவை, வாடகைக்கு மேல் பில்லில் சேர்பவை, மூன்று மண்டபங்கள் உள்ள நகரங்களின் உண்மையான விலைகள்.",
+      heading: "தமிழ்நாட்டில் திருமண மண்டப வாடகை எவ்வளவு?",
+      card: "மண்டப விலையைத் தீர்மானிப்பவை, வாடகைக்கு மேல் சேர்பவை, நகர வாரியான உண்மையான விலைகள்.",
+    },
+  },
+  {
+    slug: "birthday-party-hall",
+    audience: "families",
+    published: "2026-10-11",
+    updated: "2026-10-11",
+    taReviewed: false,
+    en: {
+      title: "How to Choose a Birthday or Party Hall",
+      description:
+        "Choosing a hall for a birthday or a party: how big, which slot, food, air conditioning, decoration rules and parking, and what to ask before you book.",
+      heading: "How to choose a birthday or party hall",
+      card: "How big a hall you need, which slot to book, and what to check before you pay.",
+    },
+    ta: null,
+  },
+  {
+    slug: "marriage-hall-booking-receipt",
+    audience: "owners",
+    published: "2026-10-11",
+    updated: "2026-10-11",
+    taReviewed: false,
+    en: {
+      title: "Marriage Hall Booking Receipt Format: Free Template",
+      description:
+        "Free booking receipt template for marriage halls: fill in the booking and advance, print it or save it as a PDF. Nothing you type leaves your browser.",
+      heading: "Marriage hall booking receipt: a free template",
+      card: "Fill in a booking and the advance received, then print a clean receipt or save it as a PDF.",
+    },
+    ta: null,
+  },
 ];
+
+/** A guide's text in a language it has. Throws for a Tamil request on an English-only guide. */
+export function guideText(g: Guide, lang: GuideLang): GuideText {
+  const t = g[lang];
+  if (!t) throw new Error(`Guide ${g.slug} has no ${lang} text`);
+  return t;
+}
+
+/** The guides that exist in a language. */
+export function guidesIn(lang: GuideLang): Guide[] {
+  return GUIDES.filter((g) => g[lang] !== null);
+}
 
 /** The /guides index, in both languages. */
 export const GUIDES_INDEX_TEXT = {
   en: {
     title: "Wedding & Function Planning Guides",
     description:
-      "Guides for families planning a wedding or function in Tamil Nadu: the full expense list, what to ask before paying a hall advance, and muhurtham dates.",
+      "Guides for families planning a wedding or function in Tamil Nadu, and for hall owners: costs, checklists, muhurtham dates and a free booking receipt.",
     heading: "Planning guides",
     lead: "Plain answers to the questions families ask while planning a wedding or a function in Tamil Nadu. Every fact comes from how Hallnect works or from a source we name, and none of them is a price we cannot back.",
   },
@@ -122,17 +190,18 @@ export function guidePath(slug: string, lang: GuideLang): string {
   return `${GUIDES_PATH[lang]}/${slug}`;
 }
 
-/** Is this language's page meant for search engines? English always; Tamil once reviewed. */
+/** Is this language's page meant for search engines? English always; Tamil once it exists and is reviewed. */
 export function guideIndexable(g: Guide, lang: GuideLang): boolean {
-  return lang === "en" || g.taReviewed;
+  return lang === "en" || (g.ta !== null && g.taReviewed);
 }
 
 /**
- * hreflang for a guide, or undefined while the Tamil twin is unreviewed — an
- * hreflang pointing at a noindex page is a contradiction search engines flag.
+ * hreflang for a guide, or undefined while there is no reviewed Tamil twin —
+ * an hreflang pointing at a noindex (or missing) page is a contradiction
+ * search engines flag.
  */
 export function guideLanguageAlternates(g: Guide): Record<string, string> | undefined {
-  if (!g.taReviewed) return undefined;
+  if (!guideIndexable(g, "ta")) return undefined;
   return {
     "en-IN": guidePath(g.slug, "en"),
     "ta-IN": guidePath(g.slug, "ta"),
@@ -142,7 +211,7 @@ export function guideLanguageAlternates(g: Guide): Record<string, string> | unde
 
 /** The Tamil index is indexable once it lists at least one reviewed guide. */
 export function guidesIndexIndexable(lang: GuideLang): boolean {
-  return lang === "en" || GUIDES.some((g) => g.taReviewed);
+  return lang === "en" || GUIDES.some((g) => guideIndexable(g, "ta"));
 }
 
 export function guidesIndexLanguageAlternates(): Record<string, string> | undefined {

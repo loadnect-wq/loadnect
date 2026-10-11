@@ -19,7 +19,7 @@ import { CUSTOMER_REFUND_SCHEDULE } from "@/lib/refund-schedule";
 import { platformFeeDisclosure } from "@/lib/booking-payment";
 import { DIRECT_BOOKING_ENABLED } from "@/lib/booking-switch";
 import { HALL_GST_PERCENT } from "@/lib/budget";
-import { guideBySlug, guidePath, type GuideLang } from "@/lib/guides";
+import { guideBySlug, guidePath, guideText, type GuideLang } from "@/lib/guides";
 import { GuideSection, GuideShell, type GuideFaq, type RelatedLink } from "./GuideShell";
 
 const GUIDE = guideBySlug("before-you-pay-a-hall-advance");
@@ -166,7 +166,7 @@ function related(lang: GuideLang): RelatedLink[] {
         { href: "/halls", label: "Browse halls", note: "Compare halls by city, guests and price, then ask for a quote." },
       ]
     : [
-        { href: guidePath(expenses.slug, "ta"), label: expenses.ta.heading, note: expenses.ta.card },
+        { href: guidePath(expenses.slug, "ta"), label: guideText(expenses, "ta").heading, note: guideText(expenses, "ta").card },
         { href: "/halls", label: "மண்டபங்களைப் பார்க்க", note: "நகரம், விருந்தினர், விலை வாரியாக மண்டபங்களை ஒப்பிட்டு, விலைப்புள்ளி கேளுங்கள்." },
       ];
 }

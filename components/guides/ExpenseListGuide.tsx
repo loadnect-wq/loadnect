@@ -19,7 +19,7 @@ import { Calculator, ClipboardList } from "lucide-react";
 import { PLAN_CATEGORIES, type PlanCategory } from "@/lib/plan";
 import { HALL_GST_PERCENT } from "@/lib/budget";
 import { BUDGET_PATH } from "@/lib/family-tools";
-import { guideBySlug, guidePath, type GuideLang } from "@/lib/guides";
+import { guideBySlug, guidePath, guideText, type GuideLang } from "@/lib/guides";
 import { MUHURTHAM_PATH } from "@/components/muhurtham/MuhurthamPage";
 import { GuideSection, GuideShell, type GuideFaq, type RelatedLink } from "./GuideShell";
 
@@ -190,7 +190,7 @@ function related(lang: GuideLang): RelatedLink[] {
         { href: MUHURTHAM_PATH.en, label: "Muhurtham dates", note: "Tamil wedding dates for the year ahead, with how many halls are already booked on each." },
       ]
     : [
-        { href: guidePath(advance.slug, "ta"), label: advance.ta.heading, note: advance.ta.card },
+        { href: guidePath(advance.slug, "ta"), label: guideText(advance, "ta").heading, note: guideText(advance, "ta").card },
         { href: MUHURTHAM_PATH.ta, label: "முகூர்த்த நாட்கள்", note: "வரும் ஆண்டின் திருமண முகூர்த்த நாட்கள், ஒவ்வொரு நாளிலும் ஏற்கனவே முன்பதிவான மண்டபங்களுடன்." },
       ];
 }

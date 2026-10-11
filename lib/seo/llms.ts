@@ -18,7 +18,7 @@
 import { formatHallPrice, isLeadGeneration } from "@/lib/booking-mode";
 import { FAMILY_TOOLS, TOOLS_PATH } from "@/lib/family-tools";
 import { hallnectDefinition } from "./definition";
-import { GUIDES, GUIDES_PATH, guidePath } from "@/lib/guides";
+import { GUIDES, GUIDES_PATH, guideIndexable, guidePath } from "@/lib/guides";
 
 export type LlmsVenue = {
   name: string;
@@ -124,7 +124,7 @@ export function buildLlmsTxt(input: LlmsInput): string {
   lines.push("## Guides", "");
   for (const g of GUIDES) {
     lines.push(`- [${g.en.heading}](${u(guidePath(g.slug, "en"))}): ${g.en.card}`);
-    if (g.taReviewed) lines.push(`- [${g.en.heading}, in Tamil](${u(guidePath(g.slug, "ta"))})`);
+    if (guideIndexable(g, "ta")) lines.push(`- [${g.en.heading}, in Tamil](${u(guidePath(g.slug, "ta"))})`);
   }
   lines.push(`- [All guides](${u(GUIDES_PATH.en)})`, "");
 

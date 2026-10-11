@@ -605,6 +605,35 @@ html:not(.is-scrolled) .hallnect-header--over-hero .hallnect-nav-outline:hover {
   }
 }
 
+/* The booking receipt template (components/guides/ReceiptTemplate.tsx).
+   Printing that page prints the receipt alone: no header, footer, form or
+   chat button. Scoped with :has() to a page that HAS a receipt, so every other
+   page prints exactly as before.
+
+   `display: none` on everything that is neither the receipt, inside it, nor
+   one of its containers. NOT `visibility: hidden`: that keeps the hidden
+   page's height, and the receipt came out followed by three blank pages. */
+@media print {
+  body:has(.receipt-print) { background: #fff; }
+  body:has(.receipt-print) *:not(:has(.receipt-print)):not(.receipt-print):not(.receipt-print *) {
+    display: none !important;
+  }
+  body:has(.receipt-print) :has(> .receipt-print),
+  body:has(.receipt-print) :has(.receipt-print) {
+    margin: 0 !important;
+    padding: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    min-height: 0 !important;
+    /* .container-app is phone-width (max-w-lg); on paper the receipt takes the page. */
+    max-width: none !important;
+  }
+  body:has(.receipt-print) .receipt-print {
+    box-shadow: none;
+    --tw-ring-shadow: 0 0 #0000;
+  }
+}
+
 /* Hero copy over video. Paired with the light vignette in HeroVideo.tsx: the
    vignette does the measurable contrast work, this carries the edge cases the
    95th percentile does not — a lantern passing directly behind a thin stroke.

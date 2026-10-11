@@ -10,6 +10,7 @@ import {
   guideIndexable,
   guideLanguageAlternates,
   guidePath,
+  guideText,
   guidesIndexIndexable,
   type Guide,
 } from "../guides";
@@ -30,6 +31,19 @@ import {
 import { ADVANCE_QUESTIONS, HallAdvanceGuide, advanceFaqs, refundRows } from "@/components/guides/HallAdvanceGuide";
 import { GuidesIndex, guidesIndexCards } from "@/components/guides/GuidesIndex";
 import { thisMonthMuhurtham } from "@/components/muhurtham/MuhurthamPage";
+import {
+  HallCostGuide,
+  MIN_HALLS_FOR_CITY_PRICES,
+  cityPriceRanges,
+  costFaqs,
+  type CityPriceRow,
+} from "@/components/guides/HallCostGuide";
+import { PARTY_FAQS, PartyHallGuide } from "@/components/guides/PartyHallGuide";
+import { RECEIPT_FAQS, ReceiptGuide } from "@/components/guides/ReceiptGuide";
+import { PAYMENT_MODES, paymentModeText, receiptAmounts, receiptDate } from "@/components/guides/ReceiptTemplate";
+import { existsSync } from "node:fs";
+import type { ReactElement } from "react";
+import type { GuideLang } from "../guides";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // The planning guides (2026-10-11): /guides, two guides in English and Tamil,
@@ -50,10 +64,22 @@ const jsonLdNodes = (html: string) =>
     return d["@graph"] ?? [d];
   });
 
-const renders = [
-  { name: "expense list", slug: "wedding-expense-list", comp: ExpenseListGuide, faqs: expenseFaqs },
-  { name: "hall advance", slug: "before-you-pay-a-hall-advance", comp: HallAdvanceGuide, faqs: advanceFaqs },
-] as const;
+const SAMPLE_ROWS: CityPriceRow[] = [{ city: "Madurai", slug: "madurai", halls: 3, from: 90_000, to: 2_10_000 }];
+
+/** Every guide page, rendered the way its route renders it, in each language it has. */
+const renders: {
+  name: string;
+  slug: string;
+  langs: readonly GuideLang[];
+  render: (lang: GuideLang) => ReactElement;
+  faqs: (lang: GuideLang) => { q: string; a: string }[];
+}[] = [
+  { name: "expense list", slug: "wedding-expense-list", langs: ["en", "ta"], render: (lang) => createElement(ExpenseListGuide, { lang }), faqs: expenseFaqs },
+  { name: "hall advance", slug: "before-you-pay-a-hall-advance", langs: ["en", "ta"], render: (lang) => createElement(HallAdvanceGuide, { lang }), faqs: advanceFaqs },
+  { name: "hall cost", slug: "wedding-hall-cost-tamil-nadu", langs: ["en", "ta"], render: (lang) => createElement(HallCostGuide, { lang, rows: SAMPLE_ROWS, asOf: "2026-10-11" }), faqs: costFaqs },
+  { name: "party hall", slug: "birthday-party-hall", langs: ["en"], render: () => createElement(PartyHallGuide), faqs: () => PARTY_FAQS },
+  { name: "booking receipt", slug: "marriage-hall-booking-receipt", langs: ["en"], render: () => createElement(ReceiptGuide), faqs: () => RECEIPT_FAQS },
+];
 
 describe("the guide list", () => {
   it("has unique slugs, real dates and nothing under /owner (robots.txt blocks that prefix)", () => {
@@ -69,7 +95,7 @@ describe("the guide list", () => {
   });
 
   it("fits every title and description in the space search results give it", () => {
-    const texts = [...GUIDES.flatMap((g) => [g.en, g.ta]), GUIDES_INDEX_TEXT.en, GUIDES_INDEX_TEXT.ta];
+    const texts = [...GUIDES.flatMap((g) => (g.ta ? [g.en, g.ta] : [g.en])), GUIDES_INDEX_TEXT.en, GUIDES_INDEX_TEXT.ta];
     for (const t of texts) {
       expect(renderedTitle(t.title).length, t.title).toBeLessThanOrEqual(TITLE_MAX);
       expect(t.description.length, t.description).toBeLessThanOrEqual(DESCRIPTION_MAX);
@@ -86,9 +112,11 @@ describe("Tamil is indexed only after a native speaker has read it", () => {
       expect(guideIndexable(g, "en")).toBe(true);
       expect(guideIndexable(g, "ta")).toBe(false);
       expect(guideLanguageAlternates(g)).toBeUndefined();
-      const ta = guideMetadata(g.slug, "ta");
-      expect(ta.robots).toEqual({ index: false, follow: true });
-      expect(ta.alternates).toBeUndefined();
+      if (g.ta) {
+        const ta = guideMetadata(g.slug, "ta");
+        expect(ta.robots).toEqual({ index: false, follow: true });
+        expect(ta.alternates).toBeUndefined();
+      }
       const en = guideMetadata(g.slug, "en");
       expect((en.robots as { index: boolean }).index).toBe(true);
       expect(en.alternates?.canonical).toMatch(new RegExp(`${guidePath(g.slug, "en")}$`));
@@ -124,16 +152,24 @@ describe("Tamil is indexed only after a native speaker has read it", () => {
 });
 
 describe("what the pages print is what the markup says", () => {
+  it("every guide in the list is rendered here, in every language it has", () => {
+    expect(renders.map((r) => r.slug).sort()).toEqual(GUIDES.map((g) => g.slug).sort());
+    for (const r of renders) {
+      const g = GUIDES.find((x) => x.slug === r.slug)!;
+      expect([...r.langs], r.slug).toEqual(g.ta ? ["en", "ta"] : ["en"]);
+    }
+  });
+
   for (const r of renders) {
-    for (const lang of ["en", "ta"] as const) {
+    for (const lang of r.langs) {
       it(`${r.name} (${lang}): Article headline is the H1, FAQ markup is the visible FAQ`, () => {
-        const html = renderToStaticMarkup(createElement(r.comp, { lang }));
+        const html = renderToStaticMarkup(r.render(lang));
         const text = visibleText(html);
         const nodes = jsonLdNodes(html);
         const guide = GUIDES.find((g) => g.slug === r.slug)!;
 
         const h1 = decode(html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/)![1].replace(/<[^>]+>/g, "").trim());
-        expect(h1).toBe(guide[lang].heading);
+        expect(h1).toBe(guideText(guide, lang).heading);
         expect((html.match(/<h1\b/g) ?? []).length).toBe(1);
 
         const article = nodes.find((n) => n["@type"] === "Article");
@@ -197,7 +233,7 @@ describe("the hall advance guide", () => {
     expect(ADVANCE_QUESTIONS.ta.length).toBe(12);
     const g = GUIDES.find((x) => x.slug === "before-you-pay-a-hall-advance")!;
     expect(g.en.card).toMatch(/^Twelve /);
-    expect(g.ta.card).toContain("பன்னிரண்டு");
+    expect(guideText(g, "ta").card).toContain("பன்னிரண்டு");
   });
 
   it("prints the refund schedule the checkout applies, row for row", () => {
@@ -218,7 +254,9 @@ describe("the guides index and the links into it", () => {
   it("lists every guide and the muhurtham page, and its markup lists the same", () => {
     const html = renderToStaticMarkup(createElement(GuidesIndex, { lang: "en" }));
     const cards = guidesIndexCards("en");
-    expect(cards.map((c) => c.href)).toEqual([...GUIDES.map((g) => guidePath(g.slug, "en")), "/muhurtham-dates"]);
+    // Families' guides, then the muhurtham page, then the owners' guides.
+    const forWhom = (a: "families" | "owners") => GUIDES.filter((g) => g.audience === a).map((g) => guidePath(g.slug, "en"));
+    expect(cards.map((c) => c.href)).toEqual([...forWhom("families"), "/muhurtham-dates", ...forWhom("owners")]);
     const list = jsonLdNodes(html).find((n) => n["@type"] === "CollectionPage").mainEntity;
     expect(list.numberOfItems).toBe(cards.length);
     for (const c of cards) expect(visibleText(html)).toContain(c.title);
@@ -252,5 +290,135 @@ describe("muhurtham dates this month", () => {
     // December 2027 is the last month the list covers; January 2028 is not
     // "without dates", it has not been checked yet.
     expect(thisMonthMuhurtham("2027-12-01").map((m) => m.month)).toEqual(["2027-12"]);
+  });
+});
+
+// ── The second three (2026-10-11): hall cost, party halls, booking receipt ──
+
+describe("English-only guides have no Tamil page and no link to one", () => {
+  for (const g of GUIDES.filter((x) => x.ta === null)) {
+    it(g.slug, () => {
+      expect(existsSync(join(root, `app/ta/guides/${g.slug}/page.tsx`))).toBe(false);
+      expect(guideIndexable(g, "ta")).toBe(false);
+      expect(guideLanguageAlternates(g)).toBeUndefined();
+      const r = renders.find((x) => x.slug === g.slug)!;
+      const html = renderToStaticMarkup(r.render("en"));
+      expect(html).not.toContain(`/ta/guides/${g.slug}`);
+      expect(html).not.toContain("தமிழில் படிக்க");
+    });
+  }
+
+  it("and every guide that has Tamil has its Tamil route", () => {
+    for (const g of GUIDES.filter((x) => x.ta !== null)) {
+      expect(existsSync(join(root, `app/ta/guides/${g.slug}/page.tsx`)), g.slug).toBe(true);
+    }
+  });
+
+  it("the Tamil index lists only Tamil guides; the English one groups owners apart", () => {
+    const ta = guidesIndexCards("ta").map((c) => c.href);
+    expect(ta.every((h) => h.startsWith("/ta/"))).toBe(true);
+    expect(ta).not.toContain("/ta/guides/birthday-party-hall");
+    const en = guidesIndexCards("en");
+    expect(en.at(-1)?.audience).toBe("owners");
+    expect(en.filter((c) => c.audience === "owners").map((c) => c.href)).toEqual(["/guides/marriage-hall-booking-receipt"]);
+    const html = renderToStaticMarkup(createElement(GuidesIndex, { lang: "en" }));
+    expect(visibleText(html)).toContain("For hall owners");
+  });
+});
+
+describe("hall cost: only listed prices, only from three halls", () => {
+  const hall = (city: string, price_per_day: number | null) => ({ city, price_per_day });
+
+  it("gives a city a range only once three of its halls list a price", () => {
+    expect(MIN_HALLS_FOR_CITY_PRICES).toBe(3);
+    const halls = [
+      hall("Madurai", 1_60_000), hall("Madurai", 90_000), hall("Madurai", 2_10_000), hall("Madurai", null),
+      hall("Chennai", 3_00_000), hall("Chennai", 2_50_000),
+    ];
+    expect(cityPriceRanges(halls)).toEqual([{ city: "Madurai", slug: "madurai", halls: 3, from: 90_000, to: 2_10_000 }]);
+  });
+
+  it("never counts a price on request, a zero or a hall without a city", () => {
+    expect(cityPriceRanges([hall("Salem", null), hall("Salem", 0), hall("Salem", 50_000), hall("", 1), hall("", 2), hall("", 3)])).toEqual([]);
+  });
+
+  it("with no city qualifying, the page states no figure at all", () => {
+    for (const lang of ["en", "ta"] as const) {
+      const text = visibleText(renderToStaticMarkup(createElement(HallCostGuide, { lang, rows: [], asOf: "2026-10-11" })));
+      expect(text, lang).not.toMatch(/₹\s?\d/);
+    }
+    const en = visibleText(renderToStaticMarkup(createElement(HallCostGuide, { lang: "en", rows: [], asOf: "2026-10-11" })));
+    expect(en).toContain("No city has 3 halls with a listed price on Hallnect yet");
+  });
+
+  it("with rows, prints the listed range, dated, linking each city page", () => {
+    const html = renderToStaticMarkup(createElement(HallCostGuide, { lang: "en", rows: SAMPLE_ROWS, asOf: "2026-10-11" }));
+    const text = visibleText(html);
+    expect(text).toContain("₹90,000");
+    expect(text).toContain("₹2,10,000");
+    expect(text).toContain("as listed on Hallnect on Sun, 11 Oct 2026");
+    expect(html).toContain('href="/wedding-halls/madurai"');
+    const ta = renderToStaticMarkup(createElement(HallCostGuide, { lang: "ta", rows: SAMPLE_ROWS, asOf: "2026-10-11" }));
+    expect(ta).toContain('href="/ta/wedding-halls/madurai"');
+  });
+
+  it("reads approved halls only, and throws rather than reporting an empty catalogue", () => {
+    const src = read("lib/guides.server.ts");
+    expect(src).toContain('.eq("status", "approved")');
+    expect(src).toContain("throw new Error(");
+    for (const f of ["app/guides/wedding-hall-cost-tamil-nadu/page.tsx", "app/ta/guides/wedding-hall-cost-tamil-nadu/page.tsx"]) {
+      expect(read(f), f).toContain("export const revalidate = 3600;");
+      expect(read(f), f).toContain("fetchListedPricesStrict()");
+    }
+  });
+});
+
+describe("party halls: what Hallnect can say, and no more", () => {
+  it("never promises a slot picker the enquiry form does not have", () => {
+    const text = visibleText(renderToStaticMarkup(createElement(PartyHallGuide)));
+    expect(text).toContain("say the time you need in your message");
+    expect(text).not.toMatch(/choose (a|your|the) slot|pick (a|your|the) slot|select (a|your|the) slot/i);
+    expect(text).not.toMatch(/₹\s?\d/);
+  });
+});
+
+describe("the booking receipt template", () => {
+  it("reads amounts the way people write them, and works out the balance", () => {
+    expect(receiptAmounts("1,60,000", "50,000")).toEqual({ total: 1_60_000, advance: 50_000, balance: 1_10_000, problem: null });
+    expect(receiptAmounts("₹ 2,00,000", "")).toEqual({ total: 2_00_000, advance: null, balance: null, problem: null });
+    expect(receiptAmounts("", "")).toEqual({ total: null, advance: null, balance: null, problem: null });
+  });
+
+  it("says what is wrong instead of printing a wrong number", () => {
+    expect(receiptAmounts("50,000", "60,000").problem).toBe("The advance is more than the agreed price.");
+    expect(receiptAmounts("fifty", "").problem).toMatch(/agreed price in digits/);
+    expect(receiptAmounts("1,00,000", "abc").problem).toMatch(/advance in digits/);
+  });
+
+  it("prints dates the way a receipt states them", () => {
+    expect(receiptDate("2026-10-25")).toBe("25 October 2026");
+    expect(receiptDate("not a date")).toBe("");
+  });
+
+  it("says how it was paid in ordinary words, keeping UPI in capitals", () => {
+    expect(PAYMENT_MODES.map(paymentModeText)).toEqual(["cash", "UPI", "bank transfer", "cheque"]);
+  });
+
+  it("keeps everything in the browser: no network, no storage, no server action", () => {
+    const src = read("components/guides/ReceiptTemplate.tsx").replace(/\/\/[^\n]*/g, "");
+    for (const banned of ["fetch(", "localStorage", "sessionStorage", "indexedDB", "use server", "navigator.sendBeacon", "XMLHttpRequest"]) {
+      expect(src, banned).not.toContain(banned);
+    }
+    expect(src).toContain('"use client"');
+  });
+
+  it("prints the receipt alone, and only on a page that has one", () => {
+    const css = read("app/globals.css");
+    // display:none, not visibility:hidden — the latter kept the page's height
+    // and printed three blank pages after the receipt.
+    expect(css).toContain("body:has(.receipt-print) *:not(:has(.receipt-print)):not(.receipt-print):not(.receipt-print *)");
+    expect(css).not.toMatch(/body:has\(\.receipt-print\) \* \{ visibility: hidden/);
+    expect(css).not.toMatch(/\n\s*body \* \{/);
+    expect(read("components/guides/ReceiptTemplate.tsx")).toContain('className="receipt-print');
   });
 });

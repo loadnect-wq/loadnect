@@ -9,7 +9,7 @@ import { ArrowRight, CalendarHeart, Languages } from "lucide-react";
 import { JsonLd } from "@/components/seo/JsonLd";
 import { breadcrumbJsonLd, jsonLdGraph, WEBSITE_ID } from "@/lib/seo/jsonld";
 import { absoluteUrl } from "@/lib/seo/config";
-import { GUIDES, GUIDES_INDEX_TEXT, GUIDES_PATH, guidePath, type GuideLang } from "@/lib/guides";
+import { GUIDES_INDEX_TEXT, GUIDES_PATH, guidePath, guideText, guidesIn, type GuideLang } from "@/lib/guides";
 import { MUHURTHAM_PATH } from "@/components/muhurtham/MuhurthamPage";
 
 const T = {
@@ -20,6 +20,7 @@ const T = {
     muhurthamNote: "This month's Tamil wedding dates and the year ahead, with how many halls are already booked on each.",
     switchLabel: "தமிழில் படிக்க",
     switchLang: "ta" as const,
+    groups: { families: "For families", owners: "For hall owners" },
   },
   ta: {
     home: "முகப்பு",
@@ -28,13 +29,25 @@ const T = {
     muhurthamNote: "இந்த மாதமும் வரும் ஆண்டும் திருமண முகூர்த்த நாட்கள், ஒவ்வொரு நாளிலும் ஏற்கனவே முன்பதிவான மண்டபங்களுடன்.",
     switchLabel: "Read in English",
     switchLang: "en" as const,
+    groups: { families: "குடும்பங்களுக்கு", owners: "மண்டப உரிமையாளர்களுக்கு" },
   },
 } as const;
 
-export function guidesIndexCards(lang: GuideLang) {
+type Audience = "families" | "owners";
+type Card = { href: string; title: string; note: string; audience: Audience };
+
+/** Every card, in the order the page shows them: families' guides and the muhurtham page, then owners'. */
+export function guidesIndexCards(lang: GuideLang): Card[] {
+  const guides = guidesIn(lang).map((g) => ({
+    href: guidePath(g.slug, lang),
+    title: guideText(g, lang).heading,
+    note: guideText(g, lang).card,
+    audience: g.audience,
+  }));
   return [
-    ...GUIDES.map((g) => ({ href: guidePath(g.slug, lang), title: g[lang].heading, note: g[lang].card })),
-    { href: MUHURTHAM_PATH[lang], title: T[lang].muhurtham, note: T[lang].muhurthamNote },
+    ...guides.filter((c) => c.audience === "families"),
+    { href: MUHURTHAM_PATH[lang], title: T[lang].muhurtham, note: T[lang].muhurthamNote, audience: "families" as const },
+    ...guides.filter((c) => c.audience === "owners"),
   ];
 }
 
@@ -99,23 +112,32 @@ export function GuidesIndex({ lang }: { lang: GuideLang }) {
       </h1>
       <p className="mt-3 text-base leading-relaxed text-charcoal-800">{text.lead}</p>
 
-      <ul className="mt-6 grid gap-3">
-        {cards.map((c) => (
-          <li key={c.href}>
-            <Link
-              href={c.href}
-              className="group flex items-start gap-3 rounded-2xl bg-white p-5 shadow-card ring-1 ring-border transition-colors hover:ring-maroon-300"
-            >
-              {c.href === MUHURTHAM_PATH[lang] && <CalendarHeart className="mt-0.5 h-5 w-5 shrink-0 text-maroon-600" aria-hidden />}
-              <span className="min-w-0 flex-1">
-                <span className="block text-base font-bold text-charcoal-900">{c.title}</span>
-                <span className="mt-1 block text-sm leading-relaxed text-charcoal-700">{c.note}</span>
-              </span>
-              <ArrowRight className="mt-1 h-4 w-4 shrink-0 text-maroon-600 transition-transform group-hover:translate-x-0.5" aria-hidden />
-            </Link>
-          </li>
-        ))}
-      </ul>
+      {(["families", "owners"] as const).map((audience) => {
+        const group = cards.filter((c) => c.audience === audience);
+        if (group.length === 0) return null;
+        return (
+          <section key={audience} aria-labelledby={`guides-${audience}`} className="mt-8">
+            <h2 id={`guides-${audience}`} className="text-lg font-bold text-charcoal-900">{t.groups[audience]}</h2>
+            <ul className="mt-3 grid gap-3">
+              {group.map((c) => (
+                <li key={c.href}>
+                  <Link
+                    href={c.href}
+                    className="group flex items-start gap-3 rounded-2xl bg-white p-5 shadow-card ring-1 ring-border transition-colors hover:ring-maroon-300"
+                  >
+                    {c.href === MUHURTHAM_PATH[lang] && <CalendarHeart className="mt-0.5 h-5 w-5 shrink-0 text-maroon-600" aria-hidden />}
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-base font-bold text-charcoal-900">{c.title}</span>
+                      <span className="mt-1 block text-sm leading-relaxed text-charcoal-700">{c.note}</span>
+                    </span>
+                    <ArrowRight className="mt-1 h-4 w-4 shrink-0 text-maroon-600 transition-transform group-hover:translate-x-0.5" aria-hidden />
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </section>
+        );
+      })}
     </div>
   );
 }

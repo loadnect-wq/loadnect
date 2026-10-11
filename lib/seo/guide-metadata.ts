@@ -14,6 +14,7 @@ import {
   guideIndexable,
   guideLanguageAlternates,
   guidePath,
+  guideText,
   guidesIndexIndexable,
   guidesIndexLanguageAlternates,
   type GuideLang,
@@ -21,9 +22,10 @@ import {
 
 export function guideMetadata(slug: string, lang: GuideLang): Metadata {
   const g = guideBySlug(slug);
+  const text = guideText(g, lang);
   return buildMetadata({
-    title: g[lang].title,
-    description: g[lang].description,
+    title: text.title,
+    description: text.description,
     path: guidePath(slug, lang),
     type: "article",
     indexable: guideIndexable(g, lang),
