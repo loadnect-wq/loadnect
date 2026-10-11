@@ -1,0 +1,121 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// /guides and /ta/guides — the list of planning guides (lib/guides.ts), plus
+// the muhurtham dates page, which is the "this month" guide in all but name.
+// The CollectionPage markup lists exactly the cards the page shows.
+// ─────────────────────────────────────────────────────────────────────────────
+
+import Link from "next/link";
+import { ArrowRight, CalendarHeart, Languages } from "lucide-react";
+import { JsonLd } from "@/components/seo/JsonLd";
+import { breadcrumbJsonLd, jsonLdGraph, WEBSITE_ID } from "@/lib/seo/jsonld";
+import { absoluteUrl } from "@/lib/seo/config";
+import { GUIDES, GUIDES_INDEX_TEXT, GUIDES_PATH, guidePath, type GuideLang } from "@/lib/guides";
+import { MUHURTHAM_PATH } from "@/components/muhurtham/MuhurthamPage";
+
+const T = {
+  en: {
+    home: "Home",
+    crumbLabel: "Breadcrumb",
+    muhurtham: "Muhurtham dates this month",
+    muhurthamNote: "This month's Tamil wedding dates and the year ahead, with how many halls are already booked on each.",
+    switchLabel: "தமிழில் படிக்க",
+    switchLang: "ta" as const,
+  },
+  ta: {
+    home: "முகப்பு",
+    crumbLabel: "வழிச்சுவடு",
+    muhurtham: "இந்த மாத முகூர்த்த நாட்கள்",
+    muhurthamNote: "இந்த மாதமும் வரும் ஆண்டும் திருமண முகூர்த்த நாட்கள், ஒவ்வொரு நாளிலும் ஏற்கனவே முன்பதிவான மண்டபங்களுடன்.",
+    switchLabel: "Read in English",
+    switchLang: "en" as const,
+  },
+} as const;
+
+export function guidesIndexCards(lang: GuideLang) {
+  return [
+    ...GUIDES.map((g) => ({ href: guidePath(g.slug, lang), title: g[lang].heading, note: g[lang].card })),
+    { href: MUHURTHAM_PATH[lang], title: T[lang].muhurtham, note: T[lang].muhurthamNote },
+  ];
+}
+
+export function GuidesIndex({ lang }: { lang: GuideLang }) {
+  const t = T[lang];
+  const text = GUIDES_INDEX_TEXT[lang];
+  const path = GUIDES_PATH[lang];
+  const url = absoluteUrl(path);
+  const cards = guidesIndexCards(lang);
+
+  return (
+    <div className="container-app max-w-3xl pb-16 pt-3 lg:pt-8">
+      <JsonLd
+        data={jsonLdGraph(
+          {
+            "@type": "CollectionPage",
+            "@id": `${url}#collection`,
+            url,
+            name: text.heading,
+            description: text.description,
+            inLanguage: lang === "ta" ? "ta-IN" : "en-IN",
+            isPartOf: { "@id": WEBSITE_ID },
+            mainEntity: {
+              "@type": "ItemList",
+              numberOfItems: cards.length,
+              itemListElement: cards.map((c, i) => ({
+                "@type": "ListItem",
+                position: i + 1,
+                name: c.title,
+                url: absoluteUrl(c.href),
+              })),
+            },
+          },
+          breadcrumbJsonLd([
+            { name: t.home, path: "/" },
+            { name: text.heading, path },
+          ]),
+        )}
+      />
+
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <nav aria-label={t.crumbLabel}>
+          <ol className="flex flex-wrap items-center gap-1 text-xs text-charcoal-600">
+            <li><Link href="/" className="hover:text-maroon-700">{t.home}</Link></li>
+            <li aria-hidden="true">/</li>
+            <li className="font-medium text-charcoal-800" aria-current="page">{text.heading}</li>
+          </ol>
+        </nav>
+        <Link
+          href={GUIDES_PATH[t.switchLang]}
+          hrefLang={t.switchLang === "ta" ? "ta-IN" : "en-IN"}
+          lang={t.switchLang}
+          className="inline-flex min-h-[44px] items-center gap-1.5 text-xs font-semibold text-maroon-700 hover:underline"
+        >
+          <Languages className="h-3.5 w-3.5" aria-hidden />
+          {t.switchLabel}
+        </Link>
+      </div>
+
+      <h1 className={`mt-1 text-2xl font-bold leading-snug text-charcoal-900 lg:text-3xl ${lang === "en" ? "font-serif" : ""}`}>
+        {text.heading}
+      </h1>
+      <p className="mt-3 text-base leading-relaxed text-charcoal-800">{text.lead}</p>
+
+      <ul className="mt-6 grid gap-3">
+        {cards.map((c) => (
+          <li key={c.href}>
+            <Link
+              href={c.href}
+              className="group flex items-start gap-3 rounded-2xl bg-white p-5 shadow-card ring-1 ring-border transition-colors hover:ring-maroon-300"
+            >
+              {c.href === MUHURTHAM_PATH[lang] && <CalendarHeart className="mt-0.5 h-5 w-5 shrink-0 text-maroon-600" aria-hidden />}
+              <span className="min-w-0 flex-1">
+                <span className="block text-base font-bold text-charcoal-900">{c.title}</span>
+                <span className="mt-1 block text-sm leading-relaxed text-charcoal-700">{c.note}</span>
+              </span>
+              <ArrowRight className="mt-1 h-4 w-4 shrink-0 text-maroon-600 transition-transform group-hover:translate-x-0.5" aria-hidden />
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}

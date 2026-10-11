@@ -18,6 +18,7 @@ import { breadcrumbJsonLd, jsonLdGraph } from "@/lib/seo/jsonld";
 import { TOOLS_PATH } from "@/lib/family-tools";
 import { todayInBusinessTz } from "@/lib/dates";
 import { nextMuhurthamDates } from "@/lib/muhurtham";
+import { GUIDES, GUIDES_PATH, guidePath } from "@/lib/guides";
 
 export const revalidate = 600;
 
@@ -73,6 +74,27 @@ export default function ToolsPage() {
             முகூர்த்த நாட்கள்
           </Link>
         </p>
+
+        {/* The guides that go with the tools (lib/guides.ts). */}
+        <section aria-labelledby="tools-guides" className="mt-10">
+          <h2 id="tools-guides" className="font-serif text-xl font-bold text-charcoal-900">Guides for the planning</h2>
+          <ul className="mt-3 grid gap-3 sm:grid-cols-2">
+            {GUIDES.map((g) => (
+              <li key={g.slug}>
+                <Link
+                  href={guidePath(g.slug, "en")}
+                  className="flex h-full flex-col rounded-2xl bg-white p-4 shadow-card ring-1 ring-border transition-colors hover:ring-maroon-300"
+                >
+                  <span className="text-sm font-semibold text-charcoal-900">{g.en.heading}</span>
+                  <span className="mt-1 text-xs leading-relaxed text-charcoal-600">{g.en.card}</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+          <Link href={GUIDES_PATH.en} className="mt-3 inline-flex min-h-[44px] items-center text-sm font-semibold text-maroon-700 hover:underline">
+            All guides →
+          </Link>
+        </section>
       </div>
     </div>
   );

@@ -18,6 +18,7 @@
 import { formatHallPrice, isLeadGeneration } from "@/lib/booking-mode";
 import { FAMILY_TOOLS, TOOLS_PATH } from "@/lib/family-tools";
 import { hallnectDefinition } from "./definition";
+import { GUIDES, GUIDES_PATH, guidePath } from "@/lib/guides";
 
 export type LlmsVenue = {
   name: string;
@@ -117,6 +118,15 @@ export function buildLlmsTxt(input: LlmsInput): string {
   }
   lines.push(`- [Muhurtham dates, in Tamil](${u("/ta/muhurtham-dates")})`);
   lines.push(`- [All planning tools](${u(TOOLS_PATH)})`, "");
+
+  // The English guides only: a Tamil twin is listed once a native speaker has
+  // checked it, the same gate as the sitemap (lib/guides.ts).
+  lines.push("## Guides", "");
+  for (const g of GUIDES) {
+    lines.push(`- [${g.en.heading}](${u(guidePath(g.slug, "en"))}): ${g.en.card}`);
+    if (g.taReviewed) lines.push(`- [${g.en.heading}, in Tamil](${u(guidePath(g.slug, "ta"))})`);
+  }
+  lines.push(`- [All guides](${u(GUIDES_PATH.en)})`, "");
 
   lines.push("## For venue owners", "");
   lines.push(`- [List your hall](${u("/owner/register")}): free listing, and how quotes, bookings and the commission work`);

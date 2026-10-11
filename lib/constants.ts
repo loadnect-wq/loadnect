@@ -138,6 +138,7 @@ export const FOOTER_LINKS = {
     { label: "Budget Calculator",   href: "/budget" },
     { label: "Shortlist & Compare", href: "/saved" },
     { label: "Function Planner",    href: "/plan" },
+    { label: "Planning Guides",     href: "/guides" },
     { label: "All Planning Tools",  href: "/tools" },
   ],
   support: [

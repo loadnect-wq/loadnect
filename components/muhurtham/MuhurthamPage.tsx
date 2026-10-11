@@ -22,6 +22,7 @@ import Link from "next/link";
 import { CalendarHeart, Languages, Search } from "lucide-react";
 import {
   MUHURTHAM_CHECKED,
+  MUHURTHAM_COVERAGE_END,
   busiestMonth,
   countInYear,
   groupByMonth,
@@ -71,6 +72,31 @@ export function muhurthamMeta(lang: DiaryLang, today: string): { title: string; 
   };
 }
 
+/** "2026-10" → "2026-11"; "2026-12" → "2027-01". */
+function nextMonthKey(key: string): string {
+  const [y, m] = key.split("-").map(Number);
+  return m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, "0")}`;
+}
+
+/**
+ * "Muhurtham dates this month" — the search phrased that way in both languages
+ * ("muhurtham dates 2026 this month", "முகூர்த்த நாள் இந்த மாதம்"). The dates
+ * still to come in the current month, and every date in the next one, from
+ * the same list as the rest of the page. The page revalidates every ten
+ * minutes, so the months roll over on their own.
+ */
+export function thisMonthMuhurtham(today: string): { month: string; dates: string[] }[] {
+  const months = groupByMonth(upcomingMuhurthamDates(today));
+  const current = today.slice(0, 7);
+  const next = nextMonthKey(current);
+  // Past the end of the checked list a month is not "without dates", it is
+  // unchecked — so it is left out rather than reported as empty.
+  const lastCovered = MUHURTHAM_COVERAGE_END.slice(0, 7);
+  return [current, next]
+    .filter((month) => month <= lastCovered)
+    .map((month) => ({ month, dates: months.get(month) ?? [] }));
+}
+
 function daysBetween(fromIso: string, toIso: string): number {
   const [a, b] = [fromIso, toIso].map((d) => {
     const [y, m, day] = d.split("-").map(Number);
@@ -105,6 +131,9 @@ const T = {
     switchLabel: "தமிழில் படிக்க",
     switchLang: "ta" as const,
     empty: "New muhurtham dates are added as each year's calendars are published. Please check back soon.",
+    thisMonthTitle: "Muhurtham dates this month",
+    noneLeft: (month: string) => `No more muhurtham dates in ${month}.`,
+    noneInMonth: (month: string) => `No muhurtham dates in ${month}.`,
   },
   ta: {
     home: "முகப்பு",
@@ -131,6 +160,9 @@ const T = {
     switchLabel: "Read in English",
     switchLang: "en" as const,
     empty: "ஒவ்வொரு ஆண்டின் நாட்காட்டிகளும் வெளியானதும் புதிய முகூர்த்த நாட்கள் சேர்க்கப்படும்.",
+    thisMonthTitle: "இந்த மாத முகூர்த்த நாட்கள்",
+    noneLeft: (month: string) => `${month}-இல் இனி முகூர்த்த நாட்கள் இல்லை.`,
+    noneInMonth: (month: string) => `${month}-இல் முகூர்த்த நாட்கள் இல்லை.`,
   },
 } as const;
 
@@ -280,6 +312,38 @@ export function MuhurthamPage({
           {bookings && bookings.listedHalls > 0 && (
             <p className="mt-3 text-xs leading-relaxed text-charcoal-600">{t.countsNote}</p>
           )}
+
+          {/* ── This month, and next ─────────────────────────────────────
+              The answer to "muhurtham dates this month", above the full list:
+              the dates still to come this month, then next month's. */}
+          <section aria-labelledby="this-month" className="mt-5 rounded-2xl bg-white p-4 shadow-card">
+            <h2 id="this-month" className="text-base font-bold text-charcoal-900">{t.thisMonthTitle}</h2>
+            <div className="mt-2 space-y-3">
+              {thisMonthMuhurtham(today).map(({ month, dates: ds }, i) => (
+                <div key={month}>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-charcoal-600">{formatMonthTitle(lang, month)}</p>
+                  {ds.length === 0 ? (
+                    <p className="mt-1 text-sm text-charcoal-700">
+                      {i === 0 ? t.noneLeft(formatMonthTitle(lang, month)) : t.noneInMonth(formatMonthTitle(lang, month))}
+                    </p>
+                  ) : (
+                    <ul className="mt-1.5 flex flex-wrap gap-2">
+                      {ds.map((d) => (
+                        <li key={d}>
+                          <Link
+                            href={`/halls?date=${d}`}
+                            className="inline-flex min-h-[40px] items-center rounded-full bg-maroon-50 px-3.5 text-xs font-semibold text-maroon-800 ring-1 ring-maroon-100 hover:ring-maroon-300"
+                          >
+                            {formatDiaryDay(lang, d)}
+                          </Link>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              ))}
+            </div>
+          </section>
 
           {/* ── Jump to a month ──────────────────────────────────────────
               Seventy dates in one column is a long scroll on a phone to reach

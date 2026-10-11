@@ -28,6 +28,44 @@ import {
   MIN_VENUES_FOR_CATEGORY_INDEX,
 } from "@/lib/venue-categories.server";
 import { legalLastModified } from "@/lib/content";
+import {
+  GUIDES,
+  GUIDES_PATH,
+  guideIndexable,
+  guideLanguageAlternates,
+  guidePath,
+  guidesIndexIndexable,
+  guidesIndexLanguageAlternates,
+} from "@/lib/guides";
+
+const absoluteLanguages = (map: Record<string, string> | undefined) =>
+  map ? { alternates: { languages: Object.fromEntries(Object.entries(map).map(([l, p]) => [l, absoluteUrl(p)])) } } : {};
+
+/** The guides index and every guide, in each language that is meant for search. */
+function guideSitemapEntries(): MetadataRoute.Sitemap {
+  const newest = GUIDES.map((g) => g.updated).sort().at(-1);
+  const index = (["en", "ta"] as const)
+    .filter((lang) => guidesIndexIndexable(lang))
+    .map((lang) => ({
+      url: absoluteUrl(GUIDES_PATH[lang]),
+      ...(newest ? { lastModified: new Date(`${newest}T00:00:00Z`) } : {}),
+      changeFrequency: "monthly" as const,
+      priority: 0.6,
+      ...absoluteLanguages(guidesIndexLanguageAlternates()),
+    }));
+  const guides = GUIDES.flatMap((g) =>
+    (["en", "ta"] as const)
+      .filter((lang) => guideIndexable(g, lang))
+      .map((lang) => ({
+        url: absoluteUrl(guidePath(g.slug, lang)),
+        lastModified: new Date(`${g.updated}T00:00:00Z`),
+        changeFrequency: "monthly" as const,
+        priority: 0.6,
+        ...absoluteLanguages(guideLanguageAlternates(g)),
+      })),
+  );
+  return [...index, ...guides];
+}
 
 // Always reflect current inventory: a hall approved an hour ago should be
 // discoverable today, not at the next deploy.
@@ -115,6 +153,11 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     // pages with no honest date of their own, so no lastmod (see above).
     { url: absoluteUrl("/tools"), changeFrequency: "monthly", priority: 0.6 },
     { url: absoluteUrl("/budget"), changeFrequency: "monthly", priority: 0.6 },
+    // The planning guides (lib/guides.ts), dated by when their TEXT last
+    // changed. A Tamil twin is listed only once a native speaker has checked
+    // it: until then it is noindex, and a sitemap that lists a noindex page is
+    // one of the four ways it loses Google's trust (see the header).
+    ...guideSitemapEntries(),
     { url: absoluteUrl("/contact"), changeFrequency: "yearly", priority: 0.3 },
     // Legal pages: low priority, but genuine, unique, indexable content that
     // Google likes to see on a marketplace handling payments.

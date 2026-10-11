@@ -332,6 +332,39 @@ export function venueWebPageJsonLd(input: {
   });
 }
 
+/**
+ * A planning guide (lib/guides.ts). Written by Hallnect, so the author IS the
+ * Organization node, by @id — not a person the page does not name. The dates
+ * are the ones the page prints, and the headline is its H1.
+ */
+export function articleJsonLd(input: {
+  path: string;
+  headline: string;
+  description: string;
+  /** "en-IN" or "ta-IN". */
+  inLanguage: string;
+  /** YYYY-MM-DD. */
+  datePublished: string;
+  /** YYYY-MM-DD. */
+  dateModified: string;
+}) {
+  const url = absoluteUrl(input.path);
+  return {
+    "@type": "Article",
+    "@id": `${url}#article`,
+    url,
+    mainEntityOfPage: url,
+    headline: input.headline,
+    description: input.description,
+    inLanguage: input.inLanguage,
+    datePublished: input.datePublished,
+    dateModified: input.dateModified,
+    author: { "@id": ORGANIZATION_ID },
+    publisher: { "@id": ORGANIZATION_ID },
+    isPartOf: { "@id": WEBSITE_ID },
+  };
+}
+
 /** FAQPage — only ever called with Q&As that are ALSO visible on the page. */
 export function faqJsonLd(faqs: { q: string; a: string }[]) {
   return {

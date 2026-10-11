@@ -11,7 +11,8 @@
 //   1. schema.org — every property exists on the node's type (multi-typed
 //      nodes may use any of their types' properties);
 //   2. Google's required fields for the types it reads (BreadcrumbList,
-//      FAQPage, Organization, LocalBusiness, ItemList, AggregateRating);
+//      FAQPage, Organization, LocalBusiness, ItemList, AggregateRating,
+//      Article);
 //   3. the page itself — FAQ questions, breadcrumb names, the price and the
 //      dates the markup states must appear in the page's visible text.
 // Exits 1 if any page has an error. Warnings (recommended-but-absent fields)
@@ -34,6 +35,8 @@ const PROPS = {
   WebSite: ["@id", "url", "name", "inLanguage", "publisher", "potentialAction"],
   WebPage: WEBPAGE,
   CollectionPage: WEBPAGE,
+  // The planning guides (lib/guides.ts). CreativeWork + Article properties.
+  Article: ["@id", "url", "mainEntityOfPage", "headline", "name", "description", "inLanguage", "datePublished", "dateModified", "author", "publisher", "isPartOf", "image", "about", "articleSection"],
   EventVenue: PLACE,
   LocalBusiness: [...PLACE, "priceRange", "openingHours", "email", "logo"],
   BreadcrumbList: ["itemListElement"],
@@ -117,6 +120,18 @@ function checkNode(node, path, out) {
       if (String(node.priceRange).length > 100) out.errors.push(`${path}: priceRange longer than 100 characters`);
       out.mustBeVisible.push(String(node.priceRange).split("–")[0]);
     }
+  }
+  if (types.includes("Article")) {
+    // Google's Article guidance: a headline (it truncates past 110 characters),
+    // dates in ISO 8601, an author; an image is recommended, not required.
+    if (!has("headline")) out.errors.push(`${path}: Article missing headline`);
+    else {
+      if (String(node.headline).length > 110) out.errors.push(`${path}: Article headline longer than 110 characters`);
+      out.mustBeVisible.push(node.headline);
+    }
+    if (has("datePublished") && Number.isNaN(Date.parse(node.datePublished))) out.errors.push(`${path}: datePublished is not a date`);
+    for (const k of ["author", "datePublished"]) if (!has(k)) out.warnings.push(`${path}: Article has no ${k} (recommended)`);
+    if (!has("image")) out.warnings.push(`${path}: Article has no image (recommended, optional)`);
   }
   if (types.includes("PostalAddress")) {
     for (const k of ["streetAddress", "addressLocality", "addressCountry"]) if (!has(k)) out.warnings.push(`${path}: PostalAddress has no ${k}`);

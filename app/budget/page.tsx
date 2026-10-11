@@ -18,6 +18,7 @@ import { buildMetadata } from "@/lib/seo/metadata";
 import { breadcrumbJsonLd, jsonLdGraph } from "@/lib/seo/jsonld";
 import { BUDGET_PATH, TOOLS_PATH } from "@/lib/family-tools";
 import { HALL_GST_PERCENT } from "@/lib/budget";
+import { guidePath } from "@/lib/guides";
 
 export const metadata: Metadata = buildMetadata({
   title: "Wedding & Function Budget Calculator",
@@ -80,6 +81,13 @@ export default function BudgetPage() {
               number if you accept the quote.
             </li>
           </ul>
+          <p className="mt-4 text-sm text-charcoal-700">
+            Not sure what to include? The{" "}
+            <Link href={guidePath("wedding-expense-list", "en")} className="font-semibold text-maroon-700 hover:underline">
+              Tamil wedding expense list
+            </Link>{" "}
+            names every cost and how to get a real price for each.
+          </p>
         </section>
 
         <MoreFamilyTools current="budget" />
