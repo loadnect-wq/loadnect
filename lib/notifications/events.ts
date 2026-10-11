@@ -383,6 +383,20 @@ type LeadContext = {
 };
 
 /**
+ * The "Guests: ___" value in the new-enquiry SMS. Always has words in it.
+ *
+ * HallnectNewLead was registered on DLT (2026-10-11) with this slot tagged
+ * Alphanumeric, and the portal refuses a number-only value for that tag, so
+ * the approved sample is "400 people". A bare "400" would not match the
+ * pattern the operator checks against. "Not specified" covers an enquiry with
+ * no count rather than leaving an empty slot, which operators also drop.
+ */
+export function guestLabel(count: number | null | undefined): string {
+  if (count == null) return "Not specified";
+  return count === 1 ? "1 person" : `${count} people`;
+}
+
+/**
  * Everything needed to notify about one lead, in a single query.
  *
  * Mirrors loadBookingContext, including the two-FK disambiguation on
@@ -416,9 +430,7 @@ async function loadLeadContext(leadId: string): Promise<LeadContext | null> {
     hallId: data.hall_id,
     hallName: sanitizeName(hall.name, "your venue"),
     dateLabel: formatBookingDates(data.event_date, null),
-    // "Not specified" rather than an empty slot: guest_count is optional on an
-    // enquiry, and DLT operators drop messages with empty variables.
-    guestLabel: data.guest_count == null ? "Not specified" : String(data.guest_count),
+    guestLabel: guestLabel(data.guest_count),
     contactName: sanitizeName(data.contact_name, "a customer"),
     contactPhone: data.contact_phone ?? null,
     phoneVerified: Boolean(data.phone_verified),

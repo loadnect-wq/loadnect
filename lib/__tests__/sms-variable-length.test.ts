@@ -71,6 +71,7 @@ import {
   notifyPremiumChanged,
   notifySubscriptionStopped,
   balanceNote,
+  guestLabel,
   type BookingEventKind,
 } from "@/lib/notifications/events";
 import { MAX_VARIABLE_LENGTH, coerceVariables, renderTemplate, type SmsTemplateKey } from "@/lib/notifications/sms-templates";
@@ -159,6 +160,18 @@ describe("every message's fixed wording fits before the clamp", () => {
       expect(balanceNote(paid, total).replace("₹", "Rs.").length).toBeLessThanOrEqual(30);
     }
     expect(balanceNote(25000, 1259567)).toBe("₹12,34,567 due at the venue.");
+  });
+});
+
+describe("the guest count matches the DLT-registered pattern (HallnectNewLead)", () => {
+  // Registered 2026-10-11 with "Guests:" tagged Alphanumeric and the sample
+  // "400 people"; the portal refuses a number-only value for that tag.
+  it("always carries words, never a bare number", () => {
+    expect(guestLabel(400)).toBe("400 people");
+    expect(guestLabel(1)).toBe("1 person");
+    expect(guestLabel(null)).toBe("Not specified");
+    expect(guestLabel(undefined)).toBe("Not specified");
+    for (const n of [0, 1, 50, 2500]) expect(guestLabel(n)).toMatch(/[a-z]/);
   });
 });
 

@@ -29,7 +29,7 @@ const LEAD = {
   hallName: "Sri Meenakshi Mahal",
   contactName: "Priya",
   dateLabel: "12 Jan 2027",
-  guestLabel: "400",
+  guestLabel: "400 people",
   ref: "HN-1A2B3C4D",
 };
 

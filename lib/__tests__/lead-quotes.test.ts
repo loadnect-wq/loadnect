@@ -175,7 +175,7 @@ describe("messages", () => {
   });
 
   it("never put the number in a new-enquiry message", () => {
-    const n = ownerLeadNotification({ hallName: "Sri Mahal", contactName: "Priya", dateLabel: "10 Feb 2027", guestLabel: "400", ref: "HN-1" });
+    const n = ownerLeadNotification({ hallName: "Sri Mahal", contactName: "Priya", dateLabel: "10 Feb 2027", guestLabel: "400 people", ref: "HN-1" });
     expect(JSON.stringify(n.templateVariables)).not.toMatch(/\+91|\d{10}/);
   });
 });
