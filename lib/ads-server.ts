@@ -2,6 +2,7 @@
 // validators/types can be safely imported by client components.
 
 import "server-only";
+import { cache } from "react";
 import { getSupabasePublicClient } from "@/lib/supabase/public";
 import {
   isValidPlacement,
@@ -10,7 +11,25 @@ import {
   type PublicAd,
 } from "@/lib/ads";
 
-export async function fetchActiveAds(
+/**
+ * Start a slot's read before the page reaches the slot (2026-10-10).
+ *
+ * <AdSlot> is an async component, so its query only began once the page above
+ * it had finished its own reads — on /halls a second round trip to Sydney,
+ * after six, before the listing could be revealed (the loading.tsx boundary
+ * waits for everything inside it). A page that calls this first runs the two
+ * side by side; the slot then gets the same promise from React's per-request
+ * cache. Pass exactly the placement and limit the <AdSlot> uses, or the slot
+ * reads again.
+ */
+export function preloadActiveAds(placement: AdPlacement, limit: number): void {
+  // Handled here so a failure is not reported as unhandled before the slot
+  // awaits the same promise and deals with it.
+  fetchActiveAds(placement, limit).catch(() => {});
+}
+
+/** Per-request cache: one read per (placement, limit), however many callers. */
+export const fetchActiveAds = cache(async function fetchActiveAds(
   placement: AdPlacement,
   limit = 4,
 ): Promise<PublicAd[]> {
@@ -69,4 +88,4 @@ export async function fetchActiveAds(
     advertiser_name: row.advertiser_name ? sanitizeAdText(row.advertiser_name, 120) : null,
     placement:       row.placement,
   }));
-}
+});

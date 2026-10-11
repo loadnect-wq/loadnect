@@ -32,6 +32,11 @@ import { isMuhurtham } from "@/lib/muhurtham";
 import { countBookedHalls, pushConfig } from "@/lib/date-alerts.server";
 import { bookedSentence } from "@/lib/date-alerts";
 import { DateAlertCard } from "../_components/DateAlertCard";
+import { preloadActiveAds } from "@/lib/ads-server";
+
+/** The banner above the results. One constant, so the early read below and
+ *  the <AdSlot> cannot drift apart and read twice. */
+const BANNER = { placement: "search_page_banner", limit: 1 } as const;
 
 /**
  * CRAWL-TRAP CONTROL. This route accepts TEN independent query parameters
@@ -126,6 +131,11 @@ export default async function HallsPage({
   searchParams: SearchParams;
 }) {
   const sp = await searchParams;
+  // The banner's read starts now, beside the listing's, instead of after it:
+  // the loading.tsx boundary reveals the cards only once the banner is ready
+  // too, and as an async component <AdSlot> otherwise began its read only once
+  // everything above it had finished.
+  preloadActiveAds(BANNER.placement, BANNER.limit);
   const {
     city     = "",
     area     = "",
@@ -331,7 +341,7 @@ export default async function HallsPage({
 
       {/* ── Sponsored banner ─────────────────────────────────────── */}
       <section className="container-app pt-4 lg:max-w-7xl">
-        <AdSlot placement="search_page_banner" limit={1} />
+        <AdSlot placement={BANNER.placement} limit={BANNER.limit} />
       </section>
 
       {/* ── Results ──────────────────────────────────────────────── */}
