@@ -117,9 +117,9 @@ export async function registerBeneficiary(hallOwnerId: string): Promise<Benefici
       await notifyAdminOperational({
         key:       `payout.bene_conflict:${hallOwnerId}`,
         eventType: "payout.bene_conflict",
-        event:     "Two owners claim one bank account",
-        details:   "A payout account is already registered elsewhere.",
-        reference: "Check the owner in /admin/owners before paying",
+        event:     "Two owners, one bank account",
+        details:   "Payout account already in use",
+        reference: "Check the owner before paying",
       }).catch(() => {});
     }
     return { ok: false, error: res.error, conflict };
@@ -379,8 +379,8 @@ export async function dispatchOwnerPayout(
         key:       `payout.unknown:${transferId}`,
         eventType: "payout.unknown",
         event:     "A payout did not confirm",
-        details:   "We could not tell if the money left. Do not resend.",
-        reference: "Press Reconcile on the payout in /admin/payments",
+        details:   "Unknown if sent. Do not resend",
+        reference: "Press Reconcile in Payments",
         bookingId,
       }).catch(() => {});
       return { state: "unknown", transferId, reason: res.error };

@@ -119,8 +119,9 @@ describe("the substituted message the venue actually receives", () => {
   });
 
   it("keeps every variable within the 30-char DLT cap operators commonly apply", () => {
-    // MAX_VARIABLE_LENGTH is 60, which is this codebase's limit, not the
-    // carrier's. The rejected message had a 48-character variable.
+    // The rejected message had a 48-character variable. MAX_VARIABLE_LENGTH
+    // was 60 then and is 30 now; this checks the values themselves, not the
+    // clamp.
     const r = ownerLeadNotification(LEAD);
     for (const v of coerceVariables(r.templateKey, r.templateVariables)) {
       expect(v.length, `"${v}" is ${v.length} chars`).toBeLessThanOrEqual(30);

@@ -84,9 +84,10 @@ export async function alertServerError(r: ServerErrorReport): Promise<void> {
       .gte("created_at", since);
     if (error || (count ?? 0) >= DAILY_CAP) return;
 
-    // Each template variable is clamped to 60 characters downstream, so each
-    // one is built to fit: WHERE in details, WHAT in reference. The runtime
-    // log line (instrumentation.ts) has the full message and the digest.
+    // WHERE goes in details and WHAT in reference, each up to 58 characters.
+    // The admin webhook shows them whole; the SMS keeps the first 30 of each
+    // (DLT). The runtime log line (instrumentation.ts) has the full message
+    // and the digest.
     await notifyAdminOperational(alertFor(r, todayInBusinessTz()));
   } catch {
     // Nothing here is worth a second failure.

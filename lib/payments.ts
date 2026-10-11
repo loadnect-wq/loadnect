@@ -646,7 +646,7 @@ export async function verifyAndApplyPayment(
       await notifyAdminOperational({
         key:       `payment.amount_mismatch:${orderId}`,
         eventType: "payment.amount_mismatch",
-        event:     "Payment amount MISMATCH — manual review",
+        event:     "Payment amount MISMATCH",
         details:
           `Gateway captured ${formatAmount(gatewayAmount)} but ${formatAmount(Number(payment.amount))} was expected. ` +
           `The money is held and the booking is NOT confirmed. Decide whether to confirm or refund.`,
@@ -794,10 +794,10 @@ export async function verifyAndApplyPayment(
         await notifyAdminOperational({
           key:       `refund.write_failed:${payment.id}`,
           eventType: "refund.write_failed",
-          event:     "A promised refund was not recorded",
-          // Under MAX_VARIABLE_LENGTH (60) or DLT truncates it mid-sentence.
-          details:   "Customer was promised a refund; the row did not save.",
-          reference: "Find the payment in /admin/payments and refund by hand",
+          event:     "Refund promised, not saved",
+          // Each value fits the 30-character DLT variable whole.
+          details:   "The refund row did not save",
+          reference: "Refund by hand in Payments",
           bookingId: payment.booking_id,
         }).catch(() => {});
         }
@@ -889,10 +889,10 @@ export async function verifyAndApplyPayment(
           await notifyAdminOperational({
             key:       `refund.write_failed:${payment.id}`,
             eventType: "refund.write_failed",
-            event:     "A promised refund was not recorded",
-            // Under MAX_VARIABLE_LENGTH (60) or DLT truncates it mid-sentence.
-            details:   "Customer was promised a refund; the row did not save.",
-            reference: "Find the payment in /admin/payments and refund by hand",
+            event:     "Refund promised, not saved",
+            // Each value fits the 30-character DLT variable whole.
+            details:   "The refund row did not save",
+            reference: "Refund by hand in Payments",
             bookingId: payment.booking_id,
           }).catch(() => {});
           }
@@ -932,10 +932,10 @@ export async function verifyAndApplyPayment(
         await notifyAdminOperational({
           key:       `refund.write_failed:${payment.id}`,
           eventType: "refund.write_failed",
-          event:     "A promised refund was not recorded",
-          // Under MAX_VARIABLE_LENGTH (60) or DLT truncates it mid-sentence.
-          details:   "Customer was promised a refund; the row did not save.",
-          reference: "Find the payment in /admin/payments and refund by hand",
+          event:     "Refund promised, not saved",
+          // Each value fits the 30-character DLT variable whole.
+          details:   "The refund row did not save",
+          reference: "Refund by hand in Payments",
           bookingId: payment.booking_id,
         }).catch(() => {});
         }

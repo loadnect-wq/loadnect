@@ -328,7 +328,7 @@ async function applyRefundStatusEvent(ids: {
       details:
         `Rs.${amount.toFixed(2)} did not reach the customer. ${outcome.reason} ` +
         `They have already been told it was on the way.`,
-      reference: "Retry it in /admin/payments",
+      reference: "Retry it in Payments",
       bookingId: payment.booking_id,
     });
   }
@@ -426,10 +426,10 @@ export async function POST(request: Request) {
         await notifyAdminOperational({
           key:       `refund.foreign:${outcome.paymentId}`,
           eventType: "refund.foreign",
-          event:     "A refund was issued outside Hallnect",
-          // Under MAX_VARIABLE_LENGTH (60) or DLT truncates the tail away.
-          details:   "Raised in Cashfree, not by us. Do not refund again.",
-          reference: "Reconcile it in /admin/payments",
+          event:     "Refund made outside Hallnect",
+          // Each value fits the 30-character DLT variable whole.
+          details:   "Raised in Cashfree directly",
+          reference: "Reconcile; do not refund again",
           bookingId: outcome.bookingId ?? undefined,
         }).catch(() => {});
         await markSafely(eventId, "IGNORED", outcome.reason);

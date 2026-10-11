@@ -25,7 +25,7 @@ import {
   getAdminNotificationPhone,
   type NotificationRequest,
 } from "@/lib/notifications/service";
-import { templateIdFor, type SmsTemplateKey } from "@/lib/notifications/sms-templates";
+import { MAX_VARIABLE_LENGTH, templateIdFor, type SmsTemplateKey } from "@/lib/notifications/sms-templates";
 
 /**
  * First candidate that is actually a VALID phone number.
@@ -258,9 +258,11 @@ export async function notifyBookingEvent(
 
       case "booking.rejected":
         requests.push(
+          // The venue's note is not in the SMS. It is free text that will not
+          // fit 30 characters, and it is on the family's booking page
+          // (owner_notes) in full.
           toCustomer("CUSTOMER_BOOKING_CANCELLED",
-            [ctx.customer.name, ctx.hallName, ctx.dateLabel, ref,
-             reason ? `Declined by the venue — ${reason}` : "Declined by the venue"]),
+            [ctx.customer.name, ctx.hallName, ctx.dateLabel, ref, "Declined by the venue"]),
           toAdmin("Booking declined by venue",
             `${ctx.hallName} on ${ctx.dateLabel}.${reason ? ` Reason: ${reason}.` : ""}`),
         );
@@ -269,8 +271,11 @@ export async function notifyBookingEvent(
       case "booking.cancelled":
         requests.push(
           toCustomer("CUSTOMER_BOOKING_CANCELLED",
+            // A reason that fits is the whole note ("Details: Venue did not
+            // respond in time"). One that does not would arrive clipped, so it
+            // is left out rather than half-said.
             [ctx.customer.name, ctx.hallName, ctx.dateLabel, ref,
-             reason ? `Cancelled — ${reason}` : "Cancelled"]),
+             reason && reason.length <= MAX_VARIABLE_LENGTH ? reason : "Cancelled"]),
           toOwner("OWNER_BOOKING_CANCELLED", [ctx.hallName, ctx.dateLabel, ref]),
           toAdmin("Booking cancelled", `${ctx.hallName} on ${ctx.dateLabel}.`),
         );
@@ -327,11 +332,13 @@ export async function notifyBookingEvent(
  * contract): the platform fee is not a rupee toward the hall total, and
  * including it would understate the venue balance by ₹200 on every message.
  */
-function balanceNote(paid: number, total: number): string {
+export function balanceNote(paid: number, total: number): string {
+  // Fills "Payment status: ___" and must fit the 30-character DLT variable:
+  // "Rs.12,34,567 due at the venue." is exactly 30.
   const balance = Math.round((total - paid) * 100) / 100;
-  if (!(paid > 0)) return "Your booking is not yet paid.";
-  if (balance <= 0.5) return "Your booking is paid in full.";
-  return `Balance ${formatAmount(balance)} is payable directly at the venue.`;
+  if (!(paid > 0)) return "Not yet paid.";
+  if (balance <= 0.5) return "Paid in full.";
+  return `${formatAmount(balance)} due at the venue.`;
 }
 
 /**
@@ -510,7 +517,7 @@ export function ownerLeadNotification(input: {
     //      content. The number now lives on the dashboard, which the approved
     //      body already tells the owner to open.
     //   2. LENGTH. DLT caps variables per-operator, commonly at 30 characters
-    //      — half of this codebase's MAX_VARIABLE_LENGTH. Each value below is
+    //      — now MAX_VARIABLE_LENGTH too (it was 60). Each value below is
     //      cut to 30 rather than relying on the downstream clamp.
     //
     // WHAT IS LOST IS SMALL, because the SMS is no longer the only channel:
@@ -591,7 +598,8 @@ export async function notifyLeadEvent(
     const adminPhone = await getAdminNotificationPhone();
     const eventKey = `${kind}:${leadId}`;
     const ref = bookingRef(leadId);
-    const reason = sanitizeNotificationText(opts.reason);
+    // opts.reason is accepted but not sent: a decline reason is free text, and
+    // the family reads it in My Enquiries (see lead.rejected below).
 
     const toCustomer = (statusNote: string): NotificationRequest => ({
       eventKey, eventType: kind, recipientType: "customer",
@@ -625,7 +633,7 @@ export async function notifyLeadEvent(
           adminAlert({
             adminPhone, eventKey, eventType: kind,
             event: "New venue enquiry",
-            // Under MAX_VARIABLE_LENGTH (60) or DLT truncates the tail away.
+            // The SMS keeps the first 30 characters; the webhook gets it all.
             details: `${ctx.hallName} on ${ctx.dateLabel}`.slice(0, 58),
             reference: `Enquiry ${ref}`,
             leadId: ctx.leadId, hallId: ctx.hallId,
@@ -674,7 +682,9 @@ export async function notifyLeadEvent(
 
       case "lead.rejected":
         requests.push(
-          toCustomer(reason ? `Declined by the venue - ${reason}` : "Declined by the venue"),
+          // The venue's reason stays out of the SMS: it is free text that
+          // will not fit 30 characters, and My Enquiries shows it in full.
+          toCustomer("Declined by the venue"),
         );
         break;
     }
@@ -933,6 +943,12 @@ export async function notifyHallModerated(
     // Approval and rejection get their own dedicated templates because they are
     // the two the owner acts on. Suspension/restoration reuse the general
     // account-update template rather than burning two more Meta approvals.
+    //
+    // The admin's reason goes in the SMS only when it fits the 30-character
+    // DLT variable whole. A longer one would arrive clipped, so the SMS points
+    // to where it is shown in full: the owner's Halls page (rejection_reason,
+    // which both rejection and suspension write).
+    const fittingReason = cleanReason && cleanReason.length <= MAX_VARIABLE_LENGTH ? cleanReason : null;
     let templateKey: SmsTemplateKey;
     let templateVariables: Array<string | null>;
     switch (action) {
@@ -942,25 +958,15 @@ export async function notifyHallModerated(
         break;
       case "rejected":
         templateKey = "OWNER_HALL_REJECTED";
-        templateVariables = [hallName, cleanReason ?? "Please review your listing details."];
+        templateVariables = [hallName, fittingReason ?? "Shown on your Halls page"];
         break;
       case "suspended":
         templateKey = "OWNER_ACCOUNT_STATUS";
-        templateVariables = [
-          hallName,
-          "Suspended",
-          cleanReason
-            ? `${cleanReason}. Contact Hallnect support to resolve this.`
-            : "Contact Hallnect support to resolve this.",
-        ];
+        templateVariables = [hallName, "Suspended", fittingReason ?? "Reason is on your Halls page"];
         break;
       default:
         templateKey = "OWNER_ACCOUNT_STATUS";
-        templateVariables = [
-          hallName,
-          "Restored",
-          "Your hall is visible to customers again.",
-        ];
+        templateVariables = [hallName, "Restored", "Visible to customers again"];
         break;
     }
 
@@ -1013,13 +1019,11 @@ export async function notifyPremiumChanged(
       recipientUserId: owner.userId,
       phone: owner.phone,
       templateKey: "OWNER_ACCOUNT_STATUS",
+      // Item: <hall>. New status: Pro active. Detail: Priority placement in search.
+      // Each value fits the 30-character DLT variable whole.
       templateVariables: activated
-        ? [`${planLabel} listing for ${hallName}`,
-           "Active",
-           `Your ${planLabel} plan gives this hall priority placement in search results.`]
-        : [`${planLabel} listing for ${hallName}`,
-           "Ended",
-           "Your hall remains listed with standard placement."],
+        ? [hallName, `${planLabel} active`, "Priority placement in search"]
+        : [hallName, `${planLabel} ended`, "Listed with standard placement"],
       hallId,
       critical: false,
       optedIn: owner.optedIn,
@@ -1109,7 +1113,7 @@ export async function notifyTicketCreated(subject: string): Promise<void> {
         // A ticket subject is user-supplied text landing in a branded message —
         // sanitise it exactly like an owner's rejection note.
         details: sanitizeNotificationText(subject, 120) ?? "No subject",
-        reference: "See all in /admin/support-tickets",
+        reference: "Support tickets in admin",
       }),
     ]);
   } catch (e) {
@@ -1222,14 +1226,19 @@ export async function notifySubscriptionStopped(input: {
     const owner = ownerRecipient(hall.hall_owners);
     const hallName = sanitizeName(hall.name, "your hall");
 
-    const until = input.paidUntil
-      ? `The month you have already paid for runs to ${new Date(`${input.paidUntil}T00:00:00Z`).toLocaleDateString("en-IN", { day: "numeric", month: "long" })}, then ${hallName} returns to standard placement.`
-      : `${hallName} returns to standard placement when the paid period ends.`;
+    // "30 September": the longest a day and month can be, 12 characters.
+    const day = input.paidUntil
+      ? new Date(`${input.paidUntil}T00:00:00Z`).toLocaleDateString("en-IN", { day: "numeric", month: "long", timeZone: "UTC" })
+      : null;
 
+    // Each value fits the 30-character DLT variable whole, so the dates and
+    // the action survive the cut: "Elite until 30 September" (24),
+    // "Renew billing by 30 September" (29).
     const chosen = input.status === "cancelled";
+    const status = chosen ? `${input.planLabel} billing cancelled` : `${input.planLabel} payment failed`;
     const detail = chosen
-      ? `No further payments will be taken. ${until}`
-      : `Your bank did not approve the automatic payment. ${until} To keep it running, set up billing again from Premium in your dashboard.`;
+      ? (day ? `${input.planLabel} until ${day}` : "Ends after the paid month")
+      : (day ? `Renew billing by ${day}` : "Set up billing in Premium");
 
     await dispatchAll([{
       eventKey: `subscription.stopped:${input.subscriptionId}:${input.status}`,
@@ -1238,11 +1247,7 @@ export async function notifySubscriptionStopped(input: {
       recipientUserId: owner.userId,
       phone: owner.phone,
       templateKey: "OWNER_ACCOUNT_STATUS",
-      templateVariables: [
-        `Monthly ${input.planLabel} billing for ${hallName}`,
-        chosen ? "Cancelled" : "Payment failed",
-        detail,
-      ],
+      templateVariables: [hallName, status, detail],
       hallId: input.hallId,
       critical: true,
       optedIn: owner.optedIn,
@@ -1358,11 +1363,13 @@ export async function notifyOwnerAccountDecision(input: {
 
     const reason = input.reason?.trim();
     // [status, detail] — `status` fills the template's Status: line, so it is a
-    // single plain word the owner can act on, not a sentence.
+    // single plain word the owner can act on, not a sentence. `detail` fits
+    // the 30-character DLT variable whole: these used to be full sentences,
+    // which the carrier rejects or the clamp cuts mid-word.
     const copy: Record<typeof input.kind, [string, string]> = {
       approved: [
         "Approved",
-        "You can now list halls, manage booking requests and receive payouts. Open your owner dashboard to add your first hall.",
+        "Add your first hall now",
       ],
       // WAS: "Verified venues rank better and customers see a verified badge on
       // your listings." Both halves were false. fetchHalls orders on
@@ -1373,17 +1380,20 @@ export async function notifyOwnerAccountDecision(input: {
       // actually is: an internal check an admin has completed.
       verified: [
         "Verified",
-        "Your business details are confirmed on file. No action is needed from you.",
+        "Business details confirmed",
       ],
+      // The owner is locked out, so the reason is sent when it fits whole. A
+      // longer one, or none, becomes the way back. No email address: contact
+      // details inside a variable are what carriers filter as template abuse
+      // (and "Reply to this message" was never true; a DLT header takes no
+      // replies).
       suspended: [
         "Suspended",
-        reason
-          ? `${reason}. You will not be able to sign in until this is resolved. Reply to this message or email hallnect@gmail.com to appeal.`
-          : "You will not be able to sign in until this is resolved. Please email hallnect@gmail.com and we will explain and help put it right.",
+        reason && reason.length <= MAX_VARIABLE_LENGTH ? reason : "Contact Hallnect to appeal",
       ],
       restored: [
         "Restored",
-        "You can sign in again and your listings are active. Thank you for your patience.",
+        "You can sign in again",
       ],
     };
 

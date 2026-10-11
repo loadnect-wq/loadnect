@@ -114,7 +114,7 @@ export async function reportOverdueRefunds(): Promise<OverdueRefundSummary | nul
       details:
         `${flagged.length} refund(s) totalling Rs.${totalAmount.toFixed(2)} ` +
         `owed over ${REFUND_OVERDUE_DAYS} days.${failedNote}`,
-      reference: "Open /admin/payments to send them",
+      reference: "Send them from Payments",
     });
 
     return { overdue: flagged.length, failed, totalAmount, alerted: true };

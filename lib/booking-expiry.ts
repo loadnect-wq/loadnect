@@ -105,7 +105,8 @@ export async function expireOverdueBookingRequests(): Promise<BookingExpirySumma
         await releaseAvailabilityForBooking(row.id);
 
         await notifyBookingEvent("booking.cancelled", row.id, {
-          reason: "The venue did not respond in time",
+          // Fits the 30-character SMS variable, so the family is told why.
+          reason: "Venue did not respond in time",
         });
       } catch (e) {
         summary.errors.push(`${row.id}: ${e instanceof Error ? e.message : "unknown"}`);

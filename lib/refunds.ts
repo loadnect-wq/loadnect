@@ -395,10 +395,10 @@ export async function recordBookingRefundOrAlert(
     await notifyAdminOperational({
       key:       `refund.record_failed:${bookingId}`,
       eventType: "refund.record_failed",
-      event:     "A refund could not be recorded",
-      // Under MAX_VARIABLE_LENGTH (60): a longer DLT variable is truncated.
-      details:   "Booking cancelled but the refund was not saved.",
-      reference: "Check the booking in /admin/payments",
+      event:     "Refund could not be recorded",
+      // Each value fits the 30-character DLT variable whole.
+      details:   "Cancelled; refund not saved",
+      reference: "Check the booking in Payments",
       bookingId,
     }).catch(() => {});
     return { refund: null, failed: true };

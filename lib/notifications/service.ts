@@ -47,6 +47,12 @@ import { getCanonicalAppUrl } from "@/lib/app-url";
 import { CONTACT } from "@/lib/constants";
 import { postAdminWebhook } from "./admin-webhook";
 
+/**
+ * Per-variable cap for the admin webhook copy of an alert. Not a DLT limit:
+ * it only keeps one runaway value from filling the operator's screen.
+ */
+const ADMIN_WEBHOOK_VARIABLE_LENGTH = 300;
+
 export type RecipientType = "customer" | "owner" | "admin";
 
 export type NotificationRequest = {
@@ -309,12 +315,20 @@ export async function dispatchNotification(req: NotificationRequest): Promise<vo
     //
     // First, because an alert nobody receives is the failure being fixed: if
     // the SMS provider hangs, the ping has already left.
+    //
+    // The webhook gets the FULL detail. An SMS variable is cut to 30
+    // characters for DLT, so a sentence like "Gateway captured Rs.X but Rs.Y
+    // was expected..." reaches the phone as its first 27 characters. The
+    // webhook is not DLT-scrubbed, so it gets the full text.
     const work = async () => {
       if (req.recipientType === "admin") {
         await postAdminWebhook({
           eventKey:  req.eventKey,
           eventType: req.eventType,
-          message,
+          message:   renderTemplate(
+            req.templateKey,
+            coerceVariables(req.templateKey, req.templateVariables, ADMIN_WEBHOOK_VARIABLE_LENGTH),
+          ),
         }).catch(() => { /* never blocks the SMS */ });
       }
       await attemptSend(db, row.id, /* isRetry */ false);

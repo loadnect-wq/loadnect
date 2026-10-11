@@ -101,15 +101,21 @@ export { toGsm7, isGsm7, gsm7OrFallback } from "@/lib/notifications/gsm7";
 import { toGsm7, isGsm7, gsm7OrFallback } from "@/lib/notifications/gsm7";
 
 /**
- * Longest a single interpolated value may be.
+ * Longest a single interpolated value may be in an SMS.
  *
- * DLT variables are length-capped by the operator (commonly 30 characters).
- * A hall named beyond that would have the WHOLE message rejected, so values
- * are truncated here — a shortened venue name still identifies the booking,
- * a dropped message does not. Truncation is marked so nobody reads a clipped
- * value as the real one.
+ * DLT caps each {#var#} at 30 characters, and a longer value gets the WHOLE
+ * message rejected by the carrier while MSG91 still reports success. That was
+ * seen on 2026-09-10: a 48-character variable failed, and the same template
+ * with short values was delivered. This was 60 until 2026-10-11, which was
+ * this codebase's limit and never the carrier's.
+ *
+ * Values are truncated here as the last line of defence: a shortened venue
+ * name still identifies the booking, but a dropped message does not.
+ * Truncation is marked so nobody reads a clipped value as the real one. Fixed
+ * wording at the call sites is written to fit, so only names, amounts and
+ * typed text are ever clipped.
  */
-export const MAX_VARIABLE_LENGTH = 60;
+export const MAX_VARIABLE_LENGTH = 30;
 
 /**
  * LAST-RESORT stand-ins for a value that GSM-7 erases completely, by variable
@@ -126,7 +132,7 @@ const LOST_VALUE_FALLBACK: Record<string, string> = {
 };
 const LOST_VALUE_DEFAULT = "not available";
 
-function clampValue(raw: string, variable: string): string {
+function clampValue(raw: string, variable: string, max: number): string {
   // The fallback is chosen AFTER encoding, never before — see gsm7OrFallback.
   // An empty input stays empty (coerceVariables documents missing values as ""),
   // so this only fires for a real value with no GSM-7 character in it at all.
@@ -134,8 +140,8 @@ function clampValue(raw: string, variable: string): string {
     raw.trim() === ""
       ? toGsm7(raw)
       : gsm7OrFallback(raw, LOST_VALUE_FALLBACK[variable] ?? LOST_VALUE_DEFAULT);
-  if (safe.length <= MAX_VARIABLE_LENGTH) return safe;
-  return `${safe.slice(0, MAX_VARIABLE_LENGTH - 3).trimEnd()}...`;
+  if (safe.length <= max) return safe;
+  return `${safe.slice(0, max - 3).trimEnd()}...`;
 }
 
 // ── The templates ────────────────────────────────────────────────────────────
@@ -406,12 +412,15 @@ export function msg91Body(key: SmsTemplateKey): string {
 export function coerceVariables(
   key: SmsTemplateKey,
   values: readonly (string | number | null | undefined)[],
+  // Only the admin webhook passes a larger cap. It is not DLT-scrubbed, and it
+  // is where the operator reads the detail an SMS has no room for.
+  maxLength: number = MAX_VARIABLE_LENGTH,
 ): string[] {
   const names = SMS_TEMPLATES[key].variables;
   const out: string[] = [];
   for (let i = 0; i < names.length; i++) {
     const v = values[i];
-    out.push(v === null || v === undefined ? "" : clampValue(String(v), names[i]));
+    out.push(v === null || v === undefined ? "" : clampValue(String(v), names[i], maxLength));
   }
   return out;
 }

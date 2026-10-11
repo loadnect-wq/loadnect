@@ -246,11 +246,11 @@ export async function payOwnerOnAcceptance(bookingId: string): Promise<PayoutOut
       await notifyAdminOperational({
         key:       `payout.manual:${day}`,
         eventType: "payout.manual",
-        event:     "Payouts are waiting to be sent by hand",
-        // Under MAX_VARIABLE_LENGTH (60) — a DLT variable longer than that is
-        // truncated mid-sentence, so the closing words never reach the phone.
-        details:   "An owner is due their advance. Send it from Payments.",
-        reference: "Clear them from the payout queue in /admin/payments",
+        event:     "Payouts to send by hand",
+        // Each value fits the 30-character DLT variable (MAX_VARIABLE_LENGTH)
+        // whole. A longer one is cut mid-sentence before it reaches the phone.
+        details:   "An owner is due an advance",
+        reference: "Payout queue in Payments",
         bookingId,
       }).catch(() => {});
     };
