@@ -3,6 +3,7 @@ import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { AUTH_NEXT_COOKIE, OWNER_INTENT_COOKIE } from "@/lib/app-url";
+import { upgradeCustomerToOwner } from "@/lib/auth/owner-upgrade";
 
 // Path prefixes the OAuth flow may return a browser to after a successful
 // sign-in. Deep links matter here: a signed-out customer sent to
@@ -98,28 +99,11 @@ function safeNext(raw: string | null): string {
  * intended escape hatch.
  */
 async function handleOwnerIntent(userId: string): Promise<void> {
-  const admin = getSupabaseAdminClient();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const adminAny = admin as any;
-
-  // maybeSingle(): the profiles row is created by the handle_new_user trigger.
-  // If it isn't visible yet, treat it as "no row" rather than throwing — the
-  // caller routes through /auth/redirect, so a missed upgrade self-corrects on
-  // a later sign-in instead of dumping the user somewhere wrong.
-  const { data: profile } = await adminAny
-    .from("profiles")
-    .select("role")
-    .eq("id", userId)
-    .maybeSingle();
-
-  // Only ever customer → owner_approved. Never touch an already-elevated role
-  // (owner_approved/admin) — idempotent and privilege-safe.
-  if ((profile as { role: string } | null)?.role === "customer") {
-    await adminAny
-      .from("profiles")
-      .update({ role: "owner_approved" })
-      .eq("id", userId);
-  }
+  // The rule itself lives in lib/auth/owner-upgrade.ts, shared with the mobile
+  // sign-up on /owner/register, so the two doors cannot drift apart. A missed
+  // upgrade self-corrects on a later sign-in: the caller routes through
+  // /auth/redirect, which reads the real role.
+  await upgradeCustomerToOwner(getSupabaseAdminClient(), userId);
 }
 
 export async function GET(request: Request) {

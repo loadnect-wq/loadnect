@@ -62,6 +62,7 @@ import { clientActorKey } from "@/lib/auth/actor-key";
 import { mintSessionForUser } from "@/lib/auth/session-mint";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import { newPhoneAlias } from "@/lib/auth/phone-alias";
+import { upgradeCustomerToOwner } from "@/lib/auth/owner-upgrade";
 
 export type PhoneSignInStart =
   | { success: true; cooldownSeconds: number }
@@ -135,6 +136,13 @@ export async function startPhoneSignIn(
 export async function verifyPhoneSignIn(
   rawPhone: string,
   code: string,
+  /**
+   * "owner" only from /owner/register: make this account a venue owner once
+   * the code is approved and the session exists. Anything else is ignored.
+   * See the note at the bottom of this function for why a client-supplied
+   * intent is safe here.
+   */
+  intent?: string,
 ): Promise<PhoneSignInVerify> {
   if (!isOtpConfigured()) {
     return { error: "Signing in by mobile is not available right now. Please use email." };
@@ -240,6 +248,27 @@ export async function verifyPhoneSignIn(
       return { error: "This account needs attention before you can sign in by mobile. Please contact support." };
     }
     return { error: "Could not sign you in right now. Please try again." };
+  }
+
+  // ── OWNER SIGN-UP BY MOBILE (from /owner/register) ────────────────────────
+  //
+  // The Google door does this in /auth/callback after the code exchange; this
+  // is the same step, through the same function, at the same point in the
+  // mobile door: AFTER possession was proven by MSG91 and AFTER a session was
+  // minted for the account that number resolved to. Nothing before those two
+  // lines can reach it.
+  //
+  // A CLIENT-SUPPLIED INTENT IS SAFE HERE for the reason the Google cookie is:
+  // it only says what the person wants, and it is acted on inside an
+  // authentication they just completed with their own phone. It cannot be
+  // fired at somebody else's account, and upgradeCustomerToOwner only ever goes
+  // customer → owner_approved — never admin, never down, and every hall still
+  // needs admin approval before families see it.
+  //
+  // A failed upgrade does not fail the sign-in: the person is signed in either
+  // way, and /auth/redirect sends them where their real role belongs.
+  if (intent === "owner") {
+    await upgradeCustomerToOwner(admin, userId);
   }
 
   return { success: true, created };
