@@ -27,8 +27,13 @@ export function PaymentSettingsForm({ initial }: { initial: Initial }) {
   function save() {
     setError(null); setSaved(false);
     startTransition(async () => {
+      // THE RAW STRING, not parseFloat(advance). parseFloat("2,5") is 2, and it
+      // decided that here — before the server could object — so a truncated
+      // advance arrived as a clean number that passed every check and was
+      // stored. The value now goes over unparsed and advancePercentSchema is
+      // the only thing that reads it.
       const r = await updatePlatformPaymentSettings({
-        defaultAdvancePercentage: parseFloat(advance),
+        defaultAdvancePercentage: advance,
         enableOnlineCustomerPayment: onlinePay,
       });
       if ("error" in r) setError(r.error);

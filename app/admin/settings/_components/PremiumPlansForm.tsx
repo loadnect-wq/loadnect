@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import type { PremiumPlan } from "@/lib/premium-plans";
+import { parseSafe, premiumPlanUpdateSchema } from "@/lib/validation/schemas";
 import { updatePremiumPlan } from "../../actions";
 
 export function PremiumPlansForm({ plans }: { plans: PremiumPlan[] }) {
@@ -29,17 +30,24 @@ function PlanRow({ plan }: { plan: PremiumPlan }) {
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setMsg(null);
-    const p = Number(price);
-    const d = parseInt(duration, 10);
-    if (!Number.isFinite(p) || p < 0) { setMsg({ ok: false, text: "Invalid price." }); return; }
-    if (!Number.isInteger(d) || d <= 0) { setMsg({ ok: false, text: "Duration must be a positive integer." }); return; }
+    // CHECKED WITH THE SERVER'S OWN SCHEMA, and the raw strings are what get
+    // sent. Coercing here and shipping the result was the bug in both fields:
+    // Number("") is 0, so a blank price satisfied `p >= 0` and repriced the
+    // plan to FREE, and parseInt("3,0") is 3, so a 30-day plan an owner paid
+    // for delivered three days. Neither value was ever seen by
+    // premiumPlanUpdateSchema as the admin typed it. This call now only decides
+    // which message to show without a round trip; the server re-parses and
+    // remains the boundary.
+    const input = {
+      slug: plan.slug as "premium" | "pro",
+      monthly_price: price,
+      duration_days: duration,
+    };
+    const check = parseSafe(premiumPlanUpdateSchema, input);
+    if (!check.ok) { setMsg({ ok: false, text: check.error }); return; }
 
     startTransition(async () => {
-      const r = await updatePremiumPlan({
-        slug: plan.slug as "premium" | "pro",
-        monthly_price: p,
-        duration_days: d,
-      });
+      const r = await updatePremiumPlan(input);
       if ("error" in r) setMsg({ ok: false, text: r.error });
       else setMsg({ ok: true, text: "Saved." });
     });

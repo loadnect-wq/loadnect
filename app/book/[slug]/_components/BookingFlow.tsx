@@ -19,6 +19,7 @@ import { useLiveAvailability } from "@/lib/useLiveAvailability";
 import { createBookingRequest, createPaymentSession, submitManualBookingRequest, previewCoupon, type CreateBookingResult } from "../actions";
 import { todayInBusinessTz, addDaysToIsoDate, isoDateToLabelDate, isoDateRange, daysBetweenInclusive } from "@/lib/dates";
 import { isValidPhoneNumber } from "@/lib/notifications/phone";
+import { guestCountSchema } from "@/lib/validation/schemas";
 import {
   advanceFromTotal,
   cappedPlatformFeeRupees,
@@ -314,12 +315,23 @@ export function BookingFlow({ hall, availability, windowDays, onlinePaymentEnabl
 
   const selectedAvail = date ? availabilityByDate.get(date) : undefined;
 
+  // ONE RULE FOR THE GUEST COUNT, shared with the server. This gate used to be
+  // `parseInt(guests, 10) > 0 && parseInt(guests, 10) <= hall.capacity_max`,
+  // which is a second copy of a rule bookingSchema already owns — and a looser
+  // one: parseInt("1,500") is 1, so a truncated count passed the gate AND was
+  // sent as a clean number the server had no reason to question. Same schema
+  // here as there; only the capacity comparison is local, because the schema
+  // does not know which hall this is.
+  const guestsParsed = guestCountSchema.safeParse(guests);
+  const guestsAcceptable = guestsParsed.success && guestsParsed.data <= hall.capacity_max;
+
   const canContinue =
     (step === 0 && !!date &&
       (isMultiDay ? rangeFullyAvailable(date, rangeEnd, "full_day") : dayHasAnySlot(date))) ||
     (step === 1 && !!effSlot && rangeFullyAvailable(date, rangeEnd, effSlot as SlotId)) ||
-    (step === 2 && (eventOptions.length === 0 || !!eventType) && !!guests && !!name && isValidPhoneNumber(phone) &&
-      parseInt(guests, 10) > 0 && parseInt(guests, 10) <= hall.capacity_max) ||
+    // guestsAcceptable already refuses a blank box, so no separate !!guests.
+    (step === 2 && (eventOptions.length === 0 || !!eventType) && !!name && isValidPhoneNumber(phone) &&
+      guestsAcceptable) ||
     (step === 3 && termsAccepted) ||
     (step === 4) ||
     step === 5;
@@ -340,7 +352,7 @@ export function BookingFlow({ hall, availability, windowDays, onlinePaymentEnabl
           eventDate:     date,
           endDate:       endDate || undefined,
           slot:          effSlot as SlotId,
-          guestCount:    parseInt(guests, 10),
+          guestCount:    guests,
           contactPhone:  phone,
           // THE SENTENCE STAYS. Owners read these notes, and on a database
           // where 0102 has not been applied yet it is the only record of the
@@ -433,7 +445,7 @@ export function BookingFlow({ hall, availability, windowDays, onlinePaymentEnabl
           eventDate:     date,
           endDate:       endDate || undefined,
           slot:          effSlot as SlotId,
-          guestCount:    parseInt(guests, 10),
+          guestCount:    guests,
           contactPhone:  phone,
           // THE SENTENCE STAYS. Owners read these notes, and on a database
           // where 0102 has not been applied yet it is the only record of the
@@ -735,7 +747,18 @@ export function BookingFlow({ hall, availability, windowDays, onlinePaymentEnabl
                       id="guests" type="number" min="1" max={hall.capacity_max}
                       value={guests} onChange={(e) => setGuests(e.target.value)}
                       placeholder={`Up to ${hall.capacity_max}`}
+                      aria-invalid={guests !== "" && !guestsAcceptable}
                     />
+                    {/* SAYS WHY CONTINUE IS DISABLED. The gate above now refuses
+                        what parseInt used to quietly round off — "500.9" was
+                        sent as 500 — so without this line the button just stops
+                        working and the customer is given nothing to act on.
+                        Same shape as the phone field's message below. */}
+                    {guests !== "" && !guestsAcceptable && (
+                      <p className="mt-1 text-[11px] text-red-600">
+                        Enter a whole number of guests, from 1 to {hall.capacity_max}.
+                      </p>
+                    )}
                   </div>
 
                   <div>

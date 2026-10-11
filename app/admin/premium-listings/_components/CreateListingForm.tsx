@@ -4,6 +4,7 @@ import { TIER_LABEL } from "@/lib/plan-names";
 import { todayInBusinessTz, addDaysToIsoDate } from "@/lib/dates";
 import { useState, useTransition } from "react";
 import { Sparkles } from "lucide-react";
+import { parseSafe, premiumListingSchema } from "@/lib/validation/schemas";
 import { createPremiumListing } from "../../actions";
 
 type HallOption = { id: string; name: string; slug: string };
@@ -29,13 +30,17 @@ export function CreateListingForm({ halls }: { halls: HallOption[] }) {
     e.preventDefault();
     setMsg(null);
     if (!hallId) { setMsg({ ok: false, text: "Choose a hall." }); return; }
-    const n = Number(amount);
-    if (!Number.isFinite(n) || n < 0) { setMsg({ ok: false, text: "Invalid amount." }); return; }
+    // The raw string, so moneySchema is the only thing that parses it. Number()
+    // does at least refuse "9,999" (it is NaN, not 9), but Number("") is 0 —
+    // a zero-rupee premium grant that looks like a real one. The `required`
+    // attribute on the input is what was standing between that and the
+    // database, which is not where a money rule belongs.
+    const input = { hallId, planSlug: plan, startDate, endDate, amount };
+    const check = parseSafe(premiumListingSchema, input);
+    if (!check.ok) { setMsg({ ok: false, text: check.error }); return; }
 
     startTransition(async () => {
-      const r = await createPremiumListing({
-        hallId, planSlug: plan, startDate, endDate, amount: n,
-      });
+      const r = await createPremiumListing(input);
       if ("error" in r) setMsg({ ok: false, text: r.error });
       else {
         setMsg({ ok: true, text: "Premium listing created." });

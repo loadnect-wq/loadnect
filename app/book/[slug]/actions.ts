@@ -88,7 +88,11 @@ export type CreateBookingInput = {
   eventDate:    string;       // YYYY-MM-DD (range START)
   endDate?:     string;       // YYYY-MM-DD (range END, inclusive; defaults to eventDate)
   slot:         BookingSlot;
-  guestCount:   number;
+  // number OR the raw string the form holds. BookingFlow used to send
+  // parseInt(guests, 10), which truncated the value before bookingSchema could
+  // refuse it — parseInt("1,500") is 1, and a booking for one guest is a clean
+  // number the schema has no reason to question.
+  guestCount:   number | string;
   contactPhone: string;       // customer mobile — REQUIRED; normalized to E.164
   customerNotes?: string;
   termsAccepted?: boolean;    // advance/cancellation/remaining-balance consent

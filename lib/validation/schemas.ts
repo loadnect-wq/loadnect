@@ -132,7 +132,7 @@ export const pincodeSchema = z
     message: "Pincode must be 6 digits.",
   });
 
-// Money — accepts number or numeric string, must be non-negative.
+// Money — accepts a number or a strictly-formatted numeric string, non-negative.
 /**
  * The least a venue may be listed for, in rupees.
  *
@@ -155,17 +155,92 @@ export const pincodeSchema = z
  */
 export const MIN_HALL_PRICE_RUPEES = 2_000;
 
+/**
+ * Parse the one string form a DECIMAL field is allowed to arrive in.
+ *
+ * Used by moneySchema and optionalMoneySchema. Integer fields use
+ * parseIntegerString below, which differs only in refusing the decimal point.
+ *
+ * NOT parseFloat. parseFloat stops at the first character it cannot use and
+ * returns what it has, so a malformed amount is answered with a plausible
+ * WRONG NUMBER instead of with an error:
+ *
+ *     parseFloat("50,000")  → 50       a comma-grouped price read as fifty
+ *     parseFloat("2000abc") → 2000
+ *     parseFloat("1e5")     → 100000   exponent notation nobody typed
+ *
+ * The comma is the one that costs money. "50,000" is how a person writes fifty
+ * thousand rupees, and it parsed to 50 — which on the hall form lands under
+ * MIN_HALL_PRICE_RUPEES and is refused with a message about the floor that says
+ * nothing about the comma that caused it, and on the two admin paths (no floor)
+ * is accepted at a thousandth of the intended price. A currency-prefixed
+ * "₹50000" was already rejected, but only by luck: the symbol happens to lead,
+ * so parseFloat had nothing to salvage.
+ *
+ * Only a clean decimal literal is accepted; anything else becomes NaN, which
+ * the Number.isFinite refine turns into "Enter a valid amount."
+ *
+ * THE LEADING `-` IS MATCHED DELIBERATELY. It is not a valid amount, but it is
+ * a different mistake from a malformed one, and the `n >= 0` refine already has
+ * the right sentence for it. Excluding it here would answer "-500" with "Enter
+ * a valid amount." instead of "Amount cannot be negative." — a worse message
+ * for an input whose problem is perfectly clear.
+ *
+ * This is the same defect class already fixed twice in this file:
+ * couponCreateSchema.maxRedemptions and leadConfirmSchema.agreedAmount. See
+ * their comments — the reasoning is identical, and the only thing that varies
+ * is the shape each field allows.
+ *
+ * NOT the event planner's amounts (planAmountSchema, planDetailsSchema.guests),
+ * which deliberately ACCEPT "1,60,000" by stripping the commas first. That is
+ * the other correct answer — read the comma as grouping, explicitly. What is
+ * never correct is parseFloat's: reading it as the end of the number.
+ */
+function parseDecimalString(v: string): number {
+  return /^-?\d+(?:\.\d+)?$/.test(v) ? Number(v) : NaN;
+}
+
+/**
+ * The same, for a field that must be a WHOLE number.
+ *
+ * NOT parseInt, and the decimal point is the reason. parseInt truncates rather
+ * than refusing — parseInt("2.5") is 2 — so a fractional value did not fail,
+ * it became a DIFFERENT, valid-looking whole number. That is not a hypothetical:
+ * couponCreateSchema.maxRedemptions had exactly this bug, and an admin who
+ * typed 2.5 got a coupon that died after two redemptions. Every other trap is
+ * shared with parseDecimalString: parseInt("1,500") is 1, parseInt("500abc")
+ * is 500.
+ *
+ * Refusing the decimal point rather than truncating it is also what makes the
+ * "must be a whole number" messages below true. A schema that says a value must
+ * be an integer and then quietly makes one out of 2.5 is not validating.
+ *
+ * THE LEADING `-` IS MATCHED DELIBERATELY, for the reason given above: it lets
+ * each field's own lower-bound refine answer a negative in its own words
+ * ("Capacity must be at least 1.") instead of collapsing it into the generic
+ * malformed-input message. Where a field has no separate message for its lower
+ * bound the outcome is identical either way, so one helper serves all of them.
+ */
+function parseIntegerString(v: string): number {
+  return /^-?\d+$/.test(v) ? Number(v) : NaN;
+}
+
 export const moneySchema = z
   .union([z.number(), z.string()])
-  .transform((v) => (typeof v === "number" ? v : parseFloat(v)))
+  .transform((v) => (typeof v === "number" ? v : parseDecimalString(v.trim())))
   .refine((n) => Number.isFinite(n), "Enter a valid amount.")
   .refine((n) => n >= 0, "Amount cannot be negative.");
 
 export const optionalMoneySchema = z
   .union([z.number(), z.string(), z.literal(""), z.null(), z.undefined()])
   .transform((v) => {
-    if (v == null || v === "") return null;
-    return typeof v === "number" ? v : parseFloat(v);
+    if (v == null) return null;
+    if (typeof v === "number") return v;
+    // Trim BEFORE the blank test, so a field holding only spaces means the same
+    // thing as one holding "" — cleared. Erroring on "   " would complain about
+    // a value the owner never entered.
+    const s = v.trim();
+    return s === "" ? null : parseDecimalString(s);
   })
   .refine((n) => n == null || Number.isFinite(n), "Enter a valid amount.")
   .refine((n) => n == null || n >= 0, "Amount cannot be negative.");
@@ -173,7 +248,7 @@ export const optionalMoneySchema = z
 // Capacity — positive integer, capped to a realistic upper bound.
 export const capacitySchema = z
   .union([z.number(), z.string()])
-  .transform((v) => (typeof v === "number" ? v : parseInt(v, 10)))
+  .transform((v) => (typeof v === "number" ? v : parseIntegerString(v.trim())))
   .refine((n) => Number.isInteger(n), "Capacity must be a whole number.")
   .refine((n) => n >= 1, "Capacity must be at least 1.")
   .refine((n) => n <= 100_000, "Capacity is unrealistically large.");
@@ -181,8 +256,12 @@ export const capacitySchema = z
 export const optionalCapacitySchema = z
   .union([z.number(), z.string(), z.literal(""), z.null(), z.undefined()])
   .transform((v) => {
-    if (v == null || v === "") return null;
-    return typeof v === "number" ? v : parseInt(v, 10);
+    if (v == null) return null;
+    if (typeof v === "number") return v;
+    // Trim before the blank test, matching optionalMoneySchema: a field holding
+    // only spaces means the same thing as one holding "" — not supplied.
+    const s = v.trim();
+    return s === "" ? null : parseIntegerString(s);
   })
   .refine((n) => n == null || Number.isInteger(n), "Must be a whole number.")
   .refine((n) => n == null || n >= 1, "Must be at least 1.");
@@ -416,8 +495,10 @@ export const venueCategoryCreateSchema = z.object({
     .optional()
     .transform((v) => (v ? v : null)),
   group:       z.enum(VENUE_CATEGORY_GROUPS),
+  // parseIntegerString, not parseInt: "2.5" or "1,500" must be refused, not
+  // stored as 2 or 1.
   displayOrder: z.union([z.number(), z.string()])
-    .transform((v) => (typeof v === "number" ? v : parseInt(v, 10)))
+    .transform((v) => (typeof v === "number" ? v : parseIntegerString(v.trim())))
     .refine((n) => Number.isInteger(n) && n >= 0 && n <= 100_000, "Order must be between 0 and 100000."),
 });
 
@@ -768,6 +849,24 @@ export const cancelHallDraftSchema = z.object({
 
 const ALLOWED_SLOTS = ["morning", "evening", "full_day"] as const;
 
+/**
+ * How many guests a booking is for.
+ *
+ * EXPORTED, and inlined into bookingSchema below rather than the other way
+ * round, so that the booking form's own "can this customer continue" gate runs
+ * THIS rule instead of a second copy of it. It used to hold the copy — a bare
+ * `parseInt(guests, 10) > 0 && parseInt(guests, 10) <= capacity` — which is how
+ * a truncated count got past the client and arrived here as a clean number the
+ * schema had no reason to question. See the module header: the client is for UX
+ * and the server is the boundary, but they have to be enforcing the same rule
+ * for that split to mean anything.
+ */
+export const guestCountSchema = z
+  .union([z.number(), z.string()])
+  .transform((v) => (typeof v === "number" ? v : parseIntegerString(String(v).trim())))
+  .refine((n) => Number.isInteger(n) && n >= 1, "Enter the number of guests.")
+  .refine((n) => n <= 100_000, "Guest count is unrealistically large.");
+
 // ALLOWED_AVAIL_STATUSES, OWNER_EDITABLE_AVAIL_STATUSES, availabilityEntrySchema
 // and availabilityBatchSchema WERE HERE. They validated setAvailability, which
 // is gone along with the hand-maintained availability grid.
@@ -1039,10 +1138,7 @@ export const bookingSchema = z
     hallId:        uuidSchema,
     eventDate:     dateStringSchema,
     slot:          z.enum(ALLOWED_SLOTS),
-    guestCount:    z.union([z.number(), z.string()])
-      .transform((v) => (typeof v === "number" ? v : parseInt(v, 10)))
-      .refine((n) => Number.isInteger(n) && n >= 1, "Enter the number of guests.")
-      .refine((n) => n <= 100_000, "Guest count is unrealistically large."),
+    guestCount:    guestCountSchema,
     customerNotes: optionalTrimmed(2000),
     // OPTIONAL, AND THE OPTIONALITY IS LOAD-BEARING. The form has always asked
     // ("Wedding", "Reception", ...) and has always thrown the answer into a
@@ -1210,16 +1306,23 @@ export const paymentSessionSchema = z.object({
 
 const ratingSchema = z
   .union([z.number(), z.string()])
-  .transform((v) => (typeof v === "number" ? v : parseInt(String(v), 10)))
+  .transform((v) => (typeof v === "number" ? v : parseIntegerString(String(v).trim())))
   .refine((n) => Number.isInteger(n) && n >= 1 && n <= 5, "Rating must be 1–5.");
 
 const optionalRatingSchema = z
   .union([z.number(), z.string(), z.null(), z.undefined()])
   .optional()
   .transform((v) => {
-    if (v == null || v === "") return undefined;
-    const n = typeof v === "number" ? v : parseInt(String(v), 10);
-    return Number.isFinite(n) ? n : undefined;
+    if (v == null) return undefined;
+    if (typeof v === "number") return v;
+    const s = String(v).trim();
+    // A MALFORMED SUB-RATING IS NO LONGER SILENTLY DROPPED. This transform used
+    // to end `Number.isFinite(n) ? n : undefined`, which mapped garbage onto
+    // "the customer did not rate this" — so a bad value did not fail, it
+    // VANISHED, and the review saved as though the field had been left blank.
+    // Only a genuinely blank field means blank now; anything else becomes NaN
+    // and is reported by the refine below.
+    return s === "" ? undefined : parseIntegerString(s);
   })
   .refine(
     (n) => n === undefined || (Number.isInteger(n) && n >= 1 && n <= 5),
@@ -1305,12 +1408,33 @@ export const premiumPlanUpdateSchema = z.object({
   slug:          z.enum(["premium", "pro"]),
   monthly_price: moneySchema,
   duration_days: z.union([z.number(), z.string()])
-    .transform((v) => (typeof v === "number" ? v : parseInt(String(v), 10)))
+    .transform((v) => (typeof v === "number" ? v : parseIntegerString(String(v).trim())))
     .refine((n) => Number.isInteger(n) && n > 0, "Duration must be a positive integer."),
 });
 
 // commissionPercentSchema was removed with the admin commission setting: the
 // commission is the fixed STANDARD_COMMISSION_PERCENT, not an input.
+
+/**
+ * The advance percentage, the other half of that pair.
+ *
+ * SHAPE ONLY, AND DELIBERATELY NO RANGE. checkCommissionAgainstAdvance() below
+ * already refuses an advance that is not finite, is <= 0, or is above 100, and
+ * it has to run on this value anyway because the advance is not independent of
+ * the commission. Repeating the bound here would put one rule in two places
+ * with two different messages, which is the thing the comment on
+ * updatePlatformPaymentSettings warns about: the bound is symmetric and lives
+ * in one place so the two settings screens can never disagree about it.
+ *
+ * What was missing was not the range but the PARSE. The admin form sent
+ * parseFloat(advance), so "2,5" arrived as 2 — a truncated advance that then
+ * satisfied every range check and was stored, quietly charging every customer
+ * 2% of the hall price instead of 2.5%.
+ */
+export const advancePercentSchema = z
+  .union([z.number(), z.string()])
+  .transform((v) => (typeof v === "number" ? v : parseDecimalString(String(v).trim())))
+  .refine((n) => Number.isFinite(n), "Enter a valid percentage.");
 
 /**
  * The commission may take at most HALF the advance.

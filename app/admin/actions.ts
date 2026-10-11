@@ -12,6 +12,7 @@ import {
   uuidSchema,
   premiumListingSchema,
   premiumPlanUpdateSchema,
+  advancePercentSchema,
   checkCommissionAgainstAdvance,
   ticketResponseSchema,
   couponCreateSchema,
@@ -973,7 +974,8 @@ export async function createPremiumListing(input: {
   planSlug:  "premium" | "pro";
   startDate: string; // YYYY-MM-DD
   endDate:   string; // YYYY-MM-DD
-  amount:    number;
+  // number OR the raw string the form holds — see updatePremiumPlan.
+  amount:    number | string;
   /** Omitted means "paid" — every existing caller keeps its behaviour. */
   grantType?:   "paid" | "complimentary";
   grantReason?: string;
@@ -1094,8 +1096,15 @@ export async function checkPremiumOverlap(input: {
 
 export async function updatePremiumPlan(input: {
   slug:          "premium" | "pro";
-  monthly_price: number;
-  duration_days: number;
+  // number OR the raw string the form holds. The form used to send
+  // Number(price) and parseInt(duration, 10), which decided what the value was
+  // BEFORE premiumPlanUpdateSchema could refuse it: Number("") is 0, so a blank
+  // price arrived as a valid-looking zero and repriced the plan to free, and
+  // parseInt("3,0") is 3, so a 30-day plan an owner paid for delivered three
+  // days. Both now arrive unparsed and the schema is the only thing that
+  // decides.
+  monthly_price: number | string;
+  duration_days: number | string;
 }): Promise<ActionResult> {
   // requireAdminActor, not getAuthUser: this sets the price every owner is
   // charged, and "signed in" is not the same as "admin".
@@ -1231,7 +1240,10 @@ export async function expirePremiumListingsAction(): Promise<
 // effect any more. Their columns are left in place rather than dropped — this
 // action simply stops writing them.
 export async function updatePlatformPaymentSettings(input: {
-  defaultAdvancePercentage?: number;
+  // number OR the raw string the form holds — see updatePremiumPlan above. The
+  // settings form sent parseFloat(advance), so "2,5" became 2 before anything
+  // could object.
+  defaultAdvancePercentage?: number | string;
   enableOnlineCustomerPayment?: boolean;
 }): Promise<ActionResult> {
   // This gate used to be a bare 'is someone signed in' check, leaving the
@@ -1241,7 +1253,16 @@ export async function updatePlatformPaymentSettings(input: {
   if (!actor.ok) return { error: actor.error };
   const { supabase, user } = { supabase: actor.supabase, user: actor.user };
 
-  const advancePct = Number(input.defaultAdvancePercentage ?? DEFAULT_ADVANCE_PERCENT);
+  // Number() WAS NOT A PARSE. It accepted whatever the client had already made
+  // of the field, and Number("") is 0 — so this had to trust the form. The
+  // range still belongs to checkCommissionAgainstAdvance below, which is why
+  // advancePercentSchema only decides whether the value is a number at all.
+  const parsedAdvance = parseSafe(
+    advancePercentSchema,
+    input.defaultAdvancePercentage ?? DEFAULT_ADVANCE_PERCENT,
+  );
+  if (!parsedAdvance.ok) return { error: parsedAdvance.error };
+  const advancePct = parsedAdvance.data;
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = supabase as any;
