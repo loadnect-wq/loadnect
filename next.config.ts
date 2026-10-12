@@ -68,6 +68,12 @@ const nextConfig: NextConfig = {
     // whole catalogue is nine photos.
     formats: ["image/avif", "image/webp"],
 
+    // 75 is Next's default and stays the default for every image. 85 is for a
+    // venue's own gallery (ImageGallery), where the photo IS the product
+    // (2026-10-12). Next 16 coerces any quality not listed here to the nearest
+    // listed one, so a value used in code must also appear here.
+    qualities: [75, 85],
+
     // SECURITY: this was hostname "**", which matches EVERY host. Next's image
     // optimizer will fetch and re-serve any URL it is given, so a wildcard
     // turns /_next/image into an open proxy on our own domain: an attacker

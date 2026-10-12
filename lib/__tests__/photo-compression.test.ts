@@ -7,7 +7,9 @@ import {
   PHOTO_JPEG_QUALITY,
   PHOTO_MAX_EDGE,
   PHOTO_MIN_SAVING,
+  PHOTO_SHARP_EDGE,
   keepOriginalPhoto,
+  smallPhotoNote,
   photoFitsAsPicked,
   photoTargetSize,
 } from "../hall-draft-photos";
@@ -21,6 +23,7 @@ import { formatPhotoBytes } from "../prepare-hall-photo";
 // ─────────────────────────────────────────────────────────────────────────────
 
 const MB = 1024 * 1024;
+const readSource = (p: string) => readFileSync(join(__dirname, "..", "..", p), "utf8").replace(/\r\n/g, "\n");
 
 describe("what size a photo is stored at", () => {
   it("scales a phone photo down to 2560px on its long edge, keeping its shape", () => {
@@ -36,7 +39,8 @@ describe("what size a photo is stored at", () => {
   });
 
   it("encodes at a quality chosen for looks, not for the smallest file", () => {
-    expect(PHOTO_JPEG_QUALITY).toBeGreaterThanOrEqual(0.85);
+    // 0.92 since 2026-10-12: this copy is the original every later size is made from.
+    expect(PHOTO_JPEG_QUALITY).toBeGreaterThanOrEqual(0.92);
   });
 });
 
@@ -111,5 +115,58 @@ describe("every live upload path compresses", () => {
     expect(prep).toContain('imageOrientation: "from-image"');
     expect(prep).toContain("while (cw > width * 2)");
     expect(prep).toContain('ctx.imageSmoothingQuality = "high"');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Better hall photos (2026-10-12). The first two Chennai halls looked soft. The
+// stored photos were 1280x590 at about JPEG quality 60, metadata stripped: what
+// WhatsApp sends, which this pipeline keeps untouched. Two things changed: an
+// uploader is told when a photo is that small, and the venue gallery is served
+// sharper (quality 85, and a phone asks for a copy wide enough for cover-crop).
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("a photo too small to look sharp", () => {
+  it("is flagged below 1600px on the long edge, with the size and the WhatsApp advice", () => {
+    expect(PHOTO_SHARP_EDGE).toBe(1600);
+    const note = smallPhotoNote(1280, 590);
+    expect(note).toContain("1280×590");
+    expect(note).toMatch(/WhatsApp/);
+    expect(note).toMatch(/original/);
+    expect(smallPhotoNote(590, 1280)).not.toBeNull(); // portrait too
+  });
+
+  it("is not flagged at 1600px or more, whichever way round", () => {
+    expect(smallPhotoNote(1600, 900)).toBeNull();
+    expect(smallPhotoNote(3024, 4032)).toBeNull();
+  });
+
+  it("every upload path shows it", () => {
+    for (const p of [
+      "app/owner/(dashboard)/halls/_components/HallForm.tsx",
+      "app/owner/(dashboard)/halls/[id]/images/_components/ImagesManager.tsx",
+      "app/admin/hall-drafts/_components/HallPhotosField.tsx",
+    ]) {
+      expect(readSource(p), p).toMatch(/smallPhotoNote\([\w.]*width/);
+    }
+  });
+});
+
+describe("the venue gallery is served sharper", () => {
+  const gallery = readSource("app/halls/[slug]/_components/ImageGallery.tsx");
+  const config = readSource("next.config.ts");
+
+  it("asks for quality 85, and 85 is on the allowlist (Next 16 coerces anything else)", () => {
+    expect(gallery).toContain("const GALLERY_QUALITY = 85;");
+    expect((gallery.match(/quality=\{GALLERY_QUALITY\}/g) ?? []).length).toBe(2);
+    expect(config).toMatch(/qualities:\s*\[75, 85\]/);
+  });
+
+  it("on a phone asks for 1.4x the screen width, so a wide photo is not stretched to cover", () => {
+    const inPage = gallery.match(/const SIZES_(HERO|THUMB|WIDE|WIDE_THUMB|SOLO)\s*=\s*"[^"]+"/g) ?? [];
+    expect(inPage).toHaveLength(5);
+    for (const decl of inPage) expect(decl, decl).toMatch(/, 140vw"$/);
+    // The lightbox is object-contain, which never paints wider than its box.
+    expect(gallery).toContain(`const SIZES_STAGE = "(min-width: 1024px) 1100px, 100vw";`);
   });
 });

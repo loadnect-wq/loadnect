@@ -19,7 +19,7 @@ import { normalizeAmenityName, CUSTOM_AMENITY_LIMITS } from "@/lib/validation/sc
 import { getSupabaseClient } from "@/lib/supabase/client";
 import { addHallImage } from "@/app/owner/(dashboard)/actions";
 import { IMAGE_CACHE_CONTROL } from "@/lib/supabase/storage";
-import { EXT_BY_MIME, MAX_SOURCE_PHOTO_BYTES, type PhotoMime } from "@/lib/hall-draft-photos";
+import { EXT_BY_MIME, MAX_SOURCE_PHOTO_BYTES, smallPhotoNote, type PhotoMime } from "@/lib/hall-draft-photos";
 import { PhotoRejected, formatPhotoBytes, prepareHallPhoto } from "@/lib/prepare-hall-photo";
 import { parseMapInput, mapsLinkFor } from "@/lib/geo";
 
@@ -118,7 +118,8 @@ export function HallForm({ ownerId, amenities, categories, hall, needsBusinessNa
   // `blob` is what will be uploaded and `type` is what its bytes are — never
   // file.type, which the browser takes from the client and a crafted upload
   // controls.
-  const [photos, setPhotos] = useState<{ key: string; blob: Blob; type: PhotoMime; preview: string; originalBytes: number }[]>([]);
+  // smallNote: set when the photo is too small to look sharp (see smallPhotoNote).
+  const [photos, setPhotos] = useState<{ key: string; blob: Blob; type: PhotoMime; preview: string; originalBytes: number; smallNote: string | null }[]>([]);
   // Photos still being compressed; submitting waits for them.
   const [preparing, setPreparing] = useState(0);
   const photoBytes = photos.reduce((t, p) => ({ before: t.before + p.originalBytes, after: t.after + p.blob.size }), { before: 0, after: 0 });
@@ -177,6 +178,7 @@ export function HallForm({ ownerId, amenities, categories, hall, needsBusinessNa
           type: prepared.type,
           preview: URL.createObjectURL(prepared.blob),
           originalBytes: prepared.originalBytes,
+          smallNote: smallPhotoNote(prepared.width, prepared.height),
         };
         setPhotos((prev) => [...prev, photo]);
       } catch (err) {
@@ -753,6 +755,13 @@ export function HallForm({ ownerId, amenities, categories, hall, needsBusinessNa
             </p>
           )}
 
+          {/* Once, not per photo: the advice is the same for every small one. */}
+          {photos.find((p) => p.smallNote) && (
+            <p className="mt-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-[11px] leading-relaxed text-amber-900">
+              {photos.find((p) => p.smallNote)?.smallNote}
+            </p>
+          )}
+
           {photos.length > 0 && (
             <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
               {photos.map((p, i) => (
@@ -761,6 +770,11 @@ export function HallForm({ ownerId, amenities, categories, hall, needsBusinessNa
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src={p.preview} alt="" className="h-full w-full object-cover" />
                   </div>
+                  {p.smallNote && (
+                    <span className="absolute right-2 top-2 rounded-full bg-amber-500 px-2 py-0.5 text-[10px] font-bold text-white">
+                      Low resolution
+                    </span>
+                  )}
                   {i === 0 && (
                     <span className="absolute left-2 top-2 inline-flex items-center gap-1 rounded-full bg-gold-500 px-2 py-0.5 text-[10px] font-bold text-white">
                       <Star className="h-2.5 w-2.5 fill-white" aria-hidden /> Cover

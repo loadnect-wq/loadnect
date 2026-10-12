@@ -19,7 +19,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { AlertCircle, ArrowLeft, ArrowRight, ImagePlus, Loader2, Star, X } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { MAX_DRAFT_PHOTOS } from "@/lib/hall-draft-photos";
+import { MAX_DRAFT_PHOTOS, smallPhotoNote } from "@/lib/hall-draft-photos";
 import { PhotoRejected, prepareHallPhoto } from "@/lib/prepare-hall-photo";
 import { revokePreview, type DraftPhoto } from "./draft-photos";
 
@@ -116,6 +116,14 @@ export function HallPhotosField({
           }]
         : [],
     );
+
+    // One notice for all small photos (usually WhatsApp forwards), naming them,
+    // rather than the same paragraph once per photo. They are still added.
+    const small = results.filter((r) => r && smallPhotoNote(r.prepared.width, r.prepared.height));
+    if (small.length > 0) {
+      const first = small[0]!.prepared;
+      messages.push(`${small.map((r) => r!.file.name).join(", ")}: ${smallPhotoNote(first.width, first.height)}`);
+    }
 
     if (additions.length > 0) {
       onChange((prev) => {

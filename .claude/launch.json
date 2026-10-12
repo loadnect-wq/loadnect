@@ -19,6 +19,9 @@
         "-p",
         "3100"
       ],
+      "env": {
+        "VERCEL_ENV": "preview"
+      },
       "port": 3100
     }
   ]

@@ -8,7 +8,7 @@ import { type HallImage } from "@/lib/owner";
 import { ALT_TEXT_MAX } from "@/lib/validation/schemas";
 import { ConfirmationDialog } from "@/components/ui/ConfirmationDialog";
 import { IMAGE_CACHE_CONTROL } from "@/lib/supabase/storage";
-import { EXT_BY_MIME, MAX_SOURCE_PHOTO_BYTES } from "@/lib/hall-draft-photos";
+import { EXT_BY_MIME, MAX_SOURCE_PHOTO_BYTES, smallPhotoNote } from "@/lib/hall-draft-photos";
 import { PhotoRejected, formatPhotoBytes, prepareHallPhoto, type PreparedPhoto } from "@/lib/prepare-hall-photo";
 import {
   addHallImage,
@@ -92,6 +92,9 @@ export function ImagesManager({ hallId, initial }: Props) {
   // What compression saved across the last batch, for one line under the
   // uploader: owners should see why their 8 MB photo went up in seconds.
   const [savedNote, setSavedNote] = useState<string | null>(null);
+  // Set when a photo in the last batch is too small to look sharp (usually a
+  // WhatsApp forward). Kept apart from the queue, which clears once uploaded.
+  const [smallNote, setSmallNote] = useState<string | null>(null);
 
   const busy = queue.some((q) => q.status === "preparing" || q.status === "uploading");
 
@@ -100,6 +103,7 @@ export function ImagesManager({ hallId, initial }: Props) {
     if (files.length === 0) return;
     setError(null);
     setSavedNote(null);
+    setSmallNote(null);
 
     // EVERY PHOTO IS COMPRESSED BEFORE IT IS UPLOADED (lib/prepare-hall-photo.ts):
     // scaled to at most 2560px and re-encoded at a quality where the change is
@@ -138,6 +142,8 @@ export function ImagesManager({ hallId, initial }: Props) {
         ? `${formatPhotoBytes(prepared.originalBytes)} → ${formatPhotoBytes(prepared.blob.size)}`
         : undefined;
       update(item.key, { status: "uploading", saved });
+      const small = smallPhotoNote(prepared.width, prepared.height);
+      if (small) setSmallNote((n) => n ?? small);
 
       // Extension from the PREPARED type, so the stored name agrees with the
       // bytes and with the content type sent below.
@@ -242,6 +248,11 @@ export function ImagesManager({ hallId, initial }: Props) {
         <div role="status" className="flex items-start gap-2 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
           <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
           <span>{savedNote}</span>
+        </div>
+      )}
+      {smallNote && (
+        <div role="status" className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          {smallNote}
         </div>
       )}
 

@@ -161,24 +161,35 @@ function mosaic(total: number): { block: string; track: string; visible: number 
  * avoids the error `100vw` carries — it ignores the scrollbar, and a 1920
  * viewport measured a 1915px layout.
  *
- * THE TRAILING `100vw` IS LOAD-BEARING. Next's srcset generator scans `sizes`
- * for vw tokens; finding `100vw` it filters candidates to >= 640, which is
- * exactly the list today's `sizes="100vw"` produces. Keeping it is what makes
- * the MOBILE srcset byte-identical, so this change cannot alter what a phone
- * downloads. It also means a 270px thumb's floor is the 640 candidate — a
- * DPR-1 over-sample, and almost exactly the 540 device pixels it needs at
- * DPR 2, so it is the right file for most real desktop displays anyway.
+ * THE PHONE VALUE IS `140vw` (2026-10-12; it was `100vw`). The same
+ * height-bound arithmetic applies on a phone, and `100vw` ignored it. The phone
+ * box is about 1.30:1 (405x311 measured), so a 16:9 photo covers it at
+ * 1.78/1.30 = 1.37 times the box width, and the WhatsApp-sized wide photos the
+ * first Chennai halls arrived with (1280x590, 2.17:1) need about 1.7x. With
+ * `100vw` a phone fetched the 750px copy and cover stretched it about 1.8x,
+ * which is why those listings looked soft. `140vw` asks for about 1050 device
+ * pixels at DPR 2, the 1080px candidate.
+ *
+ * WHAT IT COSTS. Next's srcset generator scans `sizes` for vw tokens and drops
+ * candidates below 640 x (smallest vw / 100), so the floor is now the 1080px
+ * candidate rather than 640. On a phone that is the point. On a DPR-1 desktop a
+ * 270px thumb now gets the 1080 file instead of 640: an over-fetch only on
+ * low-density screens, and the venue's photos are what its page is for.
  */
 /** 548x552 hero cell, 5+ photos. 552 x 16/9 = 981 -> 1000. */
-const SIZES_HERO  = "(min-width: 1024px) 1000px, 100vw";
+const SIZES_HERO  = "(min-width: 1024px) 1000px, 140vw";
 /** 270x272 thumb. 272 x 16/9 = 484 -> 500. */
-const SIZES_THUMB = "(min-width: 1024px) 500px, 100vw";
+const SIZES_THUMB = "(min-width: 1024px) 500px, 140vw";
 /** 733x736 hero cell, 3-4 photos. 736 x 16/9 = 1309 -> 1320. */
-const SIZES_WIDE  = "(min-width: 1024px) 1320px, 100vw";
+const SIZES_WIDE  = "(min-width: 1024px) 1320px, 140vw";
 /** 363x364 thumb, 3-4 photos. 364 x 16/9 = 647 -> 660. */
-const SIZES_WIDE_THUMB = "(min-width: 1024px) 660px, 100vw";
+const SIZES_WIDE_THUMB = "(min-width: 1024px) 660px, 140vw";
 /** Single photo: an 828x552 cell. 552 x 16/9 = 981 -> 1000. */
-const SIZES_SOLO  = "(min-width: 1024px) 1000px, 100vw";
+const SIZES_SOLO  = "(min-width: 1024px) 1000px, 140vw";
+
+/** Display quality for a venue's own photos. Must be listed in next.config.ts
+ *  images.qualities, or Next 16 quietly serves the nearest listed value. */
+const GALLERY_QUALITY = 85;
 /** The lightbox stage is object-CONTAIN, and contain never paints wider than
  *  the box — so here the box width really is the requirement. Capped at
  *  1100px; the optimizer clamps to the source, so a 720px portrait quietly
@@ -341,6 +352,7 @@ export function ImageGallery({ images, hallName, hallCity, hallId }: Props) {
                   alt={altFor(img, i)}
                   fill
                   sizes={sizes}
+                  quality={GALLERY_QUALITY}
                   className="object-cover"
                   priority={i === 0}
                 />
@@ -473,6 +485,7 @@ export function ImageGallery({ images, hallName, hallCity, hallId }: Props) {
                   alt={altFor(img, i)}
                   fill
                   sizes={SIZES_STAGE}
+                  quality={GALLERY_QUALITY}
                   className="object-contain"
                 />
               </div>

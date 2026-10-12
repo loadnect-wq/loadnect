@@ -13,7 +13,7 @@
 //      the type the browser reports, both of which the uploader chooses;
 //   2. it is scaled down so its long edge is at most 2560px (never enlarged),
 //      in halving steps so fine detail does not shimmer;
-//   3. it is re-encoded as a JPEG at quality 0.88;
+//   3. it is re-encoded as a JPEG at PHOTO_JPEG_QUALITY (0.92);
 //   4. if the original already fitted and the copy is not at least 15%
 //      smaller, the ORIGINAL is uploaded byte-for-byte instead — re-encoding a
 //      photo that is already well compressed only costs quality.
@@ -117,7 +117,7 @@ async function prepare(file: File): Promise<PreparedPhoto> {
       });
       if (compressed && compressed.size <= MAX_STORED_PHOTO_BYTES) return done(compressed);
 
-      // Only an extraordinarily detailed photo gets here: 2560px at 0.88 is
+      // Only an extraordinarily detailed photo gets here: 2560px at 0.92 is
       // normally well under 5 MB.
       for (const quality of PHOTO_FALLBACK_QUALITIES) {
         const blob = await encodeJpeg(canvas, quality);

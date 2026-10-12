@@ -152,14 +152,42 @@ export const PHOTO_MIN_EDGE = 320;
 // and a photo that is already small is stored exactly as picked.
 
 /**
- * JPEG quality for a re-encoded photo. At 0.88 a hall photo is visually
- * indistinguishable from its source at 100% zoom, yet a 12-MP phone photo
- * (typically 4–9 MB) comes out around 0.6–1.5 MB at 2560px. Going lower saves
- * little more — visitors are served AVIF/WebP resized by the image optimizer
- * anyway (next.config.ts) — and it is where banding in a ceiling or a sky
- * starts to show.
+ * JPEG quality for a re-encoded photo. A 12-MP phone photo (typically 4–9 MB)
+ * comes out around 0.8–2 MB at 2560px. Going lower saves little more, since
+ * visitors are served AVIF/WebP resized by the image optimizer anyway
+ * (next.config.ts), and it is where banding in a ceiling or a sky starts.
+ *
+ * 0.92 SINCE 2026-10-12 (was 0.88). A venue's photos are what it is chosen on,
+ * and this copy is the ORIGINAL every later size is made from, so a few
+ * hundred KB more per photo is the right trade. Note that when the first two
+ * Chennai halls looked soft, the cause was the SOURCE: WhatsApp forwards
+ * (1280px, about quality 60, metadata stripped), which this pipeline already
+ * stores untouched (PHOTO_MIN_SAVING). See smallPhotoNote for that case.
  */
-export const PHOTO_JPEG_QUALITY = 0.88;
+export const PHOTO_JPEG_QUALITY = 0.92;
+
+/**
+ * Below this on the LONG edge a photo is soft on a large phone or any laptop.
+ * A WhatsApp forward is 1280px (1600px at best); a phone camera original is
+ * 4000px or more.
+ */
+export const PHOTO_SHARP_EDGE = 1600;
+
+/**
+ * The advice shown beside a picked photo that is too small to look sharp, or
+ * null. The photo is still accepted: a soft photo is better than none. The
+ * most common cause, by far, is a photo forwarded over WhatsApp, which shrinks
+ * and recompresses it before it ever reaches us, and no setting here can put
+ * that detail back.
+ */
+export function smallPhotoNote(width: number, height: number): string | null {
+  if (Math.max(width, height) >= PHOTO_SHARP_EDGE) return null;
+  return (
+    `This photo is small (${width}×${height}), so it will look soft. Photos sent over WhatsApp ` +
+    `lose most of their detail. For a sharper listing, upload the original from the phone's ` +
+    `gallery, or ask for it as a WhatsApp "Document" instead of a photo.`
+  );
+}
 
 /** Tried only when a photo is STILL over the bucket limit at PHOTO_JPEG_QUALITY. */
 export const PHOTO_FALLBACK_QUALITIES = [0.8, 0.7] as const;
