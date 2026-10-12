@@ -116,11 +116,15 @@ describe("adminHallDraftSchema", () => {
     expect(cancelHallDraftSchema.safeParse({ draftId: id, reason: "Duplicate" }).success).toBe(true);
   });
 
-  it("takes nothing from the claimant but the draft id", () => {
+  it("takes nothing from the claimant that says WHO they are: only the draft id, and a first-time owner's business name", () => {
     // No phone, no email, no owner id. Anything else would be a value an
     // attacker could vary; the identity is re-derived server-side from the
     // session.
-    expect(Object.keys(claimHallDraftSchema.shape)).toEqual(["draftId"]);
+    //
+    // businessName (0115, 2026-10-12) is not identity. It is the "Listed by"
+    // label a first-time owner types for their OWN new hall_owners row, which
+    // the database creates for auth.uid() only, after checking owner_approved.
+    expect(Object.keys(claimHallDraftSchema.shape).sort()).toEqual(["businessName", "draftId"]);
   });
 });
 

@@ -49,11 +49,12 @@ export default async function OwnerDashboardPage() {
   // business name itself (createHall creates the row), so the first step is
   // the hall.
   //
-  // THE ONE CASE THAT STILL NEEDS PROFILE FIRST: an admin listed this venue for
-  // them (Admin → Add a Hall). claim_admin_hall_draft requires the business
-  // record, and this screen used to hide the claim card entirely, so an owner
-  // whose hall was waiting was never told. RLS returns a draft only for this
-  // owner's verified mobile number, so a card here IS the match.
+  // A HALL AN ADMIN PREPARED FOR THEM (Admin → Add a Hall). This screen used to
+  // hide the claim card entirely, so an owner whose hall was waiting was never
+  // told. The card now asks for the business name and the claim creates the
+  // record (0115, claim_admin_hall_draft_as_new_owner), so no Profile visit is
+  // needed. RLS returns a draft only for this owner's verified mobile number,
+  // so a card here IS the match.
   if (!ownerRow) {
     const waiting = await fetchClaimableDraft();
     return (
@@ -61,23 +62,15 @@ export default async function OwnerDashboardPage() {
         <AppHeader title="Owner Dashboard" notificationsHref="/owner/notifications" />
         <div className="px-4 py-8 sm:px-6 lg:px-8 max-w-2xl">
           {waiting ? (
-            <div className="rounded-2xl border-2 border-gold-300 bg-gold-50 p-6 space-y-3">
-              <div className="flex items-start gap-3">
-                <Building2 className="h-5 w-5 shrink-0 mt-0.5 text-gold-700" aria-hidden />
-                <div>
-                  <p className="font-semibold text-charcoal-900">
-                    {waiting.name} is ready for you
-                  </p>
-                  <p className="mt-1 text-sm text-charcoal-700">
-                    Hallnect has set up this listing for your mobile number. Add your business name
-                    in Profile, then come back here to claim it.
-                  </p>
-                </div>
-              </div>
-              <Link href="/owner/profile" className={buttonVariants({ variant: "gold", size: "sm" })}>
-                Add business name
-              </Link>
-            </div>
+            <ClaimHallCard
+              draftId={waiting.id}
+              name={waiting.name}
+              city={waiting.city}
+              address={waiting.address}
+              capacityMax={waiting.capacityMax}
+              needsBusinessName
+              defaultBusinessName={profile.full_name ?? ""}
+            />
           ) : (
             <div className="rounded-2xl bg-white p-6 shadow-card space-y-3">
               <div className="flex items-start gap-3">

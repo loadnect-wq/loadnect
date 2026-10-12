@@ -815,7 +815,13 @@ export const adminHallDraftSchema = z
     path: ["pricePerDay"],
   });
 
-export const claimHallDraftSchema = z.object({ draftId: uuidSchema });
+// businessName only from a first-time owner (no hall_owners row): the claim then
+// creates the row through claim_admin_hall_draft_as_new_owner (0115). Same rule
+// as hallCreateSchema.businessName and the SQL function's own check.
+export const claimHallDraftSchema = z.object({
+  draftId:      uuidSchema,
+  businessName: trimmed(160).pipe(z.string().min(2, "Enter your business name.")).optional(),
+});
 
 // ── Photos on an admin-recorded hall (0094) ─────────────────────────────────
 // The limits live in lib/hall-draft-photos.ts; restated as literals here only

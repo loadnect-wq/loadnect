@@ -12,6 +12,14 @@ type Props = {
   city:        string;
   address:     string | null;
   capacityMax: number;
+  /**
+   * A first-time owner with no business record. The card asks for the business
+   * name and the claim creates the record (0115), instead of sending them to
+   * Profile first.
+   */
+  needsBusinessName?:   boolean;
+  /** Their sign-up name, as a starting point they can change. */
+  defaultBusinessName?: string;
 };
 
 /**
@@ -27,16 +35,23 @@ type Props = {
  * over a real business, so it should not be one stray tap on a dashboard
  * somebody opened for another reason.
  */
-export function ClaimHallCard({ draftId, name, city, address, capacityMax }: Props) {
+export function ClaimHallCard({
+  draftId, name, city, address, capacityMax, needsBusinessName = false, defaultBusinessName = "",
+}: Props) {
   const router = useRouter();
   const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const [businessName, setBusinessName] = useState(defaultBusinessName);
+  const nameMissing = needsBusinessName && businessName.trim().length < 2;
 
   function handleClaim() {
     setError(null);
+    if (nameMissing) { setError("Enter your business name — it is shown on your listing as \"Listed by\"."); return; }
     startTransition(async () => {
-      const result = await claimHallDraft({ draftId });
+      const result = await claimHallDraft(
+        needsBusinessName ? { draftId, businessName } : { draftId },
+      );
       if ("error" in result) { setError(result.error); return; }
       toast({
         title: "Hall claimed",
@@ -100,11 +115,29 @@ export function ClaimHallCard({ draftId, name, city, address, capacityMax }: Pro
                 By claiming, you confirm you own or are authorised to manage this venue.
                 It becomes your listing, and details you publish are your responsibility.
               </p>
+              {needsBusinessName && (
+                <label className="mt-3 block space-y-1.5">
+                  <span className="text-xs font-semibold text-charcoal-700">Business Name *</span>
+                  <input
+                    type="text"
+                    value={businessName}
+                    onChange={(e) => setBusinessName(e.target.value)}
+                    maxLength={160}
+                    autoComplete="organization"
+                    placeholder="e.g. Sri Lakshmi Mahal or your company name"
+                    className="block min-h-[44px] w-full rounded-xl border border-border bg-white px-3 text-sm text-charcoal-900 placeholder:text-charcoal-400 focus:outline-none focus:ring-2 focus:ring-maroon-500"
+                  />
+                  <span className="block text-[11px] leading-relaxed text-charcoal-500">
+                    Shown on your listing as &ldquo;Listed by&rdquo;. Use the name you trade under: your
+                    hall, your company, or your own name. You can change it later in Profile.
+                  </span>
+                </label>
+              )}
               <div className="mt-3 flex items-center gap-3">
                 <button
                   type="button"
                   onClick={handleClaim}
-                  disabled={pending}
+                  disabled={pending || nameMissing}
                   className="inline-flex items-center rounded-lg bg-maroon-700 px-3.5 py-2 text-xs font-semibold text-white transition-colors hover:bg-maroon-800 disabled:opacity-60"
                 >
                   {pending && <Loader2 className="mr-1.5 h-3 w-3 animate-spin" aria-hidden />}

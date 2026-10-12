@@ -1999,9 +1999,14 @@ export async function claimHallDraft(
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = supabase as any;
-  const { data, error } = await db.rpc("claim_admin_hall_draft", {
-    _draft_id: parsed.data.draftId,
-  });
+  // A first-time owner sends their business name, and the 0115 wrapper creates
+  // their hall_owners row and claims in ONE transaction (a failed claim leaves
+  // no row behind). It checks owner_approved itself, because it writes as
+  // SECURITY DEFINER. Everyone else takes the original path, unchanged.
+  const { businessName, draftId } = parsed.data;
+  const { data, error } = businessName
+    ? await db.rpc("claim_admin_hall_draft_as_new_owner", { _draft_id: draftId, _business_name: businessName })
+    : await db.rpc("claim_admin_hall_draft", { _draft_id: draftId });
 
   if (error) {
     // The function raises with sentences written FOR the owner — "This listing
@@ -2016,6 +2021,7 @@ export async function claimHallDraft(
   if (!data) return { error: "That listing could not be claimed. Reload and try again." };
 
   revalidatePath("/owner/dashboard");
+  revalidatePath("/owner/profile");
   revalidatePath("/owner/halls");
   revalidatePath(`/owner/halls/${data}/edit`);
   return { success: true, hallId: String(data) };
