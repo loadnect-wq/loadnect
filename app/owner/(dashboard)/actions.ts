@@ -25,6 +25,7 @@ import {
   leadQuoteSchema,
 } from "@/lib/validation/schemas";
 import { sanitizeError } from "@/lib/errors";
+import { ensureOwnerRow } from "@/lib/owner-row";
 import { STANDARD_COMMISSION_PERCENT } from "@/lib/commission";
 import { canonicalStateForStorage } from "@/lib/seo/state";
 import { resolveMapInput } from "@/lib/geo";
@@ -238,7 +239,7 @@ export async function updateOwnerProfileName(data: {
 //   • prevent_hall_self_approve trigger: owner cannot set approved/rejected/suspended
 
 export async function createHall(data: {
-  ownerId:      string; // hall_owners.id
+  ownerId?:     string; // hall_owners.id — ignored; derived from the session
   name:         string;
   city:         string;
   state:        string;
@@ -260,6 +261,8 @@ export async function createHall(data: {
    *  Resolved and bounds-checked SERVER-SIDE — the client sends a string, never
    *  a coordinate. */
   mapLink?: string;
+  /** Only from a first-time owner, who has no hall_owners row yet. */
+  businessName?: string;
 }): Promise<ActionResult> {
   const { supabase, user } = await getAuthUser();
   if (!user) return { error: "Not authenticated" };
@@ -271,33 +274,31 @@ export async function createHall(data: {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const db = supabase as any;
 
-  // ── Derive the owner SERVER-SIDE; never trust the client's ownerId ──────────
-  // The form carries an ownerId, but a stale/cached page (or a tampered
-  // payload) can supply one that isn't this user's. halls_insert WITH CHECK
-  // then fails owns_owner_row() and Postgres returns a bare 42501 that tells
-  // the owner nothing. Resolve the real row here and use it as the source of
-  // truth, so the insert can only ever target the caller's own owner record.
-  const { data: ownerRow, error: ownerErr } = await db
-    .from("hall_owners")
-    .select("id")
-    .eq("profile_id", user.id)
-    .maybeSingle();
-
-  if (ownerErr) return { error: sanitizeError(ownerErr, "owner") };
-  if (!ownerRow?.id) {
-    return { error: "Complete your business profile before adding a hall." };
-  }
-
   // Role gate mirrored in the app layer so the failure is explainable. RLS
   // (is_owner_approved) remains the authority — this only produces a better
-  // message than a raw constraint violation.
+  // message than a raw constraint violation. It runs BEFORE the owner row
+  // below, so the role check comes before anything is written.
   const { data: profileRow } = await db
     .from("profiles").select("role").eq("id", user.id).maybeSingle();
   if (profileRow?.role !== "owner_approved") {
     return { error: "Your owner account is awaiting admin approval before you can list a hall." };
   }
 
-  const ownerId: string = ownerRow.id;
+  // ── Derive the owner SERVER-SIDE; never trust the client's ownerId ──────────
+  // The form carries an ownerId, but a stale/cached page (or a tampered
+  // payload) can supply one that isn't this user's. halls_insert WITH CHECK
+  // then fails owns_owner_row() and Postgres returns a bare 42501 that tells
+  // the owner nothing. Resolve the real row here and use it as the source of
+  // truth, so the insert can only ever target the caller's own owner record.
+  // Creates the row from the form's business name on a first hall. See
+  // lib/owner-row.ts for why the name is asked for and never guessed.
+  const owner = await ensureOwnerRow(db, user.id, v.businessName);
+  if ("error" in owner) return { error: owner.error };
+  if (owner.created) {
+    revalidatePath("/owner/profile");
+    revalidatePath("/owner/dashboard");
+  }
+  const ownerId: string = owner.id;
 
   // Slug uniqueness.
   //

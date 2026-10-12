@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { SERVICE_AREA_CITIES } from "@/lib/seo/service-areas";
 import type { VenueCategory } from "@/lib/venue-categories";
 import { CategoryPicker } from "@/components/venues/CategoryPicker";
@@ -38,6 +38,14 @@ interface Props {
    */
   categories: VenueCategory[];
   hall?:      OwnerHallDetail; // present in edit mode
+  /**
+   * A first-time owner with no business record yet. The form asks for the
+   * business name itself, and createHall creates the record, instead of
+   * sending them to Profile first. See halls/new/page.tsx.
+   */
+  needsBusinessName?:   boolean;
+  /** The person's name from sign-up, as a starting point they can change. */
+  defaultBusinessName?: string;
 }
 
 
@@ -46,14 +54,27 @@ interface Props {
 // so an approved venue in any of them would have put a 404 in the sitemap.
 const CITIES = SERVICE_AREA_CITIES;
 
-export function HallForm({ ownerId, amenities, categories, hall }: Props) {
+export function HallForm({ ownerId, amenities, categories, hall, needsBusinessName = false, defaultBusinessName = "" }: Props) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  // The error banner sits at the TOP of a form about five phone screens tall,
+  // and the submit button is at the bottom. Without this, a rejected submit
+  // just stopped the spinner: the owner saw nothing change and had no idea why.
+  const errorRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!error) return;
+    errorRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    errorRef.current?.focus({ preventScroll: true });
+  }, [error]);
 
+  const [businessName, setBusinessName] = useState(defaultBusinessName);
   const [name,         setName]         = useState(hall?.name          ?? "");
   const [city,         setCity]         = useState(hall?.city          ?? "");
-  const [state,        setState]        = useState(hall?.state         ?? "");
+  // A NEW hall starts on Tamil Nadu, the state every city in the dropdown is
+  // in. It is a visible value the owner can change, not a silent default
+  // written into a blank field. Edit keeps whatever the hall has.
+  const [state,        setState]        = useState(hall ? (hall.state ?? "") : "Tamil Nadu");
   const [address,      setAddress]      = useState(hall?.address       ?? "");
   const [pincode,      setPincode]      = useState(hall?.pincode       ?? "");
   // Shown back as a real Google Maps link rather than raw numbers, because a
@@ -227,7 +248,11 @@ export function HallForm({ ownerId, amenities, categories, hall }: Props) {
     if (preparing > 0) return;
     setError(null);
     const data = {
-      ownerId,
+      // Empty for a first-time owner; the server never trusts it anyway.
+      ownerId: ownerId || undefined,
+      // Only a first-time owner sends it (see Props). An owner who already has
+      // a business record changes the name under Profile.
+      businessName: needsBusinessName ? businessName : undefined,
       name, city, state, address, pincode,
       capacityMin:  capMin,
       capacityMax:  capMax,
@@ -287,13 +312,36 @@ export function HallForm({ ownerId, amenities, categories, hall }: Props) {
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
       {error && (
-        <div className="rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
+        <div
+          ref={errorRef}
+          role="alert"
+          tabIndex={-1}
+          className="rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700 outline-none"
+        >
           {error}
         </div>
       )}
 
       {/* Basic info */}
       <FormSection title="Basic Information">
+        {needsBusinessName && (
+          <div className="space-y-1.5">
+            <Field label="Business Name *">
+              <Input
+                value={businessName}
+                onChange={(e) => setBusinessName(e.target.value)}
+                placeholder="e.g. Sri Lakshmi Mahal or your company name"
+                autoComplete="organization"
+                required
+                minLength={2}
+              />
+            </Field>
+            <p className="text-[11px] leading-relaxed text-charcoal-500">
+              Shown on your listing as &ldquo;Listed by&rdquo;. Use the name you trade under: your
+              hall, your company, or your own name. You can change it later in Profile.
+            </p>
+          </div>
+        )}
         <Field label="Hall Name *">
           <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Grand Palace Banquet Hall" required />
         </Field>
@@ -323,7 +371,16 @@ export function HallForm({ ownerId, amenities, categories, hall }: Props) {
           />
         </Field>
         <Field label="Pincode">
-          <Input value={pincode} onChange={(e) => setPincode(e.target.value)} placeholder="600001" maxLength={6} />
+          {/* inputMode brings up the number pad on a phone; a text input
+              (not type=number) keeps any leading zero and has no spinner. */}
+          <Input
+            value={pincode}
+            onChange={(e) => setPincode(e.target.value)}
+            placeholder="625001"
+            maxLength={6}
+            inputMode="numeric"
+            autoComplete="postal-code"
+          />
         </Field>
 
         {/* THE MAP PIN. Optional, and deliberately framed as "paste the link"
@@ -730,12 +787,14 @@ export function HallForm({ ownerId, amenities, categories, hall }: Props) {
       {!isEdit && (
         <FormSection title="Review">
           <dl className="grid grid-cols-2 gap-3 text-xs sm:grid-cols-3">
+            {needsBusinessName && <ReviewItem label="Listed by" value={businessName || "—"} />}
             <ReviewItem label="Hall name" value={name || "—"} />
             <ReviewItem label="Location" value={[city, state].filter(Boolean).join(", ") || "—"} />
             <ReviewItem label="Capacity" value={capMax ? `Up to ${capMax}` : "—"} />
             <ReviewItem
               label="Booking mode"
-              value={bookingMode === "LEAD_GENERATION" ? "Lead Generation" : "Direct Booking"}
+              // The same words as the choice above: "Quotes" / "Online booking".
+              value={bookingMode === "LEAD_GENERATION" ? "Quotes" : "Online booking"}
             />
             <ReviewItem
               label="Price / day"

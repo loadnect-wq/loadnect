@@ -573,7 +573,9 @@ export const hallSchema = z
   .refine(
     (d) => d.bookingMode !== "DIRECT_BOOKING" || d.pricePerDay != null,
     {
-      message: "A direct-booking venue needs a price per day. Switch to Lead Generation to list without one.",
+      // "Quotes", the word on the form's choice. "Lead Generation" is the
+      // internal name, and an owner looking for that option will not find it.
+      message: "Online booking needs a full day price. Choose Quotes to list without one.",
       path: ["pricePerDay"],
     },
   )
@@ -616,9 +618,17 @@ export type HallInput = z.input<typeof hallSchema>;
 // (lib/commission.ts), so an owner has nothing to choose — the per-hall rate
 // list (1.5% to 5%), its schema and its admin filter were removed. A request
 // that still sends the key has it stripped by Zod and ignored.
+//
+// ownerId IS OPTIONAL and the server never uses it: createHall derives the
+// owner from the session. A first-time owner has no hall_owners row yet, so
+// there is no id to send. businessName comes only from them (2026-10-12): the
+// form asks for it inline, and createHall creates the row from it. That
+// replaced a detour through /owner/profile, where it was the only required
+// field.
 export const hallCreateSchema = hallSchema.and(
   z.object({
-    ownerId: uuidSchema,
+    ownerId:      uuidSchema.optional(),
+    businessName: trimmed(160).pipe(z.string().min(2, "Enter your business name.")).optional(),
   }),
 );
 

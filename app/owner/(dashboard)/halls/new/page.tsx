@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { redirect } from "next/navigation";
 import { AlertCircle } from "lucide-react";
 import { requireRole } from "@/lib/auth";
 import { fetchOwnerRow, fetchAllAmenities } from "@/lib/owner";
@@ -11,12 +10,13 @@ import { HallForm } from "../_components/HallForm";
 export const metadata: Metadata = { title: "Add Hall" };
 
 export default async function NewHallPage() {
-  await requireRole(["owner_approved"]);
+  const profile = await requireRole(["owner_approved"]);
+  // NO REDIRECT WHEN THIS IS NULL (2026-10-12). A first-time owner has no
+  // hall_owners row, and this page used to bounce them to /owner/profile with
+  // no explanation to fill in Business Details, whose only required field is
+  // the business name. The form now asks for that name itself and createHall
+  // creates the row, so the first hall is one page instead of two.
   const ownerRow = await fetchOwnerRow();
-
-  if (!ownerRow) {
-    redirect("/owner/profile");
-  }
 
   // STRICT on the categories: this form saves, and an empty picker would let
   // an owner publish a hall that appears under no category at all. Two
@@ -38,7 +38,13 @@ export default async function NewHallPage() {
           </p>
         </div>
 
-        <HallForm ownerId={ownerRow.id} amenities={amenities} categories={categories} />
+        <HallForm
+          ownerId={ownerRow?.id ?? ""}
+          amenities={amenities}
+          categories={categories}
+          needsBusinessName={!ownerRow}
+          defaultBusinessName={profile.full_name ?? ""}
+        />
 
         <p className="text-center text-xs text-charcoal-500">
           Already have halls?{" "}

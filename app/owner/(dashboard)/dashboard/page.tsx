@@ -2,7 +2,7 @@ import Image from "next/image";
 import type { Metadata } from "next";
 import Link from "next/link";
 import {
-  AlertCircle, Building2, CalendarDays, CheckCircle2, CreditCard,
+  Building2, CalendarDays, CheckCircle2, CreditCard,
   IndianRupee, Plus, Sparkles, Clock, Wallet, Inbox, Phone, BookOpen, CalendarCheck,
 } from "lucide-react";
 import { requireRole } from "@/lib/auth";
@@ -43,25 +43,58 @@ export default async function OwnerDashboardPage() {
   const profile = await requireRole(["owner_approved"]);
   const ownerRow = await fetchOwnerRow();
 
+  // A FIRST-TIME OWNER (no hall_owners row yet). This used to say only
+  // "Complete your business profile", the opposite of what someone who just
+  // signed up to list a hall came to do. The hall form now asks for the
+  // business name itself (createHall creates the row), so the first step is
+  // the hall.
+  //
+  // THE ONE CASE THAT STILL NEEDS PROFILE FIRST: an admin listed this venue for
+  // them (Admin → Add a Hall). claim_admin_hall_draft requires the business
+  // record, and this screen used to hide the claim card entirely, so an owner
+  // whose hall was waiting was never told. RLS returns a draft only for this
+  // owner's verified mobile number, so a card here IS the match.
   if (!ownerRow) {
+    const waiting = await fetchClaimableDraft();
     return (
       <div className="min-h-screen bg-ivory-100">
         <AppHeader title="Owner Dashboard" notificationsHref="/owner/notifications" />
         <div className="px-4 py-8 sm:px-6 lg:px-8 max-w-2xl">
-          <div className="rounded-2xl border-2 border-amber-200 bg-amber-50 p-6 space-y-3">
-            <div className="flex items-start gap-3">
-              <AlertCircle className="h-5 w-5 shrink-0 mt-0.5 text-amber-600" />
-              <div>
-                <p className="font-semibold text-amber-900">Complete your business profile</p>
-                <p className="mt-1 text-sm text-amber-800">
-                  Before listing halls, you need to add your business details.
-                </p>
+          {waiting ? (
+            <div className="rounded-2xl border-2 border-gold-300 bg-gold-50 p-6 space-y-3">
+              <div className="flex items-start gap-3">
+                <Building2 className="h-5 w-5 shrink-0 mt-0.5 text-gold-700" aria-hidden />
+                <div>
+                  <p className="font-semibold text-charcoal-900">
+                    {waiting.name} is ready for you
+                  </p>
+                  <p className="mt-1 text-sm text-charcoal-700">
+                    Hallnect has set up this listing for your mobile number. Add your business name
+                    in Profile, then come back here to claim it.
+                  </p>
+                </div>
               </div>
+              <Link href="/owner/profile" className={buttonVariants({ variant: "gold", size: "sm" })}>
+                Add business name
+              </Link>
             </div>
-            <Link href="/owner/profile" className={buttonVariants({ variant: "gold", size: "sm" })}>
-              Complete Profile
-            </Link>
-          </div>
+          ) : (
+            <div className="rounded-2xl bg-white p-6 shadow-card space-y-3">
+              <div className="flex items-start gap-3">
+                <Building2 className="h-5 w-5 shrink-0 mt-0.5 text-maroon-600" aria-hidden />
+                <div>
+                  <p className="font-serif text-lg font-bold text-charcoal-900">Add your first hall</p>
+                  <p className="mt-1 text-sm text-charcoal-600">
+                    Name, city, how many guests it holds and what it hosts. Photos and prices
+                    are optional. Our team checks each hall before families can see it.
+                  </p>
+                </div>
+              </div>
+              <Link href="/owner/halls/new" className={buttonVariants({ variant: "gold", size: "sm" })}>
+                <Plus className="h-4 w-4" aria-hidden /> Add your first hall
+              </Link>
+            </div>
+          )}
         </div>
       </div>
     );
