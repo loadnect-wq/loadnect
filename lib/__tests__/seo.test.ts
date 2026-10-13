@@ -15,7 +15,7 @@ import {
   cityCollectionJsonLd, faqJsonLd, jsonLdGraph,
 } from "@/lib/seo/jsonld";
 import { citySlug, cityFromSlug, MIN_VENUES_FOR_INDEX } from "@/lib/seo/cities";
-import { SUPPORT_HOURS } from "@/lib/constants";
+import { SOCIAL_PROFILES, SUPPORT_HOURS } from "@/lib/constants";
 
 describe("canonical URLs", () => {
   // NOTE: under vitest NODE_ENV is not "production" and there is no window, so
@@ -225,8 +225,8 @@ describe("venue structured data", () => {
 });
 
 describe("organization and website schema", () => {
-  it("never claims social profiles Hallnect has not configured", () => {
-    expect(organizationJsonLd().sameAs).toBeUndefined();
+  it("claims exactly the social profiles Hallnect has configured, and no others", () => {
+    expect(organizationJsonLd().sameAs).toEqual(SOCIAL_PROFILES.map((p) => p.url));
   });
 
   it("publishes support hours as ContactPoint.hoursAvailable", () => {

@@ -15,10 +15,22 @@
 
 import "server-only";
 
+import { after } from "next/server";
 import { revalidatePath } from "next/cache";
+import { notifyVenueChanges } from "@/lib/indexnow";
 
 export function revalidateVenuePages(): void {
   revalidatePath("/halls/[slug]", "page");
   // /llms.txt lists every live venue with its capacity and price.
   revalidatePath("/llms.txt");
+  // Tell Bing (IndexNow) the venue pages changed, so ChatGPT search and
+  // Copilot see a new or edited hall without waiting for a recrawl. after()
+  // runs it once the response is sent, so the owner or admin never waits on a
+  // search engine; outside a request there is nothing to defer into, and the
+  // notice is simply skipped. lib/indexnow.ts never throws and is production-only.
+  try {
+    after(notifyVenueChanges);
+  } catch {
+    /* not in a request scope: skip the notice */
+  }
 }

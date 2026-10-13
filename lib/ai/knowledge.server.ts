@@ -34,6 +34,7 @@ import { getPublicPaymentSettings } from "@/lib/platform-settings";
 import { fetchPremiumPlans, PLAN_FEATURES } from "@/lib/premium-plans";
 import { formatPrice } from "@/lib/mock-data";
 import { DIRECT_BOOKING_ENABLED } from "@/lib/booking-switch";
+import { LISTING_CHECKS } from "@/lib/seo/definition";
 import { HALL_GST_PERCENT } from "@/lib/budget";
 
 export type ChatRole = "guest" | "customer" | "owner" | "admin";
@@ -140,8 +141,8 @@ export async function buildKnowledge(role: ChatRole): Promise<string> {
 - Customer dashboard (/customer): bookings, enquiries, saved halls, reviews, notifications, profile, and support tickets.`);
 
   sections.push(`## For venue owners
-- Joining: go to List Your Hall (/owner/register) and continue with Google. The owner account is ready straight away; listing is free.
-- Adding a hall: from the owner dashboard, add the hall with photos, capacity, pricing, address and amenities. Every hall is reviewed by the Hallnect team for completeness before it goes live; Hallnect does not visit venues.
+- Joining: go to List Your Hall (/owner/register) and continue with Google or a mobile number (a one-time code by SMS). The owner account is ready straight away; listing is free.
+- Adding a hall: from the owner dashboard, add the hall with photos, capacity, pricing, address and amenities. The form also asks a first-time owner for their business name, shown on listings as "Listed by". ${LISTING_CHECKS}
 ${DIRECT_BOOKING_ENABLED
     ? `- Each hall takes either online bookings or quotes; the owner chooses on the hall's form (online booking needs a full-day price) and can change it.
 - Online-booking halls: requests arrive with date, customer and amount; the owner accepts or declines within 48 hours. Hallnect collects the advance, keeps its commission out of that advance and pays the rest to the owner's payout account (bank account or UPI ID, added and verified under Profile — until it is verified the owner's share waits with Hallnect); the balance is collected by the owner at the venue.

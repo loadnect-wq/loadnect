@@ -31,7 +31,7 @@ const UA = "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.h
 const PLACE = ["@id", "name", "description", "url", "image", "address", "geo", "maximumAttendeeCapacity", "amenityFeature", "keywords", "aggregateRating", "containedInPlace", "telephone", "openingHoursSpecification", "sameAs", "identifier"];
 const WEBPAGE = ["@id", "url", "name", "description", "inLanguage", "isPartOf", "mainEntity", "dateModified", "datePublished", "about", "breadcrumb"];
 const PROPS = {
-  Organization: ["@id", "name", "legalName", "url", "logo", "email", "telephone", "address", "areaServed", "contactPoint", "vatID", "taxID", "identifier", "sameAs"],
+  Organization: ["@id", "name", "legalName", "description", "url", "logo", "email", "telephone", "address", "areaServed", "contactPoint", "vatID", "taxID", "identifier", "sameAs"],
   WebSite: ["@id", "url", "name", "inLanguage", "publisher", "potentialAction"],
   WebPage: WEBPAGE,
   CollectionPage: WEBPAGE,

@@ -21,6 +21,22 @@ export function hallnectDefinition(opts: { directBookingEnabled: boolean; legalN
   );
 }
 
+/**
+ * What Hallnect does to check a listing, in one sentence for every machine
+ * reader (llms.txt and the site assistant).
+ *
+ * "Sometimes" is the owner's own answer (2026-10-12): the team visits some
+ * venues in person, not every one. The old line, "Hallnect does not visit
+ * venues", contradicted the Google Business Profile, whose eligibility rests on
+ * in-person contact, and AI systems discount a source that contradicts itself.
+ * A visit is still not an inspection: the Disclaimer's "we do not inspect" stays
+ * true, which is why this says families should confirm details with the venue.
+ */
+export const LISTING_CHECKS =
+  "Every listing is submitted by the venue's owner and checked by Hallnect for completeness before " +
+  "it goes live. The Hallnect team visits some venues in person, but not every one, so families " +
+  "should confirm details with the venue.";
+
 type AnswerHall = {
   city: string;
   capacity_max: number;

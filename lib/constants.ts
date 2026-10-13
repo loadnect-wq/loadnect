@@ -69,6 +69,17 @@ export const CONTACT = {
   address:   "No. 68, Venkateshwara Nagar, Sundar Nagar Extension, Tirunagar, Madurai – 625006, Tamil Nadu, India",
 } as const;
 
+// Hallnect's own social profiles. ONE list, three consumers: the footer shows
+// them, the Organization JSON-LD lists them as sameAs, and llms.txt links them,
+// so what a visitor sees and what a machine reads cannot drift apart.
+//
+// Only profiles the owner has confirmed are theirs and public. Added
+// 2026-10-12: Instagram @hallnect.official (public). The URL is the canonical
+// profile address; the share link it was given as carried a tracking parameter.
+export const SOCIAL_PROFILES = [
+  { network: "Instagram", handle: "@hallnect.official", url: "https://www.instagram.com/hallnect.official/" },
+] as const;
+
 // Support availability. ONE definition, two consumers: app/contact/page.tsx
 // renders `label`, and lib/seo/jsonld.ts builds the machine-readable
 // OpeningHoursSpecification from the same numbers — so the sentence a customer

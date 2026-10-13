@@ -300,10 +300,15 @@ describe("structured data claims nothing the page cannot show", () => {
     expect(src).toContain("v.ratingCount >= MIN_RATINGS_FOR_AGGREGATE");
   });
 
-  it("declares no social profiles", () => {
-    // sameAs must stay absent until a verified profile actually exists —
-    // inventing one is fabricating business information.
-    expect(src).not.toMatch(/^\s*sameAs:/m);
+  it("declares only the social profiles the owner confirmed, never a typed-in one", () => {
+    // sameAs stayed absent until a real profile existed: inventing one is
+    // fabricating business information. Since 2026-10-12 it is built ONLY from
+    // lib/constants.ts SOCIAL_PROFILES (Instagram @hallnect.official, confirmed
+    // public by the owner), which the footer also visibly links.
+    const lines = src.match(/^\s*sameAs:.*$/gm) ?? [];
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain("SOCIAL_PROFILES");
+    expect(src).not.toMatch(/https?:\/\/(www\.)?(instagram|facebook|linkedin|youtube|twitter|x)\.com/);
   });
 
   it("normalises the state before publishing it", () => {

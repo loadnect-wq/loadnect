@@ -91,7 +91,7 @@ const FAQ_ITEMS = DIRECT_BOOKING_ENABLED ? [
   { q: "How much does Hallnect charge?",
     a: `On an online booking you pay the hall's advance plus a ${platformFeeDisclosure()} at checkout, shown clearly before you pay; on a small booking the fee is capped at a quarter of the advance, and a promotional code can reduce it to zero. Asking a hall for a quote is free, and you pay that hall directly. There are no other charges from Hallnect.` },
   { q: "I'm a venue owner — how do I list?",
-    a: "Register as an owner, complete your business profile, and submit your venue for approval. Listings are reviewed within 48 hours." },
+    a: "Tap List Your Hall and sign up with Google or your mobile number; listing is free. Then add your hall on one page: its name, city, guest capacity and the occasions it hosts, with photos and prices if you like. Our team reviews each listing within 48 hours before families can see it." },
 ] : [
   WHAT_IS_HALLNECT,
   { q: "How do I book a venue?",
@@ -103,7 +103,7 @@ const FAQ_ITEMS = DIRECT_BOOKING_ENABLED ? [
   { q: "How much does Hallnect charge?",
     a: "Families pay Hallnect nothing: asking for quotes is free, and you pay the venue directly. A venue pays Hallnect a small commission only on a booking it confirms through Hallnect." },
   { q: "I'm a venue owner — how do I list?",
-    a: "Register as an owner, complete your business profile, and submit your venue for approval. Listings are reviewed within 48 hours." },
+    a: "Tap List Your Hall and sign up with Google or your mobile number; listing is free. Then add your hall on one page: its name, city, guest capacity and the occasions it hosts, with photos and prices if you like. Our team reviews each listing within 48 hours before families can see it." },
 ];
 
 // The owner card, in the same two versions. "Bookings backed by

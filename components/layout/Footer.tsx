@@ -1,12 +1,13 @@
 import Link from "next/link";
 import { Camera, Mail, Phone, MapPin } from "lucide-react";
-import { APP_NAME, APP_DESCRIPTION, FOOTER_LINKS, CONTACT } from "@/lib/constants";
+import { APP_NAME, APP_DESCRIPTION, FOOTER_LINKS, CONTACT, SOCIAL_PROFILES } from "@/lib/constants";
 
-// Hallnect has no social accounts yet. These were four icons all pointing at
-// "#", on every page of the site — a visitor tapping one stayed exactly where
-// they were. An empty list renders nothing; add real URLs here when the
-// accounts exist and the row comes back on its own.
-const SOCIAL_LINKS: { Icon: typeof Camera; href: string; label: string }[] = [];
+// The brand's real profiles, from SOCIAL_PROFILES: the same list the
+// Organization JSON-LD publishes as sameAs, so the structured data never claims
+// a profile this footer does not visibly link. (This used to be four icons all
+// pointing at "#"; it stayed empty until Instagram existed, 2026-10-12.)
+// lucide-react ships no brand logos, so each shows a camera and its handle in
+// text, which also tells a visitor exactly which account it is.
 
 export function Footer() {
   return (
@@ -56,21 +57,22 @@ export function Footer() {
                 <MapPin className="h-4 w-4 shrink-0 text-gold-400" aria-hidden />
                 <span>{CONTACT.address}</span>
               </li>
-            </ul>
-
-            {/* Social */}
-            <div className="flex items-center gap-2">
-              {SOCIAL_LINKS.map(({ Icon, href, label }) => (
-                <a
-                  key={label}
-                  href={href}
-                  aria-label={label}
-                  className="flex h-9 w-9 items-center justify-center rounded-full border border-maroon-800 text-ivory-500 transition-colors hover:border-gold-500 hover:text-gold-400"
-                >
-                  <Icon className="h-4 w-4" aria-hidden />
-                </a>
+              {SOCIAL_PROFILES.map((p) => (
+                <li key={p.url} className="flex items-center gap-2">
+                  <Camera className="h-4 w-4 shrink-0 text-gold-400" aria-hidden />
+                  <a
+                    href={p.url}
+                    target="_blank"
+                    // rel="me" says this profile belongs to the site's owner.
+                    rel="me noopener noreferrer"
+                    aria-label={`Hallnect on ${p.network}, ${p.handle}`}
+                    className="hover:text-ivory-100"
+                  >
+                    {p.handle} <span className="text-ivory-500">on {p.network}</span>
+                  </a>
+                </li>
               ))}
-            </div>
+            </ul>
           </div>
 
           {/* Plan your function — the family tools (lib/family-tools.ts). */}

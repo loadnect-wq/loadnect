@@ -17,8 +17,9 @@
 
 import { formatHallPrice, isLeadGeneration } from "@/lib/booking-mode";
 import { FAMILY_TOOLS, TOOLS_PATH } from "@/lib/family-tools";
-import { hallnectDefinition } from "./definition";
+import { hallnectDefinition, LISTING_CHECKS } from "./definition";
 import { GUIDES, GUIDES_PATH, guideIndexable, guidePath } from "@/lib/guides";
+import { SOCIAL_PROFILES } from "@/lib/constants";
 
 export type LlmsVenue = {
   name: string;
@@ -67,10 +68,7 @@ export function buildLlmsTxt(input: LlmsInput): string {
     `- Live venues: ${plural(venues.length, "venue", "venues")}` +
       (cityNames.length ? ` (cities with a venue page: ${cityNames.join(", ")}).` : "."),
   );
-  lines.push(
-    "- Every listing is submitted by the venue's owner and checked by Hallnect for completeness " +
-      "before it goes live. Hallnect does not visit venues; families should confirm details with the venue.",
-  );
+  lines.push(`- ${LISTING_CHECKS}`);
   lines.push(
     "- Quotes: a family tells the hall its date, occasion and guest count. The hall replies on Hallnect " +
       "with its price; it sees the family's phone number only if the family accepts the quote. Asking " +
@@ -85,8 +83,13 @@ export function buildLlmsTxt(input: LlmsInput): string {
   }
   lines.push(
     `- Contact: ${contact.email}, ${contact.phone} (${input.supportHours}). Address: ${contact.address}.`,
-    "",
   );
+  // The brand's own profiles (lib/constants.ts SOCIAL_PROFILES): the same list
+  // the footer links and the Organization JSON-LD publishes as sameAs.
+  for (const p of SOCIAL_PROFILES) {
+    lines.push(`- ${p.network}: [${p.handle}](${p.url})`);
+  }
+  lines.push("");
 
   if (venues.length > 0) {
     lines.push("## Venues", "");

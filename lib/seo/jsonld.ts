@@ -12,7 +12,9 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { SITE_URL, SITE_NAME, BUSINESS, absoluteUrl } from "./config";
-import { CONTACT, SUPPORT_HOURS } from "@/lib/constants";
+import { CONTACT, SOCIAL_PROFILES, SUPPORT_HOURS } from "@/lib/constants";
+import { DIRECT_BOOKING_ENABLED } from "@/lib/booking-switch";
+import { hallnectDefinition } from "./definition";
 
 /** Drops null/undefined/empty values so no hollow properties are published. */
 function compact<T extends Record<string, unknown>>(obj: T): Record<string, unknown> {
@@ -113,8 +115,19 @@ export function organizationJsonLd() {
       propertyID: "LLPIN",
       value: CONTACT.llpin,
     },
-    // sameAs is deliberately ABSENT: Hallnect has no verified social profiles
-    // configured. Inventing them would be fabricated structured data.
+    // WHAT IT IS, in the one sentence the site already prints (home FAQ "What
+    // is Hallnect?", About, llms.txt). The same words everywhere is the point:
+    // search and AI systems settle on a description when every source agrees.
+    description: hallnectDefinition({
+      directBookingEnabled: DIRECT_BOOKING_ENABLED,
+      legalName: BUSINESS.legalName,
+    }),
+    // THE BRAND'S OTHER PROFILES (2026-10-12). Only what the owner confirmed
+    // and what the footer visibly links: lib/constants.ts SOCIAL_PROFILES.
+    // This is what ties hallnect.com and @hallnect.official together as one
+    // entity. Before Instagram existed this was deliberately absent; inventing
+    // profiles would be fabricated structured data.
+    sameAs: SOCIAL_PROFILES.length > 0 ? SOCIAL_PROFILES.map((p) => p.url) : undefined,
   });
 }
 
