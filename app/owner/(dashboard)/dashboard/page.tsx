@@ -2,7 +2,7 @@ import Image from "next/image";
 import type { Metadata } from "next";
 import Link from "next/link";
 import {
-  Building2, CalendarDays, CheckCircle2, CreditCard,
+  BarChart3, Building2, CalendarDays, CheckCircle2, CreditCard,
   IndianRupee, Plus, Sparkles, Clock, Wallet, Inbox, Phone, BookOpen, CalendarCheck,
 } from "lucide-react";
 import { requireRole } from "@/lib/auth";
@@ -23,6 +23,9 @@ import { ClaimHallCard } from "../_components/ClaimHallCard";
 import { CountUp } from "@/components/motion/CountUp";
 import { revealDelay } from "@/lib/motion";
 import { DIRECT_BOOKING_ENABLED } from "@/lib/booking-switch";
+import { todayInBusinessTz } from "@/lib/dates";
+import { monthLabel, monthOf, summarise } from "@/lib/owner-insights";
+import { fetchInsightRows } from "@/lib/owner-insights.server";
 
 export const metadata: Metadata = { title: "Owner Dashboard" };
 
@@ -95,7 +98,9 @@ export default async function OwnerDashboardPage() {
 
   const halls   = await fetchOwnerHalls(ownerRow.id);
   const hallIds = halls.map((h) => h.id);
-  const [catalogue, stats, commissions, plans, pendingLeads, claimable, pendingVisits] = await Promise.all([
+  const liveHallIds = halls.filter((h) => h.status === "approved").map((h) => h.id);
+  const thisMonth = monthOf(todayInBusinessTz());
+  const [catalogue, stats, commissions, plans, pendingLeads, claimable, pendingVisits, insightRows] = await Promise.all([
     // Lenient: without it the breakdown below names occasions by slug rather
     // than not rendering — a dashboard panel is not worth failing a dashboard.
     fetchVenueCategories(),
@@ -119,7 +124,10 @@ export default async function OwnerDashboardPage() {
     // enquiry note above). Null on a failed read, and then no banner rather
     // than a wrong one.
     countPendingVisits(hallIds),
+    // This month at a glance, linking to Insights. Live halls only.
+    fetchInsightRows(liveHallIds, thisMonth),
   ]);
+  const month = liveHallIds.length > 0 ? summarise(insightRows, liveHallIds) : null;
   const paidPlans = plans.filter((p) => p.monthly_price > 0 && p.is_purchasable);
 
   // Settlement snapshot — all figures derived from server-fetched commission
@@ -336,6 +344,30 @@ export default async function OwnerDashboardPage() {
         )}
 
         {!firstRun && (<>
+        {/* ── THIS MONTH, AT A GLANCE ─────────────────────────────────────
+            How many families opened the page and asked, linking to Insights
+            for the rest. A figure that failed to load shows a dash, never 0. */}
+        {month && (
+          <Link
+            href="/owner/insights"
+            className="flex items-center justify-between gap-3 rounded-2xl bg-white p-4 shadow-card transition hover:shadow-card-hover"
+          >
+            <span className="min-w-0">
+              <span className="block text-xs font-semibold uppercase tracking-wide text-charcoal-500">
+                {monthLabel(thisMonth)} so far
+              </span>
+              <span className="mt-0.5 block text-sm text-charcoal-800">
+                <strong className="font-serif text-lg">{month.views ?? "—"}</strong> page views ·{" "}
+                <strong className="font-serif text-lg">{month.enquiries?.received ?? "—"}</strong> enquiries ·{" "}
+                <strong className="font-serif text-lg">{month.enquiries?.booked ?? "—"}</strong> booked
+              </span>
+            </span>
+            <span className="inline-flex shrink-0 items-center gap-1 text-xs font-semibold text-maroon-700">
+              <BarChart3 className="h-4 w-4" aria-hidden /> Insights
+            </span>
+          </Link>
+        )}
+
         {/* Stats grid. The tiles carry the entrance individually rather than
             the grid carrying one for all six, which is the difference between
             a block appearing and a row dealing itself out. */}

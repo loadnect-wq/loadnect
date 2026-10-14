@@ -21,6 +21,7 @@ import { fetchVenueCategories } from "@/lib/venue-categories.server";
 import { selectCategories } from "@/lib/venue-categories";
 import { venueSummary, venueFacts, venueTitle, venueDescription } from "@/lib/seo/venue";
 import { DIRECT_BOOKING_ENABLED } from "@/lib/booking-switch";
+import { HallViewBeacon } from "@/components/halls/HallViewBeacon";
 
 export async function VenuePage({ hall, isPreview }: { hall: HallDetail; isPreview: boolean }) {
   // Together, not one after the other. Only fetchSimilarHalls needs the hall;
@@ -101,6 +102,9 @@ export async function VenuePage({ hall, isPreview }: { hall: HallDetail; isPrevi
           )}
         />
       )}
+      {/* One count per browser per day for the owner's Insights (0117). Never on
+          a preview: a draft is not a page families can open. */}
+      {!isPreview && <HallViewBeacon slug={hall.slug} />}
       <HallDetailView
         hall={hall}
         citySlug={citySlug(hall.city)}

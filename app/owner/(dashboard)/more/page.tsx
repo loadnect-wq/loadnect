@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import {
-  Wallet, Sparkles, Bell, MessageSquare, User, ChevronRight, Building2, Inbox, IndianRupee, CalendarCheck, CalendarDays,
+  BarChart3, Wallet, Sparkles, Bell, MessageSquare, User, ChevronRight, Building2, Inbox, IndianRupee, CalendarCheck, CalendarDays,
 } from "lucide-react";
 import { DIRECT_BOOKING_ENABLED } from "@/lib/booking-switch";
 import { requireRole } from "@/lib/auth";
@@ -19,6 +19,7 @@ const itemsFor = (bookingsTab: boolean) => [
   bookingsTab
     ? { href: "/owner/leads",    label: "Enquiries",     desc: "Quote requests from families",          Icon: Inbox }
     : { href: "/owner/bookings", label: "Bookings",      desc: DIRECT_BOOKING_ENABLED ? "Online bookings, for a hall that takes them" : "Online bookings, when they are switched on", Icon: CalendarDays },
+  { href: "/owner/insights",      label: "Insights",      desc: "Views, enquiries and bookings, month by month", Icon: BarChart3 },
   { href: "/owner/visits",        label: "Site visits",   desc: "Families asking to see your hall",      Icon: CalendarCheck },
   // Moved here from the tab bar when Diary took its slot.
   { href: "/owner/revenue",       label: "Revenue",       desc: "What your Hallnect bookings have earned", Icon: IndianRupee },

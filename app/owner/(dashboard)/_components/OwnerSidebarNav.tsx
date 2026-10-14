@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  Building2, CalendarDays, LayoutDashboard,
+  BarChart3, Building2, CalendarDays, LayoutDashboard,
   IndianRupee, MessageSquare, Sparkles, User, Wallet,
   Bell, Inbox, BookOpen, CalendarCheck,
 } from "lucide-react";
@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils";
 
 const NAV = [
   { label: "Dashboard",  href: "/owner/dashboard", icon: LayoutDashboard, exact: true },
+  { label: "Insights",   href: "/owner/insights",  icon: BarChart3 },
   { label: "Diary",      href: "/owner/diary",     icon: BookOpen },
   { label: "My Halls",   href: "/owner/halls",     icon: Building2 },
   { label: "Bookings",   href: "/owner/bookings",  icon: CalendarDays },
