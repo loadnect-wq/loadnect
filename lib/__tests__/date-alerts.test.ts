@@ -365,10 +365,18 @@ describe("guard rails", () => {
   });
 
   it("the worker is registered only when the family asks", () => {
-    const card = read("app/halls/_components/DateAlertCard.tsx");
-    const effect = card.slice(card.indexOf("useEffect("), card.indexOf("async function turnOn"));
-    expect(effect).not.toContain("register(");
-    expect(card).toContain('navigator.serviceWorker.register("/sw.js", { scope: "/" })');
+    // Registration lives in lib/push-client.ts (subscribeThisBrowser), shared
+    // with event plan reminders since 2026-10-14. Both cards may call it only
+    // from their button's handler, never from the effect that runs on load.
+    expect(read("lib/push-client.ts")).toContain('navigator.serviceWorker.register("/sw.js", { scope: "/" })');
+    for (const file of ["app/halls/_components/DateAlertCard.tsx", "components/plan/PlanReminders.tsx"]) {
+      const card = read(file);
+      const effect = card.slice(card.indexOf("useEffect("), card.indexOf("async function turnOn"));
+      expect(effect, file).not.toContain("register(");
+      expect(effect, file).not.toContain("subscribeThisBrowser(");
+      const turnOn = card.slice(card.indexOf("async function turnOn"), card.indexOf("async function turnOff"));
+      expect(turnOn, file).toContain("await subscribeThisBrowser(publicKey)");
+    }
   });
 
   it("the search page offers an alert only when it can work and a hall is hidden", () => {

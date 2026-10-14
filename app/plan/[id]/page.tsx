@@ -17,6 +17,8 @@ import { PlanBudget } from "@/components/plan/PlanBudget";
 import { PlanBoard, type OptionSummary } from "@/components/plan/PlanBoard";
 import { Checklist } from "@/components/plan/Checklist";
 import { PlanFamily } from "@/components/plan/PlanFamily";
+import { PlanReminders } from "@/components/plan/PlanReminders";
+import { pushConfig } from "@/lib/date-alerts.server";
 import { getSession, requireRole } from "@/lib/auth";
 import { noindexMetadata } from "@/lib/seo/metadata";
 import { todayInBusinessTz } from "@/lib/dates";
@@ -89,6 +91,9 @@ export default async function PlanPage({ params }: Props) {
     : Object.fromEntries(halls.halls.map((h) => [h.id, h.name]));
   const occasion = catalogue.find((c) => c.slug === plan.occasion)?.name ?? "Function";
   const totals = planTotals(items, plan.budget);
+  // Only the public half of the VAPID pair ever reaches the page. Without the
+  // pair configured there are no reminders to offer, so the card is not shown.
+  const pushPublicKey = pushConfig()?.publicKey ?? null;
 
   // How each category's family vote stands, for the board and the summary.
   const voteSummary: Partial<Record<string, OptionSummary>> = {};
@@ -174,6 +179,7 @@ export default async function PlanPage({ params }: Props) {
         <PlanBudget totals={totals} budget={plan.budget} />
         <PlanBoard planId={plan.id} items={items} hallNames={hallNames} today={today} canEdit={editable} options={voteSummary} />
         <Checklist planId={plan.id} tasks={tasks} eventDate={plan.eventDate} today={today} readOnly={!editable} />
+        {pushPublicKey && <PlanReminders planId={plan.id} publicKey={pushPublicKey} />}
         <PlanFamily
           planId={plan.id}
           planTitle={plan.title}

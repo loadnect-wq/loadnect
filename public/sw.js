@@ -1,9 +1,11 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// Hallnect service worker — date alerts only.
+// Hallnect service worker — notifications only: date alerts and event plan
+// reminders.
 //
-// Registered by the search page's "Tell me if one frees up" button, never on
-// page load. It shows the notification lib/date-alerts.server.ts sends and
-// opens the hall when it is tapped. That is all it does.
+// Registered by the search page's "Alert me if one frees up" button or a plan's
+// "Turn on reminders" button, never on page load. It shows the notification
+// lib/date-alerts.server.ts or lib/plan-reminders.server.ts sends and opens the
+// page it names (a hall, or the plan) when it is tapped. That is all it does.
 //
 // NO FETCH HANDLER, deliberately. Without one the worker never sees a page
 // request, so it cannot serve a stale page, cache a payment step, or break

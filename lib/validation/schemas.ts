@@ -1017,6 +1017,21 @@ export const dateAlertSubscribeSchema = z.object({
   city:     alertCitySchema,
 });
 
+// ── Event plan reminders (0116) ──────────────────────────────────────────────
+// The same push address rules as date alerts: the server only ever sends to a
+// known push service.
+export const planReminderSubscribeSchema = z.object({
+  planId:   uuidSchema,
+  endpoint: z.string().trim().max(1000, "Invalid notification address.")
+    .refine(isAllowedPushEndpoint, "This browser's notification service isn't supported."),
+  p256dh:   base64UrlKey(40, 200),
+  auth:     base64UrlKey(10, 100),
+});
+export const planReminderUnsubscribeSchema = z.object({
+  planId:   uuidSchema,
+  endpoint: z.string().trim().min(20).max(1000),
+});
+
 // ── Site visits (0109) ───────────────────────────────────────────────────────
 //
 // The family's request and the owner's answer. The date window (today up to

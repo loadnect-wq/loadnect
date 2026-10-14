@@ -14,52 +14,24 @@
 import { useEffect, useState } from "react";
 import { Bell, BellRing } from "lucide-react";
 import { subscribeDateAlert, unsubscribeDateAlert } from "../date-alert-actions";
-import { ALERTS_STORAGE_KEY, alertKey, isIosDevice, pushSupportFor, type PushSupport } from "@/lib/date-alerts";
+import { ALERTS_STORAGE_KEY, alertKey } from "@/lib/date-alerts";
+import {
+  browserPushSupport,
+  currentPushSubscription,
+  readStoredList,
+  subscribeThisBrowser,
+  writeStoredList,
+} from "@/lib/push-client";
 
 type State =
   | "checking" | "unsupported" | "ios-add-to-home-screen" | "ios-update"
   | "blocked" | "idle" | "working" | "on" | "error";
 
-function base64UrlToBytes(base64: string): Uint8Array<ArrayBuffer> {
-  const padded = base64 + "=".repeat((4 - (base64.length % 4)) % 4);
-  const raw = atob(padded.replace(/-/g, "+").replace(/_/g, "/"));
-  const out = new Uint8Array(new ArrayBuffer(raw.length));
-  for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
-  return out;
-}
-
-// Which alerts this browser set, for the button's state only. The server row
-// is the truth; this just lets the page say "Alert on" without a round trip.
-function readStored(): string[] {
-  try {
-    const v = JSON.parse(localStorage.getItem(ALERTS_STORAGE_KEY) ?? "[]");
-    return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
-  } catch {
-    return [];
-  }
-}
-function writeStored(list: string[]) {
-  try {
-    localStorage.setItem(ALERTS_STORAGE_KEY, JSON.stringify(list.slice(-20)));
-  } catch {
-    /* private window: the alert still works, the button just forgets */
-  }
-}
-
-function pushSupport(): PushSupport {
-  return pushSupportFor({
-    hasPush: "serviceWorker" in navigator && "PushManager" in window && "Notification" in window,
-    ios: isIosDevice(navigator.userAgent, navigator.platform ?? "", navigator.maxTouchPoints ?? 0),
-    standalone:
-      window.matchMedia?.("(display-mode: standalone)").matches === true ||
-      (navigator as Navigator & { standalone?: boolean }).standalone === true,
-  });
-}
-
-async function currentSubscription(): Promise<PushSubscription | null> {
-  const reg = await navigator.serviceWorker.getRegistration("/");
-  return (await reg?.pushManager.getSubscription()) ?? null;
-}
+// The browser half of push lives in lib/push-client.ts, shared with event plan
+// reminders. Which alerts this browser set is kept in localStorage for the
+// button's state only; the server row is the truth.
+const readStored = () => readStoredList(ALERTS_STORAGE_KEY);
+const writeStored = (list: string[]) => writeStoredList(ALERTS_STORAGE_KEY, list);
 
 export function DateAlertCard({
   date,
@@ -82,11 +54,11 @@ export function DateAlertCard({
   useEffect(() => {
     let cancelled = false;
     const settle = (s: State) => { if (!cancelled) setState(s); };
-    const support = pushSupport();
+    const support = browserPushSupport();
     if (support !== "supported") settle(support);
     else if (Notification.permission === "denied") settle("blocked");
     else if (!readStored().includes(key)) settle("idle");
-    else currentSubscription().then((sub) => settle(sub ? "on" : "idle")).catch(() => settle("idle"));
+    else currentPushSubscription().then((sub) => settle(sub ? "on" : "idle")).catch(() => settle("idle"));
     return () => { cancelled = true; };
   }, [key]);
 
@@ -94,32 +66,15 @@ export function DateAlertCard({
     setState("working");
     setError("");
     try {
-      const permission = await Notification.requestPermission();
-      if (permission !== "granted") {
-        setState(permission === "denied" ? "blocked" : "idle");
+      const sub = await subscribeThisBrowser(publicKey);
+      if (!sub.ok) {
+        setState(sub.permission === "denied" ? "blocked" : "idle");
         return;
       }
-      const reg = await navigator.serviceWorker.register("/sw.js", { scope: "/" });
-      await navigator.serviceWorker.ready;
-      const options = { userVisibleOnly: true, applicationServerKey: base64UrlToBytes(publicKey) };
-      let sub = await reg.pushManager.getSubscription();
-      if (!sub) {
-        sub = await reg.pushManager.subscribe(options);
-      } else {
-        // A subscription made under an older key cannot be reused once the
-        // key changes; replace it.
-        try {
-          sub = await reg.pushManager.subscribe(options);
-        } catch {
-          await sub.unsubscribe();
-          sub = await reg.pushManager.subscribe(options);
-        }
-      }
-      const json = sub.toJSON();
       const res = await subscribeDateAlert({
-        endpoint: json.endpoint,
-        p256dh: json.keys?.p256dh,
-        auth: json.keys?.auth,
+        endpoint: sub.endpoint,
+        p256dh: sub.p256dh,
+        auth: sub.auth,
         date,
         city,
       });
@@ -139,7 +94,7 @@ export function DateAlertCard({
   async function turnOff() {
     setState("working");
     try {
-      const sub = await currentSubscription();
+      const sub = await currentPushSubscription();
       // Only this date's row. The browser's push subscription stays: it may be
       // carrying alerts for other dates.
       if (sub) await unsubscribeDateAlert({ endpoint: sub.endpoint, date, city });

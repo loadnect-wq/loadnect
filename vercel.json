@@ -21,6 +21,10 @@
     {
       "path": "/api/admin/date-alerts/send",
       "schedule": "2,12,22,32,42,52 * * * *"
+    },
+    {
+      "path": "/api/admin/plan-reminders/send",
+      "schedule": "45 3,5 * * *"
     }
   ]
 }
